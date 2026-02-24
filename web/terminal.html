@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TermLive - Terminal</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/xterm.css">
+</head>
+<body>
+    <div class="terminal-header">
+        <a href="/">&#9664; 返回</a>
+        <span id="session-name">...</span>
+        <span id="session-status" class="status-dot online"></span>
+    </div>
+    <div id="terminal" class="terminal-container"></div>
+    <script src="/js/vendor/xterm.min.js"></script>
+    <script src="/js/vendor/xterm-addon-fit.min.js"></script>
+    <script src="/js/terminal.js"></script>
+</body>
+</html>
