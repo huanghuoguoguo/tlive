@@ -22,6 +22,7 @@ import (
 	"github.com/termlive/termlive/web"
 
 	qrterminal "github.com/mdp/qrterminal/v3"
+	"golang.org/x/term"
 )
 
 func runCommand(cmd *cobra.Command, args []string) error {
@@ -100,6 +101,12 @@ func runCommand(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}()
+
+	// Set terminal to raw mode for proper input pass-through
+	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err == nil {
+		defer term.Restore(int(os.Stdin.Fd()), oldState)
+	}
 
 	// Local terminal input -> PTY
 	go func() {
