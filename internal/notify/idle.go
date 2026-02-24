@@ -5,26 +5,77 @@ import (
 	"time"
 )
 
-type IdleDetector struct {
-	timeout  time.Duration
-	onIdle   func()
-	timer    *time.Timer
-	notified bool
-	mu       sync.Mutex
-	stopped  bool
+// SmartIdleDetector uses output classification to pick appropriate timeouts.
+// AwaitingInput output -> short timeout -> high-confidence notification
+// Processing output -> no timer (suppressed)
+// Unknown output -> long timeout -> low-confidence notification
+type SmartIdleDetector struct {
+	shortTimeout time.Duration
+	longTimeout  time.Duration
+	classifier   *OutputClassifier
+	onIdle       func(confidence string)
+
+	mu        sync.Mutex
+	timer     *time.Timer
+	notified  bool
+	stopped   bool
+	lastClass OutputClass
 }
 
-func NewIdleDetector(timeout time.Duration, onIdle func()) *IdleDetector {
-	return &IdleDetector{timeout: timeout, onIdle: onIdle}
+// NewSmartIdleDetector creates a smart idle detector.
+// extraInput/extraProcessing are additional regex patterns appended to built-ins.
+func NewSmartIdleDetector(
+	shortTimeout, longTimeout time.Duration,
+	extraInput, extraProcessing []string,
+	onIdle func(confidence string),
+) *SmartIdleDetector {
+	return &SmartIdleDetector{
+		shortTimeout: shortTimeout,
+		longTimeout:  longTimeout,
+		classifier:   NewOutputClassifier(extraInput, extraProcessing),
+		onIdle:       onIdle,
+	}
 }
 
-func (d *IdleDetector) Start() {
+func (d *SmartIdleDetector) Start() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.timer = time.AfterFunc(d.timeout, d.fire)
+	// Start with long timeout (unknown state)
+	d.timer = time.AfterFunc(d.longTimeout, func() { d.fire("low") })
 }
 
-func (d *IdleDetector) fire() {
+// Feed is called on every PTY output. It classifies the output
+// and resets the appropriate timer.
+func (d *SmartIdleDetector) Feed(data []byte) {
+	line := LastVisibleLine(string(data))
+	class := d.classifier.Classify(line)
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.stopped {
+		return
+	}
+
+	d.notified = false
+	d.lastClass = class
+
+	if d.timer != nil {
+		d.timer.Stop()
+	}
+
+	switch class {
+	case ClassAwaitingInput:
+		d.timer = time.AfterFunc(d.shortTimeout, func() { d.fire("high") })
+	case ClassProcessing:
+		// No timer — suppress notifications while processing
+		d.timer = nil
+	default: // ClassUnknown
+		d.timer = time.AfterFunc(d.longTimeout, func() { d.fire("low") })
+	}
+}
+
+func (d *SmartIdleDetector) fire(confidence string) {
 	d.mu.Lock()
 	if d.stopped || d.notified {
 		d.mu.Unlock()
@@ -32,20 +83,11 @@ func (d *IdleDetector) fire() {
 	}
 	d.notified = true
 	d.mu.Unlock()
-	d.onIdle()
+
+	d.onIdle(confidence)
 }
 
-func (d *IdleDetector) Reset() {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.notified = false
-	if d.timer != nil {
-		d.timer.Stop()
-		d.timer.Reset(d.timeout)
-	}
-}
-
-func (d *IdleDetector) Stop() {
+func (d *SmartIdleDetector) Stop() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.stopped = true
