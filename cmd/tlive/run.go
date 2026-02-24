@@ -20,6 +20,8 @@ import (
 	"github.com/termlive/termlive/internal/server"
 	"github.com/termlive/termlive/internal/session"
 	"github.com/termlive/termlive/web"
+
+	qrterminal "github.com/mdp/qrterminal/v3"
 )
 
 func runCommand(cmd *cobra.Command, args []string) error {
@@ -125,6 +127,8 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	url := fmt.Sprintf("http://%s:%d?token=%s", localIP, cfg.Server.Port, token)
 	fmt.Fprintf(os.Stderr, "\n  TermLive Web UI: %s\n", url)
 	fmt.Fprintf(os.Stderr, "  Session: %s (ID: %s)\n\n", sess.Command, sess.ID)
+	qrterminal.GenerateHalfBlock(url, qrterminal.L, os.Stderr)
+	fmt.Fprintln(os.Stderr)
 
 	httpServer := &http.Server{Addr: addr, Handler: srv.Handler()}
 	go httpServer.ListenAndServe()
