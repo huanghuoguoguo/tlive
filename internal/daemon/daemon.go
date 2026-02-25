@@ -33,6 +33,7 @@ type Daemon struct {
 	token         string
 	startTime     time.Time
 	server        *http.Server
+	extraHandler  http.Handler
 	mu            sync.Mutex
 }
 
@@ -71,6 +72,13 @@ func (d *Daemon) SetNotifiers(n *notify.MultiNotifier) {
 	d.notifier = n
 }
 
+// SetExtraHandler sets an additional HTTP handler that serves routes
+// not handled by the daemon's own API (e.g., Web UI, WebSocket).
+// Must be called before Run() or Handler().
+func (d *Daemon) SetExtraHandler(h http.Handler) {
+	d.extraHandler = h
+}
+
 // --- HTTP API types ---
 
 // NotifyRequest is the JSON body for POST /api/notify.
@@ -107,6 +115,9 @@ func (d *Daemon) Handler() http.Handler {
 	mux.HandleFunc("/api/notify", d.handleNotify)
 	mux.HandleFunc("/api/notifications", d.handleNotifications)
 	mux.HandleFunc("/api/status", d.handleStatus)
+	if d.extraHandler != nil {
+		mux.Handle("/", d.extraHandler)
+	}
 	return d.authMiddleware(mux)
 }
 

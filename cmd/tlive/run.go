@@ -2,12 +2,9 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -73,8 +70,13 @@ func runCommand(cmd *cobra.Command, args []string) error {
 		cols, rows = uint16(w), uint16(h)
 	}
 
-	// Create SessionManager and start managed session
-	mgr := daemon.NewSessionManager()
+	// Create daemon (replaces standalone SessionManager + HTTP server)
+	d := daemon.NewDaemon(daemon.DaemonConfig{
+		Port:         cfg.Server.Port,
+		HistoryLimit: cfg.Notify.Options.HistoryLimit,
+	})
+	mgr := d.Manager()
+
 	ms, err := mgr.CreateSession(args[0], args[1:], daemon.SessionConfig{
 		Rows: rows,
 		Cols: cols,
@@ -97,6 +99,7 @@ func runCommand(cmd *cobra.Command, args []string) error {
 		notifiers = append(notifiers, notify.NewFeishuNotifier(cfg.Notify.Feishu.WebhookURL))
 	}
 	multiNotifier := notify.NewMultiNotifier(notifiers...)
+	d.SetNotifiers(multiNotifier)
 
 	// Setup smart idle detector
 	localIP := publicIP
@@ -161,17 +164,19 @@ func runCommand(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	// Start HTTP server with embedded web assets
-	token := generateToken()
-	srv := server.New(mgr.Store(), mgr.Hubs(), token)
+	// Setup Web UI server as extra handler on the daemon.
+	// Pass empty token so the server skips its own auth middleware —
+	// the daemon's auth middleware already covers all routes.
+	srv := server.New(mgr.Store(), mgr.Hubs(), "")
 	srv.SetResizeFunc(ms.Session.ID, func(rows, cols uint16) {
 		ms.Proc.Resize(rows, cols)
 	})
 	srv.SetWebFS(web.Assets)
-	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+	d.SetExtraHandler(srv.Handler())
 
-	url := fmt.Sprintf("http://%s:%d?token=%s", localIP, cfg.Server.Port, token)
-	localURL := fmt.Sprintf("http://localhost:%d?token=%s", cfg.Server.Port, token)
+	// Print connection info
+	url := fmt.Sprintf("http://%s:%d?token=%s", localIP, cfg.Server.Port, d.Token())
+	localURL := fmt.Sprintf("http://localhost:%d?token=%s", cfg.Server.Port, d.Token())
 	fmt.Fprintf(os.Stderr, "\n  TermLive Web UI:\n")
 	fmt.Fprintf(os.Stderr, "    Local:   %s\n", localURL)
 	fmt.Fprintf(os.Stderr, "    Network: %s\n", url)
@@ -179,8 +184,8 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	qrterminal.GenerateHalfBlock(url, qrterminal.L, os.Stderr)
 	fmt.Fprintln(os.Stderr)
 
-	httpServer := &http.Server{Addr: addr, Handler: srv.Handler()}
-	go httpServer.ListenAndServe()
+	// Start daemon in goroutine (replaces httpServer.ListenAndServe)
+	go d.Run()
 
 	// Wait for process exit or signal
 	sigCh := make(chan os.Signal, 1)
@@ -214,10 +219,8 @@ func runCommand(cmd *cobra.Command, args []string) error {
 
 	// StopSession (hub + PTY + session status) is handled by defer
 
-	// Graceful HTTP shutdown with timeout
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer shutdownCancel()
-	httpServer.Shutdown(shutdownCtx)
+	// Graceful daemon shutdown (replaces httpServer.Shutdown)
+	d.Stop()
 
 	return nil
 }
@@ -244,10 +247,4 @@ func getLocalIP() string {
 		}
 	}
 	return "127.0.0.1"
-}
-
-func generateToken() string {
-	b := make([]byte, 16)
-	rand.Read(b)
-	return hex.EncodeToString(b)
 }
