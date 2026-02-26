@@ -101,6 +101,30 @@ func TestDaemon_CreateSessionEndpoint(t *testing.T) {
 	}
 }
 
+func TestDaemon_UnauthorizedReturnsHTML(t *testing.T) {
+	d := NewDaemon(DaemonConfig{Port: 0, Token: "secret"})
+	handler := d.Handler()
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+	ct := w.Header().Get("Content-Type")
+	if !strings.Contains(ct, "text/html") {
+		t.Errorf("expected text/html content type, got %q", ct)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "<html") {
+		t.Error("expected HTML response body")
+	}
+	if !strings.Contains(body, "token") {
+		t.Error("expected token reference in response")
+	}
+}
+
 func TestDaemon_DeleteSessionEndpoint(t *testing.T) {
 	d := NewDaemon(DaemonConfig{Port: 0, Token: "test-token"})
 	handler := d.Handler()

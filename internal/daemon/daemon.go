@@ -302,6 +302,106 @@ func (d *Daemon) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 
 // --- Auth middleware ---
 
+const unauthorizedHTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TermLive - Unauthorized</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+    background: #0d1117;
+    color: #e6edf3;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 48px;
+    max-width: 420px;
+    width: 90%;
+    text-align: center;
+}
+.lock-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.6;
+}
+h1 {
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #e6edf3;
+}
+.desc {
+    font-size: 14px;
+    color: #8b949e;
+    margin-bottom: 24px;
+    line-height: 1.5;
+}
+.token-form {
+    display: flex;
+    gap: 8px;
+}
+.token-input {
+    flex: 1;
+    padding: 10px 14px;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    color: #e6edf3;
+    font-size: 14px;
+    font-family: monospace;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.token-input:focus {
+    border-color: #4ecca3;
+}
+.token-input::placeholder {
+    color: #484f58;
+}
+.submit-btn {
+    padding: 10px 20px;
+    background: #4ecca3;
+    color: #0d1117;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+.submit-btn:hover {
+    opacity: 0.85;
+}
+.hint {
+    margin-top: 16px;
+    font-size: 12px;
+    color: #484f58;
+}
+</style>
+</head>
+<body>
+<div class="card">
+    <div class="lock-icon">&#128274;</div>
+    <h1>Access Unauthorized</h1>
+    <p class="desc">A valid token is required to access TermLive.<br>Check your terminal for the access URL with token.</p>
+    <form class="token-form" onsubmit="event.preventDefault();location.href='/?token='+document.getElementById('tk').value;">
+        <input id="tk" class="token-input" type="text" placeholder="Paste token here..." autofocus>
+        <button class="submit-btn" type="submit">Go</button>
+    </form>
+    <p class="hint">Token is displayed when you run <code style="color:#8b949e;">tlive run</code></p>
+</div>
+</body>
+</html>`
+
 func (d *Daemon) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := ""
@@ -317,7 +417,9 @@ func (d *Daemon) authMiddleware(next http.Handler) http.Handler {
 			}
 		}
 		if token != d.token {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(unauthorizedHTML))
 			return
 		}
 		// Set cookie so browser AJAX/WebSocket requests authenticate automatically
