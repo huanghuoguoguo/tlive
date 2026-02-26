@@ -9,11 +9,25 @@
 </head>
 <body>
     <div class="terminal-header">
-        <a href="/">&#9664; 返回</a>
-        <span id="session-name">...</span>
-        <span id="session-status" class="status-dot online"></span>
+        <a href="/" class="back-link">&#9664; Back</a>
+        <div class="terminal-info">
+            <span id="session-name" class="terminal-title">...</span>
+            <span id="session-status" class="status-badge online">
+                <span class="status-dot"></span>
+                <span id="status-text">Connected</span>
+            </span>
+        </div>
     </div>
-    <div id="terminal" class="terminal-container"></div>
+    <div class="terminal-wrapper">
+        <div id="terminal" class="terminal-container"></div>
+        <div id="disconnect-overlay" class="disconnect-overlay" style="display:none;">
+            <div class="disconnect-content">
+                <div class="disconnect-icon">&#9888;</div>
+                <p>Connection lost</p>
+                <p class="disconnect-hint">Reconnecting...</p>
+            </div>
+        </div>
+    </div>
     <script src="/js/vendor/xterm.min.js"></script>
     <script src="/js/vendor/xterm-addon-fit.min.js"></script>
     <script src="/js/terminal.js"></script>

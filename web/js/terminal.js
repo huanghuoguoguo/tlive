@@ -12,11 +12,12 @@
     var term = new Terminal({
         cursorBlink: true,
         fontSize: 14,
-        fontFamily: 'Menlo, Monaco, Consolas, monospace',
+        fontFamily: "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace",
         theme: {
             background: '#0d1117',
-            foreground: '#e0e0e0',
+            foreground: '#e6edf3',
             cursor: '#4ecca3',
+            selectionBackground: '#264f78',
         },
     });
 
@@ -25,10 +26,26 @@
     term.open(document.getElementById('terminal'));
     fitAddon.fit();
 
+    var statusBadge = document.getElementById('session-status');
+    var statusText = document.getElementById('status-text');
+    var overlay = document.getElementById('disconnect-overlay');
+
     var wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     var wsUrl = wsProtocol + '//' + location.host + '/ws/' + sessionId;
     var ws = null;
     var reconnectTimer = null;
+
+    function setConnected(connected) {
+        if (connected) {
+            statusBadge.className = 'status-badge online';
+            statusText.textContent = 'Connected';
+            overlay.style.display = 'none';
+        } else {
+            statusBadge.className = 'status-badge offline';
+            statusText.textContent = 'Reconnecting...';
+            overlay.style.display = 'flex';
+        }
+    }
 
     function sendResize() {
         if (ws && ws.readyState === WebSocket.OPEN) {
@@ -45,7 +62,7 @@
         ws.binaryType = 'arraybuffer';
 
         ws.onopen = function() {
-            document.getElementById('session-status').className = 'status-dot online';
+            setConnected(true);
             sendResize();
         };
 
@@ -57,7 +74,7 @@
         };
 
         ws.onclose = function() {
-            document.getElementById('session-status').className = 'status-dot';
+            setConnected(false);
             reconnectTimer = setTimeout(connect, 2000);
         };
 
@@ -73,10 +90,11 @@
     term.onResize(function() { sendResize(); });
     window.addEventListener('resize', function() { fitAddon.fit(); });
 
+    // Fetch session info for header
     fetch('/api/sessions').then(function(r) { return r.json(); }).then(function(sessions) {
         var s = sessions.find(function(s) { return s.id === sessionId; });
         if (s) {
-            document.getElementById('session-name').textContent = s.command + ' (PID: ' + s.pid + ')';
+            document.getElementById('session-name').textContent = s.command + ' (PID: ' + s.pid + ') \u00b7 ' + s.duration;
         }
     });
 
