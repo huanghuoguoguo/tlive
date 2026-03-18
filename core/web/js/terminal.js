@@ -32,7 +32,8 @@
     var overlay = document.getElementById('disconnect-overlay');
 
     var wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    var wsUrl = wsProtocol + '//' + location.host + '/ws/' + sessionId;
+    var tokenParam = params.get('token') || '';
+    var wsUrl = wsProtocol + '//' + location.host + '/ws/session/' + sessionId + '?token=' + tokenParam;
     var ws = null;
     var reconnectTimer = null;
     var processExited = false;
@@ -106,7 +107,7 @@
     window.addEventListener('resize', function() { fitAddon.fit(); });
 
     // Fetch session info for header
-    fetch('/api/sessions').then(function(r) { return r.json(); }).then(function(sessions) {
+    fetch('/api/sessions', { headers: { 'Authorization': 'Bearer ' + tokenParam } }).then(function(r) { return r.json(); }).then(function(sessions) {
         var s = sessions.find(function(s) { return s.id === sessionId; });
         if (s) {
             document.getElementById('session-name').textContent = s.command + ' (PID: ' + s.pid + ') \u00b7 ' + s.duration;

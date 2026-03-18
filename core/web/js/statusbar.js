@@ -3,9 +3,11 @@
   const statusBar = document.getElementById('status-bar');
   if (!statusBar) return;
 
+  const tokenParam = new URLSearchParams(window.location.search).get('token') || '';
+
   function connect() {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${location.host}/ws/status`);
+    const ws = new WebSocket(`${protocol}//${location.host}/ws/status?token=${tokenParam}`);
 
     ws.onmessage = function(event) {
       try {

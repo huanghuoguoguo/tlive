@@ -267,7 +267,7 @@ func runClient(lock daemon.LockInfo, args []string, rows, cols uint16) error {
 	}()
 
 	// Connect WebSocket
-	wsURL := fmt.Sprintf("ws://localhost:%d/ws/%s", lock.Port, sessionID)
+	wsURL := fmt.Sprintf("ws://localhost:%d/ws/session/%s", lock.Port, sessionID)
 	header := http.Header{}
 	header.Set("Cookie", fmt.Sprintf("tl_token=%s", lock.Token))
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, header)

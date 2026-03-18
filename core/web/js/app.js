@@ -6,6 +6,7 @@
     var countBadge = document.getElementById('session-count');
     var statusBadge = document.getElementById('status');
     var loaded = false;
+    var tokenParam = new URLSearchParams(window.location.search).get('token') || '';
 
     if (!sessionsEl) return;
 
@@ -28,7 +29,7 @@
     }
 
     function loadSessions() {
-        fetch('/api/sessions')
+        fetch('/api/sessions', { headers: { 'Authorization': 'Bearer ' + tokenParam } })
             .then(function(resp) {
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 return resp.json();
@@ -47,7 +48,7 @@
                 emptyMsg.style.display = 'none';
                 countBadge.textContent = sessions.length;
                 sessionsEl.innerHTML = sessions.map(function(s) {
-                    return '<div class="session-card" onclick="location.href=\'/terminal.html?id=' + s.id + '\'">' +
+                    return '<div class="session-card" onclick="location.href=\'/terminal.html?id=' + s.id + '&token=' + tokenParam + '\'">' +
                         '<div class="card-header">' +
                             '<span class="name">' + escapeHtml(s.command) + '</span>' +
                             '<span class="card-status">' + escapeHtml(s.status) + '</span>' +
