@@ -5,44 +5,74 @@ import { Logger } from './logger.js';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
+// Whether Go Core daemon is reachable (for web terminal links in IM)
+let coreAvailable = false;
+let coreClient: CoreClientImpl | null = null;
+
+export function isCoreAvailable(): boolean {
+  return coreAvailable;
+}
+
+export function getCoreUrl(): string {
+  const config = loadConfig();
+  return config.publicUrl || config.coreUrl;
+}
+
 async function main() {
   const config = loadConfig();
 
-  const logDir = join(homedir(), '.termlive', 'logs');
+  const logDir = join(homedir(), '.tlive', 'logs');
   const logger = new Logger(
     join(logDir, 'bridge.log'),
     [config.token, config.telegram.botToken, config.discord.botToken, config.feishu.appSecret].filter(Boolean)
   );
 
-  logger.info('TermLive Bridge starting...');
-  logger.info(`Core URL: ${config.coreUrl}`);
+  logger.info('TLive Bridge starting...');
   logger.info(`Enabled channels: ${config.enabledChannels.join(', ') || 'none'}`);
 
-  // Initialize Core Client
-  const core = new CoreClientImpl(config.coreUrl, config.token);
-
+  // Try connecting to Go Core daemon (optional — Bridge works without it)
+  coreClient = new CoreClientImpl(config.coreUrl, config.token);
   try {
-    await core.connect();
-    logger.info('Connected to Go Core');
-  } catch (err) {
-    logger.error(`Failed to connect to Go Core: ${err}`);
-    logger.warn('Running in degraded mode (no Core connection)');
+    await coreClient.connect();
+    coreAvailable = true;
+    logger.info(`Go Core detected at ${config.coreUrl}`);
+  } catch {
+    coreAvailable = false;
+    coreClient = null;
+    logger.info('Go Core not running — IM-only mode (no web terminal links)');
   }
 
-  // Initialize context (LLM and permissions will be added in P2/P4)
+  // Periodically re-check Core availability
+  setInterval(async () => {
+    try {
+      const resp = await fetch(`${config.coreUrl}/api/status`, {
+        headers: { Authorization: `Bearer ${config.token}` },
+        signal: AbortSignal.timeout(3000),
+      });
+      coreAvailable = resp.ok;
+    } catch {
+      coreAvailable = false;
+    }
+  }, 30_000);
+
+  // Initialize context
   initBridgeContext({
-    store: {} as any,       // P2: JsonFileStore
-    llm: {} as any,         // P2: Claude SDK provider
-    permissions: {} as any, // P4: Permission gateway
-    core: core as any,
+    store: {} as any,       // TODO: wire JsonFileStore
+    llm: {} as any,         // TODO: wire Claude SDK provider
+    permissions: {} as any, // TODO: wire Permission gateway
+    core: (coreClient ?? {}) as any,
   });
 
   logger.info('Bridge initialized');
+  if (coreAvailable) {
+    const webUrl = config.publicUrl || config.coreUrl;
+    logger.info(`Web terminal available at ${webUrl}`);
+  }
 
   // Graceful shutdown
   const shutdown = async () => {
     logger.info('Shutting down...');
-    await core.disconnect();
+    if (coreClient) await coreClient.disconnect();
     logger.close();
     process.exit(0);
   };

@@ -59,7 +59,7 @@ function loadEnvFile(path: string): Record<string, string> {
 
 export function loadConfig(): Config {
   // 1. Load env file
-  const envFile = loadEnvFile(join(homedir(), '.termlive', 'config.env'));
+  const envFile = loadEnvFile(join(homedir(), '.tlive', 'config.env'));
 
   // 2. Merge: env vars override env file
   const get = (key: string, defaultValue = ''): string =>
