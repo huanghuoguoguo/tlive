@@ -1,11 +1,10 @@
-const BRIDGE_VERSION = '0.1.0';
-const HEARTBEAT_INTERVAL_MS = 15_000;
+const HEALTH_CHECK_INTERVAL_MS = 30_000;
 
 export class CoreClientImpl {
   private baseUrl: string;
   private token: string;
   private healthy = false;
-  private heartbeatInterval: NodeJS.Timeout | null = null;
+  private healthCheckInterval: NodeJS.Timeout | null = null;
 
   constructor(baseUrl: string, token: string) {
     this.baseUrl = baseUrl;
@@ -13,23 +12,26 @@ export class CoreClientImpl {
   }
 
   async connect(): Promise<void> {
-    await this.request('POST', '/api/bridge/register', {
-      version: BRIDGE_VERSION,
-      core_min_version: '0.1.0',
-      channels: [],
-    });
+    // Just check if Go Core is reachable
+    const status = await this.request('GET', '/api/status');
+    if (!status) throw new Error('Go Core not reachable');
     this.healthy = true;
-    this.heartbeatInterval = setInterval(() => {
-      this.heartbeat().catch(() => {
+
+    // Periodic health check
+    this.healthCheckInterval = setInterval(async () => {
+      try {
+        await this.request('GET', '/api/status');
+        this.healthy = true;
+      } catch {
         this.healthy = false;
-      });
-    }, HEARTBEAT_INTERVAL_MS);
+      }
+    }, HEALTH_CHECK_INTERVAL_MS);
   }
 
   async disconnect(): Promise<void> {
-    if (this.heartbeatInterval !== null) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
+    if (this.healthCheckInterval !== null) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
     }
     this.healthy = false;
   }
@@ -42,39 +44,24 @@ export class CoreClientImpl {
     return this.request('GET', '/api/sessions');
   }
 
-  async getStats(): Promise<any> {
-    return this.request('GET', '/api/stats');
-  }
-
-  async reportStats(stats: { input_tokens: number; output_tokens: number; cost_usd: number }): Promise<void> {
-    await this.request('POST', '/api/stats', stats);
-  }
-
-  async getGitStatus(): Promise<any> {
-    return this.request('GET', '/api/git/status');
-  }
-
-  async createScopedToken(sessionId: string): Promise<string> {
-    const result = await this.request('POST', '/api/tokens/scoped', { session_id: sessionId });
-    return result.token;
+  getBaseUrl(): string {
+    return this.baseUrl;
   }
 
   private async request(method: string, path: string, body?: any): Promise<any> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method,
       headers: {
-        'Authorization': `Bearer ${this.token}`,
+        Authorization: `Bearer ${this.token}`,
         ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) throw new Error(`Core API error: ${res.status} ${res.statusText}`);
-    if (res.headers.get('content-type')?.includes('application/json')) {
+    const contentType = res.headers.get('content-type');
+    if (contentType?.includes('application/json')) {
       return res.json();
     }
-  }
-
-  private async heartbeat(): Promise<void> {
-    await this.request('POST', '/api/bridge/heartbeat');
   }
 }

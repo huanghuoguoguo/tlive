@@ -52,6 +52,9 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	if cmd.Flags().Changed("port") {
 		cfg.Daemon.Port = port
 	}
+	if cmd.Flags().Changed("token") && token != "" {
+		cfg.Daemon.Token = token
+	}
 
 	rows, cols := uint16(24), uint16(80)
 	if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
@@ -88,7 +91,9 @@ func runCommand(cmd *cobra.Command, args []string) error {
 func runHost(cfg *config.Config, args []string, rows, cols uint16, lockPath string) error {
 	// Create daemon
 	d := daemon.NewDaemon(daemon.DaemonConfig{
-		Port: cfg.Daemon.Port,
+		Port:  cfg.Daemon.Port,
+		Token: cfg.Daemon.Token,
+		Host:  cfg.Daemon.Host,
 	})
 	mgr := d.Manager()
 

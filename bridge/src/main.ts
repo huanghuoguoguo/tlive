@@ -2,6 +2,11 @@ import { loadConfig } from './config.js';
 import { initBridgeContext } from './context.js';
 import { CoreClientImpl } from './core-client.js';
 import { Logger } from './logger.js';
+import { JsonFileStore } from './store/json-file.js';
+import { resolveProvider } from './providers/index.js';
+import { PendingPermissions } from './permissions/gateway.js';
+import { BridgeManager } from './engine/bridge-manager.js';
+import { createAdapter } from './channels/index.js';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -20,10 +25,10 @@ export function getCoreUrl(): string {
 
 async function main() {
   const config = loadConfig();
+  const tliveHome = join(homedir(), '.tlive');
 
-  const logDir = join(homedir(), '.tlive', 'logs');
   const logger = new Logger(
-    join(logDir, 'bridge.log'),
+    join(tliveHome, 'logs', 'bridge.log'),
     [config.token, config.telegram.botToken, config.discord.botToken, config.feishu.appSecret].filter(Boolean)
   );
 
@@ -55,15 +60,35 @@ async function main() {
     }
   }, 30_000);
 
+  // Initialize components
+  const store = new JsonFileStore(join(tliveHome, 'data'));
+  const permissions = new PendingPermissions();
+  const llm = resolveProvider(config.runtime, permissions);
+
   // Initialize context
   initBridgeContext({
-    store: {} as any,       // TODO: wire JsonFileStore
-    llm: {} as any,         // TODO: wire Claude SDK provider
-    permissions: {} as any, // TODO: wire Permission gateway
+    store,
+    llm,
+    permissions: permissions as any,
     core: (coreClient ?? {}) as any,
   });
 
-  logger.info('Bridge initialized');
+  // Start Bridge Manager with enabled IM adapters
+  const manager = new BridgeManager();
+
+  for (const channelType of config.enabledChannels) {
+    try {
+      const adapter = createAdapter(channelType as any);
+      manager.registerAdapter(adapter);
+      logger.info(`Registered ${channelType} adapter`);
+    } catch (err) {
+      logger.warn(`Failed to create ${channelType} adapter: ${err}`);
+    }
+  }
+
+  await manager.start();
+  logger.info('Bridge started');
+
   if (coreAvailable) {
     const webUrl = config.publicUrl || config.coreUrl;
     logger.info(`Web terminal available at ${webUrl}`);
@@ -72,6 +97,8 @@ async function main() {
   // Graceful shutdown
   const shutdown = async () => {
     logger.info('Shutting down...');
+    await manager.stop();
+    permissions.denyAll();
     if (coreClient) await coreClient.disconnect();
     logger.close();
     process.exit(0);
