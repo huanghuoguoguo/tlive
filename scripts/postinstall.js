@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// Downloads precompiled tlive-core binary for current platform
+// Downloads precompiled tlive binary for current platform
 import { createWriteStream, chmodSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir, platform, arch } from 'node:os';
 import { get } from 'node:https';
 import { execSync } from 'node:child_process';
 
-const GITHUB_REPO = 'termlive/termlive';
-const BIN_DIR = join(homedir(), '.termlive', 'bin');
+const GITHUB_REPO = 'tlive/tlive';
+const BIN_DIR = join(homedir(), '.tlive', 'bin');
 
 const PLATFORM_MAP = { linux: 'linux', darwin: 'darwin', win32: 'windows' };
 const ARCH_MAP = { x64: 'amd64', arm64: 'arm64' };
@@ -50,25 +50,25 @@ async function main() {
 
   if (!os || !cpu) {
     console.warn(`Unsupported platform: ${platform()}-${arch()}. Skipping binary download.`);
-    console.warn('You can build from source: cd core && go build -o tlive-core ./cmd/tlive-core/');
+    console.warn('You can build from source: cd core && go build -o tlive ./cmd/tlive/');
     return;
   }
 
   const ext = os === 'windows' ? '.exe' : '';
-  const binaryName = `tlive-core${ext}`;
+  const binaryName = `tlive${ext}`;
   const dest = join(BIN_DIR, binaryName);
 
   if (existsSync(dest)) {
-    console.log(`tlive-core already exists at ${dest}`);
+    console.log(`tlive already exists at ${dest}`);
     return;
   }
 
   mkdirSync(BIN_DIR, { recursive: true });
 
   const version = await getLatestVersion();
-  const url = `https://github.com/${GITHUB_REPO}/releases/download/${version}/tlive-core-${os}-${cpu}${ext}`;
+  const url = `https://github.com/${GITHUB_REPO}/releases/download/${version}/tlive-${os}-${cpu}${ext}`;
 
-  console.log(`Downloading tlive-core for ${os}-${cpu}...`);
+  console.log(`Downloading tlive for ${os}-${cpu}...`);
   console.log(`  URL: ${url}`);
 
   try {
@@ -76,10 +76,10 @@ async function main() {
     if (os !== 'windows') {
       chmodSync(dest, 0o755);
     }
-    console.log(`tlive-core installed to ${dest}`);
+    console.log(`tlive installed to ${dest}`);
   } catch (err) {
-    console.warn(`Failed to download tlive-core: ${err.message}`);
-    console.warn('You can build from source: cd core && go build -o tlive-core ./cmd/tlive-core/');
+    console.warn(`Failed to download tlive: ${err.message}`);
+    console.warn('You can build from source: cd core && go build -o tlive ./cmd/tlive/');
     console.warn(`Then copy the binary to ${dest}`);
   }
 }

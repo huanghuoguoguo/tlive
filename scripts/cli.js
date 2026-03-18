@@ -27,7 +27,7 @@ switch (command) {
     if (existsSync(bridgeEntry)) {
       run(`node ${bridgeEntry}`);
     } else {
-      console.log('Setup wizard not available. Use /termlive setup in Claude Code.');
+      console.log('Setup wizard not available. Use /tlive setup in Claude Code.');
     }
     break;
 
@@ -54,7 +54,7 @@ switch (command) {
   default:
     console.log(`TermLive — Terminal live monitoring + IM bridge
 
-Usage: termlive <command>
+Usage: tlive <command>
 
 Commands:
   setup       Configure IM platforms and credentials
@@ -65,9 +65,9 @@ Commands:
   doctor      Run diagnostic checks
 
 In Claude Code:
-  /termlive setup    Interactive setup wizard
-  /termlive start    Start services
-  /termlive status   Show status
+  /tlive setup    Interactive setup wizard
+  /tlive start    Start services
+  /tlive status   Show status
 `);
     break;
 }

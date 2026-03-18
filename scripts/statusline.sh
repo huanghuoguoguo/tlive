@@ -2,7 +2,7 @@
 # Claude Code Status Line script for TermLive
 # Reads JSON session data from stdin, queries Go Core, outputs status line.
 # Configure in ~/.claude/settings.json:
-#   { "statusLine": { "command": "~/.termlive/bin/statusline.sh" } }
+#   { "statusLine": { "command": "~/.tlive/bin/statusline.sh" } }
 
 read -r SESSION_JSON
 
@@ -10,7 +10,7 @@ TL_PORT="${TL_PORT:-8080}"
 TL_TOKEN="${TL_TOKEN:-}"
 
 # Source config if exists
-[ -f "$HOME/.termlive/config.env" ] && source "$HOME/.termlive/config.env" 2>/dev/null
+[ -f "$HOME/.tlive/config.env" ] && source "$HOME/.tlive/config.env" 2>/dev/null
 
 # Query Go Core status
 CORE_STATUS=$(curl -sf "http://localhost:${TL_PORT}/api/status" \

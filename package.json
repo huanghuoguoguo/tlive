@@ -1,10 +1,10 @@
 {
-  "name": "termlive",
+  "name": "tlive",
   "version": "0.1.0",
   "description": "Terminal live monitoring + IM bridge for AI coding tools",
   "type": "module",
   "bin": {
-    "termlive": "./scripts/cli.js"
+    "tlive": "./scripts/cli.js"
   },
   "scripts": {
     "setup:core": "node scripts/postinstall.js",

@@ -1,289 +1,193 @@
-# TermLive
+# TLive
 
 [中文文档](README_CN.md)
 
-AI coding tool remote control platform — monitor terminal sessions, approve tool permissions, and interact with Claude Code from your phone via Telegram, Discord, or Feishu.
+Terminal live monitoring + IM bridge for AI coding tools.
 
-## What is TermLive?
+Two independent features, use either or both:
+- **`tlive <cmd>`** — wrap any command with a web-accessible terminal
+- **`/tlive`** — chat with Claude Code / Codex from Telegram, Discord, or Feishu
 
-TermLive bridges your AI coding sessions to instant messaging platforms. Run Claude Code on your server, get real-time streaming responses on your phone, approve tool permissions with one tap, and view live terminal output in the browser.
-
-**Without TermLive:** You stare at a terminal waiting for Claude Code to finish.
-
-**With TermLive:** You walk away. Your phone buzzes when Claude needs approval or finishes work.
-
-## Features
-
-- **Bidirectional IM** — chat with Claude Code from Telegram, Discord, or Feishu
-- **Tool Permission Approval** — approve/deny file edits, command execution from IM buttons
-- **Web Terminal** — real-time terminal access from any browser, including mobile
-- **Multi-session Dashboard** — manage multiple terminal sessions in one view
-- **Streaming Responses** — see Claude's output as it types, not after it finishes
-- **Status Line** — Claude Code bottom bar showing sessions, costs, and IM status
-- **Two-component Architecture** — Go Core (infrastructure) + Node.js Bridge (AI + IM), independently deployable
-- **Cross-platform** — Linux, macOS, Windows
-- **Docker Ready** — `docker compose up` for one-click deployment
-
-## Prerequisites
-
-- **Node.js >= 22**
-- **Go 1.24+** (for building Go Core from source, or download prebuilt binary)
-- **Claude Code** (recommended) or Codex CLI
-
-## Installation
-
-### npx skills (recommended)
+## Install
 
 ```bash
-npx skills add termlive/termlive
+npm install -g tlive
 ```
 
-### Git clone
+## Feature 1: Web Terminal (`tlive <cmd>`)
+
+Wrap any long-running command. Access the terminal from your phone's browser.
 
 ```bash
-git clone https://github.com/termlive/termlive.git ~/.claude/skills/termlive
+tlive claude                  # Wrap Claude Code
+tlive python train.py         # Wrap a training script
+tlive npm run build           # Wrap a build
 ```
 
-Clones the repo directly into your personal skills directory. Claude Code discovers it automatically.
+Opens a web terminal at `http://localhost:8080?token=xxx` — view and interact from any device.
 
-### Symlink (for development)
+```
+$ tlive claude --model opus
+
+  TLive Web UI:
+    Local:   http://localhost:8080?token=abc123
+    Network: http://192.168.1.100:8080?token=abc123
+  Session: claude (ID: a1b2c3)
+```
+
+Multiple sessions in one dashboard:
+```bash
+# Terminal 1
+tlive claude
+
+# Terminal 2 (auto-joins existing daemon)
+tlive npm run dev
+```
+
+Daemon auto-starts on first `tlive <cmd>`, auto-shuts down after 15 minutes idle.
+
+## Feature 2: IM Bridge (`/tlive`)
+
+Chat with Claude Code from your phone. Get streaming responses, approve tool permissions with buttons.
 
 ```bash
-git clone https://github.com/termlive/termlive.git ~/code/termlive
-mkdir -p ~/.claude/skills
-ln -s ~/code/termlive ~/.claude/skills/termlive
+# First: configure IM platforms
+tlive setup
+
+# Install as Claude Code / Codex skill
+tlive install skills --claude
+tlive install skills --codex
+
+# Then in Claude Code:
+/tlive                    # Start Bridge
+/tlive setup              # Reconfigure
+/tlive stop               # Stop Bridge
 ```
 
-### Verify installation
-
-Start a new Claude Code session and type `/` — you should see `termlive` in the skill list.
-
-## Quick Start
-
-### 1. Setup
-
-```
-/termlive setup
-```
-
-The wizard handles everything:
-1. **Build Go Core** — compiles `tlive-core` binary (or downloads prebuilt)
-2. **Build Bridge** — `npm install && npm run build`
-3. **Choose IM platforms** — Telegram, Discord, Feishu
-4. **Enter credentials** — guided, one field at a time
-5. **Write config** — `~/.termlive/config.env`
-
-### 2. Start
-
-```
-/termlive start
-```
-
-Starts both components in order:
-1. Go Core starts → listens on `:8080` → serves Web UI + API
-2. Bridge starts → connects to Core → connects to IM platforms
-
-### 3. Chat
-
-Open your IM app and send a message to your bot. Claude Code will respond. When Claude needs to use a tool, you'll see permission buttons right in the chat.
-
-### Core Only (no IM)
-
-If you only want terminal monitoring + Web UI without IM integration:
-
-```bash
-~/.termlive/bin/tlive-core daemon --port 8080 --token <your-token>
-```
-
-### Docker
-
-```bash
-git clone https://github.com/termlive/termlive.git && cd termlive
-cp .env.example .env    # Fill in your tokens
-docker compose up -d
-```
-
-## How It Works
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Claude Code CLI                       │
-│  ┌──────────┐  ┌──────────────┐                         │
-│  │ SKILL.md │  │ Status Line  │                         │
-│  │ /termlive│  │ statusline.sh│                         │
-│  └────┬─────┘  └──────┬───────┘                         │
-└───────┼───────────────┼─────────────────────────────────┘
-        │               │
-        ▼               ▼
-┌─────────────────────────────────────────────────────────┐
-│              Node.js Bridge (IM + AI)                    │
-│                                                          │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────────┐ │
-│  │ Claude SDK  │  │  Telegram    │  │  Permission    │ │
-│  │ Provider    │  │  Discord     │  │  Gateway       │ │
-│  │             │  │  Feishu      │  │                │ │
-│  └─────────────┘  └──────────────┘  └────────────────┘ │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │           Core Client (HTTP/WebSocket)           │    │
-│  └──────────────────────┬──────────────────────────┘    │
-└─────────────────────────┼───────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│              Go Core (tlive-core)                         │
-│                                                          │
-│  ┌──────────┐  ┌───────────┐  ┌──────────┐  ┌───────┐ │
-│  │ PTY Mgr  │  │ Session   │  │ Web UI   │  │ Stats │ │
-│  │          │  │ Manager   │  │ Dashboard│  │       │ │
-│  └──────────┘  └───────────┘  └──────────┘  └───────┘ │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │              HTTP API + WebSocket                 │   │
-│  └──────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-        │                               │
-        ▼                               ▼
-   Terminal PTY                    Browser (xterm.js)
-```
-
-**Two components:**
-
-| Component | Role | Can run standalone? |
-|-----------|------|---------------------|
-| **Go Core** (`tlive-core`) | PTY, Web UI, HTTP API, WebSocket | Yes — terminal monitoring without IM |
-| **Node.js Bridge** | Claude SDK, IM adapters, permissions | No — needs Core running |
-
-## IM Interaction
+### IM Interaction
 
 ```
 You (Telegram):  "Fix the login bug in auth.ts"
-                         │
-Claude Code:     Analyzes code, finds the issue...
-                         │
-TermLive (TG):   🔧 Claude is editing src/auth.ts
-                 Streaming: "I found the issue..."
-                         │
-TermLive (TG):   🔒 Permission Required
-                 Tool: Edit | File: src/auth.ts
-                 [Allow] [Allow Session] [Deny]
-                 🖥 View Terminal ↗
-                         │
-You:             Tap [Allow]
-                         │
-TermLive (TG):   ✅ Task Complete
-                 Fixed auth.ts, all tests pass
-                 📊 12.3k/8.1k tok | $0.08 | 2m 34s
+
+TLive (TG):      🔒 Permission Required
+                  Tool: Edit | File: src/auth.ts
+                  [Allow] [Allow Session] [Deny]
+
+You:              Tap [Allow]
+
+TLive (TG):      ✅ Task Complete
+                  Fixed auth.ts, all tests pass
+                  📊 12.3k/8.1k tok | $0.08 | 2m 34s
 ```
 
-### Platform Support
+If the web terminal is also running, IM messages include a link:
+```
+🖥 View Terminal → http://localhost:8080/terminal.html?id=abc
+```
 
-| Feature | Telegram | Discord | Feishu |
-|---------|----------|---------|--------|
+### Supported Platforms
+
+| | Telegram | Discord | Feishu |
+|---|----------|---------|--------|
 | Streaming | Edit-based, 700ms | Edit-based, 1500ms | CardKit v2, 200ms |
 | Permission buttons | Inline keyboard | Button components | Interactive card |
-| Image support | Yes | Yes | Yes |
-| Character limit | 4096/chunk | 2000/chunk | 30000/chunk |
+| Image | Yes | Yes | Yes |
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `/termlive setup` | Interactive configuration wizard |
-| `/termlive start` | Start Go Core + Bridge |
-| `/termlive stop` | Stop all services (Bridge first, then Core) |
-| `/termlive status` | Show service status, connections, sessions |
-| `/termlive logs [N]` | View last N log lines (both Core and Bridge) |
-| `/termlive doctor` | Run diagnostic checks |
-| `/termlive reconfigure` | Change IM platform settings |
+### CLI (Go binary)
 
-Supports English and Chinese: `启动`, `停止`, `状态`, `诊断` all work.
-
-## Status Line
-
-Claude Code bottom bar:
-```
-TL: 2sess | bridge:on | 12.3k/8.1k tok | $0.08
+```bash
+tlive <cmd>                # Web terminal
+tlive stop                 # Stop daemon
+tlive setup                # Configure
+tlive install skills       # Install to Claude Code / Codex
 ```
 
-Web UI dashboard footer:
+### Claude Code Skill
+
 ```
-● 3 sessions │ TG ● DC ● FS ● │ 12.3k/8.1k tok │ $0.08 │ 2m 34s
+/tlive                     # Start IM Bridge
+/tlive setup               # Configure IM
+/tlive stop                # Stop Bridge
+/tlive status              # Check status
+/tlive doctor              # Diagnostics
 ```
 
 ## Configuration
 
-All settings in `~/.termlive/config.env` (created by `/termlive setup`):
+Single config file `~/.tlive/config.env` (created by `tlive setup`):
 
 ```env
 TL_PORT=8080
 TL_TOKEN=auto-generated
-TL_PUBLIC_URL=https://termlive.example.com
-TL_ENABLED_CHANNELS=telegram,discord,feishu
+TL_HOST=127.0.0.1
+TL_PUBLIC_URL=https://example.com
 
-TL_TG_BOT_TOKEN=your-bot-token
-TL_TG_ALLOWED_USERS=123456789
-
-TL_DC_BOT_TOKEN=your-bot-token
-TL_DC_ALLOWED_CHANNELS=channel-id
-
-TL_FS_APP_ID=your-app-id
-TL_FS_APP_SECRET=your-app-secret
+TL_ENABLED_CHANNELS=telegram,discord
+TL_TG_BOT_TOKEN=...
+TL_DC_BOT_TOKEN=...
+TL_FS_APP_ID=...
+TL_FS_APP_SECRET=...
 ```
 
-See `config.env.example` for the full list.
+## Architecture
+
+```
+┌─ Feature 1: Web Terminal ──────────┐    ┌─ Feature 2: IM Bridge ──────────┐
+│                                     │    │                                  │
+│  tlive claude                       │    │  /tlive (Claude Code skill)      │
+│    └── Go binary                    │    │    └── Node.js Bridge            │
+│        ├── PTY wrapper              │    │        ├── Agent SDK             │
+│        ├── Web UI (xterm.js)        │    │        ├── Telegram adapter      │
+│        ├── HTTP API                 │    │        ├── Discord adapter       │
+│        └── WebSocket                │    │        └── Feishu adapter        │
+│                                     │    │                                  │
+│  Access: browser                    │    │  Access: phone IM app            │
+│                                     │    │                                  │
+└─────────────────────────────────────┘    └──────────────────────────────────┘
+              │                                          │
+              └───── Bridge detects Go daemon ───────────┘
+                     → IM messages include web link
+```
+
+Two independent components. Bridge works without Go Core. Go Core works without Bridge.
 
 ## Development
 
 ```bash
-# Build Go Core
-cd core && go build -o tlive-core ./cmd/tlive-core/
+# Go Core
+cd core && go build -o tlive ./cmd/tlive/ && go test ./...
 
-# Build Bridge
-cd bridge && npm install && npm run build
-
-# Test Go (all packages)
-cd core && go test ./... -v -timeout 30s
-
-# Test Bridge (122 tests)
-cd bridge && npm test
+# Bridge
+cd bridge && npm install && npm run build && npm test
 ```
 
 ### Project Structure
 
 ```
-termlive/
-├── SKILL.md                 # Claude Code skill definition
-├── config.env.example       # Config template
-├── core/                    # Go Core → tlive-core binary
-│   ├── cmd/tlive-core/
-│   ├── internal/
-│   │   ├── daemon/          # HTTP API, session mgr, bridge, stats, tokens
-│   │   ├── server/          # WebSocket handlers, status stream
-│   │   ├── session/         # Session state and output buffer
-│   │   ├── hub/             # Broadcast hub
-│   │   ├── pty/             # PTY (Unix + Windows ConPTY)
-│   │   └── config/          # TOML configuration
-│   └── web/                 # Embedded Web UI
-├── bridge/                  # Node.js Bridge
-│   └── src/
-│       ├── providers/       # Claude Agent SDK + CLI fallback
-│       ├── channels/        # Telegram, Discord, Feishu adapters
-│       ├── engine/          # Conversation engine, bridge manager
-│       ├── permissions/     # Permission gateway + broker
-│       ├── delivery/        # Chunking, retry, rate limiting
-│       ├── markdown/        # IR → per-platform rendering
-│       └── store/           # JSON file persistence
-├── scripts/                 # daemon.sh, doctor.sh, statusline.sh
-├── docker-compose.yml
-└── .github/workflows/       # CI + Release
+tlive/
+├── SKILL.md              # Claude Code / Codex skill
+├── config.env.example
+├── core/                  # Go → tlive binary
+│   ├── cmd/tlive/
+│   ├── internal/          # daemon, server, session, hub, pty
+│   └── web/               # Embedded Web UI
+├── bridge/                # Node.js → Bridge daemon
+│   └── src/               # providers, channels, engine, permissions, delivery
+├── scripts/               # CLI entry, status line
+├── package.json           # npm: tlive
+└── docker-compose.yml
 ```
 
 ## Security
 
-- **Bearer token auth** for all API endpoints (auto-generated during setup)
-- **Scoped tokens** for IM web links (1-hour TTL, read-only, session-specific)
-- **IM user whitelist** per platform
-- **Secret redaction** in all log output
-- **Config permissions** `chmod 600` on `config.env`
+- Default bind `127.0.0.1` (explicit `--host 0.0.0.0` for LAN)
+- Auto-generated bearer token
+- Scoped tokens for web links (1h TTL, read-only)
+- IM user whitelists
+- Secret redaction in logs
+- `chmod 600` on config.env
 
 ## License
 

@@ -32,11 +32,11 @@ jobs:
           cd core
           ext=""
           if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
-          CGO_ENABLED=0 go build -ldflags="-s -w" -o "tlive-core-${GOOS}-${GOARCH}${ext}" ./cmd/tlive-core/
+          CGO_ENABLED=0 go build -ldflags="-s -w" -o "tlive-${GOOS}-${GOARCH}${ext}" ./cmd/tlive/
       - uses: actions/upload-artifact@v4
         with:
-          name: tlive-core-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: core/tlive-core-*
+          name: tlive-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: core/tlive-*
 
   release:
     needs: build-go
@@ -49,4 +49,4 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
-          files: tlive-core-*
+          files: tlive-*

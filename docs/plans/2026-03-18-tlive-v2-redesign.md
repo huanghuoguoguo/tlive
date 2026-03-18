@@ -383,9 +383,8 @@ async function detectCore(): Promise<boolean> {
 ```
 
 When `coreAvailable`:
-- IM notifications include `🖥 View Terminal → URL`
+- IM notifications include `🖥 View Terminal → URL` (using scoped tokens)
 - `/tlive status` shows "Web terminal: available at http://..."
-- Bridge can forward IM messages to PTY stdin via `/api/sessions/:id/input`
 
 When `!coreAvailable`:
 - Pure IM mode, no web links

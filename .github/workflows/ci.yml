@@ -37,7 +37,7 @@ jobs:
         with:
           go-version: '1.24'
       - name: Build Go Core
-        run: cd core && go build -o tlive-core ./cmd/tlive-core/
+        run: cd core && go build -o tlive ./cmd/tlive/
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
