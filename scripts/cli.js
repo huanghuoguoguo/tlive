@@ -3,7 +3,7 @@
 import { execSync, spawn, spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
+import { existsSync, writeFileSync, unlinkSync, mkdirSync, chmodSync } from 'node:fs';
 import { homedir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -12,6 +12,7 @@ const [,, command, ...args] = process.argv;
 const SCRIPTS_DIR = __dirname;
 const DAEMON_SH = join(SCRIPTS_DIR, 'daemon.sh');
 const CORE_BIN = join(homedir(), '.tlive', 'bin', 'tlive-core');
+const PACKAGE_ROOT = join(__dirname, '..');
 
 const HELP_TEXT = `TermLive — Terminal live monitoring + IM bridge
 
@@ -71,8 +72,12 @@ if (!command || command === '--help' || command === '-h' || command === 'help') 
 
 switch (command) {
   case 'setup': {
-    // Forward to Go Core's setup wizard
-    runCore(['setup', ...args]);
+    const setupEntry = join(PACKAGE_ROOT, 'bridge', 'dist', 'setup.mjs');
+    if (existsSync(setupEntry)) {
+      run(`node ${setupEntry}`);
+    } else {
+      console.error('Setup wizard not found. Try reinstalling: npm install -g tlive');
+    }
     break;
   }
 
@@ -113,10 +118,66 @@ switch (command) {
     run(`bash ${join(SCRIPTS_DIR, 'doctor.sh')}`);
     break;
 
-  case 'install':
-    // Forward to Go Core (e.g. tlive install skills)
-    runCore([command, ...args]);
+  case 'install': {
+    const sub = args[0];
+    if (sub === 'skills') {
+      const target = args.includes('--codex') ? 'codex' : 'claude';
+      const skillSrc = join(PACKAGE_ROOT, 'SKILL.md');
+      const hookSrc = join(__dirname, 'hook-handler.sh');
+      const notifySrc = join(__dirname, 'notify-handler.sh');
+
+      if (!existsSync(skillSrc)) {
+        console.error('SKILL.md not found. Try reinstalling: npm install -g tlive');
+        process.exit(1);
+      }
+
+      // Install SKILL.md
+      const skillDir = target === 'codex'
+        ? join(homedir(), '.codex', 'skills', 'tlive')
+        : join(homedir(), '.claude', 'commands');
+      mkdirSync(skillDir, { recursive: true });
+
+      const skillDest = target === 'codex'
+        ? join(skillDir, 'SKILL.md')
+        : join(skillDir, 'tlive.md');
+      const { copyFileSync } = await import('node:fs');
+      copyFileSync(skillSrc, skillDest);
+      console.log(`Skill installed: ${skillDest}`);
+
+      // Install hook scripts
+      const binDir = join(homedir(), '.tlive', 'bin');
+      mkdirSync(binDir, { recursive: true });
+      for (const src of [hookSrc, notifySrc]) {
+        if (existsSync(src)) {
+          const dest = join(binDir, src.split('/').pop());
+          copyFileSync(src, dest);
+          chmodSync(dest, 0o755);
+        }
+      }
+      console.log(`Hook scripts installed: ${binDir}`);
+
+      // Show hooks config hint
+      console.log(`
+Add to ~/.claude/settings.json (if not already):
+
+  "hooks": {
+    "PreToolUse": [{
+      "type": "command",
+      "command": "${join(binDir, 'hook-handler.sh')}",
+      "timeout": 300000
+    }],
+    "Notification": [{
+      "type": "command",
+      "command": "${join(binDir, 'notify-handler.sh')}",
+      "timeout": 5000
+    }]
+  }
+`);
+    } else {
+      console.log('Usage: tlive install skills [--codex]');
+    }
     break;
+  }
 
   default:
     // Unknown command → wrap with Go Core web terminal
