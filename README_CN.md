@@ -38,7 +38,7 @@ $ tlive claude --model opus
 
 ## 功能 2：IM 桥接
 
-手机上与 Claude Code 对话。发起新任务，获取流式响应。
+手机上与 Claude Code 对话。发起新任务，获取实时流式响应和工具可视化。
 
 ```bash
 tlive setup                   # 配置 IM 平台
@@ -51,13 +51,17 @@ tlive install skills --claude  # 安装到 Claude Code
 ```
 你 (Telegram):    "修复 auth.ts 里的登录 bug"
 
-TLive (TG):       流式响应: "我发现了问题。
-                   Token 验证缺少过期检查..."
+TLive (TG):       🔍 Grep → 📖 Read → ✏️ Edit → 🖥️ Bash
+                   ──────────────────
+                   我发现了问题。
+                   Token 验证缺少过期检查...
 
 TLive (TG):       ✅ 任务完成
                    已修复 auth.ts，测试通过
                    📊 12.3k/8.1k tok | $0.08 | 2m 34s
 ```
+
+**详细度控制：** 发送 `/verbose 0|1|2` 切换显示级别（安静/正常/详细）。
 
 ## 功能 3：Hook 审批（杀手级功能）
 
@@ -119,6 +123,15 @@ tlive setup
 - 审批前显示具体工具名和命令内容
 - 适用于任何 Claude Code 会话，不需要包装器
 
+**坐在电脑旁时暂停通知：**
+
+```bash
+tlive hooks pause              # 自动放行，不发通知
+tlive hooks resume             # 恢复 IM 审批
+```
+
+或在手机上发送 `/hooks pause` 或 `/hooks resume`。
+
 ## 三个功能的关系
 
 ```
@@ -154,6 +167,8 @@ Bridge 检测到 Go Core → IM 消息带 Web 终端链接。
 | IM 桥接（功能 2） | ✅ | ✅ | ✅ |
 | Hook 审批（功能 3） | ✅ | ✅ | ✅ |
 | 流式响应 | 编辑消息 | 编辑消息 | CardKit v2 |
+| 工具可视化 | ✅ | ✅ | ✅ |
+| 输入状态 | ✅ | ✅ | — |
 | 权限按钮 | 内联键盘 | Button 组件 | 互动卡片 |
 
 ## 命令
@@ -165,6 +180,9 @@ tlive <cmd>                # Web 终端（功能 1）
 tlive stop                 # 停止 daemon
 tlive setup                # 配置 IM 平台
 tlive install skills       # 安装到 Claude Code / Codex
+tlive hooks                # 查看 Hook 状态
+tlive hooks pause           # 暂停 Hook（自动放行）
+tlive hooks resume          # 恢复 Hook（IM 审批）
 ```
 
 ### Claude Code 技能
@@ -175,6 +193,10 @@ tlive install skills       # 安装到 Claude Code / Codex
 /tlive stop                # 停止 Bridge
 /tlive status              # 查看状态
 /tlive doctor              # 诊断
+
+/verbose 0|1|2             # 设置详细度（安静/正常/详细）
+/new                       # 开始新对话
+/hooks pause|resume        # 切换 Hook 审批
 ```
 
 ## 配置
@@ -263,7 +285,7 @@ tlive/
 │   └── src/
 │       ├── providers/      # Claude Agent SDK
 │       ├── channels/       # Telegram、Discord、飞书适配器
-│       ├── engine/         # 对话引擎、Bridge 管理器
+│       ├── engine/         # 对话引擎、Bridge 管理器、流式控制
 │       ├── permissions/    # 权限网关 + 代理
 │       ├── delivery/       # 分块、重试、限速
 │       └── markdown/       # 各平台渲染
@@ -280,7 +302,6 @@ tlive/
 
 - 默认绑定 `127.0.0.1`（需要局域网访问显式设置 `--host 0.0.0.0`）
 - 自动生成认证 token
-- IM Web 链接使用限时令牌（1h，只读）
 - Hook 超时默认**拒绝**（不是允许）
 - IM 用户白名单
 - 日志自动脱敏
