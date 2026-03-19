@@ -137,6 +137,7 @@ switch (command) {
       const skillSrc = join(PACKAGE_ROOT, 'SKILL.md');
       const hookSrc = join(__dirname, 'hook-handler.sh');
       const notifySrc = join(__dirname, 'notify-handler.sh');
+      const stopSrc = join(__dirname, 'stop-handler.sh');
 
       if (!existsSync(skillSrc)) {
         console.error('SKILL.md not found. Try reinstalling: npm install -g tlive');
@@ -159,7 +160,7 @@ switch (command) {
       // Install hook scripts
       const binDir = join(homedir(), '.tlive', 'bin');
       mkdirSync(binDir, { recursive: true });
-      for (const src of [hookSrc, notifySrc]) {
+      for (const src of [hookSrc, notifySrc, stopSrc]) {
         if (existsSync(src)) {
           const dest = join(binDir, src.split('/').pop());
           copyFileSync(src, dest);
@@ -213,6 +214,25 @@ switch (command) {
               type: 'command',
               command: notifyHandlerCmd,
               timeout: 5000,
+            }],
+          });
+          hooksAdded = true;
+        }
+
+        const stopHandlerCmd = join(binDir, 'stop-handler.sh');
+
+        const hasStopHook = (settings.hooks.Stop || []).some(e => {
+          if (e.hooks) return e.hooks.some(h => h.command?.includes('stop-handler.sh'));
+          return e.command?.includes('stop-handler.sh');
+        });
+
+        if (!hasStopHook) {
+          if (!settings.hooks.Stop) settings.hooks.Stop = [];
+          settings.hooks.Stop.push({
+            hooks: [{
+              type: 'command',
+              command: stopHandlerCmd,
+              async: true,
             }],
           });
           hooksAdded = true;

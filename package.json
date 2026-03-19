@@ -11,6 +11,7 @@
     "scripts/postinstall.js",
     "scripts/hook-handler.sh",
     "scripts/notify-handler.sh",
+    "scripts/stop-handler.sh",
     "scripts/daemon.sh",
     "scripts/statusline.sh",
     "scripts/doctor.sh",

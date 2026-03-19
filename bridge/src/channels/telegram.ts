@@ -31,6 +31,7 @@ export class TelegramAdapter extends BaseChannelAdapter {
         userId: String(msg.from?.id ?? ''),
         text: msg.text,
         messageId: String(msg.message_id),
+        replyToMessageId: msg.reply_to_message ? String(msg.reply_to_message.message_id) : undefined,
       });
     });
 

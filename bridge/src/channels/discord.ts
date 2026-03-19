@@ -45,6 +45,7 @@ export class DiscordAdapter extends BaseChannelAdapter {
         userId: msg.author.id,
         text: msg.content,
         messageId: msg.id,
+        replyToMessageId: msg.reference?.messageId ?? undefined,
       });
     });
 

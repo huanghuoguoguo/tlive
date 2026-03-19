@@ -8,6 +8,7 @@ export interface InboundMessage {
   attachments?: FileAttachment[];
   callbackData?: string;
   messageId: string;
+  replyToMessageId?: string;
 }
 
 export interface FileAttachment {
