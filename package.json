@@ -6,8 +6,23 @@
   "bin": {
     "tlive": "./scripts/cli.js"
   },
+  "files": [
+    "scripts/cli.js",
+    "scripts/postinstall.js",
+    "scripts/hook-handler.sh",
+    "scripts/notify-handler.sh",
+    "scripts/daemon.sh",
+    "scripts/statusline.sh",
+    "scripts/doctor.sh",
+    "scripts/install.sh",
+    "bridge/dist/",
+    "bridge/package.json",
+    "SKILL.md",
+    "config.env.example"
+  ],
   "scripts": {
-    "setup:core": "node scripts/postinstall.js",
+    "postinstall": "node scripts/postinstall.js",
+    "prepublishOnly": "cd bridge && npm install && npm run build && npm test",
     "build": "cd bridge && npm run build",
     "test": "cd bridge && npm test",
     "test:go": "cd core && go test ./... -v -timeout 30s"

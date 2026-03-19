@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-// Downloads precompiled tlive binary for current platform
-import { createWriteStream, chmodSync, mkdirSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+// postinstall: download Go Core binary + copy hook scripts to ~/.tlive/bin/
+import { createWriteStream, chmodSync, mkdirSync, existsSync, copyFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { homedir, platform, arch } from 'node:os';
 import { get } from 'node:https';
 import { execSync } from 'node:child_process';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const GITHUB_REPO = 'tlive/tlive';
 const BIN_DIR = join(homedir(), '.tlive', 'bin');
 
@@ -29,7 +31,6 @@ function download(url, dest) {
   return new Promise((resolve, reject) => {
     const file = createWriteStream(dest);
     get(url, (res) => {
-      // Follow redirects
       if (res.statusCode === 302 || res.statusCode === 301) {
         file.close();
         return download(res.headers.location, dest).then(resolve).catch(reject);
@@ -44,7 +45,22 @@ function download(url, dest) {
   });
 }
 
-async function main() {
+function copyHookScripts() {
+  mkdirSync(BIN_DIR, { recursive: true });
+
+  const scripts = ['hook-handler.sh', 'notify-handler.sh'];
+  for (const script of scripts) {
+    const src = join(__dirname, script);
+    const dest = join(BIN_DIR, script);
+    if (existsSync(src)) {
+      copyFileSync(src, dest);
+      chmodSync(dest, 0o755);
+    }
+  }
+  console.log(`Hook scripts installed to ${BIN_DIR}`);
+}
+
+async function downloadGoBinary() {
   const os = PLATFORM_MAP[platform()];
   const cpu = ARCH_MAP[arch()];
 
@@ -55,11 +71,11 @@ async function main() {
   }
 
   const ext = os === 'windows' ? '.exe' : '';
-  const binaryName = `tlive${ext}`;
+  const binaryName = `tlive-core${ext}`;
   const dest = join(BIN_DIR, binaryName);
 
   if (existsSync(dest)) {
-    console.log(`tlive already exists at ${dest}`);
+    console.log(`tlive-core already exists at ${dest}`);
     return;
   }
 
@@ -68,20 +84,26 @@ async function main() {
   const version = await getLatestVersion();
   const url = `https://github.com/${GITHUB_REPO}/releases/download/${version}/tlive-${os}-${cpu}${ext}`;
 
-  console.log(`Downloading tlive for ${os}-${cpu}...`);
-  console.log(`  URL: ${url}`);
+  console.log(`Downloading tlive-core for ${os}-${cpu}...`);
 
   try {
     await download(url, dest);
     if (os !== 'windows') {
       chmodSync(dest, 0o755);
     }
-    console.log(`tlive installed to ${dest}`);
+    console.log(`tlive-core installed to ${dest}`);
   } catch (err) {
-    console.warn(`Failed to download tlive: ${err.message}`);
-    console.warn('You can build from source: cd core && go build -o tlive ./cmd/tlive/');
+    console.warn(`Failed to download tlive-core: ${err.message}`);
+    console.warn('You can build from source: cd core && go build -o tlive-core ./cmd/tlive/');
     console.warn(`Then copy the binary to ${dest}`);
   }
+}
+
+async function main() {
+  console.log('Setting up TLive...');
+  copyHookScripts();
+  await downloadGoBinary();
+  console.log('TLive setup complete.');
 }
 
 main().catch(console.error);
