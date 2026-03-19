@@ -38,7 +38,7 @@ Multiple sessions in one dashboard. Daemon auto-starts, auto-shuts down after 15
 
 ## Feature 2: IM Bridge
 
-Chat with Claude Code from your phone. Start new tasks, get streaming responses.
+Chat with Claude Code from your phone. Start new tasks, get streaming responses with real-time tool visibility.
 
 ```bash
 tlive setup                   # Configure IM platforms
@@ -51,13 +51,17 @@ tlive install skills --claude  # Install to Claude Code
 ```
 You (Telegram):  "Fix the login bug in auth.ts"
 
-TLive (TG):      Streaming: "I found the issue. The token
-                  validation was missing the expiry check..."
+TLive (TG):      🔍 Grep → 📖 Read → ✏️ Edit → 🖥️ Bash
+                  ──────────────────
+                  I found the issue. The token
+                  validation was missing the expiry check...
 
 TLive (TG):      ✅ Task Complete
                   Fixed auth.ts, all tests pass
                   📊 12.3k/8.1k tok | $0.08 | 2m 34s
 ```
+
+**Verbose levels:** Control how much detail you see with `/verbose 0|1|2` (quiet/normal/detailed).
 
 ## Feature 3: Hook Approval (Killer Feature)
 
@@ -119,6 +123,15 @@ tlive setup
 - Shows exact tool name and command before you approve
 - Works with any Claude Code session, no wrapper needed
 
+**Pause when you're at your desk:**
+
+```bash
+tlive hooks pause              # Auto-allow everything, no notifications
+tlive hooks resume             # Back to normal IM approval
+```
+
+Or from your phone: send `/hooks pause` or `/hooks resume` in IM.
+
 ## How the Three Features Relate
 
 ```
@@ -154,6 +167,8 @@ Each feature works independently.
 | IM Bridge (Feature 2) | ✅ | ✅ | ✅ |
 | Hook Approval (Feature 3) | ✅ | ✅ | ✅ |
 | Streaming responses | Edit-based | Edit-based | CardKit v2 |
+| Tool visibility | ✅ | ✅ | ✅ |
+| Typing indicator | ✅ | ✅ | — |
 | Permission buttons | Inline keyboard | Button components | Interactive card |
 
 ## Commands
@@ -165,6 +180,9 @@ tlive <cmd>                # Web terminal (Feature 1)
 tlive stop                 # Stop daemon
 tlive setup                # Configure IM platforms
 tlive install skills       # Install to Claude Code / Codex
+tlive hooks                # Show hook status
+tlive hooks pause           # Pause hooks (auto-allow)
+tlive hooks resume          # Resume hooks (IM approval)
 ```
 
 ### Claude Code Skill
@@ -175,6 +193,10 @@ tlive install skills       # Install to Claude Code / Codex
 /tlive stop                # Stop Bridge
 /tlive status              # Check status
 /tlive doctor              # Diagnostics
+
+/verbose 0|1|2             # Set detail level (quiet/normal/detailed)
+/new                       # Start new conversation
+/hooks pause|resume        # Toggle hook approval
 ```
 
 ## Configuration
@@ -265,7 +287,7 @@ tlive/
 │   └── src/
 │       ├── providers/      # Claude Agent SDK
 │       ├── channels/       # Telegram, Discord, Feishu adapters
-│       ├── engine/         # Conversation engine, bridge manager
+│       ├── engine/         # Conversation engine, bridge manager, streaming
 │       ├── permissions/    # Permission gateway + broker
 │       ├── delivery/       # Chunking, retry, rate limiting
 │       └── markdown/       # Per-platform rendering
@@ -282,7 +304,6 @@ tlive/
 
 - Default bind `127.0.0.1` (explicit `--host 0.0.0.0` for LAN)
 - Auto-generated bearer token
-- Scoped tokens for web links (1h TTL, read-only)
 - Hook timeout defaults to **deny** (not allow)
 - IM user whitelists per platform
 - Secret redaction in logs
