@@ -8,6 +8,11 @@ HOOK_JSON=$(cat)
 # Check if hooks are paused
 [ -f "$HOME/.tlive/hooks-paused" ] && exit 0
 
+# Inject TLIVE_SESSION_ID into hook JSON
+if command -v jq &>/dev/null && [ -n "$TLIVE_SESSION_ID" ]; then
+  HOOK_JSON=$(echo "$HOOK_JSON" | jq --arg sid "$TLIVE_SESSION_ID" '. + {tlive_session_id: $sid}')
+fi
+
 # Source config
 [ -f "$HOME/.tlive/config.env" ] && source "$HOME/.tlive/config.env" 2>/dev/null
 TL_PORT="${TL_PORT:-8080}"

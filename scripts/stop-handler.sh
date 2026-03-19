@@ -1,20 +1,17 @@
 #!/bin/bash
-# TLive Notification Hook — forwards notifications to Go Core
+# TLive Stop Hook — notify task completion via Go Core
 HOOK_JSON=$(cat)
 
-# Check if hooks are paused
 [ -f "$HOME/.tlive/hooks-paused" ] && exit 0
 
 [ -f "$HOME/.tlive/config.env" ] && source "$HOME/.tlive/config.env" 2>/dev/null
 TL_PORT="${TL_PORT:-8080}"
 TL_TOKEN="${TL_TOKEN:-}"
 
-# Inject TLIVE_SESSION_ID + hook type
 if command -v jq &>/dev/null && [ -n "$TLIVE_SESSION_ID" ]; then
-  HOOK_JSON=$(echo "$HOOK_JSON" | jq --arg sid "$TLIVE_SESSION_ID" '. + {tlive_session_id: $sid, tlive_hook_type: "notification"}')
+  HOOK_JSON=$(echo "$HOOK_JSON" | jq --arg sid "$TLIVE_SESSION_ID" '. + {tlive_session_id: $sid, tlive_hook_type: "stop"}')
 fi
 
-# Check if Go Core is running
 if ! curl -sf "http://localhost:${TL_PORT}/api/status" \
      -H "Authorization: Bearer ${TL_TOKEN}" >/dev/null 2>&1; then
   exit 0
