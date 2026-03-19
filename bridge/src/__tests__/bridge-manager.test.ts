@@ -240,6 +240,90 @@ describe('BridgeManager', () => {
     clearIntervalSpy.mockRestore();
   });
 
+  describe('hook reply routing', () => {
+    it('routes quote-reply to hook message via session input API', async () => {
+      const adapter = mockAdapter();
+      manager.registerAdapter(adapter);
+
+      // Simulate a tracked hook message
+      (manager as any).hookMessages.set('hook-msg-1', {
+        sessionId: 'session-abc',
+        timestamp: Date.now(),
+      });
+
+      const originalFetch = global.fetch;
+      global.fetch = vi.fn().mockResolvedValue({ ok: true }) as any;
+
+      await manager.handleInboundMessage(adapter, {
+        channelType: 'telegram', chatId: 'c1', userId: 'u1',
+        text: 'A', messageId: 'm1', replyToMessageId: 'hook-msg-1',
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/sessions/session-abc/input'),
+        expect.objectContaining({ method: 'POST' })
+      );
+      expect(adapter.send).toHaveBeenCalledWith(
+        expect.objectContaining({ text: '✓ Sent to local session' })
+      );
+
+      global.fetch = originalFetch;
+    });
+
+    it('ignores quote-reply to non-hook message', async () => {
+      const adapter = mockAdapter();
+      manager.registerAdapter(adapter);
+
+      await manager.handleInboundMessage(adapter, {
+        channelType: 'telegram', chatId: 'c1', userId: 'u1',
+        text: 'hello', messageId: 'm1', replyToMessageId: 'unknown-msg',
+      });
+
+      // Should fall through to normal handling
+      expect(adapter.send).toHaveBeenCalled();
+    });
+  });
+
+  describe('hook notification formatting', () => {
+    it('formats stop notification with [Local] prefix', async () => {
+      const adapter = mockAdapter();
+      await (manager as any).sendHookNotification(adapter, 'c1', {
+        tlive_hook_type: 'stop',
+        tlive_session_id: 'sess-1',
+      });
+
+      expect(adapter.send).toHaveBeenCalledWith(
+        expect.objectContaining({ text: '[Local] ✅ Task complete' })
+      );
+    });
+
+    it('formats idle_prompt notification with message', async () => {
+      const adapter = mockAdapter();
+      await (manager as any).sendHookNotification(adapter, 'c1', {
+        notification_type: 'idle_prompt',
+        message: 'Claude is waiting for your input',
+        tlive_session_id: 'sess-1',
+      });
+
+      expect(adapter.send).toHaveBeenCalledWith(
+        expect.objectContaining({ text: '[Local] Claude is waiting for your input' })
+      );
+    });
+
+    it('tracks hook message for reply routing', async () => {
+      const adapter = mockAdapter();
+      await (manager as any).sendHookNotification(adapter, 'c1', {
+        tlive_hook_type: 'notification',
+        tlive_session_id: 'sess-1',
+        message: 'test',
+      });
+
+      // mockAdapter.send returns { messageId: '1' }
+      expect((manager as any).hookMessages.has('1')).toBe(true);
+      expect((manager as any).hookMessages.get('1').sessionId).toBe('sess-1');
+    });
+  });
+
   describe('/hooks command', () => {
     it('shows hook status', async () => {
       const adapter = mockAdapter();

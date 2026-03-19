@@ -26,6 +26,7 @@ export class BridgeManager {
   private coreAvailable = false;
   private verboseLevels = new Map<string, VerboseLevel>();
   private lastActive = new Map<string, number>();
+  private hookMessages = new Map<string, { sessionId: string; timestamp: number }>();
 
   constructor() {
     const config = loadConfig();
@@ -91,6 +92,33 @@ export class BridgeManager {
     this.lastActive.delete(this.stateKey(channelType, chatId));
   }
 
+  /** Track a hook message for reply routing */
+  trackHookMessage(messageId: string, sessionId: string): void {
+    if (!sessionId) return;
+    this.hookMessages.set(messageId, { sessionId, timestamp: Date.now() });
+    // Prune entries older than 24h
+    for (const [id, entry] of this.hookMessages) {
+      if (Date.now() - entry.timestamp > 24 * 60 * 60 * 1000) this.hookMessages.delete(id);
+    }
+  }
+
+  /** Send a hook notification to IM with [Local] prefix and track for reply routing */
+  async sendHookNotification(adapter: BaseChannelAdapter, chatId: string, hook: any): Promise<void> {
+    const hookType = hook.tlive_hook_type || '';
+    let text: string;
+
+    if (hookType === 'stop') {
+      text = '[Local] ✅ Task complete';
+    } else if (hook.notification_type === 'idle_prompt') {
+      text = `[Local] ${hook.message || 'Claude is waiting for input...'}`;
+    } else {
+      text = `[Local] ${hook.message || 'Notification'}`;
+    }
+
+    const result = await adapter.send({ chatId, text });
+    this.trackHookMessage(result.messageId, hook.tlive_session_id || '');
+  }
+
   private async runAdapterLoop(adapter: BaseChannelAdapter): Promise<void> {
     while (this.running) {
       const msg = await adapter.consumeOne();
@@ -107,6 +135,26 @@ export class BridgeManager {
   async handleInboundMessage(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
     // Auth check
     if (!adapter.isAuthorized(msg.userId, msg.chatId)) return false;
+
+    // Reply routing: quote-reply to a hook message → send to PTY stdin
+    if (msg.text && msg.replyToMessageId && this.hookMessages.has(msg.replyToMessageId)) {
+      const entry = this.hookMessages.get(msg.replyToMessageId)!;
+      try {
+        await fetch(`${this.coreUrl}/api/sessions/${entry.sessionId}/input`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ text: msg.text + '\n' }),
+          signal: AbortSignal.timeout(5000),
+        });
+        await adapter.send({ chatId: msg.chatId, text: '✓ Sent to local session' });
+      } catch (err) {
+        await adapter.send({ chatId: msg.chatId, text: `❌ Failed to send: ${err}` });
+      }
+      return true;
+    }
 
     // Callback data
     if (msg.callbackData) {
