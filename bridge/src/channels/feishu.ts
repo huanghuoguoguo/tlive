@@ -35,38 +35,41 @@ export class FeishuAdapter extends BaseChannelAdapter {
     return this.messageQueue.shift() ?? null;
   }
 
+  private buildCard(text: string, buttons?: OutboundMessage['buttons']): string {
+    const elements: any[] = [
+      { tag: 'markdown', content: text },
+    ];
+
+    if (buttons?.length) {
+      elements.push({
+        tag: 'action',
+        actions: buttons.map(btn => ({
+          tag: 'button',
+          text: { tag: 'plain_text', content: btn.label },
+          type: btn.style === 'danger' ? 'danger' : 'primary',
+          value: { action: btn.callbackData },
+        })),
+      });
+    }
+
+    return JSON.stringify({
+      config: { wide_screen_mode: true },
+      elements,
+    });
+  }
+
   async send(message: OutboundMessage): Promise<SendResult> {
     if (!this.client) throw new Error('Feishu client not started');
 
     const text = message.text ?? message.html ?? '';
 
     if (message.buttons?.length) {
-      // Interactive card for messages with buttons (schema 2.0)
-      const card = {
-        config: { wide_screen_mode: true },
-        elements: [
-          {
-            tag: 'markdown',
-            content: text,
-          },
-          {
-            tag: 'action',
-            actions: message.buttons.map(btn => ({
-              tag: 'button',
-              text: { tag: 'plain_text', content: btn.label },
-              type: btn.style === 'danger' ? 'danger' : 'primary',
-              value: { action: btn.callbackData },
-            })),
-          },
-        ],
-      };
-
       const result = await this.client.im.message.create({
         params: { receive_id_type: 'chat_id' },
         data: {
           receive_id: message.chatId,
           msg_type: 'interactive',
-          content: JSON.stringify(card),
+          content: this.buildCard(text, message.buttons),
         },
       });
 
@@ -98,29 +101,10 @@ export class FeishuAdapter extends BaseChannelAdapter {
     if (!this.client) return;
     const text = message.text ?? message.html ?? '';
 
-    const card = {
-      config: { wide_screen_mode: true },
-      elements: [
-        { tag: 'markdown', content: text },
-      ],
-    };
-
-    if (message.buttons?.length) {
-      (card.elements as any[]).push({
-        tag: 'action',
-        actions: message.buttons.map(btn => ({
-          tag: 'button',
-          text: { tag: 'plain_text', content: btn.label },
-          type: btn.style === 'danger' ? 'danger' : 'primary',
-          value: { action: btn.callbackData },
-        })),
-      });
-    }
-
     await this.client.im.message.patch({
       path: { message_id: messageId },
       data: {
-        content: JSON.stringify(card),
+        content: this.buildCard(text, message.buttons),
       } as any,
     });
   }

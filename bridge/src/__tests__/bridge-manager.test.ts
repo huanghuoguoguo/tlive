@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { BridgeManager } from '../engine/bridge-manager.js';
 import { initBridgeContext } from '../context.js';
 import type { BaseChannelAdapter } from '../channels/base.js';
@@ -164,5 +164,79 @@ describe('BridgeManager', () => {
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({ text: expect.stringContaining('/verbose') })
     );
+  });
+
+  it('expires session after 30 minutes of inactivity', async () => {
+    vi.useFakeTimers();
+    const adapter = mockAdapter();
+    manager.registerAdapter(adapter);
+
+    // First message — creates session
+    await manager.handleInboundMessage(adapter, {
+      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: 'first', messageId: 'm1',
+    });
+    const firstSaveBinding = vi.mocked((manager as any).router).rebind;
+
+    // Advance 31 minutes
+    vi.advanceTimersByTime(31 * 60 * 1000);
+
+    // Second message — should trigger rebind (new session)
+    const store = (await import('../context.js')).getBridgeContext().store;
+    const saveBindingSpy = vi.mocked(store.saveBinding);
+    const callsBefore = saveBindingSpy.mock.calls.length;
+
+    await manager.handleInboundMessage(adapter, {
+      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: 'second', messageId: 'm2',
+    });
+
+    // saveBinding should have been called again (rebind creates new binding)
+    expect(saveBindingSpy.mock.calls.length).toBeGreaterThan(callsBefore);
+    vi.useRealTimers();
+  });
+
+  it('does not expire session within 30 minutes', async () => {
+    vi.useFakeTimers();
+    const adapter = mockAdapter();
+    manager.registerAdapter(adapter);
+
+    await manager.handleInboundMessage(adapter, {
+      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: 'first', messageId: 'm1',
+    });
+
+    const store = (await import('../context.js')).getBridgeContext().store;
+    const saveBindingSpy = vi.mocked(store.saveBinding);
+
+    // Advance only 10 minutes
+    vi.advanceTimersByTime(10 * 60 * 1000);
+    const callsBefore = saveBindingSpy.mock.calls.length;
+
+    await manager.handleInboundMessage(adapter, {
+      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: 'second', messageId: 'm2',
+    });
+
+    // saveBinding should NOT have been called again (no rebind)
+    expect(saveBindingSpy.mock.calls.length).toBe(callsBefore);
+    vi.useRealTimers();
+  });
+
+  it('clears typing interval on error', async () => {
+    const adapter = mockAdapter();
+    manager.registerAdapter(adapter);
+
+    // Make processMessage throw
+    const ctx = (await import('../context.js')).getBridgeContext();
+    (ctx.llm as any).streamChat = () => new ReadableStream({
+      start(c) { c.enqueue('data: {"type":"error","data":"boom"}\n'); c.close(); }
+    });
+
+    const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
+
+    await manager.handleInboundMessage(adapter, {
+      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: 'fail', messageId: 'm1',
+    });
+
+    // clearInterval should have been called (finally block)
+    expect(clearIntervalSpy).toHaveBeenCalled();
+    clearIntervalSpy.mockRestore();
   });
 });

@@ -42,6 +42,7 @@ export class StreamController {
   private flushCallback: (content: string, isEdit: boolean) => Promise<string | void>;
   private flushing = false;
   private pendingFlush = false;
+  private lastCostLine?: string;
 
   get messageId(): string | undefined {
     return this._messageId;
@@ -74,6 +75,7 @@ export class StreamController {
 
   onComplete(stats: UsageStats): void {
     const costLine = CostTracker.format(stats);
+    this.lastCostLine = costLine;
     const content = this.compose(costLine);
     this.cancelTimer();
     this.doFlush(content);
@@ -148,7 +150,7 @@ export class StreamController {
       this.flushing = false;
       if (this.pendingFlush) {
         this.pendingFlush = false;
-        const retryContent = this.compose();
+        const retryContent = this.compose(this.lastCostLine);
         if (retryContent) await this.doFlush(retryContent);
       }
     }
