@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { RateLimitError } from '../channels/errors.js';
 
 // Mock the telegram bot before importing
 vi.mock('node-telegram-bot-api', () => {
@@ -81,6 +82,35 @@ describe('TelegramAdapter', () => {
       const bot = (adapter as any).bot;
       bot.sendChatAction.mockRejectedValueOnce(new Error('network error'));
       await expect(adapter.sendTyping('12345')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('chunked send', () => {
+    it('sends single message when under 4096 chars', async () => {
+      await adapter.start();
+      const result = await adapter.send({ chatId: '12345', text: 'short' });
+      expect(result.success).toBe(true);
+      const bot = (adapter as any).bot;
+      expect(bot.sendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('splits long messages into multiple sends', async () => {
+      await adapter.start();
+      const longText = 'x\n'.repeat(3000);
+      await adapter.send({ chatId: '12345', text: longText });
+      const bot = (adapter as any).bot;
+      expect(bot.sendMessage.mock.calls.length).toBeGreaterThan(1);
+    });
+
+    it('wraps Telegram API errors into typed errors', async () => {
+      await adapter.start();
+      const bot = (adapter as any).bot;
+      bot.sendMessage.mockRejectedValueOnce({
+        response: { statusCode: 429 },
+        message: 'Too Many Requests',
+      });
+      await expect(adapter.send({ chatId: '12345', text: 'hi' }))
+        .rejects.toBeInstanceOf(RateLimitError);
     });
   });
 

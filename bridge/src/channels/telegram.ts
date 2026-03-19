@@ -2,6 +2,8 @@ import TelegramBot from 'node-telegram-bot-api';
 import { BaseChannelAdapter, registerAdapterFactory } from './base.js';
 import type { InboundMessage, OutboundMessage, SendResult } from './types.js';
 import { loadConfig } from '../config.js';
+import { chunkMarkdown } from '../delivery/delivery.js';
+import { classifyError } from './errors.js';
 
 interface TelegramConfig {
   botToken: string;
@@ -21,6 +23,18 @@ export class TelegramAdapter extends BaseChannelAdapter {
   }
 
   async start(): Promise<void> {
+    // Clear accumulated updates before starting polling to avoid processing old messages
+    try {
+      const tempBot = new TelegramBot(this.config.botToken);
+      const updates = await tempBot.getUpdates({ offset: -1, limit: 1, timeout: 0 });
+      if (updates.length > 0) {
+        await tempBot.getUpdates({ offset: updates[0].update_id + 1, limit: 0, timeout: 0 });
+      }
+      await tempBot.close();
+    } catch {
+      // Non-fatal: proceed with polling even if cleanup fails
+    }
+
     this.bot = new TelegramBot(this.config.botToken, { polling: true });
 
     this.bot.on('message', (msg) => {
@@ -36,6 +50,8 @@ export class TelegramAdapter extends BaseChannelAdapter {
     });
 
     this.bot.on('callback_query', (query) => {
+      // Dismiss the loading spinner on the button
+      this.bot!.answerCallbackQuery(query.id).catch(() => {});
       this.messageQueue.push({
         channelType: 'telegram',
         chatId: String(query.message?.chat.id ?? ''),
@@ -60,11 +76,7 @@ export class TelegramAdapter extends BaseChannelAdapter {
     if (!this.bot) throw new Error('Telegram bot not started');
 
     const options: TelegramBot.SendMessageOptions = {};
-
-    if (message.html) {
-      options.parse_mode = 'HTML';
-    }
-
+    if (message.html) options.parse_mode = 'HTML';
     if (message.buttons?.length) {
       options.reply_markup = {
         inline_keyboard: [message.buttons.map(b => ({
@@ -73,14 +85,26 @@ export class TelegramAdapter extends BaseChannelAdapter {
         }))],
       };
     }
-
     if (message.replyToMessageId) {
       options.reply_to_message_id = parseInt(message.replyToMessageId, 10);
     }
 
     const text = message.html ?? message.text ?? '';
-    const result = await this.bot.sendMessage(message.chatId, text, options);
-    return { messageId: String(result.message_id), success: true };
+    const chunks = text.length > 4096 ? chunkMarkdown(text, 4096) : [text];
+
+    let lastMessageId = '';
+    try {
+      for (let i = 0; i < chunks.length; i++) {
+        const opts: TelegramBot.SendMessageOptions = { ...options };
+        if (i < chunks.length - 1) delete opts.reply_markup;
+        const result = await this.bot.sendMessage(message.chatId, chunks[i], opts);
+        lastMessageId = String(result.message_id);
+      }
+    } catch (err) {
+      throw classifyError('telegram', err);
+    }
+
+    return { messageId: lastMessageId, success: true };
   }
 
   async editMessage(chatId: string, messageId: string, message: OutboundMessage): Promise<void> {
