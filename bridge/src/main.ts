@@ -146,7 +146,7 @@ async function main() {
           : JSON.stringify(perm.input, null, 2);
         const truncatedInput = inputStr.length > 500 ? inputStr.slice(0, 497) + '...' : inputStr;
 
-        const text = `🔒 Permission Required (Local Claude Code)\n\nTool: \`${perm.tool_name}\`\n\`\`\`\n${truncatedInput}\n\`\`\`\n\n⏱ Expires in 5 minutes`;
+        const text = `[Local] 🔒 Permission Required\n\nTool: \`${perm.tool_name}\`\n\`\`\`\n${truncatedInput}\n\`\`\`\n\n⏱ Expires in 5 minutes`;
 
         // Send to all active IM adapters with Allow/Deny buttons
         for (const adapter of manager.getAdapters()) {
@@ -154,14 +154,18 @@ async function main() {
           if (!chatId) continue;
 
           try {
-            await adapter.send({
+            const sendResult = await adapter.send({
               chatId,
               text,
               buttons: [
-                { label: '✅ Allow', callbackData: `hook:allow:${perm.id}`, style: 'primary' },
-                { label: '❌ Deny', callbackData: `hook:deny:${perm.id}`, style: 'danger' },
+                { label: '✅ Allow', callbackData: `hook:allow:${perm.id}`, style: 'primary' as const },
+                { label: '❌ Deny', callbackData: `hook:deny:${perm.id}`, style: 'danger' as const },
               ],
             });
+            // Track for reply routing (perm may have tlive_session_id from hook script)
+            if ((perm as any).tlive_session_id) {
+              manager.trackHookMessage(sendResult.messageId, (perm as any).tlive_session_id);
+            }
           } catch (err) {
             logger.warn(`Failed to send permission to ${adapter.channelType}: ${err}`);
           }
@@ -172,10 +176,46 @@ async function main() {
     }
   }, 2000);
 
+  // Track notification IDs already sent to IM
+  const sentNotificationIds = new Set<string>();
+
+  // Poll Go Core for hook notifications (idle_prompt, stop, etc.)
+  const notifyPollInterval = setInterval(async () => {
+    if (!coreAvailable) return;
+    try {
+      const resp = await fetch(`${config.coreUrl}/api/hooks/notifications`, {
+        headers: { Authorization: `Bearer ${config.token}` },
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!resp.ok) return;
+      const notifications = await resp.json() as Array<any>;
+
+      for (const notif of notifications) {
+        const notifId = notif.id || notif.timestamp || JSON.stringify(notif).slice(0, 50);
+        if (sentNotificationIds.has(notifId)) continue;
+        sentNotificationIds.add(notifId);
+
+        for (const adapter of manager.getAdapters()) {
+          // Use the first configured chat ID for notifications
+          const chatId = config.telegram.chatId || config.discord.allowedChannels[0] || '';
+          if (!chatId) continue;
+          try {
+            await manager.sendHookNotification(adapter, chatId, notif);
+          } catch (err) {
+            logger.warn(`Failed to send notification to ${adapter.channelType}: ${err}`);
+          }
+        }
+      }
+    } catch {
+      // Non-fatal
+    }
+  }, 2000);
+
   // Graceful shutdown
   const shutdown = async (reason = 'signal') => {
     logger.info('Shutting down...');
     clearInterval(hookPollInterval);
+    clearInterval(notifyPollInterval);
     writeStatusFile(tliveHome, {
       pid: process.pid,
       exitedAt: new Date().toISOString(),
