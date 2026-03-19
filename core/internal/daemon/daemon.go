@@ -136,6 +136,7 @@ func (d *Daemon) Handler() http.Handler {
 	mux.HandleFunc("/api/hooks/permission", d.handleHookPermission)
 	mux.HandleFunc("/api/hooks/pending", d.handleHooksPending)
 	mux.HandleFunc("/api/hooks/notify", d.handleHookNotify)
+	mux.HandleFunc("/api/hooks/notifications", d.handleHookNotifications)
 	if d.extraHandler != nil {
 		mux.Handle("/", d.extraHandler)
 	}
@@ -425,6 +426,17 @@ func (d *Daemon) handleHookNotify(w http.ResponseWriter, r *http.Request) {
 	rawBody, _ := io.ReadAll(r.Body)
 	d.notifications.Add(NotifyProgress, string(rawBody), "")
 	w.WriteHeader(http.StatusOK)
+}
+
+// handleHookNotifications handles GET /api/hooks/notifications — returns recent notifications for Bridge polling.
+func (d *Daemon) handleHookNotifications(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	notifications := d.notifications.List(50)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(notifications)
 }
 
 // --- Auth middleware ---

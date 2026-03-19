@@ -191,16 +191,21 @@ async function main() {
       const notifications = await resp.json() as Array<any>;
 
       for (const notif of notifications) {
-        const notifId = notif.id || notif.timestamp || JSON.stringify(notif).slice(0, 50);
-        if (sentNotificationIds.has(notifId)) continue;
-        sentNotificationIds.add(notifId);
+        if (sentNotificationIds.has(notif.id)) continue;
+        sentNotificationIds.add(notif.id);
+
+        // Parse the stored message (raw hook JSON) to get hook data
+        let hookData: any = notif;
+        try { hookData = JSON.parse(notif.message); } catch {}
+
+        // Skip non-hook notifications (no tlive_hook_type means not from our scripts)
+        if (!hookData.tlive_hook_type) continue;
 
         for (const adapter of manager.getAdapters()) {
-          // Use the first configured chat ID for notifications
           const chatId = config.telegram.chatId || config.discord.allowedChannels[0] || '';
           if (!chatId) continue;
           try {
-            await manager.sendHookNotification(adapter, chatId, notif);
+            await manager.sendHookNotification(adapter, chatId, hookData);
           } catch (err) {
             logger.warn(`Failed to send notification to ${adapter.channelType}: ${err}`);
           }
