@@ -131,6 +131,15 @@ export class DiscordAdapter extends BaseChannelAdapter {
     await existing.edit(payload);
   }
 
+  async sendTyping(chatId: string): Promise<void> {
+    try {
+      const channel = await this.client?.channels.fetch(chatId);
+      if (channel?.isTextBased()) await (channel as TextChannel).sendTyping();
+    } catch {
+      // Non-critical; swallow errors
+    }
+  }
+
   validateConfig(): string | null {
     if (!this.config.botToken) return 'TL_DC_BOT_TOKEN is required for Discord';
     return null;

@@ -7,6 +7,7 @@ export abstract class BaseChannelAdapter {
   abstract consumeOne(): Promise<InboundMessage | null>;
   abstract send(message: OutboundMessage): Promise<SendResult>;
   abstract editMessage(chatId: string, messageId: string, message: OutboundMessage): Promise<void>;
+  abstract sendTyping(chatId: string): Promise<void>;
   abstract validateConfig(): string | null;
   abstract isAuthorized(userId: string, chatId: string): boolean;
 }

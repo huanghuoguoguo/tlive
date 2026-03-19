@@ -90,7 +90,19 @@ export class TelegramAdapter extends BaseChannelAdapter {
       message_id: parseInt(messageId, 10),
     };
     if (message.html) options.parse_mode = 'HTML';
-    await this.bot.editMessageText(text, options);
+    try {
+      await this.bot.editMessageText(text, options);
+    } catch (err: any) {
+      if (!err.message?.includes('message is not modified')) throw err;
+    }
+  }
+
+  async sendTyping(chatId: string): Promise<void> {
+    try {
+      await this.bot?.sendChatAction(chatId, 'typing');
+    } catch {
+      // Non-critical; swallow errors
+    }
   }
 
   validateConfig(): string | null {

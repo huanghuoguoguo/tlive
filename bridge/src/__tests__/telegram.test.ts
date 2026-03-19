@@ -7,6 +7,7 @@ vi.mock('node-telegram-bot-api', () => {
     this.sendMessage = vi.fn().mockResolvedValue({ message_id: 42 });
     this.editMessageText = vi.fn().mockResolvedValue({});
     this.stopPolling = vi.fn().mockResolvedValue(undefined);
+    this.sendChatAction = vi.fn().mockResolvedValue(true);
   });
   return { default: MockBot };
 });
@@ -65,5 +66,41 @@ describe('TelegramAdapter', () => {
       ],
     });
     expect(result.success).toBe(true);
+  });
+
+  describe('sendTyping', () => {
+    it('calls sendChatAction with typing', async () => {
+      await adapter.start();
+      await adapter.sendTyping('12345');
+      const bot = (adapter as any).bot;
+      expect(bot.sendChatAction).toHaveBeenCalledWith('12345', 'typing');
+    });
+
+    it('swallows errors from sendChatAction', async () => {
+      await adapter.start();
+      const bot = (adapter as any).bot;
+      bot.sendChatAction.mockRejectedValueOnce(new Error('network error'));
+      await expect(adapter.sendTyping('12345')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('editMessage error guard', () => {
+    it('ignores "message is not modified" error', async () => {
+      await adapter.start();
+      const bot = (adapter as any).bot;
+      bot.editMessageText.mockRejectedValueOnce(new Error('message is not modified'));
+      await expect(
+        adapter.editMessage('12345', '42', { chatId: '12345', text: 'same' })
+      ).resolves.toBeUndefined();
+    });
+
+    it('rethrows other errors', async () => {
+      await adapter.start();
+      const bot = (adapter as any).bot;
+      bot.editMessageText.mockRejectedValueOnce(new Error('rate limited'));
+      await expect(
+        adapter.editMessage('12345', '42', { chatId: '12345', text: 'new' })
+      ).rejects.toThrow('rate limited');
+    });
   });
 });

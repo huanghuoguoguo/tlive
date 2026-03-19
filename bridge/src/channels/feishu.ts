@@ -94,8 +94,40 @@ export class FeishuAdapter extends BaseChannelAdapter {
     }
   }
 
-  async editMessage(_chatId: string, _messageId: string, _message: OutboundMessage): Promise<void> {
-    // TODO: implement message editing via client.im.message.update when needed
+  async editMessage(_chatId: string, messageId: string, message: OutboundMessage): Promise<void> {
+    if (!this.client) return;
+    const text = message.text ?? message.html ?? '';
+
+    const card = {
+      config: { wide_screen_mode: true },
+      elements: [
+        { tag: 'markdown', content: text },
+      ],
+    };
+
+    if (message.buttons?.length) {
+      (card.elements as any[]).push({
+        tag: 'action',
+        actions: message.buttons.map(btn => ({
+          tag: 'button',
+          text: { tag: 'plain_text', content: btn.label },
+          type: btn.style === 'danger' ? 'danger' : 'primary',
+          value: { action: btn.callbackData },
+        })),
+      });
+    }
+
+    await this.client.im.message.patch({
+      path: { message_id: messageId },
+      data: {
+        msg_type: 'interactive',
+        content: JSON.stringify(card),
+      },
+    });
+  }
+
+  async sendTyping(_chatId: string): Promise<void> {
+    // Feishu has no native typing API; streaming card updates serve this purpose
   }
 
   validateConfig(): string | null {

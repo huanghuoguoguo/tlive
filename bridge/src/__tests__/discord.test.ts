@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock discord.js before importing the adapter
 const mockSend = vi.fn().mockResolvedValue({ id: 'msg-99' });
 const mockEdit = vi.fn().mockResolvedValue({});
+const mockSendTyping = vi.fn().mockResolvedValue(undefined);
 const mockFetchMessage = vi.fn().mockResolvedValue({
   id: 'msg-99',
   edit: mockEdit,
@@ -10,6 +11,8 @@ const mockFetchMessage = vi.fn().mockResolvedValue({
 const mockFetchChannel = vi.fn().mockResolvedValue({
   send: mockSend,
   messages: { fetch: mockFetchMessage },
+  isTextBased: () => true,
+  sendTyping: mockSendTyping,
 });
 const mockLogin = vi.fn().mockResolvedValue(undefined);
 const mockDestroy = vi.fn().mockResolvedValue(undefined);
@@ -171,6 +174,21 @@ describe('DiscordAdapter', () => {
     it('returns null when queue is empty', async () => {
       const msg = await adapter.consumeOne();
       expect(msg).toBeNull();
+    });
+  });
+
+  describe('sendTyping()', () => {
+    it('calls channel.sendTyping', async () => {
+      await adapter.start();
+      await adapter.sendTyping('channel1');
+      expect(mockFetchChannel).toHaveBeenCalledWith('channel1');
+      expect(mockSendTyping).toHaveBeenCalled();
+    });
+
+    it('swallows errors', async () => {
+      await adapter.start();
+      mockFetchChannel.mockRejectedValueOnce(new Error('network'));
+      await expect(adapter.sendTyping('channel1')).resolves.toBeUndefined();
     });
   });
 });

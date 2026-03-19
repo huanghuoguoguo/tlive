@@ -2,12 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock @larksuiteoapi/node-sdk before importing the adapter
 const mockMessageCreate = vi.fn();
+const mockMessagePatch = vi.fn().mockResolvedValue({});
 
 vi.mock('@larksuiteoapi/node-sdk', () => {
   const MockClient = vi.fn(function (this: any) {
     this.im = {
       message: {
         create: mockMessageCreate,
+        patch: mockMessagePatch,
       },
     };
   });
@@ -23,6 +25,7 @@ describe('FeishuAdapter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockMessageCreate.mockResolvedValue({ data: { message_id: 'msg-feishu-1' } });
+    mockMessagePatch.mockResolvedValue({});
     adapter = new FeishuAdapter({
       appId: 'cli_test123',
       appSecret: 'secret_abc',
@@ -176,6 +179,35 @@ describe('FeishuAdapter', () => {
     it('returns null when queue is empty', async () => {
       const msg = await adapter.consumeOne();
       expect(msg).toBeNull();
+    });
+  });
+
+  describe('editMessage()', () => {
+    it('patches message with interactive card', async () => {
+      await adapter.start();
+      await adapter.editMessage('oc_chat123', 'msg-feishu-1', {
+        chatId: 'oc_chat123',
+        text: 'Updated content',
+      });
+      expect(mockMessagePatch).toHaveBeenCalledOnce();
+      const call = mockMessagePatch.mock.calls[0][0];
+      expect(call.path.message_id).toBe('msg-feishu-1');
+      expect(call.data.msg_type).toBe('interactive');
+      const card = JSON.parse(call.data.content);
+      expect(card.elements[0].tag).toBe('markdown');
+      expect(card.elements[0].content).toBe('Updated content');
+    });
+
+    it('does nothing when client is not started', async () => {
+      await adapter.editMessage('oc_chat', 'msg-1', { chatId: 'oc_chat', text: 'hi' });
+      expect(mockMessagePatch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('sendTyping()', () => {
+    it('is a no-op that resolves without error', async () => {
+      await adapter.start();
+      await expect(adapter.sendTyping('oc_chat123')).resolves.toBeUndefined();
     });
   });
 });
