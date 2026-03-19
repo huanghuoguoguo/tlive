@@ -192,7 +192,6 @@ describe('FeishuAdapter', () => {
       expect(mockMessagePatch).toHaveBeenCalledOnce();
       const call = mockMessagePatch.mock.calls[0][0];
       expect(call.path.message_id).toBe('msg-feishu-1');
-      expect(call.data.msg_type).toBe('interactive');
       const card = JSON.parse(call.data.content);
       expect(card.elements[0].tag).toBe('markdown');
       expect(card.elements[0].content).toBe('Updated content');

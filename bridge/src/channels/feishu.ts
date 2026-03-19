@@ -120,9 +120,8 @@ export class FeishuAdapter extends BaseChannelAdapter {
     await this.client.im.message.patch({
       path: { message_id: messageId },
       data: {
-        msg_type: 'interactive',
         content: JSON.stringify(card),
-      },
+      } as any,
     });
   }
 

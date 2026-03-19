@@ -18,7 +18,7 @@ describe('StreamController', () => {
   });
 
   function createController(verboseLevel: 0 | 1 | 2 = 1, platformLimit = 4096) {
-    return new StreamController({ verboseLevel, platformLimit, throttleMs: 300, flushCallback });
+    return new StreamController({ verboseLevel, platformLimit, throttleMs: 300, flushCallback: flushCallback as any });
   }
 
   it('accumulates text and flushes after throttle', async () => {
