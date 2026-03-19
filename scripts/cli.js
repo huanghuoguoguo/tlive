@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // TermLive CLI entry point
-import { execSync, spawn } from 'node:child_process';
+import { execSync, spawn, spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
@@ -67,12 +67,29 @@ switch (command) {
     run(`bash ${join(SCRIPTS_DIR, 'doctor.sh')}`);
     break;
 
-  default:
+  default: {
+    // No command or unknown command → try to wrap with Go Core (Web Terminal)
+    if (command) {
+      // tlive claude, tlive python train.py, etc. → forward to Go Core
+      const coreBin = join(process.env.HOME, '.tlive', 'bin', 'tlive-core');
+      if (!existsSync(coreBin)) {
+        console.error(`Go Core not found at ${coreBin}`);
+        console.error('Run: npm run setup:core');
+        process.exit(1);
+      }
+      const result = spawnSync(coreBin, [command, ...args], {
+        stdio: 'inherit',
+      });
+      process.exit(result.status ?? 1);
+    }
+
     console.log(`TermLive — Terminal live monitoring + IM bridge
 
-Usage: tlive <command>
+Usage: tlive <command>        Wrap command with web terminal
+       tlive <subcommand>    Manage services
 
 Commands:
+  <cmd>       Wrap any command with web terminal (e.g. tlive claude)
   setup       Configure IM platforms and credentials
   start       Start Go Core + Node.js Bridge
   stop        Stop all services
@@ -87,4 +104,5 @@ In Claude Code:
   /tlive status   Show status
 `);
     break;
+  }
 }
