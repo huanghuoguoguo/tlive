@@ -264,9 +264,18 @@ func runClient(lock daemon.LockInfo, args []string, rows, cols uint16) error {
 	}
 	defer deleteSessionViaAPI(lock.Port, lock.Token, sessionID)
 
+	localIP := publicIP
+	if localIP == "" {
+		localIP = getLocalIP()
+	}
+	url := fmt.Sprintf("http://%s:%d?token=%s", localIP, lock.Port, lock.Token)
+	localURL := fmt.Sprintf("http://localhost:%d?token=%s", lock.Port, lock.Token)
 	fmt.Fprintf(os.Stderr, "\n  TLive (client mode):\n")
-	fmt.Fprintf(os.Stderr, "    Daemon:  http://localhost:%d\n", lock.Port)
-	fmt.Fprintf(os.Stderr, "    Session: %s (ID: %s)\n\n", args[0], sessionID)
+	fmt.Fprintf(os.Stderr, "    Local:   %s\n", localURL)
+	fmt.Fprintf(os.Stderr, "    Network: %s\n", url)
+	fmt.Fprintf(os.Stderr, "  Session: %s (ID: %s)\n\n", args[0], sessionID)
+	qrterminal.GenerateHalfBlock(url, qrterminal.L, os.Stderr)
+	fmt.Fprintln(os.Stderr)
 
 	// Set terminal to raw mode
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
