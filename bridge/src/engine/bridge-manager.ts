@@ -218,11 +218,17 @@ export class BridgeManager {
     if (msg.text && adapter.channelType === 'feishu') {
       const decision = this.parsePermissionText(msg.text);
       if (decision) {
-        // Check quote-reply first, fall back to latest pending permission
+        // Check quote-reply first, fall back to latest pending permission (only if unambiguous)
         let permEntry = msg.replyToMessageId ? this.permissionMessages.get(msg.replyToMessageId) : undefined;
         if (!permEntry) {
-          const latest = this.latestPermission.get(adapter.channelType);
-          if (latest) permEntry = this.permissionMessages.get(latest.messageId);
+          // Only use fallback if exactly one permission is pending (avoid multi-session ambiguity)
+          if (this.permissionMessages.size === 1) {
+            const latest = this.latestPermission.get(adapter.channelType);
+            if (latest) permEntry = this.permissionMessages.get(latest.messageId);
+          } else if (this.permissionMessages.size > 1) {
+            await adapter.send({ chatId: msg.chatId, text: '⚠️ 多个权限待审批，请引用回复具体的权限消息' });
+            return true;
+          }
         }
         if (permEntry && this.coreAvailable) {
           try {
