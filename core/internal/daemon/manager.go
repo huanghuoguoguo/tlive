@@ -253,7 +253,7 @@ func (m *SessionManager) StartReaper(timeout time.Duration) {
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
-			m.mu.RLock()
+			m.mu.Lock()
 			var toReap []string
 			for id, ms := range m.managed {
 				if ms.Hub.ClientCount() == 0 {
@@ -268,12 +268,14 @@ func (m *SessionManager) StartReaper(timeout time.Duration) {
 					delete(m.noClientAt, id)
 				}
 			}
-			m.mu.RUnlock()
+			m.mu.Unlock()
 
 			for _, id := range toReap {
 				log.Printf("reaping orphaned session %s (no clients for %v)", id, timeout)
 				_ = m.StopSession(id)
+				m.mu.Lock()
 				delete(m.noClientAt, id)
+				m.mu.Unlock()
 			}
 		}
 	}()

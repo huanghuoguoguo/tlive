@@ -214,8 +214,8 @@ export class BridgeManager {
       } catch { /* non-fatal */ }
     }
 
-    // Text-based permission resolution (for adapters without card action callbacks, e.g. Feishu)
-    if (msg.text) {
+    // Text-based permission resolution (Feishu only — Telegram/Discord use card action callbacks)
+    if (msg.text && adapter.channelType === 'feishu') {
       const decision = this.parsePermissionText(msg.text);
       if (decision) {
         // Check quote-reply first, fall back to latest pending permission

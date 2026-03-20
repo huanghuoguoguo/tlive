@@ -4,7 +4,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockMessageCreate = vi.fn();
 const mockMessagePatch = vi.fn().mockResolvedValue({});
 const mockEventHandler = vi.fn();
-const mockCardHandler = vi.fn();
 const mockWsStart = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@larksuiteoapi/node-sdk', () => {
@@ -36,22 +35,14 @@ vi.mock('@larksuiteoapi/node-sdk', () => {
     });
   });
 
-  const MockCardActionHandler = vi.fn(function (this: any, _cfg: any, handler: (...args: any[]) => any) {
-    mockCardHandler.mockImplementation(handler);
-    this.invoke = vi.fn(async (body: string) => {
-      const parsed = JSON.parse(body);
-      return mockCardHandler(parsed) ?? {};
-    });
-  });
-
   const MockWSClient = vi.fn(function (this: any) {
+    this.close = vi.fn();
     this.start = mockWsStart;
   });
 
   return {
     Client: MockClient,
     EventDispatcher: MockEventDispatcher,
-    CardActionHandler: MockCardActionHandler,
     WSClient: MockWSClient,
   };
 });

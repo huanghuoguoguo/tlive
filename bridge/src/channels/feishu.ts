@@ -1,4 +1,4 @@
-import { Client, WSClient, EventDispatcher, CardActionHandler } from '@larksuiteoapi/node-sdk';
+import { Client, WSClient, EventDispatcher } from '@larksuiteoapi/node-sdk';
 import { BaseChannelAdapter, registerAdapterFactory } from './base.js';
 import type { InboundMessage, OutboundMessage, SendResult, FileAttachment } from './types.js';
 import { loadConfig } from '../config.js';
@@ -22,14 +22,6 @@ interface FeishuCreateMessageResult {
   code?: number;
   msg?: string;
   data?: { message_id?: string };
-}
-
-/** Shape of the Feishu card action callback data */
-interface FeishuCardActionData {
-  action?: { value?: { action?: string } };
-  open_chat_id?: string;
-  open_id?: string;
-  open_message_id?: string;
 }
 
 interface FeishuConfig {
@@ -122,6 +114,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
               userId,
               text: '',
               messageId: msg.message_id,
+              replyToMessageId: msg.parent_id || msg.root_id || undefined,
               attachments,
             });
           }
@@ -154,6 +147,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
               userId,
               text: '',
               messageId: msg.message_id,
+              replyToMessageId: msg.parent_id || msg.root_id || undefined,
               attachments,
             });
           }
@@ -161,24 +155,9 @@ export class FeishuAdapter extends BaseChannelAdapter {
       },
     });
 
-    const cardHandler = new CardActionHandler({}, (data: unknown) => {
-      const cardData = data as FeishuCardActionData;
-      const callbackData = cardData?.action?.value?.action;
-      if (!callbackData) return {};
-
-      this.messageQueue.push({
-        channelType: 'feishu',
-        chatId: cardData.open_chat_id ?? '',
-        userId: cardData.open_id ?? '',
-        text: '',
-        callbackData,
-        messageId: cardData.open_message_id ?? '',
-      });
-
-      return {};
-    });
-
     // Use WebSocket long connection (no public callback URL needed)
+    // Note: CardActionHandler is NOT supported via WSClient — Feishu uses
+    // text-based permission approval instead of card action callbacks.
     this.wsClient = new WSClient({
       appId: this.config.appId,
       appSecret: this.config.appSecret,
@@ -188,7 +167,10 @@ export class FeishuAdapter extends BaseChannelAdapter {
   }
 
   async stop(): Promise<void> {
-    this.wsClient = null;
+    if (this.wsClient) {
+      try { (this.wsClient as any).close?.(); } catch { /* best effort */ }
+      this.wsClient = null;
+    }
     this.client = null;
   }
 
@@ -222,7 +204,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
   async send(message: OutboundMessage): Promise<SendResult> {
     if (!this.client) throw new Error('Feishu client not started');
 
-    const raw = message.text ?? message.html ?? '';
+    const raw = markdownToFeishu(message.text ?? message.html ?? '');
 
     try {
       // Always use interactive card format so editMessage (patch) works for streaming updates
@@ -245,7 +227,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
 
   async editMessage(_chatId: string, messageId: string, message: OutboundMessage): Promise<void> {
     if (!this.client) return;
-    const text = message.text ?? message.html ?? '';
+    const text = markdownToFeishu(message.text ?? message.html ?? '');
 
     try {
       await this.client.im.message.patch({

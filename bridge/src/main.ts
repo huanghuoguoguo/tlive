@@ -189,7 +189,10 @@ async function main() {
     llm.onPermissionTimeout = (toolName: string, _toolUseId: string) => {
       const text = `\u23f0 Permission timed out (5m)\nTool: ${toolName}\nAction: Denied by default`;
       for (const adapter of manager.getAdapters()) {
-        const chatId = config.telegram.chatId || config.discord.allowedChannels[0] || '';
+        let chatId = '';
+        if (adapter.channelType === 'telegram') chatId = config.telegram.chatId;
+        else if (adapter.channelType === 'discord') chatId = config.discord.allowedChannels[0] || '';
+        else chatId = manager.getLastChatId(adapter.channelType);
         if (!chatId) continue;
         adapter.send({ chatId, text }).catch((err) => {
           logger.warn(`Failed to send timeout notification to ${adapter.channelType}: ${err}`);
