@@ -7,6 +7,7 @@ import { PendingPermissions } from '../permissions/gateway.js';
 import { DeliveryLayer } from '../delivery/delivery.js';
 import { getBridgeContext } from '../context.js';
 import { loadConfig } from '../config.js';
+import { markdownToTelegram } from '../markdown/index.js';
 import { StreamController, type VerboseLevel } from './stream-controller.js';
 import { CostTracker } from './cost-tracker.js';
 import { existsSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
@@ -141,8 +142,11 @@ export class BridgeManager {
       parts.push('', `🔗 ${baseUrl}/terminal.html?id=${hook.tlive_session_id}&token=${this.token}`);
     }
 
-    const text = parts.join('\n');
-    const result = await adapter.send({ chatId, text });
+    const raw = parts.join('\n');
+    const outMsg = adapter.channelType === 'telegram'
+      ? { chatId, html: markdownToTelegram(raw) }
+      : { chatId, text: raw };
+    const result = await adapter.send(outMsg);
     this.trackHookMessage(result.messageId, hook.tlive_session_id || '');
   }
 
@@ -266,12 +270,17 @@ export class BridgeManager {
       verboseLevel,
       platformLimit: platformLimits[adapter.channelType] ?? 4096,
       flushCallback: async (content, isEdit) => {
+        // Convert markdown to platform-specific format
+        const outMsg = adapter.channelType === 'telegram'
+          ? { chatId: msg.chatId, html: markdownToTelegram(content) }
+          : { chatId: msg.chatId, text: content };
+
         if (!isEdit) {
-          const result = await adapter.send({ chatId: msg.chatId, text: content });
+          const result = await adapter.send(outMsg);
           clearInterval(typingInterval);
           return result.messageId;
         } else {
-          await adapter.editMessage(msg.chatId, stream.messageId!, { chatId: msg.chatId, text: content });
+          await adapter.editMessage(msg.chatId, stream.messageId!, outMsg);
         }
       },
     });

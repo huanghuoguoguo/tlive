@@ -292,9 +292,9 @@ describe('BridgeManager', () => {
         tlive_session_id: 'sess-1',
       });
 
-      expect(adapter.send).toHaveBeenCalledWith(
-        expect.objectContaining({ text: '🖥 [Local] ✅ Task complete' })
-      );
+      const sentMsg = (adapter.send as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const content = sentMsg.html ?? sentMsg.text ?? '';
+      expect(content).toContain('🖥 [Local] ✅ Task complete');
     });
 
     it('formats idle_prompt notification with message', async () => {
@@ -305,9 +305,9 @@ describe('BridgeManager', () => {
         tlive_session_id: 'sess-1',
       });
 
-      expect(adapter.send).toHaveBeenCalledWith(
-        expect.objectContaining({ text: '🖥 [Local] Claude is waiting for your input' })
-      );
+      const sentMsg = (adapter.send as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const content = sentMsg.html ?? sentMsg.text ?? '';
+      expect(content).toContain('Claude is waiting for your input');
     });
 
     it('tracks hook message for reply routing', async () => {
