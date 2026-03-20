@@ -9,6 +9,7 @@ export interface StreamChatParams {
 }
 
 export interface FileAttachment {
+  type: 'image' | 'file';
   name: string;
   mimeType: string;
   base64Data: string;

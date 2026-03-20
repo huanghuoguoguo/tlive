@@ -109,12 +109,13 @@ export class BridgeManager {
 
     if (hookType === 'stop') {
       parts.push('[Local] ✅ Task complete');
-      // Include last assistant message summary if available
-      if (hook.last_assistant_message) {
-        const summary = hook.last_assistant_message.length > 300
-          ? hook.last_assistant_message.slice(0, 297) + '...'
-          : hook.last_assistant_message;
-        parts.push('', `> ${summary.replace(/\n/g, '\n> ')}`);
+
+      // Use last_assistant_message from Claude Code Stop hook (primary),
+      // fall back to last_output enriched by Go Core from PTY buffer
+      const summary = (hook.last_assistant_message || hook.last_output || '').trim();
+      if (summary) {
+        const truncated = summary.length > 300 ? summary.slice(0, 297) + '...' : summary;
+        parts.push('', `> ${truncated.replace(/\n/g, '\n> ')}`);
       }
     } else if (hook.notification_type === 'idle_prompt') {
       parts.push(`[Local] ${hook.message || 'Claude is waiting for input...'}`);
@@ -173,11 +174,12 @@ export class BridgeManager {
 
     // Callback data
     if (msg.callbackData) {
-      // Hook permission callbacks (hook:allow:ID or hook:deny:ID)
+      // Hook permission callbacks (hook:allow:ID:sessionId, hook:allow_always:ID:sessionId, hook:deny:ID:sessionId)
       if (msg.callbackData.startsWith('hook:')) {
         const parts = msg.callbackData.split(':');
-        const decision = parts[1]; // allow or deny
+        const decision = parts[1]; // allow, allow_always, or deny
         const hookId = parts[2];
+        const sessionId = parts[3] || '';
 
         if (this.coreAvailable) {
           try {
@@ -190,10 +192,19 @@ export class BridgeManager {
               body: JSON.stringify({ decision }),
               signal: AbortSignal.timeout(5000),
             });
-            await adapter.send({
+            const labels: Record<string, string> = {
+              allow: '✅ Allowed',
+              allow_always: '📌 Always Allowed',
+              deny: '❌ Denied',
+            };
+            const confirmResult = await adapter.send({
               chatId: msg.chatId,
-              text: decision === 'allow' ? '✅ Allowed' : '❌ Denied',
+              text: labels[decision] || '✅ Allowed',
             });
+            // Track confirmation message for reply routing
+            if (sessionId) {
+              this.trackHookMessage(confirmResult.messageId, sessionId);
+            }
           } catch (err) {
             await adapter.send({ chatId: msg.chatId, text: `❌ Failed to resolve: ${err}` });
           }
@@ -213,12 +224,8 @@ export class BridgeManager {
       return this.handleCommand(adapter, msg);
     }
 
-    // Session resume: check timeout before resolving
-    const expired = this.checkAndUpdateLastActive(msg.channelType, msg.chatId);
-    if (expired) {
-      const newId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      await this.router.rebind(msg.channelType, msg.chatId, newId);
-    }
+    // Update last active time (for status display), but never auto-create new session
+    this.checkAndUpdateLastActive(msg.channelType, msg.chatId);
 
     const binding = await this.router.resolve(msg.channelType, msg.chatId);
 
@@ -253,6 +260,7 @@ export class BridgeManager {
       const result = await this.engine.processMessage({
         sessionId: binding.sessionId,
         text: msg.text,
+        attachments: msg.attachments,
         onTextDelta: (delta) => stream.onTextDelta(delta),
         onToolUse: (event) => stream.onToolStart(event.name, event.input),
         onResult: (event) => {
@@ -337,6 +345,74 @@ export class BridgeManager {
         }
         return true;
       }
+      case '/sessions': {
+        const { store } = getBridgeContext();
+        const allSessions = await store.listSessions();
+        const binding = await this.router.resolve(msg.channelType, msg.chatId);
+        const currentSessionId = binding?.sessionId;
+
+        if (allSessions.length === 0) {
+          await adapter.send({ chatId: msg.chatId, text: 'No sessions found.' });
+          return true;
+        }
+
+        // Sort by creation date (newest first) and limit to 10
+        const sorted = allSessions
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 10);
+
+        const lines: string[] = ['📋 Sessions:'];
+        for (let i = 0; i < sorted.length; i++) {
+          const s = sorted[i];
+          const isCurrent = s.id === currentSessionId;
+          const marker = isCurrent ? ' ◀' : '';
+          const date = new Date(s.createdAt).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+          // Get first user message as preview
+          const msgs = await store.getMessages(s.id);
+          const firstUser = msgs.find(m => m.role === 'user');
+          const preview = firstUser
+            ? (firstUser.content.length > 40 ? firstUser.content.slice(0, 37) + '...' : firstUser.content)
+            : '(empty)';
+          lines.push(`${i + 1}. ${date} — ${preview}${marker}`);
+        }
+        lines.push('', 'Use /session <n> to switch');
+        await adapter.send({ chatId: msg.chatId, text: lines.join('\n') });
+        return true;
+      }
+      case '/session': {
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 1) {
+          await adapter.send({ chatId: msg.chatId, text: 'Usage: /session <number>\nUse /sessions to list.' });
+          return true;
+        }
+
+        const { store } = getBridgeContext();
+        const allSessions = await store.listSessions();
+        const sorted = allSessions
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 10);
+
+        if (idx > sorted.length) {
+          await adapter.send({ chatId: msg.chatId, text: `Session ${idx} not found. Use /sessions to list.` });
+          return true;
+        }
+
+        const target = sorted[idx - 1];
+        await this.router.rebind(msg.channelType, msg.chatId, target.id);
+        this.clearLastActive(msg.channelType, msg.chatId);
+
+        const msgs = await store.getMessages(target.id);
+        const firstUser = msgs.find(m => m.role === 'user');
+        const preview = firstUser
+          ? (firstUser.content.length > 50 ? firstUser.content.slice(0, 47) + '...' : firstUser.content)
+          : '(empty)';
+        const hasContext = target.sdkSessionId ? '✅ has context' : '⚠️ no SDK session';
+        await adapter.send({
+          chatId: msg.chatId,
+          text: `🔄 Switched to session ${idx}\n${preview}\n${hasContext}`,
+        });
+        return true;
+      }
       case '/help': {
         await adapter.send({
           chatId: msg.chatId,
@@ -344,6 +420,8 @@ export class BridgeManager {
             'TLive IM Commands:',
             '',
             '/new              New conversation',
+            '/sessions         List recent sessions',
+            '/session <n>      Switch to session #n',
             '/verbose 0|1|2    Detail level',
             '  0 = quiet (result only)',
             '  1 = normal (tools + streaming)',

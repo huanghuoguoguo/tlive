@@ -8,7 +8,7 @@ import {
   type Message,
 } from 'discord.js';
 import { BaseChannelAdapter, registerAdapterFactory } from './base.js';
-import type { InboundMessage, OutboundMessage, SendResult } from './types.js';
+import type { InboundMessage, OutboundMessage, SendResult, FileAttachment } from './types.js';
 import { loadConfig } from '../config.js';
 import { chunkMarkdown } from '../delivery/delivery.js';
 import { classifyError } from './errors.js';
@@ -39,8 +39,25 @@ export class DiscordAdapter extends BaseChannelAdapter {
       ],
     });
 
-    this.client.on('messageCreate', (msg) => {
+    this.client.on('messageCreate', async (msg) => {
       if (msg.author.bot) return;
+
+      const attachments: FileAttachment[] = [];
+      for (const [, att] of msg.attachments) {
+        if ((att.size ?? 0) > 10_000_000) continue;
+        try {
+          const resp = await fetch(att.url);
+          if (!resp.ok) continue;
+          const buf = Buffer.from(await resp.arrayBuffer());
+          const mimeType = att.contentType ?? 'application/octet-stream';
+          attachments.push({
+            type: mimeType.startsWith('image/') ? 'image' : 'file',
+            name: att.name ?? 'file',
+            mimeType, base64Data: buf.toString('base64'),
+          });
+        } catch { /* skip undownloadable attachments */ }
+      }
+
       this.messageQueue.push({
         channelType: 'discord',
         chatId: msg.channelId,
@@ -48,6 +65,7 @@ export class DiscordAdapter extends BaseChannelAdapter {
         text: msg.content,
         messageId: msg.id,
         replyToMessageId: msg.reference?.messageId ?? undefined,
+        attachments: attachments.length > 0 ? attachments : undefined,
       });
     });
 

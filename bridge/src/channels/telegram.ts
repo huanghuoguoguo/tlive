@@ -1,6 +1,6 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { BaseChannelAdapter, registerAdapterFactory } from './base.js';
-import type { InboundMessage, OutboundMessage, SendResult } from './types.js';
+import type { InboundMessage, OutboundMessage, SendResult, FileAttachment } from './types.js';
 import { loadConfig } from '../config.js';
 import { chunkMarkdown } from '../delivery/delivery.js';
 import { classifyError } from './errors.js';
@@ -37,16 +37,55 @@ export class TelegramAdapter extends BaseChannelAdapter {
 
     this.bot = new TelegramBot(this.config.botToken, { polling: true });
 
-    this.bot.on('message', (msg) => {
-      if (!msg.text) return;
-      this.messageQueue.push({
-        channelType: 'telegram',
+    this.bot.on('message', async (msg) => {
+      const base = {
+        channelType: 'telegram' as const,
         chatId: String(msg.chat.id),
         userId: String(msg.from?.id ?? ''),
-        text: msg.text,
+        text: msg.text ?? msg.caption ?? '',
         messageId: String(msg.message_id),
         replyToMessageId: msg.reply_to_message ? String(msg.reply_to_message.message_id) : undefined,
-      });
+      };
+
+      const attachments: FileAttachment[] = [];
+
+      if (msg.photo?.length) {
+        const photo = msg.photo[msg.photo.length - 1]; // largest size
+        try {
+          const url = await this.bot!.getFileLink(photo.file_id);
+          const resp = await fetch(url);
+          if (resp.ok) {
+            const buf = Buffer.from(await resp.arrayBuffer());
+            if (buf.length <= 10_000_000) {
+              attachments.push({
+                type: 'image', name: 'photo.jpg',
+                mimeType: 'image/jpeg', base64Data: buf.toString('base64'),
+              });
+            }
+          }
+        } catch { /* skip undownloadable photos */ }
+      }
+
+      if (msg.document) {
+        try {
+          const url = await this.bot!.getFileLink(msg.document.file_id);
+          const resp = await fetch(url);
+          if (resp.ok) {
+            const buf = Buffer.from(await resp.arrayBuffer());
+            if (buf.length <= 10_000_000) {
+              const mimeType = msg.document.mime_type ?? 'application/octet-stream';
+              attachments.push({
+                type: mimeType.startsWith('image/') ? 'image' : 'file',
+                name: msg.document.file_name ?? 'file',
+                mimeType, base64Data: buf.toString('base64'),
+              });
+            }
+          }
+        } catch { /* skip undownloadable documents */ }
+      }
+
+      if (!base.text && attachments.length === 0) return;
+      this.messageQueue.push({ ...base, attachments: attachments.length > 0 ? attachments : undefined });
     });
 
     this.bot.on('callback_query', (query) => {
