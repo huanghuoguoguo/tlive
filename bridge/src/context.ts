@@ -23,11 +23,11 @@ export interface BridgeContext {
 const CONTEXT_KEY = '__termlive_bridge_context__';
 
 export function initBridgeContext(ctx: BridgeContext): void {
-  (globalThis as any)[CONTEXT_KEY] = ctx;
+  (globalThis as Record<string, unknown>)[CONTEXT_KEY] = ctx;
 }
 
 export function getBridgeContext(): BridgeContext {
-  const ctx = (globalThis as any)[CONTEXT_KEY];
+  const ctx = (globalThis as Record<string, unknown>)[CONTEXT_KEY];
   if (!ctx) throw new Error('BridgeContext not initialized. Call initBridgeContext() first.');
-  return ctx;
+  return ctx as BridgeContext;
 }

@@ -13,6 +13,17 @@ import { existsSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 
+/** Data shape for hook notifications (stop, idle_prompt, etc.) from Go Core */
+export interface HookNotificationData {
+  tlive_hook_type?: string;
+  tlive_session_id?: string;
+  notification_type?: string;
+  message?: string;
+  last_assistant_message?: string;
+  last_output?: string;
+  [key: string]: unknown;
+}
+
 export class BridgeManager {
   private adapters = new Map<string, BaseChannelAdapter>();
   private running = false;
@@ -103,7 +114,7 @@ export class BridgeManager {
   }
 
   /** Send a hook notification to IM with [Local] prefix and track for reply routing */
-  async sendHookNotification(adapter: BaseChannelAdapter, chatId: string, hook: any): Promise<void> {
+  async sendHookNotification(adapter: BaseChannelAdapter, chatId: string, hook: HookNotificationData): Promise<void> {
     const hookType = hook.tlive_hook_type || '';
     const parts: string[] = [];
 
@@ -262,7 +273,7 @@ export class BridgeManager {
         text: msg.text,
         attachments: msg.attachments,
         onTextDelta: (delta) => stream.onTextDelta(delta),
-        onToolUse: (event) => stream.onToolStart(event.name, event.input),
+        onToolUse: (event) => stream.onToolStart(event.name, event.input as Record<string, unknown>),
         onResult: (event) => {
           const usage = event.usage ?? { input_tokens: 0, output_tokens: 0 };
           completedStats = costTracker.finish(usage);
@@ -304,7 +315,7 @@ export class BridgeManager {
     switch (cmd) {
       case '/status': {
         const ctx = getBridgeContext();
-        const healthy = (ctx.core as any).isHealthy?.() ?? false;
+        const healthy = (ctx.core as { isHealthy?: () => boolean }).isHealthy?.() ?? false;
         await adapter.send({
           chatId: msg.chatId,
           text: `TermLive Status\nCore: ${healthy ? '● connected' : '○ disconnected'}\nAdapters: ${this.adapters.size} active`,

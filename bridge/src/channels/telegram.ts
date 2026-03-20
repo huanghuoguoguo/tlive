@@ -156,8 +156,8 @@ export class TelegramAdapter extends BaseChannelAdapter {
     if (message.html) options.parse_mode = 'HTML';
     try {
       await this.bot.editMessageText(text, options);
-    } catch (err: any) {
-      if (!err.message?.includes('message is not modified')) throw err;
+    } catch (err: unknown) {
+      if (!(err instanceof Error && err.message?.includes('message is not modified'))) throw err;
     }
   }
 

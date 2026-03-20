@@ -1,6 +1,6 @@
 import { getBridgeContext } from '../context.js';
 import { parseSSE } from '../providers/sse-utils.js';
-import type { SSEEvent, FileAttachment } from '../providers/base.js';
+import type { SSEEvent, FileAttachment, ToolUseEvent, PermissionRequestEvent, ResultEvent } from '../providers/base.js';
 
 const TEXT_MIME_PREFIXES = ['text/', 'application/json', 'application/xml', 'application/javascript', 'application/typescript', 'application/x-yaml', 'application/toml'];
 
@@ -32,9 +32,9 @@ interface ProcessMessageParams {
   text: string;
   attachments?: FileAttachment[];
   onTextDelta?: (delta: string) => void;
-  onToolUse?: (event: any) => void;
-  onPermissionRequest?: (event: any) => Promise<void>;
-  onResult?: (event: any) => void;
+  onToolUse?: (event: ToolUseEvent['data']) => void;
+  onPermissionRequest?: (event: PermissionRequestEvent['data']) => Promise<void>;
+  onResult?: (event: ResultEvent['data']) => void;
   onError?: (error: string) => void;
 }
 
@@ -49,7 +49,7 @@ export class ConversationEngine {
     const { store, llm } = getBridgeContext();
     const lockKey = `session:${params.sessionId}`;
     let fullText = '';
-    let usage: any;
+    let usage: { input_tokens: number; output_tokens: number; cost_usd?: number } | undefined;
 
     // 1. Acquire lock
     await store.acquireLock(lockKey, 600_000);
@@ -93,13 +93,13 @@ export class ConversationEngine {
             params.onTextDelta?.(event.data as string);
             break;
           case 'tool_use':
-            params.onToolUse?.(event.data);
+            params.onToolUse?.(event.data as ToolUseEvent['data']);
             break;
           case 'permission_request':
-            await params.onPermissionRequest?.(event.data);
+            await params.onPermissionRequest?.(event.data as PermissionRequestEvent['data']);
             break;
           case 'result': {
-            const resultData = event.data as any;
+            const resultData = event.data as ResultEvent['data'];
             usage = resultData.usage;
             // Save SDK session ID for conversation continuity (resume)
             if (resultData.session_id) {

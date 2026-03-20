@@ -12,14 +12,15 @@ function getToolEmoji(name: string): string {
   return TOOL_EMOJI[name] ?? '🔧';
 }
 
-function summarizeToolInput(name: string, input: Record<string, any>): string {
+function summarizeToolInput(name: string, input: Record<string, unknown>): string {
   if (!input || Object.keys(input).length === 0) return '';
+  const str = (v: unknown): string => (typeof v === 'string' ? v : '');
   switch (name) {
-    case 'Read': return input.file_path?.split('/').pop() ?? '';
-    case 'Edit': case 'Write': return input.file_path?.split('/').pop() ?? '';
-    case 'Grep': return `"${input.pattern}" in ${input.path ?? '.'}`;
-    case 'Glob': return input.pattern ?? '';
-    case 'Bash': return (input.command ?? '').slice(0, 80);
+    case 'Read': return str(input.file_path).split('/').pop() ?? '';
+    case 'Edit': case 'Write': return str(input.file_path).split('/').pop() ?? '';
+    case 'Grep': return `"${str(input.pattern)}" in ${str(input.path) || '.'}`;
+    case 'Glob': return str(input.pattern);
+    case 'Bash': return str(input.command).slice(0, 80);
     default: return '';
   }
 }
@@ -61,7 +62,7 @@ export class StreamController {
     this.scheduleFlush();
   }
 
-  onToolStart(name: string, input?: Record<string, any>): void {
+  onToolStart(name: string, input?: Record<string, unknown>): void {
     if (this.verboseLevel === 0) return;
 
     let header = `${getToolEmoji(name)} ${name}`;

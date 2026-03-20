@@ -1,12 +1,13 @@
 import { loadConfig } from './config.js';
-import { initBridgeContext } from './context.js';
+import { initBridgeContext, type PermissionGateway, type CoreClient } from './context.js';
 import { CoreClientImpl } from './core-client.js';
 import { Logger } from './logger.js';
 import { JsonFileStore } from './store/json-file.js';
 import { resolveProvider } from './providers/index.js';
 import { PendingPermissions } from './permissions/gateway.js';
-import { BridgeManager } from './engine/bridge-manager.js';
+import { BridgeManager, type HookNotificationData } from './engine/bridge-manager.js';
 import { createAdapter } from './channels/index.js';
+import type { ChannelType } from './channels/types.js';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -162,8 +163,8 @@ async function main() {
   initBridgeContext({
     store,
     llm,
-    permissions: permissions as any,
-    core: (coreClient ?? {}) as any,
+    permissions: permissions as PermissionGateway,
+    core: (coreClient ?? {}) as CoreClient,
   });
 
   // Start Bridge Manager with enabled IM adapters
@@ -172,7 +173,7 @@ async function main() {
 
   for (const channelType of config.enabledChannels) {
     try {
-      const adapter = createAdapter(channelType as any);
+      const adapter = createAdapter(channelType as ChannelType);
       manager.registerAdapter(adapter);
       logger.info(`Registered ${channelType} adapter`);
     } catch (err) {
@@ -261,15 +262,15 @@ async function main() {
         signal: AbortSignal.timeout(3000),
       });
       if (!resp.ok) return;
-      const notifications = await resp.json() as Array<any>;
+      const notifications = await resp.json() as Array<{ id: string; message: string; [key: string]: unknown }>;
 
       for (const notif of notifications) {
         if (sentNotificationIds.has(notif.id)) continue;
         sentNotificationIds.add(notif.id);
 
         // Parse the stored message (raw hook JSON) to get hook data
-        let hookData: any = notif;
-        try { hookData = JSON.parse(notif.message); } catch {}
+        let hookData: HookNotificationData = notif as HookNotificationData;
+        try { hookData = JSON.parse(notif.message) as HookNotificationData; } catch {}
 
         // Skip non-hook notifications (no tlive_hook_type means not from our scripts)
         if (!hookData.tlive_hook_type) continue;

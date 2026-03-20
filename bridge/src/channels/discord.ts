@@ -111,7 +111,7 @@ export class DiscordAdapter extends BaseChannelAdapter {
 
         // Reply reference on first chunk only
         if (i === 0 && message.replyToMessageId) {
-          (payload as any).reply = { messageReference: { messageId: message.replyToMessageId } };
+          (payload as Record<string, unknown>).reply = { messageReference: { messageId: message.replyToMessageId } };
         }
 
         // Buttons on last chunk only

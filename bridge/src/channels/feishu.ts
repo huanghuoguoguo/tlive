@@ -4,6 +4,33 @@ import { BaseChannelAdapter, registerAdapterFactory } from './base.js';
 import type { InboundMessage, OutboundMessage, SendResult } from './types.js';
 import { loadConfig } from '../config.js';
 
+/** Feishu interactive card element (markdown block, action block, etc.) */
+interface FeishuCardElement {
+  tag: string;
+  content?: string;
+  actions?: Array<{
+    tag: string;
+    text: { tag: string; content: string };
+    type: string;
+    value: Record<string, string>;
+  }>;
+}
+
+/** Shape of the Feishu message.create API response */
+interface FeishuCreateMessageResult {
+  code?: number;
+  msg?: string;
+  data?: { message_id?: string };
+}
+
+/** Shape of the Feishu card action callback data */
+interface FeishuCardActionData {
+  action?: { value?: { action?: string } };
+  open_chat_id?: string;
+  open_id?: string;
+  open_message_id?: string;
+}
+
 interface FeishuConfig {
   appId: string;
   appSecret: string;
@@ -37,7 +64,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
     });
 
     eventDispatcher.register({
-      'im.message.receive_v1': async (event: any) => {
+      'im.message.receive_v1': async (event: { sender?: { sender_id?: { user_id?: string } }; message?: { message_type?: string; content: string; chat_id: string; message_id: string } }) => {
         const msg = event?.message;
         if (!msg || msg.message_type !== 'text') return;
 
@@ -61,17 +88,18 @@ export class FeishuAdapter extends BaseChannelAdapter {
       },
     });
 
-    const cardHandler = new CardActionHandler({}, (data: any) => {
-      const callbackData = data?.action?.value?.action;
+    const cardHandler = new CardActionHandler({}, (data: unknown) => {
+      const cardData = data as FeishuCardActionData;
+      const callbackData = cardData?.action?.value?.action;
       if (!callbackData) return {};
 
       this.messageQueue.push({
         channelType: 'feishu',
-        chatId: data.open_chat_id ?? '',
-        userId: data.open_id ?? '',
+        chatId: cardData.open_chat_id ?? '',
+        userId: cardData.open_id ?? '',
         text: '',
         callbackData,
-        messageId: data.open_message_id ?? '',
+        messageId: cardData.open_message_id ?? '',
       });
 
       return {};
@@ -90,7 +118,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
       }
       const body = Buffer.concat(chunks).toString('utf-8');
 
-      let result: any;
+      let result: unknown;
       try {
         if (req.url === '/event') {
           result = await eventDispatcher.invoke(body);
@@ -131,7 +159,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
   }
 
   private buildCard(text: string, buttons?: OutboundMessage['buttons']): string {
-    const elements: any[] = [
+    const elements: FeishuCardElement[] = [
       { tag: 'markdown', content: text },
     ];
 
@@ -169,7 +197,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
         },
       });
 
-      const messageId = (result as any)?.data?.message_id ?? '';
+      const messageId = (result as FeishuCreateMessageResult)?.data?.message_id ?? '';
       return { messageId: String(messageId), success: true };
     } else {
       const post = {
@@ -188,7 +216,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
         },
       });
 
-      const messageId = (result as any)?.data?.message_id ?? '';
+      const messageId = (result as FeishuCreateMessageResult)?.data?.message_id ?? '';
       return { messageId: String(messageId), success: true };
     }
   }
@@ -201,7 +229,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
       path: { message_id: messageId },
       data: {
         content: this.buildCard(text, message.buttons),
-      } as any,
+      },
     });
   }
 

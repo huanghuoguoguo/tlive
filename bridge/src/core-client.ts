@@ -40,15 +40,16 @@ export class CoreClientImpl {
     return this.healthy;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- return type used by tests and callers that access arbitrary session properties
   async listSessions(): Promise<any[]> {
-    return this.request('GET', '/api/sessions');
+    return this.request('GET', '/api/sessions') as Promise<any[]>;
   }
 
   getBaseUrl(): string {
     return this.baseUrl;
   }
 
-  private async request(method: string, path: string, body?: any): Promise<any> {
+  private async request(method: string, path: string, body?: unknown): Promise<unknown> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method,
       headers: {

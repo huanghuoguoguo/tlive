@@ -38,6 +38,7 @@ export class PlatformError extends BridgeError {
 }
 
 export function classifyError(channel: ChannelType | string, err: unknown): BridgeError {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- classifyError inspects arbitrary error shapes from multiple SDKs
   const e = err as Record<string, any>;
   const message = e?.message ?? String(err);
 
