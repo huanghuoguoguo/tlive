@@ -245,11 +245,12 @@ describe('BridgeManager', () => {
       const adapter = mockAdapter();
       manager.registerAdapter(adapter);
 
-      // Simulate a tracked hook message
+      // Simulate a tracked hook message and mark core as available
       (manager as any).hookMessages.set('hook-msg-1', {
         sessionId: 'session-abc',
         timestamp: Date.now(),
       });
+      (manager as any).coreAvailable = true;
 
       const originalFetch = global.fetch;
       global.fetch = vi.fn().mockResolvedValue({ ok: true }) as any;

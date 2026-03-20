@@ -106,8 +106,9 @@ export class BridgeManager {
 
   /** Track a hook message for reply routing */
   trackHookMessage(messageId: string, sessionId: string): void {
-    if (!sessionId) return;
-    this.hookMessages.set(messageId, { sessionId, timestamp: Date.now() });
+    // Track even without sessionId — reply routing will send to PTY if session exists,
+    // and the tracking prevents the reply from being misrouted to the Bridge LLM.
+    this.hookMessages.set(messageId, { sessionId: sessionId || '', timestamp: Date.now() });
     // Prune entries older than 24h
     for (const [id, entry] of this.hookMessages) {
       if (Date.now() - entry.timestamp > 24 * 60 * 60 * 1000) this.hookMessages.delete(id);
@@ -170,19 +171,23 @@ export class BridgeManager {
     // Reply routing: quote-reply to a hook message → send to PTY stdin
     if (msg.text && msg.replyToMessageId && this.hookMessages.has(msg.replyToMessageId)) {
       const entry = this.hookMessages.get(msg.replyToMessageId)!;
-      try {
-        await fetch(`${this.coreUrl}/api/sessions/${entry.sessionId}/input`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${this.token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ text: msg.text + '\r' }),
-          signal: AbortSignal.timeout(5000),
-        });
-        await adapter.send({ chatId: msg.chatId, text: '✓ Sent to local session' });
-      } catch (err) {
-        await adapter.send({ chatId: msg.chatId, text: `❌ Failed to send: ${err}` });
+      if (entry.sessionId && this.coreAvailable) {
+        try {
+          await fetch(`${this.coreUrl}/api/sessions/${entry.sessionId}/input`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${this.token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ text: msg.text + '\r' }),
+            signal: AbortSignal.timeout(5000),
+          });
+          await adapter.send({ chatId: msg.chatId, text: '✓ Sent to local session' });
+        } catch (err) {
+          await adapter.send({ chatId: msg.chatId, text: `❌ Failed to send: ${err}` });
+        }
+      } else {
+        await adapter.send({ chatId: msg.chatId, text: '⚠️ Local session not available (no session ID)' });
       }
       return true;
     }
