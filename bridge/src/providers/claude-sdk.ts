@@ -127,30 +127,15 @@ export class ClaudeSDKProvider implements LLMProvider {
               abortController: params.abortSignal
                 ? Object.assign(new AbortController(), { signal: params.abortSignal })
                 : undefined,
+              // Auto-allow all tools at SDK level.
+              // Permissions are handled by Claude Code's hook system:
+              //   PermissionRequest hook → Go Core → IM (Telegram/Discord/Feishu)
+              // If no hook is installed, Claude Code's built-in permission dialog handles it.
               canUseTool: async (
-                toolName: string,
+                _toolName: string,
                 input: Record<string, unknown>,
-                opts: { toolUseID: string; suggestions?: string[] },
               ): Promise<PermissionResult> => {
-                controller.enqueue(
-                  sseEvent('permission_request', {
-                    permissionRequestId: opts.toolUseID,
-                    toolName,
-                    toolInput: input,
-                  }),
-                );
-
-                const result = await pendingPerms.waitFor(opts.toolUseID, {
-                  onTimeout: () => onPermissionTimeout?.(toolName, opts.toolUseID),
-                });
-
-                if (result.behavior === 'allow') {
-                  return { behavior: 'allow' as const, updatedInput: input };
-                }
-                return {
-                  behavior: 'deny' as const,
-                  message: result.message || 'Denied by user',
-                };
+                return { behavior: 'allow' as const, updatedInput: input };
               },
             };
 
