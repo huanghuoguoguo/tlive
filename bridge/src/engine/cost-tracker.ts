@@ -43,7 +43,8 @@ export class CostTracker {
   }
 
   private estimateCost(inputTokens: number, outputTokens: number): number {
-    // Fallback pricing (Sonnet-level): $3/M input, $15/M output
-    return (inputTokens * 3 + outputTokens * 15) / 1_000_000;
+    const inputRate = process.env.TL_COST_INPUT_PER_M ? parseFloat(process.env.TL_COST_INPUT_PER_M) : 3;
+    const outputRate = process.env.TL_COST_OUTPUT_PER_M ? parseFloat(process.env.TL_COST_OUTPUT_PER_M) : 15;
+    return (inputTokens * inputRate + outputTokens * outputRate) / 1_000_000;
   }
 }
