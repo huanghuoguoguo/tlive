@@ -34,6 +34,11 @@ export interface OutboundMessage {
     fields?: Array<{ name: string; value: string; inline?: boolean }>;
     footer?: string;
   };
+  /** Feishu card header (template color + title) */
+  feishuHeader?: {
+    template: string;
+    title: string;
+  };
 }
 
 export interface SendResult {

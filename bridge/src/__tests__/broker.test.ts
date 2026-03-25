@@ -27,26 +27,26 @@ describe('PermissionBroker', () => {
   it('forwards permission request to adapter with buttons and web link', async () => {
     await broker.forwardPermissionRequest(
       { permissionRequestId: 'perm1', toolName: 'Edit', toolInput: { file: 'src/auth.ts' } },
-      'chat123',
+      () => 'chat123',
       [adapter]
     );
 
     expect(adapter.send).toHaveBeenCalledOnce();
     const msg = (adapter.send as any).mock.calls[0][0];
     expect(msg.chatId).toBe('chat123');
-    expect(msg.buttons).toHaveLength(3); // Allow, Allow Session, Deny
+    expect(msg.buttons).toHaveLength(3); // Allow, Always, Deny
     expect(msg.buttons[0].callbackData).toBe('perm:allow:perm1');
     expect(msg.buttons[1].callbackData).toBe('perm:allow_session:perm1');
     expect(msg.buttons[2].callbackData).toBe('perm:deny:perm1');
-    // Should include web link
-    expect(msg.text || msg.html).toContain('https://termlive.example.com');
+    // Should include web link (HTML format for telegram adapter)
+    expect(msg.html).toContain('https://termlive.example.com');
   });
 
   it('truncates long tool input to 300 chars', async () => {
     const longInput = 'x'.repeat(500);
     await broker.forwardPermissionRequest(
       { permissionRequestId: 'p1', toolName: 'Edit', toolInput: longInput },
-      'chat1',
+      () => 'chat1',
       [adapter]
     );
 

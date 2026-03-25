@@ -1,6 +1,5 @@
 import { PendingPermissions } from './gateway.js';
 import type { BaseChannelAdapter } from '../channels/base.js';
-import type { OutboundMessage } from '../channels/types.js';
 
 export class PermissionBroker {
   private gateway: PendingPermissions;
@@ -13,28 +12,39 @@ export class PermissionBroker {
 
   async forwardPermissionRequest(
     request: { permissionRequestId: string; toolName: string; toolInput: unknown },
-    chatId: string,
+    getChatId: (channelType: string) => string,
     adapters: BaseChannelAdapter[]
   ): Promise<void> {
     const inputStr = typeof request.toolInput === 'string'
       ? request.toolInput
       : JSON.stringify(request.toolInput, null, 2);
-    const truncatedInput = inputStr.length > 300 ? inputStr.slice(0, 297) + '...' : inputStr;
 
-    const webLink = this.publicUrl ? `\n\nView Terminal: ${this.publicUrl}` : '';
+    const { formatPermissionCard } = await import('../formatting/index.js');
 
-    const message: OutboundMessage = {
-      chatId,
-      text: `Permission Required\n\nTool: ${request.toolName}\n\`\`\`\n${truncatedInput}\n\`\`\`\n\nExpires in 5 minutes${webLink}`,
-      buttons: [
-        { label: 'Allow', callbackData: `perm:allow:${request.permissionRequestId}`, style: 'primary' },
-        { label: 'Allow Session', callbackData: `perm:allow_session:${request.permissionRequestId}`, style: 'default' },
-        { label: 'Deny', callbackData: `perm:deny:${request.permissionRequestId}`, style: 'danger' },
-      ],
-    };
+    for (const adapter of adapters) {
+      const chatId = getChatId(adapter.channelType);
+      if (!chatId) continue;
 
-    // Send to all connected adapters
-    await Promise.all(adapters.map(a => a.send(message)));
+      const formatted = formatPermissionCard(
+        {
+          toolName: request.toolName,
+          toolInput: inputStr,
+          permissionId: request.permissionRequestId,
+          expiresInMinutes: 5,
+          terminalUrl: this.publicUrl || undefined,
+        },
+        adapter.channelType as import('../channels/types.js').ChannelType,
+      );
+
+      await adapter.send({
+        chatId,
+        text: formatted.text,
+        html: formatted.html,
+        embed: formatted.embed,
+        buttons: formatted.buttons,
+        feishuHeader: formatted.feishuHeader,
+      });
+    }
   }
 
   handlePermissionCallback(callbackData: string): boolean {

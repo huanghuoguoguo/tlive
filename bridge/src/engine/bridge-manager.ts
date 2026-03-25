@@ -155,37 +155,43 @@ export class BridgeManager {
 
   /** Send a hook notification to IM with [Local] prefix and track for reply routing */
   async sendHookNotification(adapter: BaseChannelAdapter, chatId: string, hook: HookNotificationData, receiveIdType?: string): Promise<void> {
+    const { formatNotification } = await import('../formatting/index.js');
     const hookType = hook.tlive_hook_type || '';
-    const parts: string[] = [];
+
+    let title: string;
+    let type: 'stop' | 'idle_prompt' | 'generic';
+    let summary: string | undefined;
 
     if (hookType === 'stop') {
-      parts.push('🖥 [Local] ✅ Task complete');
-
-      // Use last_assistant_message from Claude Code Stop hook (primary),
-      // fall back to last_output enriched by Go Core from PTY buffer
-      const summary = (hook.last_assistant_message || hook.last_output || '').trim();
-      if (summary) {
-        const truncated = summary.length > 3000 ? summary.slice(0, 2997) + '...' : summary;
-        parts.push('', `> ${truncated.replace(/\n/g, '\n> ')}`);
-      }
+      title = 'Task Complete';
+      type = 'stop';
+      const raw = (hook.last_assistant_message || hook.last_output || '').trim();
+      summary = raw ? (raw.length > 3000 ? raw.slice(0, 2997) + '...' : raw) : undefined;
     } else if (hook.notification_type === 'idle_prompt') {
-      parts.push(`🖥 [Local] ${hook.message || 'Claude is waiting for input...'}`);
+      title = hook.message || 'Claude is waiting for input...';
+      type = 'idle_prompt';
     } else {
-      parts.push(`🖥 [Local] ${hook.message || 'Notification'}`);
+      title = hook.message || 'Notification';
+      type = 'generic';
     }
 
-    // Add web terminal link if Go Core is available
+    let terminalUrl: string | undefined;
     if (this.coreAvailable && hook.tlive_session_id) {
       const config = loadConfig();
       const baseUrl = config.publicUrl || `http://localhost:${config.port || 8080}`;
-      const url = `${baseUrl}/terminal.html?id=${hook.tlive_session_id}&token=${this.token}`;
-      parts.push('', `🔗 [Open Terminal](${url})`);
+      terminalUrl = `${baseUrl}/terminal.html?id=${hook.tlive_session_id}&token=${this.token}`;
     }
 
-    const raw = parts.join('\n');
-    const outMsg = adapter.channelType === 'telegram'
-      ? { chatId, html: markdownToTelegram(raw) }
-      : { chatId, text: raw, receiveIdType };
+    const formatted = formatNotification({ type, title, summary, terminalUrl }, adapter.channelType as any);
+
+    const outMsg: import('../channels/types.js').OutboundMessage = {
+      chatId,
+      text: formatted.text,
+      html: formatted.html,
+      embed: formatted.embed,
+      feishuHeader: formatted.feishuHeader,
+      receiveIdType,
+    };
     const result = await adapter.send(outMsg);
     this.trackHookMessage(result.messageId, hook.tlive_session_id || '');
   }
@@ -397,7 +403,11 @@ export class BridgeManager {
         },
         onError: (err) => stream.onError(err),
         onPermissionRequest: async (req) => {
-          await this.broker.forwardPermissionRequest(req, msg.chatId, [adapter]);
+          await this.broker.forwardPermissionRequest(
+            req,
+            (channelType) => this.getLastChatId(channelType) || msg.chatId,
+            this.getAdapters()
+          );
         },
       });
 

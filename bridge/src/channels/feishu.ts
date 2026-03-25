@@ -209,7 +209,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
         data: {
           receive_id: message.chatId,
           msg_type: 'interactive',
-          content: this.buildCard(raw, message.buttons),
+          content: this.buildCard(raw, message.buttons, message.feishuHeader),
           ...(message.replyToMessageId ? { root_id: message.replyToMessageId } : {}),
         },
       });
