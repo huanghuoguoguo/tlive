@@ -27,7 +27,6 @@ You are managing the TLive IM Bridge — bidirectional chat with AI coding tools
 The Bridge uses the Claude Agent SDK (or Codex SDK) to interact with the AI coding tool. It is completely independent from the optional Go Core web terminal server.
 
 User data: `~/.tlive/`
-Skill directory (SKILL_DIR): the directory where this SKILL.md lives.
 
 ## Command Parsing
 
@@ -52,7 +51,7 @@ Skill directory (SKILL_DIR): the directory where this SKILL.md lives.
 ## Config Check (all commands except `setup`)
 
 Before any command except `setup`, check `~/.tlive/config.env`:
-- **Missing** → Claude Code: auto-start `setup` wizard. Codex: show `SKILL_DIR/config.env.example` and stop.
+- **Missing** → Claude Code: auto-start `setup` wizard. Codex: show `~/.tlive/docs/config.env.example` and stop.
 - **Exists** → proceed
 
 ## Subcommands
@@ -62,13 +61,8 @@ Before any command except `setup`, check `~/.tlive/config.env`:
 ```
 1. Check config.env → if missing, auto-start setup
 2. Check Bridge PID → if running, show status instead
-3. Build if needed:
-   [ -f SKILL_DIR/bridge/dist/main.mjs ] || (cd SKILL_DIR/bridge && npm install && npm run build)
-4. Start Bridge daemon:
-   mkdir -p ~/.tlive/runtime
-   cd SKILL_DIR && nohup node bridge/dist/main.mjs > ~/.tlive/logs/bridge-console.log 2>&1 &
-   echo $! > ~/.tlive/runtime/bridge.pid
-5. Wait 2s, verify alive
+3. Start Bridge: tlive start
+4. Wait 2s, verify alive: tlive status
 6. Report channels + web terminal status
 ```
 
@@ -76,7 +70,7 @@ Before any command except `setup`, check `~/.tlive/config.env`:
 
 Interactive wizard. Collect **one field at a time**, confirm each (mask secrets to last 4 chars).
 
-Before asking for platform credentials, read `SKILL_DIR/references/setup-guides.md` internally. Only mention the specific next step the user needs — don't dump the full guide. Show the relevant guide section only if the user asks for help.
+Before asking for platform credentials, read `~/.tlive/docs/setup-guides.md` internally. Only mention the specific next step the user needs — don't dump the full guide. Show the relevant guide section only if the user asks for help.
 
 **Step 1 — Choose IM platforms:**
 ```
@@ -103,7 +97,7 @@ Enter numbers (e.g., 1,3):"
 2. Ask user to confirm before writing
 3. `mkdir -p ~/.tlive/{data,logs,runtime}`
 4. Write `~/.tlive/config.env`, then `chmod 600`
-5. Validate tokens — read `SKILL_DIR/references/token-validation.md` for exact commands per platform
+5. Validate tokens — read `~/.tlive/docs/token-validation.md` for exact commands per platform
 6. Report results. If validation fails, explain what's wrong.
 7. On success: "Setup complete! I'll start the Bridge now." Then auto-start.
 
@@ -112,7 +106,7 @@ Enter numbers (e.g., 1,3):"
 1. Read current config from `~/.tlive/config.env`
 2. Show current settings in a table (secrets masked to last 4 chars only)
 3. Ask what the user wants to change
-4. Collect new values one at a time, show where to find each value (show full guide from `SKILL_DIR/references/setup-guides.md` only if asked)
+4. Collect new values one at a time, show where to find each value (show full guide from `~/.tlive/docs/setup-guides.md` only if asked)
 5. Update config file
 6. Re-validate any changed tokens
 7. Remind: "Run `/tlive stop` then `/tlive start` to apply changes."
@@ -161,7 +155,7 @@ tail -n ${N:-50} ~/.tlive/logs/bridge.log
 
 ### `doctor`
 
-Run diagnostics and suggest fixes. For complex issues, read `SKILL_DIR/references/troubleshooting.md`.
+Run diagnostics and suggest fixes. For complex issues, read `~/.tlive/docs/troubleshooting.md`.
 
 ```bash
 echo "=== TLive Doctor ==="
@@ -176,7 +170,7 @@ echo -n "Claude CLI: " && claude --version 2>/dev/null || echo "NOT FOUND — in
 [ -f ~/.tlive/config.env ] && echo "Config: ✓" || echo "Config: ✗ — run /tlive setup"
 
 # Bridge build
-[ -f SKILL_DIR/bridge/dist/main.mjs ] && echo "Bridge build: ✓" || echo "Bridge build: ✗ — run: cd SKILL_DIR/bridge && npm run build"
+# Bridge build check handled by 'tlive start' — skip here
 
 # Bridge process
 if [ -f ~/.tlive/runtime/bridge.pid ] && kill -0 "$(cat ~/.tlive/runtime/bridge.pid)" 2>/dev/null; then
@@ -200,7 +194,7 @@ fi
 [ -f ~/.tlive/hooks-paused ] && echo "Hooks: ⏸ paused" || echo "Hooks: ▶ active"
 ```
 
-Then validate IM tokens if configured — read `SKILL_DIR/references/token-validation.md` for commands.
+Then validate IM tokens if configured — read `~/.tlive/docs/token-validation.md` for commands.
 
 ### `help`
 
