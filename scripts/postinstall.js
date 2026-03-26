@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // postinstall: download Go Core binary + copy hook scripts to ~/.tlive/bin/
-import { createWriteStream, readFileSync, chmodSync, mkdirSync, existsSync, copyFileSync, unlinkSync, statSync } from 'node:fs';
+import { createWriteStream, readFileSync, writeFileSync, chmodSync, mkdirSync, existsSync, copyFileSync, unlinkSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir, platform, arch } from 'node:os';
@@ -9,6 +9,7 @@ import { get } from 'node:https';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const GITHUB_REPO = 'y49/tlive';
 const BIN_DIR = join(homedir(), '.tlive', 'bin');
+const VERSION_FILE = join(BIN_DIR, '.core-version');
 
 const PLATFORM_MAP = { linux: 'linux', darwin: 'darwin', win32: 'windows' };
 const ARCH_MAP = { x64: 'amd64', arm64: 'arm64' };
@@ -89,11 +90,22 @@ async function downloadGoBinary() {
 
   if (existsSync(dest)) {
     if (statSync(dest).size > 0) {
-      console.log(`tlive-core already exists at ${dest}`);
-      return;
+      // Check if existing binary matches current package version
+      try {
+        const installed = readFileSync(VERSION_FILE, 'utf-8').trim();
+        if (installed === version) {
+          console.log(`tlive-core ${version} already installed at ${dest}`);
+          return;
+        }
+        console.log(`Upgrading tlive-core from ${installed} to ${version}...`);
+      } catch {
+        // No version file — legacy install, re-download
+      }
+      unlinkSync(dest);
+    } else {
+      // Remove empty/corrupt file from failed download
+      unlinkSync(dest);
     }
-    // Remove empty/corrupt file from failed download
-    unlinkSync(dest);
   }
 
   mkdirSync(BIN_DIR, { recursive: true });
@@ -108,7 +120,8 @@ async function downloadGoBinary() {
     if (os !== 'windows') {
       chmodSync(dest, 0o755);
     }
-    console.log(`tlive-core installed to ${dest}`);
+    writeFileSync(VERSION_FILE, version);
+    console.log(`tlive-core ${version} installed to ${dest}`);
   } catch (err) {
     console.error(`Failed to download tlive-core: ${err.message}`);
     console.error('You can build from source: cd core && go build -o tlive-core ./cmd/tlive/');
