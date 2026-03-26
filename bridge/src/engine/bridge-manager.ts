@@ -9,6 +9,7 @@ import { getBridgeContext } from '../context.js';
 import { loadConfig } from '../config.js';
 import { markdownToTelegram } from '../markdown/index.js';
 import { StreamController, type VerboseLevel } from './stream-controller.js';
+import type { FeishuStreamingSession } from '../channels/feishu-streaming.js';
 import { CostTracker } from './cost-tracker.js';
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -374,29 +375,49 @@ export class BridgeManager {
     const reactions = reactionEmojis[adapter.channelType] || reactionEmojis.telegram;
     adapter.addReaction(msg.chatId, msg.messageId, reactions.processing).catch(() => {});
 
+    // Feishu: use CardKit streaming session for smoother rendering
+    let feishuSession: FeishuStreamingSession | null = null;
+    if (adapter.channelType === 'feishu' && 'createStreamingSession' in adapter) {
+      feishuSession = (adapter as any).createStreamingSession(msg.chatId, msg.receiveIdType);
+    }
+
     const platformLimits: Record<string, number> = { telegram: 4096, discord: 2000, feishu: 30000 };
     const stream = new StreamController({
       verboseLevel,
       platformLimit: platformLimits[adapter.channelType] ?? 4096,
       flushCallback: async (content, isEdit) => {
-        let outMsg: OutboundMessage;
+        // Feishu: use CardKit streaming
+        if (feishuSession) {
+          if (!isEdit) {
+            // First flush: start streaming session
+            try {
+              const messageId = await feishuSession.start(content);
+              clearInterval(typingInterval);
+              return messageId;
+            } catch {
+              // Fallback: streaming API not available, disable and use normal send
+              feishuSession = null;
+            }
+          } else {
+            // Subsequent flushes: stream update
+            feishuSession.update(content).catch(() => {});
+            return;
+          }
+        }
 
+        // Non-streaming path (Telegram, Discord, Feishu fallback)
+        let outMsg: OutboundMessage;
         if (adapter.channelType === 'telegram') {
-          // Style: italic tool chain, code-wrapped cost
           let styled = content;
-          // Wrap tool chain line in italic
           styled = styled.replace(/^((?:📖|✏️|📝|🖥️|🔍|📂|🤖|🌐|🔧)[^\n]*)\n(━+)/m, '<i>$1</i>\n$2');
-          // Wrap cost line in code
           styled = styled.replace(/(📊[^\n]+)$/m, '<code>$1</code>');
           outMsg = { chatId: msg.chatId, html: markdownToTelegram(styled) };
         } else if (adapter.channelType === 'discord') {
-          // Style: italic tool chain, inline code cost
           let styled = content;
           styled = styled.replace(/^((?:📖|✏️|📝|🖥️|🔍|📂|🤖|🌐|🔧)[^\n]*)\n(━+)/m, '*$1*\n$2');
           styled = styled.replace(/(📊[^\n]+)$/m, '`$1`');
           outMsg = { chatId: msg.chatId, text: styled };
         } else {
-          // Feishu: content goes into card markdown, no extra wrapping needed
           outMsg = { chatId: msg.chatId, text: content };
         }
 
@@ -458,6 +479,10 @@ export class BridgeManager {
     } finally {
       clearInterval(typingInterval);
       stream.dispose();
+      // Close Feishu streaming card
+      if (feishuSession) {
+        feishuSession.close().catch(() => {});
+      }
     }
 
     return true;

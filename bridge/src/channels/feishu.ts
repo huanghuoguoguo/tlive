@@ -5,6 +5,7 @@ import { loadConfig } from '../config.js';
 import { classifyError } from './errors.js';
 import { markdownToFeishu } from '../markdown/feishu.js';
 import { buildFeishuCard } from '../formatting/feishu-card.js';
+import { FeishuStreamingSession } from './feishu-streaming.js';
 
 /** Feishu interactive card element – now imported from shared types */
 type FeishuCardElement = import('../formatting/types.js').FeishuCardElement;
@@ -251,6 +252,17 @@ export class FeishuAdapter extends BaseChannelAdapter {
     } catch {
       // Non-fatal: stale message edits (e.g. after restart) should not crash the process
     }
+  }
+
+  createStreamingSession(chatId: string, receiveIdType?: string, replyToMessageId?: string, header?: { template: string; title: string }): FeishuStreamingSession | null {
+    if (!this.client) return null;
+    return new FeishuStreamingSession({
+      client: this.client,
+      chatId,
+      receiveIdType,
+      replyToMessageId,
+      header,
+    });
   }
 
   async sendTyping(_chatId: string): Promise<void> {
