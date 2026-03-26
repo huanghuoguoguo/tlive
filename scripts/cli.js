@@ -75,7 +75,10 @@ function ensureBridgeRunning() {
   const configFile = join(homedir(), '.tlive', 'config.env');
   if (!existsSync(configFile)) return; // no config, skip
   try {
-    execSync(`bash ${DAEMON_SH} start`, { stdio: 'ignore' });
+    execSync(`bash ${DAEMON_SH} start`, {
+      stdio: 'ignore',
+      env: { ...process.env, TL_DEFAULT_WORKDIR: process.env.TL_DEFAULT_WORKDIR || process.cwd() },
+    });
     console.log('  Bridge auto-started in background');
   } catch {}
 }

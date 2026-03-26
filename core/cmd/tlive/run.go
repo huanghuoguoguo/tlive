@@ -107,7 +107,7 @@ func runHost(cfg *config.Config, args []string, rows, cols uint16, lockPath stri
 	if err != nil {
 		return fmt.Errorf("failed to start command: %w", err)
 	}
-	log.Printf("session created: id=%s cmd=%s pid=%d", ms.Session.ID, ms.Session.Command, ms.Session.Pid)
+	log.Printf("session created: id=%s cmd=%s args=%v pid=%d", ms.Session.ID, ms.Session.Command, args[1:], ms.Session.Pid)
 	defer mgr.StopSession(ms.Session.ID)
 
 	// Register local output client IMMEDIATELY after session creation to

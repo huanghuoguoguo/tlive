@@ -36,7 +36,9 @@ start() {
   fi
 
   echo "Starting Bridge..."
-  node "$bridge_entry" >> "$LOG_DIR/bridge.log" 2>&1 &
+  # Pass the launch directory as default workdir so Claude sessions
+  # use the user's project directory, not the bridge install path
+  TL_DEFAULT_WORKDIR="${TL_DEFAULT_WORKDIR:-$(pwd)}" node "$bridge_entry" >> "$LOG_DIR/bridge.log" 2>&1 &
   echo $! > "$RUNTIME_DIR/bridge.pid"
   echo "Bridge started (PID $(cat "$RUNTIME_DIR/bridge.pid"))"
 }

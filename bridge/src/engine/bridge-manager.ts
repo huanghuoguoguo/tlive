@@ -14,7 +14,31 @@ import type { FeishuStreamingSession } from '../channels/feishu-streaming.js';
 import { CostTracker } from './cost-tracker.js';
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { homedir } from 'node:os';
+import { homedir, networkInterfaces } from 'node:os';
+
+function isPrivateIPv4(ip: string): boolean {
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4) return false;
+  const num = (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3];
+  if (parts[0] === 10) return true;
+  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+  if (parts[0] === 192 && parts[1] === 168) return true;
+  return false;
+}
+
+/** Detect LAN IP address, matching Go Core's getLocalIP() logic */
+function getLocalIP(): string {
+  // Prefer iterating interfaces for a private IPv4 address
+  const ifaces = networkInterfaces();
+  for (const name of Object.keys(ifaces)) {
+    for (const info of ifaces[name] || []) {
+      if (info.family === 'IPv4' && !info.internal && isPrivateIPv4(info.address)) {
+        return info.address;
+      }
+    }
+  }
+  return 'localhost';
+}
 
 /** Data shape for hook notifications (stop, idle_prompt, etc.) from Go Core */
 export interface HookNotificationData {
@@ -57,7 +81,8 @@ export class BridgeManager {
 
   constructor() {
     const config = loadConfig();
-    this.broker = new PermissionBroker(this.gateway, config.publicUrl);
+    const effectivePublicUrl = config.publicUrl || `http://${getLocalIP()}:${config.port || 8080}`;
+    this.broker = new PermissionBroker(this.gateway, effectivePublicUrl);
     this.coreUrl = config.coreUrl;
     this.token = config.token;
     // Load persisted chatIds (so hook routing works without needing a message first)
@@ -193,7 +218,7 @@ export class BridgeManager {
     let terminalUrl: string | undefined;
     if (this.coreAvailable && hook.tlive_session_id) {
       const config = loadConfig();
-      const baseUrl = config.publicUrl || `http://localhost:${config.port || 8080}`;
+      const baseUrl = config.publicUrl || `http://${getLocalIP()}:${config.port || 8080}`;
       terminalUrl = `${baseUrl}/terminal.html?id=${hook.tlive_session_id}&token=${this.token}`;
     }
 
