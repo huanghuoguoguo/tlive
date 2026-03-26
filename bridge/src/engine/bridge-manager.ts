@@ -353,9 +353,23 @@ export class BridgeManager {
               allow_always: '📌 Always Allowed',
               deny: '❌ Denied',
             };
+            const label = labels[decision] || '✅ Allowed';
+            // Try to update the original card (replace buttons with result)
+            try {
+              await adapter.editMessage(msg.chatId, msg.messageId, {
+                chatId: msg.chatId,
+                text: label,
+                feishuHeader: {
+                  template: decision === 'deny' ? 'red' : 'green',
+                  title: label,
+                },
+              });
+            } catch {
+              // Fallback: send new message if edit fails
+            }
             const confirmResult = await adapter.send({
               chatId: msg.chatId,
-              text: labels[decision] || '✅ Allowed',
+              text: label,
             });
             // Track confirmation message for reply routing
             if (sessionId) {
