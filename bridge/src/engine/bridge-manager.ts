@@ -178,9 +178,9 @@ export class BridgeManager {
       type = 'stop';
       const raw = (hook.last_assistant_message || hook.last_output || '').trim();
       summary = raw ? (raw.length > 3000 ? raw.slice(0, 2997) + '...' : raw) : undefined;
-      title = '';
+      title = '🖥 Local';
     } else if (hook.notification_type === 'idle_prompt') {
-      title = hook.message || 'Waiting for input...';
+      title = '🖥 Local · ' + (hook.message || 'Waiting for input...');
       type = 'idle_prompt';
     } else {
       title = hook.message || 'Notification';
