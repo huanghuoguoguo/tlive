@@ -233,9 +233,28 @@ export class FeishuAdapter extends BaseChannelAdapter {
       },
     });
 
+    // Register card action handler for button callbacks (schema 2.0 cards)
+    eventDispatcher.register({
+      'card.action.trigger': async (data: unknown) => {
+        const event = data as { operator?: { user_id?: string; open_id?: string }; action?: { value?: Record<string, string> }; context?: { chat_id?: string; open_message_id?: string } };
+        const action = event?.action?.value?.action;
+        if (!action) return;
+        const userId = event?.operator?.user_id || event?.operator?.open_id || '';
+        const chatId = event?.context?.chat_id || '';
+        const messageId = event?.context?.open_message_id || '';
+        console.log(`[feishu] Card action: ${action} from ${userId}`);
+        this.messageQueue.push({
+          channelType: 'feishu',
+          chatId,
+          userId,
+          text: '',
+          callbackData: action,
+          messageId,
+        });
+      },
+    } as any);
+
     // Use WebSocket long connection (no public callback URL needed)
-    // Note: CardActionHandler is NOT supported via WSClient — Feishu uses
-    // text-based permission approval instead of card action callbacks.
     this.wsClient = new WSClient({
       appId: this.config.appId,
       appSecret: this.config.appSecret,

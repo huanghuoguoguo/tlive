@@ -288,17 +288,34 @@ export class BridgeManager {
     }
 
     // Reply routing: quote-reply to a hook message → send to PTY stdin
-    if (msg.text && msg.replyToMessageId && this.hookMessages.has(msg.replyToMessageId)) {
+    if ((msg.text || msg.attachments?.length) && msg.replyToMessageId && this.hookMessages.has(msg.replyToMessageId)) {
       const entry = this.hookMessages.get(msg.replyToMessageId)!;
       if (entry.sessionId && this.coreAvailable) {
         try {
+          // If images attached, save as temp files and include paths in the text
+          let inputText = msg.text || '';
+          if (msg.attachments?.length) {
+            const { writeFileSync, mkdirSync } = await import('node:fs');
+            const { join } = await import('node:path');
+            const { tmpdir } = await import('node:os');
+            const imgDir = join(tmpdir(), 'tlive-images');
+            mkdirSync(imgDir, { recursive: true });
+            for (const att of msg.attachments) {
+              if (att.type === 'image') {
+                const ext = att.mimeType === 'image/png' ? '.png' : '.jpg';
+                const filePath = join(imgDir, `img-${Date.now()}${ext}`);
+                writeFileSync(filePath, Buffer.from(att.base64Data, 'base64'));
+                inputText = inputText ? `${inputText}\n${filePath}` : filePath;
+              }
+            }
+          }
           await fetch(`${this.coreUrl}/api/sessions/${entry.sessionId}/input`, {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${this.token}`,
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ text: msg.text + '\r' }),
+            body: JSON.stringify({ text: inputText + '\r' }),
             signal: AbortSignal.timeout(5000),
           });
           await adapter.send({ chatId: msg.chatId, text: '✓ Sent to local session' });
