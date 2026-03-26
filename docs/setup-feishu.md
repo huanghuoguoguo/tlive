@@ -44,35 +44,43 @@ This guide walks you through creating a Feishu (or Lark) custom app and connecti
 Your app needs permission to send and receive messages.
 
 1. In the left sidebar, go to **Permissions & Scopes**
-2. Click **Add Scopes** (or **Add Permissions**)
-3. Search for and add these permissions:
+2. Click **Batch import**, then paste the following JSON to add all required permissions at once:
 
-**Required:**
+```json
+{
+  "scopes": {
+    "tenant": [
+      "cardkit:card:read",
+      "cardkit:card:write",
+      "im:chat:readonly",
+      "im:message",
+      "im:message.group_at_msg:readonly",
+      "im:message.p2p_msg:readonly",
+      "im:message:readonly",
+      "im:message:send_as_bot",
+      "im:resource"
+    ]
+  }
+}
+```
 
-| Permission | Description |
-|---|---|
-| `im:message` | Send and receive messages |
-| `im:message:send_as_bot` | Send messages as a bot |
-| `im:chat:readonly` | Read basic chat info |
+**Permission details:**
 
-**Recommended (enhanced experience):**
+| Permission | Description | Necessity |
+|---|---|---|
+| `im:message` | Send and receive messages | Required |
+| `im:message:send_as_bot` | Send messages as a bot | Required |
+| `im:chat:readonly` | Read basic chat info | Required |
+| `im:message:readonly` | Read message content | Required |
+| `im:message.p2p_msg:readonly` | Read P2P messages | Required |
+| `im:message.group_at_msg:readonly` | Read group @bot messages | Recommended |
+| `cardkit:card:read` | Read card info | Recommended |
+| `cardkit:card:write` | CardKit streaming cards | Recommended |
+| `im:resource` | Upload images and files | Optional |
 
-| Permission | Description |
-|---|---|
-| `im:message.reaction:write` | Emoji reactions (typing indicator) |
-| `cardkit:card:write` | CardKit streaming cards (smoother real-time rendering) |
+3. Confirm all permissions appear in the list
 
-**Optional:**
-
-| Permission | Description |
-|---|---|
-| `im:resource` | Upload images and files |
-
-4. After adding permissions, make sure they appear in your permission list
-
-<!-- TODO: screenshot of Permissions & Scopes page -->
-
-> **Important:** The three basic permissions are required. Recommended permissions provide a better interaction experience (typing indicator, streaming cards).
+> **Tip:** Using batch import adds all permissions at once — no need to search for each one individually.
 
 ## Step 4: Configure Event Subscriptions
 
@@ -182,7 +190,7 @@ All environment variable names, permissions, and event names are identical.
 - Check that `TL_FS_APP_ID` and `TL_FS_APP_SECRET` are correct (no extra spaces)
 
 **Permission denied errors**
-- Confirm required permissions (`im:message`, `im:message:send_as_bot`, `im:chat:readonly`) are added in Step 3; also recommended: `im:message.reaction:write` and `cardkit:card:write`
+- Confirm all permissions from the batch import in Step 3 appear in the permission list
 - Permissions take effect after the app is published and approved — if you added permissions later, create a new version and get it re-approved
 
 **"Invalid App ID" or "Invalid App Secret"**

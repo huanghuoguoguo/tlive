@@ -71,21 +71,25 @@ Enter comma-separated IDs to restrict access. Leave empty to allow anyone who ca
 
 ### Required Permissions
 
-Add these permissions in **Permissions & Scopes**:
+In **Permissions & Scopes**, click **Batch import** and paste:
 
-**Basic (required):**
-- `im:message` — Send and receive messages
-- `im:message:send_as_bot` — Send messages as bot
-- `im:chat:readonly` — Read chat info
-
-**Reactions (recommended):**
-- `im:message.reaction:write` — Add/remove emoji reactions (typing indicator)
-
-**Rich cards (recommended):**
-- `cardkit:card:write` — CardKit streaming cards (smooth real-time rendering)
-
-**Media (optional, for image/file sending):**
-- `im:resource` — Upload images and files
+```json
+{
+  "scopes": {
+    "tenant": [
+      "cardkit:card:read",
+      "cardkit:card:write",
+      "im:chat:readonly",
+      "im:message",
+      "im:message.group_at_msg:readonly",
+      "im:message.p2p_msg:readonly",
+      "im:message:readonly",
+      "im:message:send_as_bot",
+      "im:resource"
+    ]
+  }
+}
+```
 
 ### Event Subscriptions
 

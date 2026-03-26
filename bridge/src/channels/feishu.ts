@@ -349,6 +349,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
 
   async addReaction(_chatId: string, messageId: string, emoji: string): Promise<void> {
     if (!this.client) return;
+    console.log(`[feishu] addReaction: messageId=${messageId}, emoji=${emoji}`);
     try {
       // Remove existing reaction first (if any)
       await this.removeReaction(_chatId, messageId);

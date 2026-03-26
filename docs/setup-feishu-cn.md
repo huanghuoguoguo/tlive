@@ -44,35 +44,43 @@
 应用需要权限才能收发消息。
 
 1. 在左侧菜单中，点击 **权限管理**
-2. 点击 **添加权限**
-3. 搜索并添加以下权限：
+2. 点击 **批量开通**，粘贴以下 JSON 一键导入所有需要的权限：
 
-**必需权限：**
+```json
+{
+  "scopes": {
+    "tenant": [
+      "cardkit:card:read",
+      "cardkit:card:write",
+      "im:chat:readonly",
+      "im:message",
+      "im:message.group_at_msg:readonly",
+      "im:message.p2p_msg:readonly",
+      "im:message:readonly",
+      "im:message:send_as_bot",
+      "im:resource"
+    ]
+  }
+}
+```
 
-| 权限标识 | 说明 |
-|---|---|
-| `im:message` | 收发消息 |
-| `im:message:send_as_bot` | 以机器人身份发消息 |
-| `im:chat:readonly` | 读取群组基本信息 |
+**权限说明：**
 
-**推荐权限（增强体验）：**
+| 权限标识 | 说明 | 必要性 |
+|---|---|---|
+| `im:message` | 收发消息 | 必需 |
+| `im:message:send_as_bot` | 以机器人身份发消息 | 必需 |
+| `im:chat:readonly` | 读取群组基本信息 | 必需 |
+| `im:message:readonly` | 读取消息内容 | 必需 |
+| `im:message.p2p_msg:readonly` | 读取私聊消息 | 必需 |
+| `im:message.group_at_msg:readonly` | 读取群聊 @机器人 消息 | 推荐 |
+| `cardkit:card:read` | 读取卡片信息 | 推荐 |
+| `cardkit:card:write` | CardKit 流式卡片 | 推荐 |
+| `im:resource` | 上传图片和文件 | 可选 |
 
-| 权限标识 | 说明 |
-|---|---|
-| `im:message.reaction:write` | 表情回复（输入状态指示） |
-| `cardkit:card:write` | CardKit 流式卡片（更流畅的实时渲染） |
+3. 确认权限都出现在权限列表中
 
-**可选权限：**
-
-| 权限标识 | 说明 |
-|---|---|
-| `im:resource` | 上传图片和文件 |
-
-4. 添加完成后，确认权限都出现在权限列表中
-
-<!-- TODO: 权限管理页面的截图 -->
-
-> **重要：** 前三个基础权限缺一不可。推荐权限用于更好的交互体验（输入指示器、流式卡片）。
+> **提示：** 使用批量导入方式可一次性开通所有权限，无需逐个搜索。
 
 ## 第四步：配置事件订阅
 
@@ -182,7 +190,7 @@ TL_FS_ALLOWED_USERS=ou_xxxxxxxxxxxxxxxx
 - 检查 `TL_FS_APP_ID` 和 `TL_FS_APP_SECRET` 是否正确（注意没有多余空格）
 
 **权限不足错误**
-- 确认第三步中的基础权限（`im:message`、`im:message:send_as_bot`、`im:chat:readonly`）都已添加，推荐同时开通 `im:message.reaction:write` 和 `cardkit:card:write`
+- 确认第三步中通过批量导入开通的权限都已出现在权限列表中
 - 权限在应用发布审批后才生效——如果是后来新增的权限，需要创建新版本并重新审批
 
 **「无效的 App ID」或「无效的 App Secret」**
