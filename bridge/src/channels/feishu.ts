@@ -283,15 +283,23 @@ export class FeishuAdapter extends BaseChannelAdapter {
     ];
 
     if (buttons?.length) {
+      // Schema 2.0: buttons as direct elements in a column_set (horizontal layout)
+      const buttonColumns = buttons.map(btn => ({
+        tag: 'column' as const,
+        width: 'auto' as const,
+        vertical_align: 'top' as const,
+        elements: [{
+          tag: 'button' as const,
+          text: { tag: 'plain_text' as const, content: btn.label },
+          type: btn.style === 'danger' ? 'danger' as const : btn.style === 'primary' ? 'primary_filled' as const : 'default' as const,
+          behaviors: [{ type: 'callback' as const, value: { action: btn.callbackData } }],
+        }],
+      }));
       elements.push({
-        tag: 'action',
-        actions: buttons.map(btn => ({
-          tag: 'button',
-          text: { tag: 'plain_text', content: btn.label },
-          type: btn.style === 'danger' ? 'danger' : 'primary',
-          value: { action: btn.callbackData },
-        })),
-      });
+        tag: 'column_set',
+        flex_mode: 'flow',
+        columns: buttonColumns,
+      } as any);
     }
 
     return buildFeishuCard({
@@ -406,6 +414,9 @@ export class FeishuAdapter extends BaseChannelAdapter {
             data,
           }) as FeishuCreateMessageResult;
         } else {
+          const errAny = createErr as any;
+          const respData = errAny?.response?.data || errAny?.data;
+          console.error(`[feishu] send failed: idType=${idType}, chatId=${message.chatId}`, JSON.stringify({ code: errAny?.code, msg: errAny?.msg, message: errAny?.message, respCode: respData?.code, respMsg: respData?.msg }).slice(0, 800));
           throw createErr;
         }
       }

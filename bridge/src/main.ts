@@ -91,7 +91,7 @@ function getHookTarget(channelType: string, config: ReturnType<typeof loadConfig
   if (channelType === 'discord') {
     return { chatId: config.discord.allowedChannels[0] || '', receiveIdType: undefined };
   }
-  // Feishu: send to user directly (P2P) if allowedUsers configured
+  // Feishu: try user_id P2P first, fall back to lastChatId
   const userId = config.feishu.allowedUsers[0];
   if (userId) {
     const idType = userId.startsWith('ou_') ? 'open_id' : 'user_id';
@@ -264,13 +264,15 @@ async function main() {
           if (!target.chatId) continue;
 
           try {
-            const sendResult = await adapter.send({
+            const outMsg = {
               chatId: target.chatId,
               receiveIdType: target.receiveIdType,
               text: text,
               buttons,
               feishuHeader: { template: 'orange', title: '🔐 Permission Required' },
-            });
+            };
+            logger.info(`Sending permission card to ${adapter.channelType}: chatId=${target.chatId}, receiveIdType=${target.receiveIdType}`);
+            const sendResult = await adapter.send(outMsg);
             // Track for reply routing and permission resolution
             if (perm.session_id) {
               manager.trackHookMessage(sendResult.messageId, perm.session_id);

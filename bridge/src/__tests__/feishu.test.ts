@@ -3,7 +3,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock @larksuiteoapi/node-sdk before importing the adapter
 const mockMessageCreate = vi.fn();
 const mockMessagePatch = vi.fn().mockResolvedValue({});
-const mockEventHandler = vi.fn();
+const eventHandlers = new Map<string, (...args: any[]) => any>();
+const mockEventHandler = vi.fn(async (event: any) => {
+  const handler = eventHandlers.get('im.message.receive_v1');
+  if (handler) await handler(event);
+});
 const mockWsStart = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@larksuiteoapi/node-sdk', () => {
@@ -14,13 +18,15 @@ vi.mock('@larksuiteoapi/node-sdk', () => {
         patch: mockMessagePatch,
       },
       v1: { messageResource: { get: vi.fn().mockResolvedValue({ data: null }) } },
+      image: { get: vi.fn().mockResolvedValue(null) },
+      messageResource: { get: vi.fn().mockResolvedValue(null) },
     };
   });
 
   const MockEventDispatcher = vi.fn(function (this: any) {
     this.register = vi.fn((handlers: Record<string, (...args: any[]) => any>) => {
       for (const [key, fn] of Object.entries(handlers)) {
-        mockEventHandler.mockImplementation(fn);
+        eventHandlers.set(key, fn);
       }
     });
     this.invoke = vi.fn(async (body: string) => {
@@ -135,10 +141,14 @@ describe('FeishuAdapter', () => {
 
       const call = mockMessageCreate.mock.calls[0][0];
       const card = JSON.parse(call.data.content);
-      expect(card.body.elements[1].tag).toBe('action');
-      expect(card.body.elements[1].actions).toHaveLength(2);
-      expect(card.body.elements[1].actions[0].text.content).toBe('Allow');
-      expect(card.body.elements[1].actions[1].type).toBe('danger');
+      // Schema 2.0: buttons in column_set with behaviors
+      expect(card.body.elements[1].tag).toBe('column_set');
+      expect(card.body.elements[1].columns).toHaveLength(2);
+      const btn0 = card.body.elements[1].columns[0].elements[0];
+      const btn1 = card.body.elements[1].columns[1].elements[0];
+      expect(btn0.tag).toBe('button');
+      expect(btn0.text.content).toBe('Allow');
+      expect(btn1.type).toBe('danger');
       await adapter.stop();
     });
 
