@@ -95,7 +95,9 @@ In **Permissions & Scopes**, click **Batch import** and paste:
 
 After starting the bridge, configure events:
 1. Go to **Events & Callbacks**
-2. Add event: `im.message.receive_v1`
+2. Add events:
+   - `im.message.receive_v1` — receive messages
+   - `card.action.trigger` — card button interactions (permission approval)
 3. Set callback mode: **Long Connection (WebSocket)**
 4. Publish the app version and get admin approval
 

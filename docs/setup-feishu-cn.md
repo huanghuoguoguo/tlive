@@ -88,7 +88,9 @@
 
 1. 在左侧菜单中，点击 **事件与回调**
 2. 在 **事件订阅** 区域，点击 **添加事件**
-3. 搜索 `im.message.receive_v1` 并添加
+3. 添加以下事件：
+   - `im.message.receive_v1`（接收消息）
+   - `card.action.trigger`（卡片按钮交互回调）
 4. 设置 **回调方式**：
    - 选择 **长连接（WebSocket）**
    - **不要**选择 HTTP 回调——tlive 使用 WebSocket 模式，不需要你配置公网地址
@@ -186,7 +188,7 @@ TL_FS_ALLOWED_USERS=ou_xxxxxxxxxxxxxxxx
 
 **收不到事件 / 机器人没有响应**
 - 确认第四步中选择了 **长连接（WebSocket）**，而不是 HTTP 回调
-- 确认已添加 `im.message.receive_v1` 事件
+- 确认已添加 `im.message.receive_v1` 和 `card.action.trigger` 事件
 - 检查 `TL_FS_APP_ID` 和 `TL_FS_APP_SECRET` 是否正确（注意没有多余空格）
 
 **权限不足错误**

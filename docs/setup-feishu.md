@@ -88,7 +88,9 @@ This step tells Feishu to notify tlive when someone messages the bot.
 
 1. In the left sidebar, go to **Events & Callbacks**
 2. Under **Event Subscriptions**, click **Add Event**
-3. Search for `im.message.receive_v1` and add it
+3. Add the following events:
+   - `im.message.receive_v1` (receive messages)
+   - `card.action.trigger` (card button interaction callback)
 4. Now set the **callback mode**:
    - Select **Long Connection (WebSocket)**
    - Do **NOT** select HTTP callback — tlive uses WebSocket mode so you don't need to expose a public URL
@@ -186,7 +188,7 @@ All environment variable names, permissions, and event names are identical.
 
 **No events received / bot doesn't respond**
 - Make sure you selected **Long Connection (WebSocket)** in Step 4, not HTTP callback
-- Verify that the `im.message.receive_v1` event is added
+- Verify that both `im.message.receive_v1` and `card.action.trigger` events are added
 - Check that `TL_FS_APP_ID` and `TL_FS_APP_SECRET` are correct (no extra spaces)
 
 **Permission denied errors**
