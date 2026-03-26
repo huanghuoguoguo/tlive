@@ -9,3 +9,16 @@ export function markdownToFeishu(text: string): string {
   result = result.replace(/<\/?[^>]+>/g, '');
   return result;
 }
+
+/**
+ * Downgrade markdown headings (## Title) to bold text (**Title**).
+ * Feishu Card renders headings very large; bold is more appropriate for card content.
+ * Ensures a blank line before each heading for proper spacing.
+ */
+export function downgradeHeadings(text: string): string {
+  // Ensure blank line before heading lines (unless already blank or start of text)
+  let result = text.replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2');
+  // Convert headings to bold
+  result = result.replace(/^#{1,6}\s+(.+)$/gm, '**$1**');
+  return result;
+}

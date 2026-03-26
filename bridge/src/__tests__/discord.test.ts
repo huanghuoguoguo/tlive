@@ -21,6 +21,7 @@ const mockOn = vi.fn();
 vi.mock('discord.js', () => {
   const MockClient = vi.fn(function (this: any) {
     this.on = mockOn;
+    this.once = mockOn; // 'ready' event uses once
     this.login = mockLogin;
     this.destroy = mockDestroy;
     this.channels = { fetch: mockFetchChannel };
@@ -38,15 +39,27 @@ vi.mock('discord.js', () => {
     addComponents(...items: unknown[]) { this.components.push(...items); return this; }
   }
 
+  class MockEmbedBuilder {
+    private data: Record<string, unknown> = {};
+    setTitle(t: string) { this.data.title = t; return this; }
+    setDescription(d: string) { this.data.description = d; return this; }
+    setColor(c: number) { this.data.color = c; return this; }
+    addFields(f: unknown) { if (!this.data.fields) this.data.fields = []; (this.data.fields as unknown[]).push(f); return this; }
+    setFooter(f: unknown) { this.data.footer = f; return this; }
+  }
+
   const ButtonStyle = { Primary: 1, Danger: 4 };
-  const GatewayIntentBits = { Guilds: 1, GuildMessages: 2, MessageContent: 4 };
+  const GatewayIntentBits = { Guilds: 1, GuildMessages: 2, MessageContent: 4, GuildMessageReactions: 8 };
+  const ChannelType = {};
 
   return {
     Client: MockClient,
     ButtonBuilder: MockButtonBuilder,
     ActionRowBuilder: MockActionRowBuilder,
+    EmbedBuilder: MockEmbedBuilder,
     ButtonStyle,
     GatewayIntentBits,
+    ChannelType,
   };
 });
 
@@ -252,6 +265,57 @@ describe('DiscordAdapter', () => {
       await adapter.start();
       mockFetchChannel.mockRejectedValueOnce(new Error('network'));
       await expect(adapter.sendTyping('channel1')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('addReaction()', () => {
+    it('reacts to a message', async () => {
+      const mockReact = vi.fn().mockResolvedValue(undefined);
+      mockFetchMessage.mockResolvedValueOnce({ id: 'msg-99', react: mockReact });
+      await adapter.start();
+      await adapter.addReaction('channel1', 'msg-99', '👍');
+      expect(mockReact).toHaveBeenCalledWith('👍');
+    });
+
+    it('swallows errors', async () => {
+      mockFetchChannel.mockRejectedValueOnce(new Error('fail'));
+      await adapter.start();
+      await expect(adapter.addReaction('channel1', 'msg-99', '👍')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('removeReaction()', () => {
+    it('swallows errors when client not started', async () => {
+      await expect(adapter.removeReaction('channel1', 'msg-99')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('embed messages', () => {
+    it('sends embed-based messages', async () => {
+      await adapter.start();
+      const result = await adapter.send({
+        chatId: 'channel1',
+        embed: { title: 'Test', description: 'Hello', color: 0xFF0000 },
+      });
+      expect(result.success).toBe(true);
+      expect(mockSend).toHaveBeenCalled();
+    });
+  });
+
+  describe('thread support', () => {
+    it('sends to thread when threadId is specified', async () => {
+      await adapter.start();
+      const result = await adapter.send({ chatId: 'channel1', text: 'in thread', threadId: 'thread-1' });
+      // Should fetch the thread channel, not the parent channel
+      expect(mockFetchChannel).toHaveBeenCalledWith('thread-1');
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('start() registers ready listener for permission probing', () => {
+    it('registers once handler for ready event', async () => {
+      await adapter.start();
+      expect(mockOn).toHaveBeenCalledWith('ready', expect.any(Function));
     });
   });
 });

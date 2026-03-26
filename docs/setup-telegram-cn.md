@@ -89,18 +89,63 @@ TL_TG_ALLOWED_USERS=user-id-1,user-id-2
 
 ## 推荐的机器人设置
 
-以下设置不是必须的，但能提升使用体验。向 **@BotFather** 发送对应命令即可：
+向 **@BotFather** 发送以下命令：
 
 | 命令 | 设置 | 作用 |
 |------|------|------|
 | `/setprivacy` | 选择你的机器人 → `Disable` | 让机器人能读取群聊中的消息 |
-| `/setcommands` | 见下方 | 在 Telegram 中添加命令菜单 |
 
-对于 `/setcommands`，发送以下内容：
+> **注意：** 不再需要手动 `/setcommands` —— tlive 启动时会自动注册命令菜单（`/new`、`/status`、`/help` 等）。
+
+## 功能与配置
+
+### 群组 @提及过滤
+
+在群聊中，机器人默认只响应 **@提及** 消息，避免对群内每条消息都做出回应。
+
+```env
+TL_TG_REQUIRE_MENTION=true    # 默认：只响应 @机器人
+TL_TG_REQUIRE_MENTION=false   # 响应群内所有消息
 ```
-new - Start new session
-verbose - Set detail level
-hooks - Toggle hook approval
+
+回复机器人消息时无需 @提及。
+
+### 配对模式
+
+如果没有设置 `TL_TG_ALLOWED_USERS`，机器人会进入**配对模式**：
+
+1. 陌生用户发消息 → 机器人回复 6 位配对码
+2. 管理员在任意已授权渠道运行 `/approve <code>`
+3. 该用户获得授权，可以正常交互
+
+使用 `/pairings` 查看待审批列表。配对码 1 小时后过期。
+
+### 论坛话题 (Topics)
+
+机器人支持 Telegram 论坛式群组的话题功能，消息会自动路由到正确的话题中。
+
+### Webhook 模式（可选）
+
+默认使用长轮询。如需切换为 webhook（适用于生产环境）：
+
+```env
+TL_TG_WEBHOOK_URL=https://your-domain.com/telegram-webhook
+TL_TG_WEBHOOK_SECRET=你的随机密钥
+TL_TG_WEBHOOK_PORT=8443
+```
+
+### 链接预览
+
+默认禁用链接预览以保持消息简洁。如需启用：
+```env
+TL_TG_DISABLE_LINK_PREVIEW=false
+```
+
+### 代理
+
+如果所在地区无法访问 `api.telegram.org`：
+```env
+TL_TG_PROXY=socks5://127.0.0.1:1080
 ```
 
 ## 常见问题
@@ -116,3 +161,12 @@ hooks - Toggle hook approval
 **出现「Unauthorized」错误**
 - Token 可能已经在 BotFather 中被重新生成了，回去复制最新的 Token
 - 每次重置 Token 后，旧 Token 会立即失效
+
+**机器人在群聊中不响应**
+- 检查隐私模式是否已禁用：BotFather → `/setprivacy` → Disable
+- 更改隐私设置后，需要将机器人从群组中移除再重新添加
+- 如果 `TL_TG_REQUIRE_MENTION=true`（默认），需要 @提及 机器人
+
+**启动时出现权限警告**
+- 这是正常的信息提示。机器人启动时会检测自身权限，并对潜在问题发出警告
+- 常见警告："Group Privacy not disabled" — 参考上方说明

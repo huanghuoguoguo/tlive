@@ -5,7 +5,9 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
+  ChannelType as DChannelType,
   type TextChannel,
+  type ThreadChannel,
   type Message,
 } from 'discord.js';
 import { BaseChannelAdapter, registerAdapterFactory } from './base.js';
@@ -37,6 +39,7 @@ export class DiscordAdapter extends BaseChannelAdapter {
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessageReactions,
       ],
     });
 
@@ -59,14 +62,17 @@ export class DiscordAdapter extends BaseChannelAdapter {
         } catch { /* skip undownloadable attachments */ }
       }
 
+      // If message is in a thread, record the thread ID and use parent channel as chatId
+      const isThread = msg.channel.isThread();
       this.messageQueue.push({
         channelType: 'discord',
-        chatId: msg.channelId,
+        chatId: isThread ? (msg.channel as ThreadChannel).parentId ?? msg.channelId : msg.channelId,
         userId: msg.author.id,
         text: msg.content,
         messageId: msg.id,
         replyToMessageId: msg.reference?.messageId ?? undefined,
         attachments: attachments.length > 0 ? attachments : undefined,
+        threadId: isThread ? msg.channelId : undefined,
       });
     });
 
@@ -83,6 +89,29 @@ export class DiscordAdapter extends BaseChannelAdapter {
       });
     });
 
+    // Probe bot capabilities after login
+    this.client.once('ready', () => {
+      const user = this.client!.user;
+      console.log(`[discord] Bot ready: ${user?.tag} (id: ${user?.id})`);
+
+      // Check permissions in allowed channels
+      for (const channelId of this.config.allowedChannels) {
+        this.client!.channels.fetch(channelId).then(ch => {
+          if (!ch || !ch.isTextBased()) {
+            console.warn(`[discord] ⚠ Channel ${channelId} not found or not a text channel`);
+            return;
+          }
+          const perms = (ch as TextChannel).permissionsFor?.(user!.id);
+          if (!perms) return;
+          const required = ['SendMessages', 'ViewChannel', 'ReadMessageHistory', 'AddReactions', 'CreatePublicThreads'] as const;
+          const missing = required.filter(p => !perms.has(p as any));
+          if (missing.length > 0) {
+            console.warn(`[discord] ⚠ Missing permissions in #${(ch as TextChannel).name}: ${missing.join(', ')}`);
+          }
+        }).catch(() => {});
+      }
+    });
+
     await this.client.login(this.config.botToken);
   }
 
@@ -95,13 +124,35 @@ export class DiscordAdapter extends BaseChannelAdapter {
     return this.messageQueue.shift() ?? null;
   }
 
-  async send(message: OutboundMessage): Promise<SendResult> {
-    if (!this.client) throw new Error('Discord client not started');
+  /** Create a thread from a message. Returns the thread channel ID. */
+  async createThread(channelId: string, messageId: string, name: string): Promise<string | null> {
+    if (!this.client) return null;
+    try {
+      const channel = await this.client.channels.fetch(channelId) as TextChannel;
+      if (!channel?.threads) return null;
+      const thread = await channel.threads.create({
+        startMessage: messageId,
+        name: name.slice(0, 100), // Discord thread name limit
+        autoArchiveDuration: 1440, // 24h
+      });
+      return thread.id;
+    } catch { return null; }
+  }
 
-    const channel = await this.client.channels.fetch(message.chatId) as TextChannel;
-    if (!channel || !channel.send) {
-      throw new Error(`Channel ${message.chatId} not found or not a text channel`);
+  /** Resolve send target: thread if specified, otherwise channel */
+  private async resolveChannel(message: OutboundMessage): Promise<TextChannel | ThreadChannel> {
+    if (!this.client) throw new Error('Discord client not started');
+    // If threadId specified, send to the thread directly
+    const targetId = message.threadId ?? message.chatId;
+    const channel = await this.client.channels.fetch(targetId);
+    if (!channel || (!('send' in channel))) {
+      throw new Error(`Channel ${targetId} not found or not a text channel`);
     }
+    return channel as TextChannel | ThreadChannel;
+  }
+
+  async send(message: OutboundMessage): Promise<SendResult> {
+    const channel = await this.resolveChannel(message);
 
     // Media sending
     if (message.media) {
@@ -203,7 +254,9 @@ export class DiscordAdapter extends BaseChannelAdapter {
   async editMessage(chatId: string, messageId: string, message: OutboundMessage): Promise<void> {
     if (!this.client) return;
 
-    const channel = await this.client.channels.fetch(chatId) as TextChannel;
+    // Use threadId if available, otherwise chatId
+    const targetId = message.threadId ?? chatId;
+    const channel = await this.client.channels.fetch(targetId) as TextChannel;
     if (!channel || !channel.messages) return;
 
     const existing = await channel.messages.fetch(messageId);
@@ -249,6 +302,31 @@ export class DiscordAdapter extends BaseChannelAdapter {
     } catch {
       // Non-critical; swallow errors
     }
+  }
+
+  async addReaction(chatId: string, messageId: string, emoji: string): Promise<void> {
+    if (!this.client) return;
+    try {
+      const channel = await this.client.channels.fetch(chatId) as TextChannel;
+      if (!channel?.messages) return;
+      const msg = await channel.messages.fetch(messageId);
+      await msg.react(emoji);
+    } catch { /* non-fatal */ }
+  }
+
+  async removeReaction(chatId: string, messageId: string): Promise<void> {
+    if (!this.client) return;
+    try {
+      const channel = await this.client.channels.fetch(chatId) as TextChannel;
+      if (!channel?.messages) return;
+      const msg = await channel.messages.fetch(messageId);
+      // Remove all bot reactions
+      const botId = this.client.user?.id;
+      if (!botId) return;
+      for (const [, reaction] of msg.reactions.cache) {
+        if (reaction.me) await reaction.users.remove(botId);
+      }
+    } catch { /* non-fatal */ }
   }
 
   validateConfig(): string | null {

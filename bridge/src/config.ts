@@ -15,6 +15,18 @@ export interface Config {
     botToken: string;
     chatId: string;
     allowedUsers: string[];
+    /** Require @mention in groups (default: true) */
+    requireMention: boolean;
+    /** Webhook URL (if set, uses webhook instead of polling) */
+    webhookUrl: string;
+    /** Webhook secret for verification */
+    webhookSecret: string;
+    /** Webhook listen port (default: 8443) */
+    webhookPort: number;
+    /** Disable link previews in outbound messages (default: true) */
+    disableLinkPreview: boolean;
+    /** HTTP/SOCKS proxy URL for api.telegram.org (e.g., socks5://127.0.0.1:1080) */
+    proxy: string;
   };
   discord: {
     botToken: string;
@@ -88,6 +100,12 @@ export function loadConfig(): Config {
       botToken: get('TL_TG_BOT_TOKEN'),
       chatId: get('TL_TG_CHAT_ID'),
       allowedUsers: parseList(get('TL_TG_ALLOWED_USERS')),
+      requireMention: get('TL_TG_REQUIRE_MENTION', 'true') !== 'false',
+      webhookUrl: get('TL_TG_WEBHOOK_URL'),
+      webhookSecret: get('TL_TG_WEBHOOK_SECRET'),
+      webhookPort: parseInt(get('TL_TG_WEBHOOK_PORT', '8443'), 10),
+      disableLinkPreview: get('TL_TG_DISABLE_LINK_PREVIEW', 'true') !== 'false',
+      proxy: get('TL_TG_PROXY'),
     },
     discord: {
       botToken: get('TL_DC_BOT_TOKEN'),

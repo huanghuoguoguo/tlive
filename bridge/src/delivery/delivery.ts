@@ -7,6 +7,43 @@ interface DeliveryOptions {
   platformLimit?: number;
   maxRetries?: number;
   interChunkDelayMs?: number;
+  /** Use paragraph-aware chunking (default: true) */
+  paragraphChunk?: boolean;
+}
+
+/**
+ * Split text by paragraph boundaries (double newlines) first, then by length.
+ * Keeps paragraphs together when possible for better readability.
+ */
+export function chunkByParagraph(text: string, limit: number): string[] {
+  if (text.length <= limit) return [text];
+
+  const paragraphs = text.split(/\n{2,}/);
+  const chunks: string[] = [];
+  let current = '';
+
+  for (const para of paragraphs) {
+    const addition = current ? '\n\n' + para : para;
+    if (current && current.length + addition.length > limit) {
+      chunks.push(current);
+      // If single paragraph exceeds limit, fall through to chunkMarkdown
+      current = para;
+    } else {
+      current += addition;
+    }
+  }
+  if (current) chunks.push(current);
+
+  // Second pass: any chunk still over limit gets split by chunkMarkdown
+  const result: string[] = [];
+  for (const chunk of chunks) {
+    if (chunk.length <= limit) {
+      result.push(chunk);
+    } else {
+      result.push(...chunkMarkdown(chunk, limit));
+    }
+  }
+  return result;
 }
 
 export function chunkMarkdown(text: string, limit: number, maxLines?: number): string[] {
@@ -105,8 +142,10 @@ export class DeliveryLayer {
     text: string,
     options: DeliveryOptions = {}
   ): Promise<void> {
-    const { platformLimit = 4096, maxRetries = 3, interChunkDelayMs = 300 } = options;
-    const chunks = this.chunk(text, platformLimit);
+    const { platformLimit = 4096, maxRetries = 3, interChunkDelayMs = 300, paragraphChunk = true } = options;
+    const chunks = paragraphChunk
+      ? chunkByParagraph(text, platformLimit)
+      : this.chunk(text, platformLimit);
 
     for (let i = 0; i < chunks.length; i++) {
       // Rate limit
@@ -138,9 +177,11 @@ export class DeliveryLayer {
         if (err instanceof BridgeError && !err.retryable) throw err;
         if (attempt < maxRetries - 1) {
           const baseDelay = Math.min(1000 * Math.pow(2, attempt), 10_000);
+          // Add jitter (±25%) to avoid thundering herd
+          const jitter = baseDelay * (0.75 + Math.random() * 0.5);
           const delay = (err instanceof RateLimitError && err.retryAfterMs > 0)
-            ? Math.max(err.retryAfterMs, baseDelay)
-            : baseDelay;
+            ? Math.max(err.retryAfterMs, jitter)
+            : jitter;
           await new Promise(r => setTimeout(r, delay));
         }
       }

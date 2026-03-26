@@ -3,7 +3,7 @@ import { BaseChannelAdapter, registerAdapterFactory } from './base.js';
 import type { InboundMessage, OutboundMessage, SendResult, FileAttachment } from './types.js';
 import { loadConfig } from '../config.js';
 import { classifyError } from './errors.js';
-import { markdownToFeishu } from '../markdown/feishu.js';
+import { markdownToFeishu, downgradeHeadings } from '../markdown/feishu.js';
 import { buildFeishuCard } from '../formatting/feishu-card.js';
 import { FeishuStreamingSession } from './feishu-streaming.js';
 import { Readable } from 'node:stream';
@@ -260,7 +260,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
 
   private buildCard(text: string, buttons?: OutboundMessage['buttons'], header?: { template: string; title: string }): string {
     const elements: FeishuCardElement[] = [
-      { tag: 'markdown', content: text },
+      { tag: 'markdown', content: downgradeHeadings(text) },
     ];
 
     if (buttons?.length) {

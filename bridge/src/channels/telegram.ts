@@ -1,4 +1,7 @@
-import TelegramBot from 'node-telegram-bot-api';
+import { Bot, InputFile, type Api, type RawApi } from 'grammy';
+import { run, type RunnerHandle } from '@grammyjs/runner';
+import { apiThrottler } from '@grammyjs/transformer-throttler';
+import { createServer, type Server } from 'node:http';
 import { BaseChannelAdapter, registerAdapterFactory } from './base.js';
 import type { InboundMessage, OutboundMessage, SendResult, FileAttachment } from './types.js';
 import { loadConfig } from '../config.js';
@@ -9,101 +12,231 @@ interface TelegramConfig {
   botToken: string;
   chatId: string;
   allowedUsers: string[];
+  requireMention: boolean;
+  webhookUrl: string;
+  webhookSecret: string;
+  webhookPort: number;
+  disableLinkPreview: boolean;
+  proxy: string;
+}
+
+/** Pending pairing requests: code → { userId, chatId, expiresAt } */
+interface PairingRequest {
+  userId: string;
+  chatId: string;
+  username: string;
+  expiresAt: number;
 }
 
 export class TelegramAdapter extends BaseChannelAdapter {
   readonly channelType = 'telegram' as const;
-  private bot: TelegramBot | null = null;
+  private bot: Bot | null = null;
   private config: TelegramConfig;
   private messageQueue: InboundMessage[] = [];
+  private botUsername = '';
+  private webhookServer: Server | null = null;
+  private runnerHandle: RunnerHandle | null = null;
+  /** Pairing mode: pending codes waiting for approval */
+  private pendingPairings = new Map<string, PairingRequest>();
+  /** Pairing mode: approved user IDs (runtime, in addition to config.allowedUsers) */
+  private approvedUsers = new Set<string>();
 
   constructor(config: TelegramConfig) {
     super();
     this.config = config;
   }
 
+  /** Build Telegram file download URL from file path */
+  private fileUrl(filePath: string): string {
+    return `https://api.telegram.org/file/bot${this.config.botToken}/${filePath}`;
+  }
+
   async start(): Promise<void> {
-    // Clear accumulated updates before starting polling to avoid processing old messages
+    this.bot = new Bot(this.config.botToken);
+
+    // Install API throttler (rate-limit protection)
+    this.bot.api.config.use(apiThrottler());
+
+    // Probe bot capabilities on startup
     try {
-      const tempBot = new TelegramBot(this.config.botToken);
-      const updates = await tempBot.getUpdates({ offset: -1, limit: 1, timeout: 0 });
-      if (updates.length > 0) {
-        await tempBot.getUpdates({ offset: updates[0].update_id + 1, limit: 0, timeout: 0 });
+      const me = await this.bot.api.getMe();
+      this.botUsername = me.username ?? '';
+      console.log(`[telegram] Bot ready: @${me.username} (id: ${me.id})`);
+      if (!(me as any).can_read_all_group_messages) {
+        console.warn('[telegram] ⚠ Bot does not have "Group Privacy" disabled — it may not receive group messages. Disable via @BotFather → /setprivacy');
       }
-      await tempBot.close();
-    } catch {
-      // Non-fatal: proceed with polling even if cleanup fails
+      // Register native commands to BotFather menu
+      await this.bot.api.setMyCommands([
+        { command: 'new', description: 'New conversation' },
+        { command: 'sessions', description: 'List recent sessions' },
+        { command: 'session', description: 'Switch to session #n' },
+        { command: 'verbose', description: 'Set detail level (0/1/2)' },
+        { command: 'status', description: 'Bridge status' },
+        { command: 'hooks', description: 'Pause/resume IM approval' },
+        { command: 'help', description: 'Show all commands' },
+      ]);
+      console.log('[telegram] Registered bot commands to menu');
+    } catch (err) {
+      console.error(`[telegram] ⚠ Failed to verify bot: ${err}. Check TL_TG_BOT_TOKEN.`);
     }
 
-    this.bot = new TelegramBot(this.config.botToken, { polling: true });
+    // Register message handler
+    this.bot.on('message', async (ctx) => {
+      const msg = ctx.message;
+      const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
+      let text = msg.text ?? msg.caption ?? '';
 
-    this.bot.on('message', async (msg) => {
+      // Group @mention filtering
+      if (isGroup && this.config.requireMention && text && !msg.reply_to_message) {
+        const mentionPattern = new RegExp(`@${this.botUsername}\\b`, 'i');
+        if (!mentionPattern.test(text)) return;
+        text = text.replace(mentionPattern, '').trim();
+      }
+
       const base = {
         channelType: 'telegram' as const,
         chatId: String(msg.chat.id),
         userId: String(msg.from?.id ?? ''),
-        text: msg.text ?? msg.caption ?? '',
+        text,
         messageId: String(msg.message_id),
         replyToMessageId: msg.reply_to_message ? String(msg.reply_to_message.message_id) : undefined,
+        threadId: msg.message_thread_id ? String(msg.message_thread_id) : undefined,
       };
 
       const attachments: FileAttachment[] = [];
 
       if (msg.photo?.length) {
-        const photo = msg.photo[msg.photo.length - 1]; // largest size
+        const photo = msg.photo[msg.photo.length - 1];
         try {
-          const url = await this.bot!.getFileLink(photo.file_id);
-          const resp = await fetch(url);
-          if (resp.ok) {
-            const buf = Buffer.from(await resp.arrayBuffer());
-            if (buf.length <= 10_000_000) {
-              attachments.push({
-                type: 'image', name: 'photo.jpg',
-                mimeType: 'image/jpeg', base64Data: buf.toString('base64'),
-              });
+          const file = await this.bot!.api.getFile(photo.file_id);
+          if (file.file_path) {
+            const resp = await fetch(this.fileUrl(file.file_path));
+            if (resp.ok) {
+              const buf = Buffer.from(await resp.arrayBuffer());
+              if (buf.length <= 10_000_000) {
+                attachments.push({
+                  type: 'image', name: 'photo.jpg',
+                  mimeType: 'image/jpeg', base64Data: buf.toString('base64'),
+                });
+              }
             }
           }
-        } catch { /* skip undownloadable photos */ }
+        } catch { /* skip */ }
       }
 
       if (msg.document) {
         try {
-          const url = await this.bot!.getFileLink(msg.document.file_id);
-          const resp = await fetch(url);
-          if (resp.ok) {
-            const buf = Buffer.from(await resp.arrayBuffer());
-            if (buf.length <= 10_000_000) {
-              const mimeType = msg.document.mime_type ?? 'application/octet-stream';
-              attachments.push({
-                type: mimeType.startsWith('image/') ? 'image' : 'file',
-                name: msg.document.file_name ?? 'file',
-                mimeType, base64Data: buf.toString('base64'),
-              });
+          const file = await this.bot!.api.getFile(msg.document.file_id);
+          if (file.file_path) {
+            const resp = await fetch(this.fileUrl(file.file_path));
+            if (resp.ok) {
+              const buf = Buffer.from(await resp.arrayBuffer());
+              if (buf.length <= 10_000_000) {
+                const mimeType = msg.document.mime_type ?? 'application/octet-stream';
+                attachments.push({
+                  type: mimeType.startsWith('image/') ? 'image' : 'file',
+                  name: msg.document.file_name ?? 'file',
+                  mimeType, base64Data: buf.toString('base64'),
+                });
+              }
             }
           }
-        } catch { /* skip undownloadable documents */ }
+        } catch { /* skip */ }
       }
 
       if (!base.text && attachments.length === 0) return;
       this.messageQueue.push({ ...base, attachments: attachments.length > 0 ? attachments : undefined });
     });
 
-    this.bot.on('callback_query', (query) => {
-      // Dismiss the loading spinner on the button
-      this.bot!.answerCallbackQuery(query.id).catch(() => {});
+    // Reaction notifications
+    this.bot.on('message_reaction', (ctx) => {
+      const reaction = ctx.messageReaction;
+      if (!reaction?.new_reaction?.length) return;
+      const userId = String((reaction as any).user?.id ?? (reaction as any).actor_chat?.id ?? '');
+      const chatId = String(reaction.chat.id);
+      const msgId = String(reaction.message_id);
+      const emojis = reaction.new_reaction
+        .map((r: any) => r.emoji || r.custom_emoji_id || '')
+        .filter(Boolean)
+        .join(' ');
+      if (!emojis) return;
       this.messageQueue.push({
         channelType: 'telegram',
-        chatId: String(query.message?.chat.id ?? ''),
-        userId: String(query.from.id),
-        text: '',
-        callbackData: query.data,
-        messageId: String(query.message?.message_id ?? ''),
+        chatId, userId,
+        text: `[reaction: ${emojis}]`,
+        messageId: msgId,
+        replyToMessageId: msgId,
       });
     });
+
+    // Callback query handler
+    this.bot.on('callback_query:data', async (ctx) => {
+      await ctx.answerCallbackQuery().catch(() => {});
+      this.messageQueue.push({
+        channelType: 'telegram',
+        chatId: String(ctx.callbackQuery.message?.chat.id ?? ''),
+        userId: String(ctx.callbackQuery.from.id),
+        text: '',
+        callbackData: ctx.callbackQuery.data,
+        messageId: String(ctx.callbackQuery.message?.message_id ?? ''),
+      });
+    });
+
+    // Start: webhook or long-polling via runner
+    const useWebhook = !!this.config.webhookUrl;
+    if (useWebhook) {
+      await this.bot.api.setWebhook(this.config.webhookUrl, {
+        secret_token: this.config.webhookSecret || undefined,
+        allowed_updates: ['message', 'callback_query', 'message_reaction'],
+      });
+
+      const webhookPath = '/telegram-webhook';
+      this.webhookServer = createServer((req, res) => {
+        if (req.method !== 'POST' || req.url !== webhookPath) {
+          res.writeHead(404); res.end(); return;
+        }
+        if (this.config.webhookSecret) {
+          if (req.headers['x-telegram-bot-api-secret-token'] !== this.config.webhookSecret) {
+            res.writeHead(403); res.end(); return;
+          }
+        }
+        let body = '';
+        req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+        req.on('end', () => {
+          try { this.bot!.handleUpdate(JSON.parse(body)); }
+          catch { /* ignore */ }
+          res.writeHead(200); res.end('OK');
+        });
+      });
+
+      const port = this.config.webhookPort || 8443;
+      this.webhookServer.listen(port, () => {
+        console.log(`[telegram] Webhook server listening on port ${port}`);
+      });
+    } else {
+      // Use grammY runner for robust long-polling (sequential per-chat, concurrent overall)
+      await this.bot.api.deleteWebhook();
+      this.runnerHandle = run(this.bot, {
+        runner: {
+          fetch: {
+            allowed_updates: ['message', 'callback_query', 'message_reaction'],
+          },
+        },
+      });
+      console.log('[telegram] Long-polling started via grammY runner');
+    }
   }
 
   async stop(): Promise<void> {
-    await this.bot?.stopPolling();
+    if (this.webhookServer) {
+      this.webhookServer.close();
+      this.webhookServer = null;
+      try { await this.bot?.api.deleteWebhook(); } catch { /* best effort */ }
+    }
+    if (this.runnerHandle) {
+      this.runnerHandle.stop();
+      this.runnerHandle = null;
+    }
     this.bot = null;
   }
 
@@ -111,20 +244,28 @@ export class TelegramAdapter extends BaseChannelAdapter {
     return this.messageQueue.shift() ?? null;
   }
 
-  async send(message: OutboundMessage): Promise<SendResult> {
+  private get api(): Api<RawApi> {
     if (!this.bot) throw new Error('Telegram bot not started');
+    return this.bot.api;
+  }
+
+  async send(message: OutboundMessage): Promise<SendResult> {
+    const api = this.api;
+
+    // General topic (thread_id=1): Telegram rejects message_thread_id=1
+    const threadId = (message.threadId && message.threadId !== '1')
+      ? parseInt(message.threadId, 10) : undefined;
 
     // Media sending
     if (message.media) {
       try {
         const media = message.media;
-        let source: string | Buffer;
+        let source: InputFile | string;
         if (media.buffer) {
-          source = media.buffer;
+          source = new InputFile(media.buffer, media.filename || 'file');
         } else if (media.url?.startsWith('data:')) {
-          // Data URI -> Buffer
           const base64 = media.url.split(',')[1];
-          source = Buffer.from(base64, 'base64');
+          source = new InputFile(Buffer.from(base64, 'base64'), media.filename || 'file');
         } else if (media.url) {
           source = media.url;
         } else {
@@ -132,35 +273,22 @@ export class TelegramAdapter extends BaseChannelAdapter {
         }
 
         if (media.type === 'image') {
-          const result = await this.bot!.sendPhoto(message.chatId, source as any, {
-            caption: message.text,
-            ...(message.html ? { parse_mode: 'HTML' as const, caption: message.html } : {}),
+          const result = await api.sendPhoto(message.chatId, source, {
+            caption: message.html ?? message.text,
+            parse_mode: message.html ? 'HTML' : undefined,
+            message_thread_id: threadId,
           });
           return { messageId: String(result.message_id), success: true };
         } else {
-          const result = await this.bot!.sendDocument(message.chatId, source as any, {
+          const result = await api.sendDocument(message.chatId, source, {
             caption: message.text,
-          }, { filename: media.filename || 'file', contentType: media.mimeType });
+            message_thread_id: threadId,
+          });
           return { messageId: String(result.message_id), success: true };
         }
       } catch (err) {
-        // If media send fails, fall through to text-only
         if (!message.text && !message.html) throw classifyError('telegram', err);
       }
-    }
-
-    const options: TelegramBot.SendMessageOptions = {};
-    if (message.html) options.parse_mode = 'HTML';
-    if (message.buttons?.length) {
-      options.reply_markup = {
-        inline_keyboard: [message.buttons.map(b => ({
-          text: b.label,
-          callback_data: b.callbackData,
-        }))],
-      };
-    }
-    if (message.replyToMessageId) {
-      options.reply_to_message_id = parseInt(message.replyToMessageId, 10);
     }
 
     const text = message.html ?? message.text ?? '';
@@ -169,17 +297,39 @@ export class TelegramAdapter extends BaseChannelAdapter {
     let lastMessageId = '';
     try {
       for (let i = 0; i < chunks.length; i++) {
-        const opts: TelegramBot.SendMessageOptions = { ...options };
-        if (i < chunks.length - 1) delete opts.reply_markup;
+        const opts: Record<string, unknown> = {
+          parse_mode: message.html ? 'HTML' : undefined,
+          message_thread_id: threadId,
+        };
+
+        if (this.config.disableLinkPreview) {
+          opts.link_preview_options = { is_disabled: true };
+        }
+
+        if (message.replyToMessageId && i === 0) {
+          opts.reply_to_message_id = parseInt(message.replyToMessageId, 10);
+        }
+
+        // Buttons on last chunk only
+        if (i === chunks.length - 1 && message.buttons?.length) {
+          opts.reply_markup = {
+            inline_keyboard: [message.buttons.map(b => {
+              if (b.url) {
+                return { text: b.label, url: b.url };
+              }
+              return { text: b.label, callback_data: b.callbackData };
+            })],
+          };
+        }
+
         try {
-          const result = await this.bot.sendMessage(message.chatId, chunks[i], opts);
+          const result = await api.sendMessage(message.chatId, chunks[i], opts);
           lastMessageId = String(result.message_id);
-        } catch (sendErr) {
+        } catch (sendErr: any) {
           // Parse-mode fallback: retry without HTML if formatting fails
-          if (opts.parse_mode && (sendErr as any)?.response?.statusCode === 400) {
-            const plainOpts = { ...opts };
-            delete plainOpts.parse_mode;
-            const result = await this.bot.sendMessage(message.chatId, chunks[i], plainOpts);
+          if (opts.parse_mode && sendErr?.error_code === 400) {
+            delete opts.parse_mode;
+            const result = await api.sendMessage(message.chatId, chunks[i], opts);
             lastMessageId = String(result.message_id);
           } else {
             throw sendErr;
@@ -196,51 +346,32 @@ export class TelegramAdapter extends BaseChannelAdapter {
   async editMessage(chatId: string, messageId: string, message: OutboundMessage): Promise<void> {
     if (!this.bot) return;
     const text = message.html ?? message.text ?? '';
-    const options: TelegramBot.EditMessageTextOptions = {
-      chat_id: chatId,
-      message_id: parseInt(messageId, 10),
-    };
-    if (message.html) options.parse_mode = 'HTML';
     try {
-      await this.bot.editMessageText(text, options);
+      await this.api.editMessageText(chatId, parseInt(messageId, 10), text, {
+        parse_mode: message.html ? 'HTML' : undefined,
+      });
     } catch (err: unknown) {
       if (!(err instanceof Error && err.message?.includes('message is not modified'))) throw err;
     }
   }
 
   async sendTyping(chatId: string): Promise<void> {
-    try {
-      await this.bot?.sendChatAction(chatId, 'typing');
-    } catch {
-      // Non-critical; swallow errors
-    }
+    try { await this.bot?.api.sendChatAction(chatId, 'typing'); }
+    catch { /* non-critical */ }
   }
 
   async addReaction(_chatId: string, messageId: string, emoji: string): Promise<void> {
     if (!this.bot) return;
     try {
-      // Use setMessageReaction API (Bot API 7.2+)
-      await (this.bot as any).setMessageReaction(
-        _chatId,
-        parseInt(messageId, 10),
-        { reaction: [{ type: 'emoji', emoji }] }
-      );
-    } catch {
-      // Non-fatal: reaction API may not be available (older bot API)
-    }
+      await this.api.setMessageReaction(_chatId, parseInt(messageId, 10), [{ type: 'emoji', emoji }]);
+    } catch { /* non-fatal */ }
   }
 
   async removeReaction(_chatId: string, messageId: string): Promise<void> {
     if (!this.bot) return;
     try {
-      await (this.bot as any).setMessageReaction(
-        _chatId,
-        parseInt(messageId, 10),
-        { reaction: [] }
-      );
-    } catch {
-      // Non-fatal
-    }
+      await this.api.setMessageReaction(_chatId, parseInt(messageId, 10), []);
+    } catch { /* non-fatal */ }
   }
 
   validateConfig(): string | null {
@@ -249,8 +380,47 @@ export class TelegramAdapter extends BaseChannelAdapter {
   }
 
   isAuthorized(userId: string, _chatId: string): boolean {
-    if (this.config.allowedUsers.length === 0) return true;
-    return this.config.allowedUsers.includes(userId);
+    if (this.config.allowedUsers.length > 0) {
+      return this.config.allowedUsers.includes(userId) || this.approvedUsers.has(userId);
+    }
+    return this.approvedUsers.has(userId);
+  }
+
+  requestPairing(userId: string, chatId: string, username: string): string | null {
+    for (const [code, req] of this.pendingPairings) {
+      if (req.userId === userId) {
+        if (Date.now() < req.expiresAt) return code;
+        this.pendingPairings.delete(code);
+      }
+    }
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    this.pendingPairings.set(code, {
+      userId, chatId, username,
+      expiresAt: Date.now() + 60 * 60 * 1000,
+    });
+    return code;
+  }
+
+  approvePairing(code: string): { userId: string; username: string } | null {
+    const req = this.pendingPairings.get(code);
+    if (!req || Date.now() >= req.expiresAt) {
+      if (req) this.pendingPairings.delete(code);
+      return null;
+    }
+    this.approvedUsers.add(req.userId);
+    this.pendingPairings.delete(code);
+    console.log(`[telegram] Approved pairing for user ${req.username} (${req.userId})`);
+    this.bot?.api.sendMessage(req.chatId, '✅ Pairing approved! You can now send messages.').catch(() => {});
+    return { userId: req.userId, username: req.username };
+  }
+
+  listPairings(): Array<{ code: string; userId: string; username: string }> {
+    const result: Array<{ code: string; userId: string; username: string }> = [];
+    for (const [code, req] of this.pendingPairings) {
+      if (Date.now() >= req.expiresAt) { this.pendingPairings.delete(code); continue; }
+      result.push({ code, userId: req.userId, username: req.username });
+    }
+    return result;
   }
 }
 

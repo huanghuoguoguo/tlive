@@ -47,8 +47,9 @@ export function classifyError(channel: ChannelType | string, err: unknown): Brid
   }
 
   if (channel === 'telegram') {
-    const status = e?.response?.statusCode;
-    if (status === 429) return new RateLimitError(message, e?.response?.body?.parameters?.retry_after * 1000);
+    // grammY uses error_code + parameters.retry_after at top level
+    const status = e?.error_code ?? e?.response?.statusCode;
+    if (status === 429) return new RateLimitError(message, (e?.parameters?.retry_after ?? e?.response?.body?.parameters?.retry_after ?? 0) * 1000);
     if (status === 400) return new FormatError(message);
     if (status === 401 || status === 403) return new AuthError(message);
     if (status >= 500) return new PlatformError(message, status);

@@ -128,8 +128,9 @@ export function markdownToHtml(text: string): string {
   // Tables: replace <table>...</table> with monospace <pre>
   html = html.replace(/<table[\s\S]*?<\/table>/gi, (tableHtml) => tableToMonospace(tableHtml));
 
-  // Strip <p> tags
-  html = html.replace(/<\/?p>/g, '');
+  // Strip <p> tags but preserve paragraph spacing
+  html = html.replace(/<p>/g, '');
+  html = html.replace(/<\/p>/g, '\n\n');
 
   // Headings -> bold
   html = html.replace(/<h[1-6][^>]*>/g, '<b>');

@@ -14,10 +14,11 @@ describe('formatPermissionCard', () => {
   it('telegram: returns HTML with structured sections', () => {
     const msg = formatPermissionCard(baseData, 'telegram');
     expect(msg.html).toContain('<b>Permission Required</b>');
-    expect(msg.html).toContain('<b>Tool:</b> Bash');
+    expect(msg.html).toContain('<code>Bash</code>');
     expect(msg.html).toContain('<pre>npm run build</pre>');
     expect(msg.html).toContain('Expires in 5 minutes');
     expect(msg.html).toContain('<a href="https://example.com/terminal">');
+    expect(msg.html).toContain('allow</b>');
     expect(msg.buttons).toHaveLength(3);
     expect(msg.buttons![0].callbackData).toBe('perm:allow:perm-123');
     expect(msg.buttons![1].callbackData).toBe('perm:allow_session:perm-123');
@@ -30,9 +31,10 @@ describe('formatPermissionCard', () => {
     expect(msg.embed!.title).toContain('Permission Required');
     expect(msg.embed!.color).toBe(0xFFA500);
     expect(msg.embed!.description).toContain('npm run build');
+    expect(msg.embed!.description).toContain('allow');
     expect(msg.embed!.fields).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: 'Tool', value: 'Bash' }),
+        expect.objectContaining({ name: '🔧 Tool', value: '`Bash`' }),
       ])
     );
     expect(msg.buttons).toHaveLength(3);
@@ -60,15 +62,25 @@ describe('formatPermissionCard', () => {
 });
 
 describe('formatNotification', () => {
-  it('stop: telegram returns HTML with blockquote summary', () => {
+  it('stop: telegram with public URL uses URL button', () => {
     const msg = formatNotification(
       { type: 'stop', title: 'Task Complete', summary: 'Fixed the auth bug', terminalUrl: 'https://x.com/t' },
       'telegram'
     );
-    expect(msg.html).toContain('<b>Task Complete</b>');
-    expect(msg.html).toContain('<blockquote>');
+    expect(msg.html).toContain('Task Complete');
     expect(msg.html).toContain('Fixed the auth bug');
-    expect(msg.html).toContain('<a href="https://x.com/t">');
+    // Public URL → URL inline button
+    expect((msg as any).buttons![0].url).toBe('https://x.com/t');
+  });
+
+  it('stop: telegram with localhost uses inline text link', () => {
+    const msg = formatNotification(
+      { type: 'stop', title: 'Done', summary: 'ok', terminalUrl: 'http://localhost:8080/t' },
+      'telegram'
+    );
+    expect(msg.html).toContain('Open Terminal');
+    expect(msg.html).toContain('localhost:8080');
+    expect((msg as any).buttons).toBeUndefined();
   });
 
   it('stop: discord returns green embed', () => {

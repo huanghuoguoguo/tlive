@@ -10,6 +10,8 @@ const common = {
   external: [
     '@anthropic-ai/*',
     'discord.js',
+    'grammy',
+    '@grammyjs/*',
     '@larksuiteoapi/*',
     'node-telegram-bot-api',
   ],

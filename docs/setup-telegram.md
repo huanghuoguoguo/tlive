@@ -89,18 +89,63 @@ TL_TG_ALLOWED_USERS=user-id-1,user-id-2
 
 ## Recommended Bot Settings
 
-These are optional but improve the experience. Send each command to **@BotFather**:
+Send each command to **@BotFather**:
 
 | Command | Setting | Why |
 |---------|---------|-----|
 | `/setprivacy` | Select your bot → `Disable` | Lets the bot read messages in group chats |
-| `/setcommands` | See below | Adds a command menu in Telegram |
 
-For `/setcommands`, send this list:
+> **Note:** The `/setcommands` step is no longer needed — tlive automatically registers commands (`/new`, `/status`, `/help`, etc.) to the Telegram menu on startup.
+
+## Features & Configuration
+
+### Group @Mention Filtering
+
+In group chats, the bot only responds when **@mentioned** (default behavior). This prevents it from responding to every message in the group.
+
+```env
+TL_TG_REQUIRE_MENTION=true    # default: only respond to @bot
+TL_TG_REQUIRE_MENTION=false   # respond to all messages in group
 ```
-new - Start new session
-verbose - Set detail level
-hooks - Toggle hook approval
+
+Replies to bot messages also work without `@mention`.
+
+### Pairing Mode
+
+If `TL_TG_ALLOWED_USERS` is not set, the bot enters **pairing mode**:
+
+1. An unknown user sends a message → bot replies with a 6-digit pairing code
+2. An admin (from any authorized channel) runs `/approve <code>`
+3. The user is approved and can now interact with the bot
+
+Use `/pairings` to list pending pairing requests. Codes expire after 1 hour.
+
+### Forum Topics
+
+The bot supports Telegram forum-style groups with topics. Messages are routed to the correct topic automatically.
+
+### Webhook Mode (Optional)
+
+By default, the bot uses long-polling. For production environments, you can switch to webhooks:
+
+```env
+TL_TG_WEBHOOK_URL=https://your-domain.com/telegram-webhook
+TL_TG_WEBHOOK_SECRET=your-random-secret
+TL_TG_WEBHOOK_PORT=8443
+```
+
+### Link Preview
+
+Link previews are disabled by default to keep messages clean. To enable:
+```env
+TL_TG_DISABLE_LINK_PREVIEW=false
+```
+
+### Proxy
+
+If `api.telegram.org` is blocked in your region:
+```env
+TL_TG_PROXY=socks5://127.0.0.1:1080
 ```
 
 ## Troubleshooting
@@ -116,3 +161,12 @@ hooks - Toggle hook approval
 **"Unauthorized" error**
 - Your token may have been regenerated in BotFather — go back and copy the latest one
 - Each time you reset the token, the old one stops working immediately
+
+**Bot doesn't respond in groups**
+- Check that Privacy Mode is disabled: BotFather → `/setprivacy` → Disable
+- After changing privacy, remove and re-add the bot to the group
+- If `TL_TG_REQUIRE_MENTION=true` (default), you need to @mention the bot
+
+**Bot shows warning about permissions on startup**
+- This is informational. The bot probes its capabilities at startup and warns about potential issues
+- Common warning: "Group Privacy not disabled" — see above

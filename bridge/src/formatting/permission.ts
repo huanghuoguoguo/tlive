@@ -37,7 +37,7 @@ export function formatPermissionCard(data: PermissionCardData, channelType: Chan
       const parts = [
         `\uD83D\uDD10 <b>Permission Required</b>`,
         '',
-        `<b>Tool:</b> ${data.toolName}`,
+        `<b>Tool:</b> <code>${escapeHtml(data.toolName)}</code>`,
         `<pre>${escapeHtml(input)}</pre>`,
         '',
         `\u23F1 Expires in ${expires} minutes`,
@@ -45,20 +45,24 @@ export function formatPermissionCard(data: PermissionCardData, channelType: Chan
       if (data.terminalUrl) {
         parts.push(`\uD83D\uDD17 <a href="${data.terminalUrl}">Open Terminal</a>`);
       }
+      parts.push('', `💬 Or reply <b>allow</b> / <b>deny</b>`);
       return { html: parts.join('\n'), buttons };
     }
 
     case 'discord': {
+      const fields: Array<{ name: string; value: string; inline?: boolean }> = [
+        { name: '🔧 Tool', value: `\`${data.toolName}\``, inline: true },
+        { name: '⏱ Expires', value: `${expires} min`, inline: true },
+      ];
+      if (data.terminalUrl) {
+        fields.push({ name: '🔗 Terminal', value: `[Open](${data.terminalUrl})`, inline: true });
+      }
       return {
         embed: {
-          title: '\uD83D\uDD10 Permission Required',
+          title: '🔐 Permission Required',
           color: 0xFFA500,
-          description: `\`\`\`\n${input}\n\`\`\``,
-          fields: [
-            { name: 'Tool', value: data.toolName, inline: true },
-            { name: 'Expires', value: `${expires} minutes`, inline: true },
-          ],
-          footer: data.terminalUrl ? `Open Terminal: ${data.terminalUrl}` : undefined,
+          description: `\`\`\`\n${input}\n\`\`\`\n💬 Or reply \`allow\` / \`deny\``,
+          fields,
         },
         buttons,
       };

@@ -265,15 +265,26 @@ async function main() {
           if (!target.chatId) continue;
 
           try {
-            // Feishu: add text fallback hint alongside buttons (in case card action not configured)
-            const feishuHint = adapter.channelType === 'feishu' ? '\n\n💬 或回复 **allow** / **deny**' : '';
-            const outMsg = {
+            // Add text-based approval hint for all platforms
+            const hints: Record<string, string> = {
+              feishu: '\n\n💬 或回复 **allow** / **deny**',
+              telegram: '\n\n💬 Or reply <b>allow</b> / <b>deny</b>',
+              discord: '\n\n💬 Or reply `allow` / `deny`',
+            };
+            const hint = hints[adapter.channelType] || '';
+            const outMsg: import('./channels/types.js').OutboundMessage = {
               chatId: target.chatId,
               receiveIdType: target.receiveIdType,
-              text: text + feishuHint,
+              text: text + (adapter.channelType !== 'telegram' ? hint : ''),
+              html: adapter.channelType === 'telegram' ? undefined : undefined,
               buttons,
-              feishuHeader: { template: 'orange', title: '🔐 Terminal · Permission Required' },
+              feishuHeader: adapter.channelType === 'feishu' ? { template: 'orange', title: '🔐 Terminal · Permission Required' } : undefined,
             };
+            // Telegram: use HTML with the hint
+            if (adapter.channelType === 'telegram') {
+              outMsg.html = text + hint;
+              outMsg.text = undefined;
+            }
             const sendResult = await adapter.send(outMsg);
             // Track for reply routing and permission resolution
             if (perm.session_id) {

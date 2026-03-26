@@ -8,6 +8,7 @@ import { DeliveryLayer } from '../delivery/delivery.js';
 import { getBridgeContext } from '../context.js';
 import { loadConfig } from '../config.js';
 import { markdownToTelegram } from '../markdown/index.js';
+import { downgradeHeadings } from '../markdown/feishu.js';
 import { StreamController, type VerboseLevel } from './stream-controller.js';
 import type { FeishuStreamingSession } from '../channels/feishu-streaming.js';
 import { CostTracker } from './cost-tracker.js';
@@ -46,6 +47,8 @@ export class BridgeManager {
   private hookPermissionTexts = new Map<string, string>();
   /** Pending image attachments waiting for a text message to merge with (key: channelType:chatId) */
   private pendingAttachments = new Map<string, { attachments: import('../channels/types.js').FileAttachment[]; timestamp: number }>();
+  /** Discord thread IDs for sessions (key: channelType:chatId, value: threadId) */
+  private sessionThreads = new Map<string, string>();
   private hookMessages = new Map<string, { sessionId: string; timestamp: number }>();
   private permissionMessages = new Map<string, { permissionId: string; sessionId: string; timestamp: number }>();
   private latestPermission = new Map<string, { permissionId: string; sessionId: string; messageId: string }>();
@@ -201,6 +204,7 @@ export class BridgeManager {
       text: formatted.text,
       html: formatted.html,
       embed: formatted.embed,
+      buttons: (formatted as any).buttons,
       feishuHeader: formatted.feishuHeader,
       feishuElements: (formatted as any).feishuElements,
       receiveIdType,
@@ -223,8 +227,29 @@ export class BridgeManager {
   }
 
   async handleInboundMessage(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
-    // Auth check
-    if (!adapter.isAuthorized(msg.userId, msg.chatId)) return false;
+    // Auth check — with pairing mode for Telegram
+    if (!adapter.isAuthorized(msg.userId, msg.chatId)) {
+      // Telegram pairing mode: generate code for unknown user (DM only)
+      if (adapter.channelType === 'telegram' && 'requestPairing' in adapter && msg.text) {
+        const tgAdapter = adapter as any;
+        const username = msg.userId; // userId as fallback
+        const code = tgAdapter.requestPairing(msg.userId, msg.chatId, username);
+        if (code) {
+          await adapter.send({
+            chatId: msg.chatId,
+            html: [
+              `🔐 <b>Pairing Required</b>`,
+              '',
+              `Your pairing code: <code>${code}</code>`,
+              '',
+              `Ask an admin to run <code>/approve ${code}</code> in an authorized channel.`,
+              `Code expires in 1 hour.`,
+            ].join('\n'),
+          });
+        }
+      }
+      return false;
+    }
 
     // Track last active chatId per channel type (used for hook notification routing)
     if (msg.chatId) {
@@ -257,8 +282,8 @@ export class BridgeManager {
       this.pendingAttachments.delete(attachKey);
     }
 
-    // Text-based permission resolution (Feishu only — Telegram/Discord use card action callbacks)
-    if (msg.text && adapter.channelType === 'feishu') {
+    // Text-based permission resolution (all platforms — fallback when buttons expire)
+    if (msg.text) {
       const decision = this.parsePermissionText(msg.text);
       if (decision) {
         // Check quote-reply first, fall back to latest pending permission (only if unambiguous)
@@ -269,7 +294,10 @@ export class BridgeManager {
             const latest = this.latestPermission.get(adapter.channelType);
             if (latest) permEntry = this.permissionMessages.get(latest.messageId);
           } else if (this.permissionMessages.size > 1) {
-            await adapter.send({ chatId: msg.chatId, text: '⚠️ 多个权限待审批，请引用回复具体的权限消息' });
+            const hint = adapter.channelType === 'feishu'
+              ? '⚠️ 多个权限待审批，请引用回复具体的权限消息'
+              : '⚠️ Multiple permissions pending — reply to the specific permission message';
+            await adapter.send({ chatId: msg.chatId, text: hint });
             return true;
           }
         }
@@ -417,15 +445,30 @@ export class BridgeManager {
     if (expired) {
       const newSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       await this.router.rebind(msg.channelType, msg.chatId, newSessionId);
+      this.sessionThreads.delete(this.stateKey(msg.channelType, msg.chatId));
     }
 
     const binding = await this.router.resolve(msg.channelType, msg.chatId);
 
-    // Start typing heartbeat
+    // Resolve threadId: use existing thread if message came from one, or reuse session thread
+    let threadId = msg.threadId;
+    if (!threadId && adapter.channelType === 'discord') {
+      threadId = this.sessionThreads.get(this.stateKey(msg.channelType, msg.chatId));
+    }
+    // For Telegram topics, always pass threadId through
+    if (!threadId && msg.threadId) {
+      threadId = msg.threadId;
+    }
+
+    // Reaction target: for Discord threads, reaction goes on the original channel message
+    const reactionChatId = msg.threadId ? msg.chatId : (threadId ? msg.chatId : msg.chatId);
+
+    // Start typing heartbeat (in thread if available)
+    const typingTarget = threadId && adapter.channelType === 'discord' ? threadId : msg.chatId;
     const typingInterval = setInterval(() => {
-      adapter.sendTyping(msg.chatId).catch(() => {});
+      adapter.sendTyping(typingTarget).catch(() => {});
     }, 4000);
-    adapter.sendTyping(msg.chatId).catch(() => {});
+    adapter.sendTyping(typingTarget).catch(() => {});
 
     const verboseLevel = this.getVerboseLevel(msg.channelType, msg.chatId);
     const costTracker = new CostTracker();
@@ -438,7 +481,7 @@ export class BridgeManager {
       discord: { processing: '\u{1F914}', done: '\u{1F44D}', error: '\u{274C}' },
     };
     const reactions = reactionEmojis[adapter.channelType] || reactionEmojis.telegram;
-    adapter.addReaction(msg.chatId, msg.messageId, reactions.processing).catch(() => {});
+    adapter.addReaction(reactionChatId, msg.messageId, reactions.processing).catch(() => {});
 
     // Feishu: use CardKit streaming session for smoother rendering
     let feishuSession: FeishuStreamingSession | null = null;
@@ -456,7 +499,7 @@ export class BridgeManager {
           if (!isEdit) {
             // First flush: start streaming session
             try {
-              const messageId = await feishuSession.start(content);
+              const messageId = await feishuSession.start(downgradeHeadings(content));
               clearInterval(typingInterval);
               return messageId;
             } catch {
@@ -465,7 +508,7 @@ export class BridgeManager {
             }
           } else {
             // Subsequent flushes: stream update
-            feishuSession.update(content).catch(() => {});
+            feishuSession.update(downgradeHeadings(content)).catch(() => {});
             return;
           }
         }
@@ -474,20 +517,34 @@ export class BridgeManager {
         let outMsg: OutboundMessage;
         if (adapter.channelType === 'telegram') {
           let styled = content;
-          styled = styled.replace(/^((?:📖|✏️|📝|🖥️|🔍|📂|🤖|🌐|🔧)[^\n]*)\n(━+)/m, '<i>$1</i>\n$2');
-          styled = styled.replace(/(📊[^\n]+)$/m, '<code>$1</code>');
-          outMsg = { chatId: msg.chatId, html: markdownToTelegram(styled) };
+          styled = styled.replace(/^((?:📖|✏️|📝|🖥️|🔍|📂|🤖|🌐|🔧)[^\n]*)\n(━+)/m, '_$1_\n$2');
+          styled = styled.replace(/(📊[^\n]+)$/m, '`$1`');
+          outMsg = { chatId: msg.chatId, html: markdownToTelegram(styled), threadId };
         } else if (adapter.channelType === 'discord') {
           let styled = content;
           styled = styled.replace(/^((?:📖|✏️|📝|🖥️|🔍|📂|🤖|🌐|🔧)[^\n]*)\n(━+)/m, '*$1*\n$2');
           styled = styled.replace(/(📊[^\n]+)$/m, '`$1`');
-          outMsg = { chatId: msg.chatId, text: styled };
+          outMsg = { chatId: msg.chatId, text: styled, threadId };
         } else {
           // Feishu: pass raw markdown with card header for styled rendering
           outMsg = { chatId: msg.chatId, text: content, feishuHeader: { template: 'blue', title: '💬 Claude' } };
         }
 
         if (!isEdit) {
+          // Discord: create thread on first response if not already in one
+          if (adapter.channelType === 'discord' && !threadId && 'createThread' in adapter) {
+            // First send the initial reply to the channel
+            const result = await adapter.send(outMsg);
+            clearInterval(typingInterval);
+            // Create thread from the reply message
+            const preview = (msg.text || 'Claude').slice(0, 80);
+            const newThreadId = await (adapter as any).createThread(msg.chatId, result.messageId, `💬 ${preview}`);
+            if (newThreadId) {
+              threadId = newThreadId;
+              this.sessionThreads.set(this.stateKey(msg.channelType, msg.chatId), newThreadId);
+            }
+            return result.messageId;
+          }
           const result = await adapter.send(outMsg);
           clearInterval(typingInterval);
           return result.messageId;
@@ -532,15 +589,16 @@ export class BridgeManager {
         }
         const costLine = CostTracker.format(completedStats);
         const fullText = responseText ? `${responseText}\n${costLine}` : costLine;
-        await this.delivery.deliver(adapter, msg.chatId, fullText, {
+        const deliverTarget = threadId && adapter.channelType === 'discord' ? threadId : msg.chatId;
+        await this.delivery.deliver(adapter, deliverTarget, fullText, {
           platformLimit: platformLimits[adapter.channelType] ?? 4096,
         });
       }
       // Success: change to done reaction
-      adapter.addReaction(msg.chatId, msg.messageId, reactions.done).catch(() => {});
+      adapter.addReaction(reactionChatId, msg.messageId, reactions.done).catch(() => {});
     } catch (err) {
       // Error: change to error reaction
-      adapter.addReaction(msg.chatId, msg.messageId, reactions.error).catch(() => {});
+      adapter.addReaction(reactionChatId, msg.messageId, reactions.error).catch(() => {});
       throw err;
     } finally {
       clearInterval(typingInterval);
@@ -562,24 +620,35 @@ export class BridgeManager {
       case '/status': {
         const ctx = getBridgeContext();
         const healthy = (ctx.core as { isHealthy?: () => boolean }).isHealthy?.() ?? false;
-        const coreStatus = healthy ? '● connected' : '○ disconnected';
+        const coreStatus = healthy ? '🟢 connected' : '🔴 disconnected';
         const channelList = Array.from(this.adapters.keys()).join(', ') || 'none';
-        const statusText = [
-          '📡 TLive Status',
-          '',
-          `Bridge:     ● running`,
-          `Core:       ${coreStatus}`,
-          `Channels:   ${channelList}`,
-        ].join('\n');
 
         if (adapter.channelType === 'telegram') {
-          await adapter.send({ chatId: msg.chatId, html: `<pre>${statusText}</pre>` });
+          const html = [
+            `📡 <b>TLive Status</b>`,
+            '',
+            `<b>Bridge:</b>    🟢 running`,
+            `<b>Core:</b>      ${coreStatus}`,
+            `<b>Channels:</b>  <code>${channelList}</code>`,
+          ].join('\n');
+          await adapter.send({ chatId: msg.chatId, html });
         } else if (adapter.channelType === 'discord') {
-          await adapter.send({ chatId: msg.chatId, text: `\`\`\`\n${statusText}\n\`\`\`` });
+          await adapter.send({
+            chatId: msg.chatId,
+            embed: {
+              title: '📡 TLive Status',
+              color: 0x3399FF,
+              fields: [
+                { name: 'Bridge', value: '🟢 Running', inline: true },
+                { name: 'Core', value: coreStatus, inline: true },
+                { name: 'Channels', value: `\`${channelList}\``, inline: true },
+              ],
+            },
+          });
         } else {
           await adapter.send({
             chatId: msg.chatId,
-            text: statusText,
+            text: `**Bridge:** 🟢 running\n**Core:** ${coreStatus}\n**Channels:** ${channelList}`,
             feishuHeader: { template: 'blue', title: '📡 TLive Status' },
           });
         }
@@ -589,14 +658,21 @@ export class BridgeManager {
         const newSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         await this.router.rebind(msg.channelType, msg.chatId, newSessionId);
         this.clearLastActive(msg.channelType, msg.chatId);
+        // Clear Discord thread binding so next conversation creates a fresh thread
+        this.sessionThreads.delete(this.stateKey(msg.channelType, msg.chatId));
         if (adapter.channelType === 'feishu') {
           await adapter.send({
             chatId: msg.chatId,
             text: 'Session cleared. Send a message to begin.',
             feishuHeader: { template: 'green', title: '🆕 New Session' },
           });
+        } else if (adapter.channelType === 'discord') {
+          await adapter.send({
+            chatId: msg.chatId,
+            embed: { title: '🆕 New Session', description: 'Session cleared. Send a message to begin.', color: 0x00CC66 },
+          });
         } else {
-          await adapter.send({ chatId: msg.chatId, text: '🆕 New session started.' });
+          await adapter.send({ chatId: msg.chatId, html: '🆕 <b>New session started.</b> Send a message to begin.' });
         }
         return true;
       }
@@ -604,10 +680,20 @@ export class BridgeManager {
         const level = parseInt(parts[1], 10) as VerboseLevel;
         if ([0, 1, 2].includes(level)) {
           this.setVerboseLevel(msg.channelType, msg.chatId, level);
-          const labels = ['quiet', 'normal', 'detailed'];
-          await adapter.send({ chatId: msg.chatId, text: `Verbose level: ${level} (${labels[level]})` });
+          const labels = ['🤫 quiet', '📝 normal', '🔬 detailed'];
+          const text = `Verbose: ${labels[level]}`;
+          if (adapter.channelType === 'discord') {
+            await adapter.send({ chatId: msg.chatId, embed: { description: text, color: 0x3399FF } });
+          } else {
+            await adapter.send({ chatId: msg.chatId, text });
+          }
         } else {
-          await adapter.send({ chatId: msg.chatId, text: 'Usage: /verbose 0|1|2\n0=quiet, 1=normal, 2=detailed' });
+          const usage = 'Usage: `/verbose 0|1|2`\n0=quiet, 1=normal, 2=detailed';
+          if (adapter.channelType === 'discord') {
+            await adapter.send({ chatId: msg.chatId, embed: { description: usage, color: 0x888888 } });
+          } else {
+            await adapter.send({ chatId: msg.chatId, text: usage });
+          }
         }
         return true;
       }
@@ -661,7 +747,14 @@ export class BridgeManager {
         if (adapter.channelType === 'telegram') {
           await adapter.send({ chatId: msg.chatId, html: `<b>📋 Sessions</b>\n\n${lines.join('\n')}${footer}` });
         } else if (adapter.channelType === 'discord') {
-          await adapter.send({ chatId: msg.chatId, text: `**📋 Sessions**\n${lines.join('\n')}${footer}` });
+          await adapter.send({
+            chatId: msg.chatId,
+            embed: {
+              title: '📋 Sessions',
+              color: 0x3399FF,
+              description: lines.join('\n') + footer,
+            },
+          });
         } else {
           await adapter.send({
             chatId: msg.chatId,
@@ -706,35 +799,107 @@ export class BridgeManager {
         return true;
       }
       case '/help': {
-        const helpLines = [
-          '/new              New conversation',
-          '/sessions         List recent sessions',
-          '/session <n>      Switch to session #n',
-          '/verbose 0|1|2    Detail level',
-          '  0 = quiet (result only)',
-          '  1 = normal (tools + streaming)',
-          '  2 = detailed (tools + input summary)',
-          '/hooks pause      Auto-allow, no notifications',
-          '/hooks resume     Resume IM approval',
-          '/status           Bridge + hooks status',
-          '/help             This message',
-        ];
-
         if (adapter.channelType === 'telegram') {
-          const htmlLines = helpLines.map(line => {
-            if (line.startsWith('  ')) return line; // indent lines
-            const [cmd, ...desc] = line.split(/\s{2,}/);
-            return desc.length ? `<code>${cmd}</code>  ${desc.join(' ')}` : line;
-          });
-          await adapter.send({ chatId: msg.chatId, html: `<b>TLive Commands</b>\n\n${htmlLines.join('\n')}` });
+          const html = [
+            '<b>❓ TLive Commands</b>',
+            '',
+            '<code>/new</code> — New conversation',
+            '<code>/sessions</code> — List recent sessions',
+            '<code>/session &lt;n&gt;</code> — Switch to session #n',
+            '<code>/verbose 0|1|2</code> — Detail level',
+            '  0 = quiet · 1 = normal · 2 = detailed',
+            '<code>/hooks pause|resume</code> — Toggle IM approval',
+            '<code>/status</code> — Bridge status',
+            '<code>/approve &lt;code&gt;</code> — Approve pairing request',
+            '<code>/pairings</code> — List pending pairings',
+            '<code>/help</code> — This message',
+            '',
+            '<i>💬 Reply <b>allow</b>/<b>deny</b> to approve permissions</i>',
+          ].join('\n');
+          await adapter.send({ chatId: msg.chatId, html });
         } else if (adapter.channelType === 'discord') {
-          await adapter.send({ chatId: msg.chatId, text: `**TLive Commands**\n\`\`\`\n${helpLines.join('\n')}\n\`\`\`` });
-        } else {
           await adapter.send({
             chatId: msg.chatId,
-            text: helpLines.join('\n'),
+            embed: {
+              title: '❓ TLive Commands',
+              color: 0x5865F2,
+              description: [
+                '`/new` — New conversation',
+                '`/sessions` — List recent sessions',
+                '`/session <n>` — Switch to session #n',
+                '`/verbose 0|1|2` — Detail level',
+                '> 0 = quiet · 1 = normal · 2 = detailed',
+                '`/hooks pause|resume` — Toggle IM approval',
+                '`/status` — Bridge status',
+                '`/approve <code>` — Approve pairing request',
+                '`/pairings` — List pending pairings',
+                '`/help` — This message',
+                '',
+                '*💬 Reply `allow`/`deny` to approve permissions*',
+              ].join('\n'),
+            },
+          });
+        } else {
+          const feishuLines = [
+            '/new — New conversation',
+            '/sessions — List recent sessions',
+            '/session <n> — Switch to session #n',
+            '/verbose 0|1|2 — Detail level',
+            '  0 = quiet · 1 = normal · 2 = detailed',
+            '/hooks pause|resume — Toggle IM approval',
+            '/status — Bridge status',
+            '/approve <code> — Approve pairing request',
+            '/pairings — List pending pairings',
+            '/help — This message',
+            '',
+            '💬 回复 **allow** / **deny** 审批权限',
+          ];
+          await adapter.send({
+            chatId: msg.chatId,
+            text: feishuLines.join('\n'),
             feishuHeader: { template: 'indigo', title: '❓ TLive Commands' },
           });
+        }
+        return true;
+      }
+      case '/approve': {
+        const code = parts[1];
+        if (!code) {
+          await adapter.send({ chatId: msg.chatId, text: 'Usage: /approve <pairing_code>' });
+          return true;
+        }
+        // Try to approve pairing on Telegram adapter
+        const tgAdapter = this.adapters.get('telegram');
+        if (tgAdapter && 'approvePairing' in tgAdapter) {
+          const result = (tgAdapter as any).approvePairing(code);
+          if (result) {
+            await adapter.send({
+              chatId: msg.chatId,
+              text: `✅ Approved user ${result.username} (${result.userId})`,
+            });
+          } else {
+            await adapter.send({ chatId: msg.chatId, text: '❌ Code not found or expired' });
+          }
+        } else {
+          await adapter.send({ chatId: msg.chatId, text: '⚠️ Pairing not available' });
+        }
+        return true;
+      }
+      case '/pairings': {
+        const tgAdapter = this.adapters.get('telegram');
+        if (tgAdapter && 'listPairings' in tgAdapter) {
+          const pairings = (tgAdapter as any).listPairings() as Array<{ code: string; userId: string; username: string }>;
+          if (pairings.length === 0) {
+            await adapter.send({ chatId: msg.chatId, text: 'No pending pairing requests.' });
+          } else {
+            const lines = pairings.map(p => `• <code>${p.code}</code> — ${p.username} (${p.userId})`);
+            await adapter.send({
+              chatId: msg.chatId,
+              html: `<b>🔐 Pending Pairings</b>\n\n${lines.join('\n')}\n\nUse /approve <code> to approve.`,
+            });
+          }
+        } else {
+          await adapter.send({ chatId: msg.chatId, text: '⚠️ Pairing not available' });
         }
         return true;
       }

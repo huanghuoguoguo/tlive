@@ -42,6 +42,8 @@
    - **Send Messages**（发送消息）
    - **Read Message History**（读取消息历史）
    - **Manage Messages**（管理消息）
+   - **Add Reactions**（添加表情回应）
+   - **Create Public Threads**（创建公开帖子）
 4. 复制页面底部生成的 **Generated URL**
 
 <!-- ![OAuth2 URL 生成器](images/discord-oauth2.png) -->
@@ -120,6 +122,27 @@ TL_DC_ALLOWED_CHANNELS=333333333,444444444
 3. 在机器人所在的频道发送一条消息
 4. 你应该能看到回复，说明连接成功
 
+## 功能特性
+
+### 自动 Thread
+
+当你发送消息时，机器人会从第一条回复自动创建 **Thread（帖子）**。同一会话的后续消息都在该 Thread 中，保持主频道整洁。使用 `/new` 开始新会话（同时创建新 Thread）。
+
+### 表情回应
+
+机器人用表情回应展示处理状态：
+- 🤔 正在处理你的消息
+- 👍 处理完成
+- ❌ 出现错误
+
+### 文本审批
+
+除了点击按钮，还可以回复 `allow` 或 `deny` 来审批权限请求（适用于按钮过期的情况）。
+
+### Embed 样式输出
+
+`/status`、`/help`、`/sessions` 等命令以 Discord 富文本 Embed 格式呈现，更加美观。
+
 ## 常见问题
 
 **机器人显示离线**
@@ -128,8 +151,9 @@ TL_DC_ALLOWED_CHANNELS=333333333,444444444
 - 确认 tlive 正在运行（`tlive status`）
 
 **出现 "Missing Access" 或 "Missing Permissions" 错误**
-- 机器人需要在频道中拥有 Send Messages、Read Message History 和 Manage Messages 权限
+- 机器人需要 Send Messages、Read Message History、Manage Messages、Add Reactions 和 Create Public Threads 权限
 - 如果频道设置了自定义权限覆盖，确保机器人的角色被正确授权
+- 机器人启动时会检查权限，缺少的权限会输出到日志中
 
 **机器人在线但不回复消息**
 - 这几乎总是因为 **Message Content Intent** 没有开启 —— 回到开发者后台的 Bot 页面开启它

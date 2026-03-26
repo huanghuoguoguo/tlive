@@ -134,7 +134,12 @@ tlive hooks resume             # Back to IM approval
 | Streaming responses | Edit-based | Edit-based | CardKit v2 |
 | Tool visibility | ✅ | ✅ | ✅ |
 | Typing indicator | ✅ | ✅ | — |
+| Reactions | ✅ | ✅ | ✅ |
 | Permission buttons | Inline keyboard | Button components | Interactive card |
+| Text approval (`allow`/`deny`) | ✅ | ✅ | ✅ |
+| Thread/Topic support | Forum topics | Auto-thread | — |
+| Pairing mode | ✅ | — | — |
+| Webhook mode | ✅ | — | WebSocket |
 
 ## Commands
 
@@ -166,7 +171,11 @@ tlive hooks resume         # Resume hooks (IM approval)
 /verbose 0|1|2             # Set detail level
 /new                       # Start new conversation
 /hooks pause|resume        # Toggle hook approval
+/approve <code>            # Approve Telegram pairing
+/pairings                  # List pending pairings
 ```
+
+> **IM Commands:** These slash commands also appear in Telegram's native bot menu automatically.
 
 ## Configuration
 
@@ -179,9 +188,17 @@ TL_HOST=0.0.0.0
 TL_PUBLIC_URL=https://example.com
 
 TL_ENABLED_CHANNELS=telegram,discord
+
+# Telegram
 TL_TG_BOT_TOKEN=...
 TL_TG_CHAT_ID=...
+TL_TG_REQUIRE_MENTION=true        # @bot required in groups
+TL_TG_DISABLE_LINK_PREVIEW=true   # cleaner messages
+
+# Discord
 TL_DC_BOT_TOKEN=...
+
+# Feishu
 TL_FS_APP_ID=...
 TL_FS_APP_SECRET=...
 ```
@@ -291,7 +308,8 @@ tlive/
 - Default bind `0.0.0.0` (LAN-accessible for phone QR scan)
 - Auto-generated bearer token
 - Hook timeout defaults to **deny** (not allow)
-- IM user whitelists per platform
+- IM user whitelists per platform (or pairing mode for Telegram)
+- Bot permission probing on startup (warns about missing permissions)
 - Secret redaction in logs
 - `chmod 600` on config.env
 - Environment isolation for Claude CLI subprocess

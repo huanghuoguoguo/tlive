@@ -42,6 +42,8 @@ Next, scroll down to **Privileged Gateway Intents** and enable:
    - **Send Messages**
    - **Read Message History**
    - **Manage Messages**
+   - **Add Reactions**
+   - **Create Public Threads**
 4. Copy the **Generated URL** at the bottom of the page
 
 <!-- ![OAuth2 URL Generator](images/discord-oauth2.png) -->
@@ -120,6 +122,27 @@ TL_DC_ALLOWED_CHANNELS=333333333,444444444
 3. Send a message in the channel where the bot is present
 4. You should see a response confirming the connection
 
+## Features
+
+### Auto-Threading
+
+When you send a message, the bot automatically creates a **Thread** from its first reply. All follow-up messages in the same session go into that thread, keeping the main channel clean. Use `/new` to start a fresh session (and a new thread).
+
+### Reactions
+
+The bot uses reactions to show processing status:
+- 🤔 Processing your message
+- 👍 Complete
+- ❌ Error
+
+### Text-Based Approval
+
+In addition to clicking buttons, you can reply `allow` or `deny` to permission requests when buttons have expired.
+
+### Embed-Style Output
+
+Commands like `/status`, `/help`, `/sessions` render as rich Discord embeds for a cleaner look.
+
 ## Troubleshooting
 
 **Bot shows as offline**
@@ -128,8 +151,9 @@ TL_DC_ALLOWED_CHANNELS=333333333,444444444
 - Check that tlive is actually running (`tlive status`)
 
 **"Missing Access" or "Missing Permissions" errors**
-- The bot needs Send Messages, Read Message History, and Manage Messages permissions in the channel
+- The bot needs Send Messages, Read Message History, Manage Messages, Add Reactions, and Create Public Threads permissions
 - If the channel has custom permission overrides, make sure the bot role is allowed
+- The bot checks permissions at startup and logs warnings for any missing ones
 
 **Bot is online but doesn't respond to messages**
 - This almost always means **Message Content Intent** is not enabled -- go back to the Bot tab in the Developer Portal and turn it on

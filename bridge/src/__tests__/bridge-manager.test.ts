@@ -125,7 +125,7 @@ describe('BridgeManager', () => {
     });
 
     expect(adapter.send).toHaveBeenCalledWith(
-      expect.objectContaining({ text: expect.stringContaining('Verbose level: 2') })
+      expect.objectContaining({ text: expect.stringContaining('detailed') })
     );
   });
 
@@ -151,7 +151,7 @@ describe('BridgeManager', () => {
     });
 
     expect(adapter.send).toHaveBeenCalledWith(
-      expect.objectContaining({ text: expect.stringContaining('New session') })
+      expect.objectContaining({ html: expect.stringContaining('New session') })
     );
   });
 
@@ -366,5 +366,64 @@ describe('BridgeManager', () => {
         expect.objectContaining({ text: expect.stringContaining('resumed') })
       );
     });
+  });
+
+  it('text-based permission works for Telegram (not only Feishu)', async () => {
+    const adapter = mockAdapter('telegram');
+    manager.registerAdapter(adapter);
+
+    // The text "allow" should be parsed as a permission decision
+    // Without pending permissions, it falls through to normal message handling
+    const result = await manager.handleInboundMessage(adapter, {
+      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: 'allow', messageId: 'm1',
+    });
+    // Since no pending permissions, it should proceed to LLM conversation (not return immediately)
+    // This verifies the text-based check runs for Telegram now
+    expect(result).toBe(true);
+  });
+
+  it('Discord /status renders as embed', async () => {
+    const adapter = mockAdapter('discord');
+    manager.registerAdapter(adapter);
+
+    await manager.handleInboundMessage(adapter, {
+      channelType: 'discord', chatId: 'c1', userId: 'u1', text: '/status', messageId: 'm1',
+    });
+
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embed: expect.objectContaining({ title: expect.stringContaining('TLive Status') }),
+      })
+    );
+  });
+
+  it('Discord /help renders as embed', async () => {
+    const adapter = mockAdapter('discord');
+    manager.registerAdapter(adapter);
+
+    await manager.handleInboundMessage(adapter, {
+      channelType: 'discord', chatId: 'c1', userId: 'u1', text: '/help', messageId: 'm1',
+    });
+
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embed: expect.objectContaining({ title: expect.stringContaining('TLive Commands') }),
+      })
+    );
+  });
+
+  it('Discord /new renders as embed', async () => {
+    const adapter = mockAdapter('discord');
+    manager.registerAdapter(adapter);
+
+    await manager.handleInboundMessage(adapter, {
+      channelType: 'discord', chatId: 'c1', userId: 'u1', text: '/new', messageId: 'm1',
+    });
+
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embed: expect.objectContaining({ title: expect.stringContaining('New Session') }),
+      })
+    );
   });
 });

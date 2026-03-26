@@ -15,16 +15,17 @@
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^25.5.0",
-    "@types/node-telegram-bot-api": "^0.64.14",
     "esbuild": "^0.27.4",
     "typescript": "^5.9.3",
     "vitest": "^4.1.0"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.77",
+    "@grammyjs/runner": "^2.0.3",
+    "@grammyjs/transformer-throttler": "^1.2.1",
     "@larksuiteoapi/node-sdk": "^1.59.0",
     "discord.js": "^14.25.1",
-    "markdown-it": "^14.1.1",
-    "node-telegram-bot-api": "^0.67.0"
+    "grammy": "^1.41.1",
+    "markdown-it": "^14.1.1"
   }
 }
