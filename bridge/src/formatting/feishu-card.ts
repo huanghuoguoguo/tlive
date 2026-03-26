@@ -16,8 +16,11 @@ export interface FeishuCardOptions {
  */
 export function buildFeishuCard(options: FeishuCardOptions): string {
   const card: Record<string, unknown> = {
+    schema: '2.0',
     config: { wide_screen_mode: true },
-    elements: options.elements,
+    body: {
+      elements: options.elements,
+    },
   };
 
   if (options.header) {

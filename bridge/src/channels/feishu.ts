@@ -200,7 +200,10 @@ export class FeishuAdapter extends BaseChannelAdapter {
   async send(message: OutboundMessage): Promise<SendResult> {
     if (!this.client) throw new Error('Feishu client not started');
 
-    const raw = markdownToFeishu(message.text ?? message.html ?? '');
+    // Prefer raw text (markdown) over HTML — schema 2.0 cards render markdown natively
+    const raw = message.text
+      ? message.text
+      : markdownToFeishu(message.html ?? '');
 
     // Media sending
     if (message.media) {

@@ -114,8 +114,8 @@ describe('FeishuAdapter', () => {
       expect(call.data.msg_type).toBe('interactive');
       const card = JSON.parse(call.data.content);
       expect(card.config.wide_screen_mode).toBe(true);
-      expect(card.elements[0].tag).toBe('markdown');
-      expect(card.elements[0].content).toBe('Hello from TermLive');
+      expect(card.body.elements[0].tag).toBe('markdown');
+      expect(card.body.elements[0].content).toBe('Hello from TermLive');
 
       expect(result.success).toBe(true);
       expect(result.messageId).toBe('msg-feishu-1');
@@ -135,10 +135,10 @@ describe('FeishuAdapter', () => {
 
       const call = mockMessageCreate.mock.calls[0][0];
       const card = JSON.parse(call.data.content);
-      expect(card.elements[1].tag).toBe('action');
-      expect(card.elements[1].actions).toHaveLength(2);
-      expect(card.elements[1].actions[0].text.content).toBe('Allow');
-      expect(card.elements[1].actions[1].type).toBe('danger');
+      expect(card.body.elements[1].tag).toBe('action');
+      expect(card.body.elements[1].actions).toHaveLength(2);
+      expect(card.body.elements[1].actions[0].text.content).toBe('Allow');
+      expect(card.body.elements[1].actions[1].type).toBe('danger');
       await adapter.stop();
     });
 
