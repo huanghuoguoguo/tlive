@@ -1,6 +1,6 @@
 {
   "name": "tlive",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Terminal live monitoring + IM bridge for AI coding tools",
   "type": "module",
   "bin": {
@@ -45,6 +45,14 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/y49/tlive"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.77",
+    "@grammyjs/runner": "^2.0.3",
+    "@grammyjs/transformer-throttler": "^1.2.1",
+    "@larksuiteoapi/node-sdk": "^1.59.0",
+    "discord.js": "^14.25.1",
+    "grammy": "^1.41.1"
   },
   "engines": {
     "node": ">=22.0.0"
