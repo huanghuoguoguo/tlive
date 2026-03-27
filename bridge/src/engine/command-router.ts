@@ -16,6 +16,7 @@ export class CommandRouter {
     private router: ChannelRouter,
     private coreAvailable: () => boolean,
     private activeControls: Map<string, QueryControls>,
+    private permissions: { clearSessionWhitelist(): void },
   ) {}
 
   async handle(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
@@ -66,6 +67,7 @@ export class CommandRouter {
         this.state.clearLastActive(msg.channelType, msg.chatId);
         // Clear Discord thread binding so next conversation creates a fresh thread
         this.state.clearThread(msg.channelType, msg.chatId);
+        this.permissions.clearSessionWhitelist();
         if (adapter.channelType === 'feishu') {
           await adapter.send({
             chatId: msg.chatId,

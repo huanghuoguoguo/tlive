@@ -99,6 +99,7 @@ export class BridgeManager {
       this.router,
       () => this.coreAvailable,
       this.activeControls,
+      this.permissions,
     );
   }
 
@@ -384,6 +385,43 @@ export class BridgeManager {
         return true;
       }
 
+      // Graduated permission callbacks
+      if (msg.callbackData.startsWith('perm:allow_edits:')) {
+        const permId = msg.callbackData.split(':').slice(2).join(':');
+        this.permissions.getGateway().resolve(permId, 'allow');
+        // Edit tools allowed via acceptEdits mode — no whitelist needed, SDK handles it
+        if (msg.messageId) {
+          adapter.editMessage(msg.chatId, msg.messageId, { chatId: msg.chatId, text: '✅ Allowed (all edits)' }).catch(() => {});
+        }
+        return true;
+      }
+
+      if (msg.callbackData.startsWith('perm:allow_tool:')) {
+        const parts = msg.callbackData.split(':');
+        const permId = parts[2];
+        const toolName = parts.slice(3).join(':');
+        this.permissions.getGateway().resolve(permId, 'allow');
+        this.permissions.addAllowedTool(toolName);
+        console.log(`[bridge] Added ${toolName} to session whitelist`);
+        if (msg.messageId) {
+          adapter.editMessage(msg.chatId, msg.messageId, { chatId: msg.chatId, text: `✅ Allowed (${toolName} for session)` }).catch(() => {});
+        }
+        return true;
+      }
+
+      if (msg.callbackData.startsWith('perm:allow_bash:')) {
+        const parts = msg.callbackData.split(':');
+        const permId = parts[2];
+        const prefix = parts.slice(3).join(':');
+        this.permissions.getGateway().resolve(permId, 'allow');
+        this.permissions.addAllowedBashPrefix(prefix);
+        console.log(`[bridge] Added Bash(${prefix} *) to session whitelist`);
+        if (msg.messageId) {
+          adapter.editMessage(msg.chatId, msg.messageId, { chatId: msg.chatId, text: `✅ Allowed (Bash ${prefix} * for session)` }).catch(() => {});
+        }
+        return true;
+      }
+
       // Regular permission broker callbacks (perm:allow:ID, perm:deny:ID, perm:allow_session:ID)
       console.log(`[bridge] Perm callback: ${msg.callbackData}, gateway pending: ${this.permissions.getGateway().pendingCount()}`);
       const resolved = this.permissions.handleBrokerCallback(msg.callbackData);
@@ -414,6 +452,7 @@ export class BridgeManager {
       const newSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       await this.router.rebind(msg.channelType, msg.chatId, newSessionId);
       this.state.clearThread(msg.channelType, msg.chatId);
+      this.permissions.clearSessionWhitelist();
     }
 
     const binding = await this.router.resolve(msg.channelType, msg.chatId);
@@ -517,6 +556,12 @@ export class BridgeManager {
     const permMode = this.state.getPermMode(msg.channelType, msg.chatId);
     const sdkPermissionHandler = permMode === 'on'
       ? async (toolName: string, toolInput: Record<string, unknown>, promptSentence: string, signal?: AbortSignal) => {
+          // Check dynamic whitelist — auto-allow if previously approved
+          if (this.permissions.isToolAllowed(toolName, toolInput)) {
+            console.log(`[bridge] Auto-allowed ${toolName} via session whitelist`);
+            return 'allow' as const;
+          }
+
           const permId = `sdk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
           const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
           this.permissions.setPendingSdkPerm(chatKey, permId);
@@ -535,10 +580,24 @@ export class BridgeManager {
           const inputStr = typeof toolInput === 'string'
             ? toolInput as string
             : JSON.stringify(toolInput, null, 2);
-          const buttons = [
+          const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+          const buttons: Array<{ label: string; callbackData: string; style: string }> = [
             { label: '✅ Yes', callbackData: `perm:allow:${permId}`, style: 'primary' },
-            { label: '❌ No', callbackData: `perm:deny:${permId}`, style: 'danger' },
           ];
+
+          if (EDIT_TOOLS.has(toolName)) {
+            buttons.push({ label: '✅ Allow all edits', callbackData: `perm:allow_edits:${permId}`, style: 'default' });
+          } else if (toolName === 'Bash') {
+            const cmd = typeof toolInput.command === 'string' ? toolInput.command : '';
+            const prefix = this.permissions.extractBashPrefix(cmd);
+            if (prefix) {
+              buttons.push({ label: `✅ Bash(${prefix} *)`, callbackData: `perm:allow_bash:${permId}:${prefix}`, style: 'default' });
+            }
+          } else {
+            buttons.push({ label: `✅ Allow ${toolName}`, callbackData: `perm:allow_tool:${permId}:${toolName}`, style: 'default' });
+          }
+
+          buttons.push({ label: '❌ No', callbackData: `perm:deny:${permId}`, style: 'danger' });
           renderer.onPermissionNeeded(toolName, inputStr, promptSentence, buttons);
 
           // Send buttons as separate message (IM platforms need interactive buttons)
