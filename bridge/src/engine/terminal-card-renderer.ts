@@ -19,10 +19,12 @@ interface ToolEntry {
   running: boolean;
   denied: boolean;
   resultPreview?: string;
+  parentToolUseId?: string;
 }
 
 interface AgentEntry {
   description: string;
+  toolUseId?: string;
   lastTool?: string;
   usage?: { tool_uses: number; duration_ms: number };
   status: 'running' | 'completed' | 'failed' | 'stopped';
@@ -82,10 +84,10 @@ export class TerminalCardRenderer {
   }
 
   // Tool log
-  onToolStart(name: string, input: Record<string, unknown>): string {
+  onToolStart(name: string, input: Record<string, unknown>, parentToolUseId?: string): string {
     const id = `tool-${++this.toolIdCounter}`;
     const title = getToolTitle(name, input);
-    const entry: ToolEntry = { id, name, title, running: true, denied: false };
+    const entry: ToolEntry = { id, name, title, running: true, denied: false, parentToolUseId };
 
     // Flush any previous pending tool first
     this.flushPendingTool();
@@ -156,8 +158,8 @@ export class TerminalCardRenderer {
   }
 
   // Agent nesting
-  onAgentStart(description: string): void {
-    this.agents.push({ description, status: 'running' });
+  onAgentStart(description: string, toolUseId?: string): void {
+    this.agents.push({ description, toolUseId, status: 'running' });
     if (this.verboseLevel > 0) this.scheduleFlush();
   }
 
@@ -175,6 +177,11 @@ export class TerminalCardRenderer {
     if (agent) {
       agent.status = status;
       agent.summary = summary;
+      // Auto-complete the agent's tool entry
+      if (agent.toolUseId) {
+        const toolEntry = this.findTool(agent.toolUseId);
+        if (toolEntry) toolEntry.running = false;
+      }
     }
     if (this.verboseLevel > 0) this.scheduleFlush();
   }
@@ -266,14 +273,23 @@ export class TerminalCardRenderer {
   }
 
   private enforceWindow(): void {
-    while (this.toolEntries.length > this.windowSize) {
-      this.toolEntries.shift();
+    // Only count top-level entries toward window size
+    let topLevelCount = this.toolEntries.filter(e => !e.parentToolUseId).length;
+    while (topLevelCount > this.windowSize) {
+      // Remove the first top-level entry and any children that reference it
+      const idx = this.toolEntries.findIndex(e => !e.parentToolUseId);
+      if (idx === -1) break;
+      const removed = this.toolEntries[idx];
+      this.toolEntries.splice(idx, 1);
+      // Remove children of the collapsed entry
+      this.toolEntries = this.toolEntries.filter(e => e.parentToolUseId !== removed.id);
       this.collapsedCount++;
+      topLevelCount--;
     }
   }
 
   private totalToolCount(): number {
-    return this.collapsedCount + this.toolEntries.length;
+    return this.collapsedCount + this.toolEntries.filter(e => !e.parentToolUseId).length;
   }
 
   render(): string {
@@ -285,37 +301,93 @@ export class TerminalCardRenderer {
       return this.applyPlatformLimit(redactSensitiveContent(parts.join('\n')));
     }
 
-    // Agent headers
-    for (const agent of this.agents) {
-      if (agent.status === 'running') {
-        let line = `🔄 Agent: ${agent.description}`;
-        if (agent.lastTool) line += ` → ${getToolIcon(agent.lastTool)} ${agent.lastTool}`;
-        if (agent.usage) line += ` (${agent.usage.tool_uses} tools, ${Math.round(agent.usage.duration_ms / 1000)}s)`;
-        parts.push(line);
-      } else {
-        const icon = agent.status === 'completed' ? '●' : agent.status === 'failed' ? '❌' : '⏹';
-        parts.push(`${icon} Agent: ${agent.summary ?? agent.description}`);
-      }
-    }
-
     // Tool section
     if (this.completed && this.totalToolCount() > 0) {
-      // Collapse tool log on completion
+      // Collapse tool log on completion — but still show agent summaries
       parts.push(`● ... (${this.totalToolCount()} tools)`);
+      for (const agent of this.agents) {
+        if (agent.status !== 'running') {
+          const icon = agent.status === 'completed' ? '●' : agent.status === 'failed' ? '❌' : '⏹';
+          parts.push(`${icon} Agent: ${agent.summary ?? agent.description}`);
+        }
+      }
     } else {
+      // Build parent→children map
+      const childTools = new Map<string, ToolEntry[]>();
+      const topLevel: ToolEntry[] = [];
+
+      for (const entry of this.toolEntries) {
+        if (entry.parentToolUseId) {
+          const children = childTools.get(entry.parentToolUseId) || [];
+          children.push(entry);
+          childTools.set(entry.parentToolUseId, children);
+        } else {
+          topLevel.push(entry);
+        }
+      }
+
       // Collapsed count
       if (this.collapsedCount > 0) {
         parts.push(`+${this.collapsedCount} more tool uses`);
       }
-      // Visible tool entries
-      for (const entry of this.toolEntries) {
+
+      // Render top-level entries with nested children
+      for (const entry of topLevel) {
+        const agent = this.agents.find(a => a.toolUseId === entry.id);
+        const children = childTools.get(entry.id) || [];
+        const isAgentEntry = agent || children.length > 0;
+
         const icon = entry.running ? '🔄' : '●';
         parts.push(`${icon} ${entry.title}`);
-        if (entry.resultPreview) {
+
+        // Result preview for non-agent top-level tools
+        if (entry.resultPreview && !isAgentEntry) {
           const lines = entry.resultPreview.split('\n');
           for (const line of lines) {
             parts.push(`├  ${line}`);
           }
+        }
+
+        // Render agent children
+        if (isAgentEntry) {
+          for (let i = 0; i < children.length; i++) {
+            const child = children[i];
+            const agentDone = agent && agent.status !== 'running';
+            const isLast = i === children.length - 1 && !agentDone;
+            const connector = isLast ? '│ └' : '│ ├';
+            const childIcon = child.running ? '🔄 ' : '';
+            parts.push(`${connector} ${childIcon}${child.title}`);
+            if (child.resultPreview) {
+              for (const line of child.resultPreview.split('\n')) {
+                parts.push(`│   ${line}`);
+              }
+            }
+          }
+          // Agent completion summary
+          if (agent && agent.status !== 'running') {
+            const statusIcon = agent.status === 'completed' ? '✓' : agent.status === 'failed' ? '✗' : '⏹';
+            const stats: string[] = [];
+            if (agent.usage) {
+              if (agent.usage.tool_uses > 0) stats.push(`${agent.usage.tool_uses} tool uses`);
+              if (agent.usage.duration_ms > 0) stats.push(`${Math.round(agent.usage.duration_ms / 1000)}s`);
+            }
+            const summary = agent.summary || 'Done';
+            parts.push(`│ └ ${statusIcon} ${summary}${stats.length ? ` · ${stats.join(' · ')}` : ''}`);
+          }
+        }
+      }
+
+      // Show agents without toolUseId (legacy/unlinked agents) as standalone headers
+      for (const agent of this.agents) {
+        if (agent.toolUseId) continue; // already rendered as part of tool tree
+        if (agent.status === 'running') {
+          let line = `🔄 Agent: ${agent.description}`;
+          if (agent.lastTool) line += ` → ${getToolIcon(agent.lastTool)} ${agent.lastTool}`;
+          if (agent.usage) line += ` (${agent.usage.tool_uses} tools, ${Math.round(agent.usage.duration_ms / 1000)}s)`;
+          parts.push(line);
+        } else {
+          const statusIcon = agent.status === 'completed' ? '●' : agent.status === 'failed' ? '❌' : '⏹';
+          parts.push(`${statusIcon} Agent: ${agent.summary ?? agent.description}`);
         }
       }
     }

@@ -657,14 +657,18 @@ export class BridgeManager {
         },
         onTextDelta: (delta) => renderer.onTextDelta(delta),
         onToolStart: (event) => {
-          const rendererToolId = renderer.onToolStart(event.name, event.input);
+          const parentId = (event as any).parentToolUseId ? toolIdMap.get((event as any).parentToolUseId) ?? (event as any).parentToolUseId : undefined;
+          const rendererToolId = renderer.onToolStart(event.name, event.input, parentId);
           if (event.id) toolIdMap.set(event.id, rendererToolId);
         },
         onToolResult: (event) => {
           const rendererToolId = toolIdMap.get(event.toolUseId) ?? event.toolUseId;
           renderer.onToolComplete(rendererToolId, event.content, event.isError);
         },
-        onAgentStart: (data) => renderer.onAgentStart(data.description),
+        onAgentStart: (data) => {
+          const toolUseId = data.taskId ? (toolIdMap.get(data.taskId) ?? data.taskId) : undefined;
+          renderer.onAgentStart(data.description, toolUseId);
+        },
         onAgentProgress: (data) => {
           const usage = data.usage ? { tool_uses: data.usage.toolUses, duration_ms: data.usage.durationMs } : undefined;
           renderer.onAgentProgress(data.description, data.lastTool, usage);
