@@ -28,5 +28,8 @@
     "grammy": "^1.41.1",
     "markdown-it": "^14.1.1",
     "zod": "^4.3.6"
+  },
+  "optionalDependencies": {
+    "@openai/codex-sdk": "^0.117.0"
   }
 }

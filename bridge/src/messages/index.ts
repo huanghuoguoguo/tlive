@@ -1,5 +1,6 @@
 export { canonicalEventSchema, type CanonicalEvent } from './schema.js';
 export { ClaudeAdapter } from './claude-adapter.js';
+export { CodexAdapter } from './codex-adapter.js';
 export type {
   SessionMode,
   ProviderBackend,
