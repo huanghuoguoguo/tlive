@@ -9,7 +9,7 @@ import { getBridgeContext } from '../context.js';
 import { loadConfig } from '../config.js';
 import { markdownToTelegram } from '../markdown/index.js';
 import { downgradeHeadings } from '../markdown/feishu.js';
-import { StreamController, type VerboseLevel } from './stream-controller.js';
+import { TerminalCardRenderer, type VerboseLevel } from './terminal-card-renderer.js';
 import type { FeishuStreamingSession } from '../channels/feishu-streaming.js';
 import { CostTracker } from './cost-tracker.js';
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
@@ -606,53 +606,41 @@ export class BridgeManager {
     }
 
     const platformLimits: Record<string, number> = { telegram: 4096, discord: 2000, feishu: 30000 };
-    const stream = new StreamController({
+    const windowSizes: Record<string, number> = { telegram: 5, discord: 6, feishu: 8 };
+    const renderer = new TerminalCardRenderer({
       verboseLevel,
       platformLimit: platformLimits[adapter.channelType] ?? 4096,
+      throttleMs: 300,
+      windowSize: windowSizes[adapter.channelType] ?? 8,
       flushCallback: async (content, isEdit) => {
-        // Feishu: use CardKit streaming
+        // Feishu streaming path
         if (feishuSession) {
           if (!isEdit) {
-            // First flush: start streaming session
             try {
               const messageId = await feishuSession.start(downgradeHeadings(content));
               clearInterval(typingInterval);
               return messageId;
             } catch {
-              // Fallback: streaming API not available, disable and use normal send
               feishuSession = null;
             }
           } else {
-            // Subsequent flushes: stream update
             feishuSession.update(downgradeHeadings(content)).catch(() => {});
             return;
           }
         }
-
-        // Non-streaming path (Telegram, Discord, Feishu fallback)
+        // Non-streaming path
         let outMsg: OutboundMessage;
         if (adapter.channelType === 'telegram') {
-          let styled = content;
-          styled = styled.replace(/^((?:📖|✏️|📝|🖥️|🔍|📂|🤖|🌐|🔧)[^\n]*)\n(━+)/m, '_$1_\n$2');
-          styled = styled.replace(/(📊[^\n]+)$/m, '`$1`');
-          outMsg = { chatId: msg.chatId, html: markdownToTelegram(styled), threadId };
+          outMsg = { chatId: msg.chatId, html: markdownToTelegram(content), threadId };
         } else if (adapter.channelType === 'discord') {
-          let styled = content;
-          styled = styled.replace(/^((?:📖|✏️|📝|🖥️|🔍|📂|🤖|🌐|🔧)[^\n]*)\n(━+)/m, '*$1*\n$2');
-          styled = styled.replace(/(📊[^\n]+)$/m, '`$1`');
-          outMsg = { chatId: msg.chatId, text: styled, threadId };
+          outMsg = { chatId: msg.chatId, text: content, threadId };
         } else {
-          // Feishu: pass raw markdown with card header for styled rendering
           outMsg = { chatId: msg.chatId, text: content, feishuHeader: { template: 'blue', title: '💬 Claude' } };
         }
-
         if (!isEdit) {
-          // Discord: create thread on first response if not already in one
           if (adapter.channelType === 'discord' && !threadId && 'createThread' in adapter) {
-            // First send the initial reply to the channel
             const result = await adapter.send(outMsg);
             clearInterval(typingInterval);
-            // Create thread from the reply message
             const preview = (msg.text || 'Claude').slice(0, 80);
             const newThreadId = await (adapter as any).createThread(msg.chatId, result.messageId, `💬 ${preview}`);
             if (newThreadId) {
@@ -665,12 +653,13 @@ export class BridgeManager {
           clearInterval(typingInterval);
           return result.messageId;
         } else {
-          await adapter.editMessage(msg.chatId, stream.messageId!, outMsg);
+          await adapter.editMessage(msg.chatId, renderer.messageId!, outMsg);
         }
       },
     });
 
     let completedStats: import('./cost-tracker.js').UsageStats | undefined;
+    const toolIdMap = new Map<string, string>(); // SDK tool_use_id → renderer tool ID
 
     // Build SDK-level permission handler based on /perm mode
     const permMode = this.getPermMode(msg.channelType, msg.chatId);
@@ -690,21 +679,28 @@ export class BridgeManager {
           if (signal?.aborted) { abortCleanup(); return 'deny' as const; }
           signal?.addEventListener('abort', abortCleanup, { once: true });
 
-          // Notify user via IM (no terminal URL for SDK permissions)
-          // Only send to channels that have a known chatId — don't use msg.chatId as
-          // fallback for other channels (e.g. feishu chatId would crash telegram send)
+          // Render permission inline in the terminal card
+          const inputStr = typeof toolInput === 'string'
+            ? toolInput as string
+            : JSON.stringify(toolInput, null, 2);
+          const buttons = [
+            { label: '✅ Yes', callbackData: `perm:allow:${permId}`, style: 'primary' },
+            { label: '❌ No', callbackData: `perm:deny:${permId}`, style: 'danger' },
+          ];
+          renderer.onPermissionNeeded(toolName, inputStr, promptSentence, buttons);
+
+          // Send buttons as separate message (IM platforms need interactive buttons)
           try {
-            await this.broker.forwardPermissionRequest(
-              { permissionRequestId: permId, toolName, toolInput },
-              (channelType) => channelType === msg.channelType
-                ? msg.chatId
-                : this.getLastChatId(channelType) || '',
-              this.getAdapters(),
-              { showTerminalUrl: false },
-            );
+            const targetChatId = threadId && adapter.channelType === 'discord' ? threadId : msg.chatId;
+            await adapter.send({
+              chatId: targetChatId,
+              text: `🔐 ${toolName}`,
+              buttons: buttons.map(b => ({ ...b, style: b.style as 'primary' | 'danger' | 'default' })),
+            });
           } catch (err) {
-            console.warn(`[bridge] Failed to send permission card (continuing): ${err}`);
+            console.warn(`[bridge] Failed to send permission buttons: ${err}`);
           }
+
           // Wait for user response (5 min timeout)
           const result = await this.gateway.waitFor(permId, {
             timeoutMs: 5 * 60 * 1000,
@@ -714,6 +710,7 @@ export class BridgeManager {
             },
           });
           signal?.removeEventListener('abort', abortCleanup);
+          renderer.onPermissionResolved();
           this.pendingSdkPerms.delete(chatKey);
           console.log(`[bridge] Permission resolved: ${toolName} (${permId}) → ${result.behavior}`);
           return result.behavior as 'allow' | 'allow_always' | 'deny';
@@ -731,31 +728,35 @@ export class BridgeManager {
           const chatKey = this.stateKey(msg.channelType, msg.chatId);
           this.activeControls.set(chatKey, ctrl);
         },
-        onTextDelta: (delta) => stream.onTextDelta(delta),
-        onToolUse: (event) => stream.onToolStart(event.name, event.input as Record<string, unknown>),
-        onAgentProgress: (data) => stream.onAgentProgress(data.description, data.lastTool, data.usage),
-        onAgentComplete: (data) => stream.onAgentComplete(data.summary, data.status as 'completed' | 'failed' | 'stopped'),
+        onTextDelta: (delta) => renderer.onTextDelta(delta),
+        onToolUse: (event) => {
+          const rendererToolId = renderer.onToolStart(event.name, event.input as Record<string, unknown>);
+          if (event.id) toolIdMap.set(event.id, rendererToolId);
+        },
+        onToolResult: (event) => {
+          const rendererToolId = toolIdMap.get(event.tool_use_id) ?? event.tool_use_id;
+          renderer.onToolComplete(rendererToolId, event.content, event.is_error);
+        },
+        onAgentProgress: (data) => renderer.onAgentProgress(data.description, data.lastTool, data.usage),
+        onAgentComplete: (data) => renderer.onAgentComplete(data.summary, data.status as 'completed' | 'failed' | 'stopped'),
         onToolProgress: (data) => {
-          // Show long-running tool execution (>3s)
-          stream.onAgentProgress(`${data.toolName} running...`, undefined, { tool_uses: 0, duration_ms: data.elapsed * 1000 });
+          renderer.onAgentProgress(`${data.toolName} running...`, undefined, { tool_uses: 0, duration_ms: data.elapsed * 1000 });
         },
         onRateLimit: (data) => {
           if (data.status === 'rejected') {
-            stream.onTextDelta('\n⚠️ Rate limited. Retrying...\n');
+            renderer.onTextDelta('\n⚠️ Rate limited. Retrying...\n');
           } else if (data.status === 'allowed_warning' && data.utilization) {
-            stream.onTextDelta(`\n⚠️ Rate limit: ${Math.round(data.utilization * 100)}% used\n`);
+            renderer.onTextDelta(`\n⚠️ Rate limit: ${Math.round(data.utilization * 100)}% used\n`);
           }
         },
         onResult: (event) => {
-          // Log and surface permission denials — these explain incomplete responses
           if (event.permission_denials?.length) {
-            // Log for debugging but don't show to user — often caused by cancelled subagents
             console.warn(`[bridge] Permission denials: ${event.permission_denials.map(d => d.tool_name).join(', ')}`);
           }
           const usage = event.usage ?? { input_tokens: 0, output_tokens: 0 };
           completedStats = costTracker.finish(usage);
           if (verboseLevel > 0) {
-            stream.onComplete(completedStats);
+            renderer.onComplete(completedStats);
           }
         },
         onPromptSuggestion: (suggestion) => {
@@ -768,7 +769,7 @@ export class BridgeManager {
             buttons: [{ label: '💡 ' + truncated, callbackData: `suggest:${suggestion.slice(0, 200)}`, style: 'default' as const }],
           }).catch(() => {});
         },
-        onError: (err) => stream.onError(err),
+        onError: (err) => renderer.onError(err),
         onPermissionRequest: async (req) => {
           await this.broker.forwardPermissionRequest(
             req,
@@ -778,9 +779,9 @@ export class BridgeManager {
         },
       });
 
-      // Level 0: deliver final response via delivery layer (stream didn't flush text)
+      // Level 0: deliver final response via delivery layer (renderer didn't flush text)
       if (verboseLevel === 0) {
-        const responseText = result.text.trim();
+        const responseText = renderer.getResponseText().trim() || result.text.trim();
         if (!completedStats) {
           const usage = result.usage ?? { input_tokens: 0, output_tokens: 0 };
           completedStats = costTracker.finish(usage);
@@ -800,7 +801,7 @@ export class BridgeManager {
       throw err;
     } finally {
       clearInterval(typingInterval);
-      stream.dispose();
+      renderer.dispose();
       this.activeControls.delete(this.stateKey(msg.channelType, msg.chatId));
       // Close Feishu streaming card
       if (feishuSession) {
