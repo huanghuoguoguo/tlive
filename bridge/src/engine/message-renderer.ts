@@ -221,7 +221,7 @@ export class MessageRenderer {
     }
   }
 
-  private async doFlush(content: string, buttons?: Array<{ label: string; callbackData: string; style: string }>): Promise<void> {
+  private async doFlush(content: string): Promise<void> {
     if (!content) return;
     if (this.flushing) {
       this.pendingFlush = true;
