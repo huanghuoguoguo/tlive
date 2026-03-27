@@ -61,9 +61,9 @@ Before any command except `setup`, check `~/.tlive/config.env`:
 ```
 1. Check config.env → if missing, auto-start setup
 2. Check Bridge PID → if running, show status instead
-3. Start Bridge: tlive start
+3. Start Bridge: tlive start (uses TL_RUNTIME from config, default: claude)
 4. Wait 2s, verify alive: tlive status
-6. Report channels + web terminal status
+5. Report runtime, channels + web terminal status
 ```
 
 ### `setup`
@@ -88,6 +88,7 @@ Enter numbers (e.g., 1,3):"
 - **Feishu**: App ID → confirm → App Secret → confirm (masked) → Allowed User IDs (optional).
 
 **Step 3 — General settings:**
+- Runtime: claude (default) or codex
 - Port (default 8080)
 - Public URL (optional, for web links in IM messages)
 - Auto-generate TL_TOKEN (32-char hex)
@@ -128,14 +129,14 @@ fi
 
 ```bash
 # Bridge
+source ~/.tlive/config.env 2>/dev/null
 if [ -f ~/.tlive/runtime/bridge.pid ] && kill -0 "$(cat ~/.tlive/runtime/bridge.pid)" 2>/dev/null; then
-  echo "Bridge: running (PID $(cat ~/.tlive/runtime/bridge.pid))"
+  echo "Bridge: running (PID $(cat ~/.tlive/runtime/bridge.pid), runtime: ${TL_RUNTIME:-claude})"
 else
   echo "Bridge: not running"
 fi
 
 # Go Core (optional)
-source ~/.tlive/config.env 2>/dev/null
 if curl -sf "http://localhost:${TL_PORT:-8080}/api/status" -H "Authorization: Bearer ${TL_TOKEN}" >/dev/null 2>&1; then
   echo "Web terminal: available at http://localhost:${TL_PORT:-8080}"
 else
@@ -220,11 +221,17 @@ In terminal (tlive):
   tlive hooks resume   Resume IM approval flow
 
 In IM (from phone):
-  /new                 Start new conversation
-  /verbose 0|1|2       Set detail level (quiet/normal/detailed)
-  /hooks pause|resume  Toggle hook approval
-  /status              Check status
-  /help                Show commands
+  /new                       Start new conversation
+  /runtime claude|codex      Switch AI provider
+  /perm on|off               Permission prompts on/off
+  /effort low|medium|high|max  Thinking depth
+  /stop                      Interrupt execution
+  /verbose 0|1               Detail level (quiet/terminal card)
+  /sessions                  List recent sessions
+  /session <n>               Switch to session
+  /hooks pause|resume        Toggle hook approval
+  /status                    Check status
+  /help                      Show commands
 ```
 
 ## Notes
