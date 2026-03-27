@@ -43,6 +43,8 @@ interface BaseEvent {
 type CanonicalEvent =
   // Text streaming
   | { kind: 'text_delta'; text: string } & BaseEvent
+  // Thinking (hidden from IM display by default — renderer skips these)
+  | { kind: 'thinking_delta'; text: string } & BaseEvent
 
   // Tool lifecycle
   | { kind: 'tool_start'; id: string; name: string;
@@ -79,6 +81,7 @@ type CanonicalEvent =
 - **`parentToolUseId`**: Tracks subagent nesting. When Claude dispatches a subagent, all events from that subagent carry the parent's `tool_use_id`. This enables the terminal card renderer to build agent trees.
 - **camelCase fields**: Internal canonical format uses camelCase (`toolUseId`, `inputTokens`). The adapter maps from SDK's snake_case.
 - **`agent_start` separate from `agent_progress`**: The SDK emits `task_started` as a distinct event. We keep this distinction for clean lifecycle tracking.
+- **`thinking_delta` separate from `text_delta`**: The SDK's `content_block_start` has `type: 'thinking'` vs `type: 'text'`. Happy hides thinking entirely (`if (isThinking) return null`). We emit it as a separate event kind so the renderer can choose to hide it (default for IM) or display it (future verbose mode). This prevents thousands of thinking tokens from flooding IM messages.
 
 ## Zod Schemas
 
@@ -89,6 +92,11 @@ const baseSchema = z.object({ parentToolUseId: z.string().optional() });
 
 const textDeltaSchema = z.object({
   kind: z.literal('text_delta'),
+  text: z.string(),
+}).merge(baseSchema).passthrough();
+
+const thinkingDeltaSchema = z.object({
+  kind: z.literal('thinking_delta'),
   text: z.string(),
 }).merge(baseSchema).passthrough();
 
@@ -110,6 +118,7 @@ const toolResultSchema = z.object({
 
 export const canonicalEventSchema = z.discriminatedUnion('kind', [
   textDeltaSchema,
+  thinkingDeltaSchema,
   toolStartSchema,
   toolResultSchema,
   toolProgressSchema,
@@ -162,6 +171,44 @@ export class ClaudeAdapter {
 ```
 
 The adapter is **stateful** — it maintains `sidechainParents` to track which events belong to which subagent, matching Happy's `sidechainLastUUID` pattern.
+
+### Thinking Block Detection
+
+The SDK's `stream_event` contains `content_block_start` with either `type: 'thinking'` or `type: 'text'`. The adapter maps these to different canonical events:
+
+```typescript
+private adaptStreamEvent(event: any): CanonicalEvent[] {
+  if (event.type === 'content_block_start') {
+    // Track whether current block is thinking or text
+    this.currentBlockType = event.content_block?.type; // 'thinking' | 'text' | 'tool_use'
+  }
+  if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+    const kind = this.currentBlockType === 'thinking' ? 'thinking_delta' : 'text_delta';
+    return [{ kind, text: event.delta.text }];
+  }
+  // ... other event handling
+}
+```
+
+The renderer hides `thinking_delta` events by default — they are not accumulated into `responseText` and not displayed in the terminal card. This prevents thousands of thinking tokens from flooding IM messages (matching Happy's approach of `if (isThinking) return null`).
+
+### Hidden Tool Filtering
+
+Internal tools that provide no user-visible value are filtered at the adapter level (inspired by Happy's `hidden: true` flag in `knownTools`):
+
+```typescript
+const HIDDEN_TOOLS = new Set([
+  'ToolSearch', 'TodoRead', 'TodoWrite',
+  'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'TaskStop',
+]);
+
+// In adaptStreamEvent / adaptAssistant:
+if (block.type === 'tool_use' && HIDDEN_TOOLS.has(block.name)) {
+  return []; // Don't emit tool_start for hidden tools
+}
+```
+
+This keeps the terminal card's rolling window focused on tools the user cares about (Read, Edit, Bash, Grep, etc.), not Claude's internal task management.
 
 ### Subagent Nesting Logic
 
@@ -287,10 +334,12 @@ switch (value.kind) {
 The callback signatures in `ProcessMessageParams` change from SSE-typed events to canonical events:
 - `onToolUse` → `onToolStart` (matches canonical kind)
 - Event data is directly typed, no `as` casts needed
+- `thinking_delta` events are **not** accumulated into `fullText` — thinking is internal reasoning, not user-facing output
+- Hidden tool events never reach conversation.ts (filtered at adapter level)
 
 ## What This Enables (Future Sub-Projects)
 
-1. **Sub-project 2: Bridge-manager refactor** — SessionMode replaces scattered Maps, cleaner event handling
+1. **Sub-project 2: Bridge-manager refactor** — SessionMode replaces scattered Maps, graduated permission buttons (tool-specific "Yes for this tool" with dynamic session whitelist, inspired by Happy's PermissionFooter), conditional message delay queue (250ms tool delay with early release on permission/result)
 2. **Sub-project 3: Message encryption** — Encrypt CanonicalEvent payloads before sending to IM (symmetric key, user decrypts)
 3. **Sub-project 4: Multi-provider** — Implement `ProviderBackend` for Codex/Gemini, adapter maps their events to same CanonicalEvent stream
 4. **Sub-project 5: Message tree** — `parentToolUseId` enables reducer-style state accumulation for subagent trees
@@ -299,6 +348,30 @@ The callback signatures in `ProcessMessageParams` change from SSE-typed events t
 
 - Codex/Gemini adapter implementation (future sub-project)
 - Bridge-manager Map consolidation to SessionMode (sub-project 2)
-- PushableAsyncIterable for mid-conversation injection (sub-project 2 or standalone)
+- Graduated permission buttons / dynamic session whitelist (sub-project 2)
+- Conditional message delay queue (sub-project 2)
+- PushableAsyncIterable for mid-conversation injection (sub-project 2 — note: only works between turns, not mid-execution)
 - Message encryption (sub-project 3)
 - Zod dependency — already in devDependencies via vitest; add as runtime dep
+
+## Patterns Borrowed from Happy (slopus/happy)
+
+| Pattern | Happy's Implementation | Our Adaptation |
+|---------|----------------------|----------------|
+| Zod + `.passthrough()` | `RawJSONLinesSchema`, `sessionEventSchema` | `canonicalEventSchema` with discriminated union |
+| Subagent parent tracking | `sidechainLastUUID: Map` | `parentToolUseId` field on BaseEvent |
+| Thinking block suppression | `if (isThinking) return null` | `thinking_delta` separate event kind, renderer hides |
+| Hidden internal tools | `hidden: true` in `knownTools` | `HIDDEN_TOOLS` set in adapter, events not emitted |
+| Provider abstraction | `AgentBackend` interface with callback-based `onMessage` | `ProviderBackend` with `ReadableStream<CanonicalEvent>` |
+| Mode bundling | `EnhancedMode` type | `SessionMode` type |
+| Message normalization | `SDKToLogConverter` class | `ClaudeAdapter` class |
+
+## Where We Surpass Happy
+
+| Aspect | Happy | TermLive |
+|--------|-------|----------|
+| Type safety | Zod on wire protocol only | **Zod on canonical events + TypeScript discriminated union** |
+| Serialization | JSON strings between layers | **Direct typed objects (zero serialization overhead)** |
+| Stream model | Callback-based `onMessage(handler)` | **`ReadableStream<CanonicalEvent>` — composable, backpressure-aware** |
+| Validation location | Consumer-side (app parses) | **Producer-side (adapter validates) — fail fast** |
+| Event granularity | Coarse (agent-level) | **Fine-grained (tool_start/result/progress + agent lifecycle)** |
