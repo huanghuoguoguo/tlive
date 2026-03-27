@@ -287,12 +287,13 @@ return {
 
 ## Permission Button Design
 
-SDK officially supports only `allow` and `deny` responses. The "Always" concept (`updatedPermissions` + `suggestions`) exists in TypeScript types but is undocumented.
+Two buttons only: **Yes** and **No**. No "Always" — it conflicts with `/perm` and operates at a different level (Claude Code persistent rules vs bridge session toggle).
 
-Button options:
 - **✅ Yes** → `{ behavior: 'allow', updatedInput: input }`
 - **❌ No** → `{ behavior: 'deny', message: 'User denied this action' }`
-- **📌 Always** → `{ behavior: 'allow', updatedInput: input, updatedPermissions: options.suggestions }` (best-effort, may not persist across subagents)
+
+For "always allow" behavior, users use `/perm off` (bridge-level, per-chat).
+Safe command patterns are pre-approved via `settings.permissions.allow` rules.
 
 ## SDK Integration Points
 
