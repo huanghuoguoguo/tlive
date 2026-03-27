@@ -34,10 +34,9 @@ describe('PermissionBroker', () => {
     expect(adapter.send).toHaveBeenCalledOnce();
     const msg = (adapter.send as any).mock.calls[0][0];
     expect(msg.chatId).toBe('chat123');
-    expect(msg.buttons).toHaveLength(3); // Allow, Always, Deny
+    expect(msg.buttons).toHaveLength(2); // Yes, No
     expect(msg.buttons[0].callbackData).toBe('perm:allow:perm1');
-    expect(msg.buttons[1].callbackData).toBe('perm:allow_session:perm1');
-    expect(msg.buttons[2].callbackData).toBe('perm:deny:perm1');
+    expect(msg.buttons[1].callbackData).toBe('perm:deny:perm1');
     // Should include web link (HTML format for telegram adapter)
     expect(msg.html).toContain('https://termlive.example.com');
   });
