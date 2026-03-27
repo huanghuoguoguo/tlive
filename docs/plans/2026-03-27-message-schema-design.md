@@ -137,7 +137,7 @@ All schemas use `.passthrough()` for forward compatibility — unknown fields fr
 
 ### Validation Strategy
 
-- **On produce** (in claude-adapter): Development mode uses `canonicalEventSchema.parse(event)` — fails loud, catches mapping bugs early. Production mode uses direct object construction with TypeScript type checking only (no Zod overhead on high-frequency events like `text_delta`). Controlled via `validate` constructor option on `ClaudeAdapter`.
+- **On produce** (in claude-adapter): Always `canonicalEventSchema.parse(event)`. Zod parse overhead (~1-5μs per event) is negligible for a bridge handling tens of events per second. Runtime validation catches SDK version mismatches that TypeScript alone cannot detect.
 - **On consume** (in conversation.ts): No validation needed — TypeScript ensures type safety at compile time since the stream is `ReadableStream<CanonicalEvent>`
 - **Unknown events from SDK**: Logged as warning, skipped (not propagated). This prevents unknown SDK message types from crashing the bridge.
 
