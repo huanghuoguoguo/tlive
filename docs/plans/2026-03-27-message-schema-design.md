@@ -137,7 +137,7 @@ All schemas use `.passthrough()` for forward compatibility — unknown fields fr
 
 ### Validation Strategy
 
-- **On produce** (in claude-adapter): `canonicalEventSchema.parse(event)` — fails loud during development, catches mapping bugs early
+- **On produce** (in claude-adapter): Development mode uses `canonicalEventSchema.parse(event)` — fails loud, catches mapping bugs early. Production mode uses direct object construction with TypeScript type checking only (no Zod overhead on high-frequency events like `text_delta`). Controlled via `validate` constructor option on `ClaudeAdapter`.
 - **On consume** (in conversation.ts): No validation needed — TypeScript ensures type safety at compile time since the stream is `ReadableStream<CanonicalEvent>`
 - **Unknown events from SDK**: Logged as warning, skipped (not propagated). This prevents unknown SDK message types from crashing the bridge.
 
@@ -210,6 +210,8 @@ if (block.type === 'tool_use' && HIDDEN_TOOLS.has(block.name)) {
 
 This keeps the terminal card's rolling window focused on tools the user cares about (Read, Edit, Bash, Grep, etc.), not Claude's internal task management.
 
+The adapter also maintains `hiddenToolUseIds: Set<string>` to track tool_use IDs of hidden tools. When a `tool_result` arrives for a hidden tool, it is also filtered out — preventing orphaned results without matching `tool_start` events.
+
 ### Subagent Nesting Logic
 
 ```typescript
@@ -272,6 +274,8 @@ export interface ProviderBackend {
 **vs. Happy's `AgentBackend`:** We use `ReadableStream<CanonicalEvent>` instead of callback-based `onMessage(handler)`. Simpler, composable with `for await...of`, and matches the existing consumption pattern in `conversation.ts`.
 
 **vs. current `LLMProvider`:** The current `streamChat()` returns `ReadableStream<string>`. The new `startQuery()` returns `ReadableStream<CanonicalEvent>`. Same structure, typed output.
+
+**Migration strategy:** This sub-project only updates `LLMProvider.streamChat()` to return `ReadableStream<CanonicalEvent>` instead of `ReadableStream<string>`. The `ProviderBackend` interface is defined in `messages/types.ts` but NOT implemented yet — `ClaudeSDKProvider` continues to implement `LLMProvider`. Sub-project 2 will migrate to `ProviderBackend` when refactoring bridge-manager.
 
 ## File Structure
 
