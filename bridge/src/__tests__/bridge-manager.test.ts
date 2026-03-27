@@ -11,7 +11,7 @@ function mockAdapter(channelType = 'telegram'): BaseChannelAdapter {
     stop: vi.fn().mockResolvedValue(undefined),
     consumeOne: vi.fn().mockImplementation(() => messageQueue.shift() ?? null),
     send: vi.fn().mockResolvedValue({ messageId: '1', success: true }),
-    editMessage: vi.fn(),
+    editMessage: vi.fn().mockResolvedValue(undefined),
     sendTyping: vi.fn().mockResolvedValue(undefined),
     addReaction: vi.fn().mockResolvedValue(undefined),
     removeReaction: vi.fn().mockResolvedValue(undefined),
@@ -38,8 +38,11 @@ describe('BridgeManager', () => {
         isDuplicate: vi.fn().mockResolvedValue(false), markProcessed: vi.fn(),
       } as any,
       llm: {
-        streamChat: () => new ReadableStream({
-          start(c) { c.enqueue('data: {"type":"text","data":"reply"}\n'); c.enqueue('data: {"type":"result","data":{"session_id":"s1","is_error":false}}\n'); c.close(); }
+        streamChat: () => ({
+          stream: new ReadableStream({
+            start(c) { c.enqueue('data: {"type":"text","data":"reply"}\n'); c.enqueue('data: {"type":"result","data":{"session_id":"s1","is_error":false}}\n'); c.close(); }
+          }),
+          controls: undefined,
         }),
       } as any,
       permissions: { resolvePendingPermission: vi.fn() } as any,
@@ -121,11 +124,11 @@ describe('BridgeManager', () => {
     manager.registerAdapter(adapter);
 
     await manager.handleInboundMessage(adapter, {
-      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: '/verbose 2', messageId: 'm1',
+      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: '/verbose 1', messageId: 'm1',
     });
 
     expect(adapter.send).toHaveBeenCalledWith(
-      expect.objectContaining({ text: expect.stringContaining('detailed') })
+      expect.objectContaining({ text: expect.stringContaining('terminal card') })
     );
   });
 
@@ -227,8 +230,11 @@ describe('BridgeManager', () => {
 
     // Make processMessage throw
     const ctx = (await import('../context.js')).getBridgeContext();
-    (ctx.llm as any).streamChat = () => new ReadableStream({
-      start(c) { c.enqueue('data: {"type":"error","data":"boom"}\n'); c.close(); }
+    (ctx.llm as any).streamChat = () => ({
+      stream: new ReadableStream({
+        start(c) { c.enqueue('data: {"type":"error","data":"boom"}\n'); c.close(); }
+      }),
+      controls: undefined,
     });
 
     const clearIntervalSpy = vi.spyOn(global, 'clearInterval');

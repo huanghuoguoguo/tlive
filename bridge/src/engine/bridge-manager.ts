@@ -878,9 +878,9 @@ export class BridgeManager {
       }
       case '/verbose': {
         const level = parseInt(parts[1], 10) as VerboseLevel;
-        if ([0, 1, 2].includes(level)) {
+        if ([0, 1].includes(level)) {
           this.setVerboseLevel(msg.channelType, msg.chatId, level);
-          const labels = ['🤫 quiet', '📝 normal', '🔬 detailed'];
+          const labels = ['🤫 quiet', '📝 terminal card'];
           const text = `Verbose: ${labels[level]}`;
           if (adapter.channelType === 'discord') {
             await adapter.send({ chatId: msg.chatId, embed: { description: text, color: 0x3399FF } });
@@ -888,7 +888,7 @@ export class BridgeManager {
             await adapter.send({ chatId: msg.chatId, text });
           }
         } else {
-          const usage = 'Usage: `/verbose 0|1|2`\n0=quiet, 1=normal, 2=detailed';
+          const usage = 'Usage: `/verbose 0|1`\n0=quiet, 1=terminal card';
           if (adapter.channelType === 'discord') {
             await adapter.send({ chatId: msg.chatId, embed: { description: usage, color: 0x888888 } });
           } else {
@@ -1055,8 +1055,8 @@ export class BridgeManager {
             '<code>/new</code> — New conversation',
             '<code>/sessions</code> — List recent sessions',
             '<code>/session &lt;n&gt;</code> — Switch to session #n',
-            '<code>/verbose 0|1|2</code> — Detail level',
-            '  0 = quiet · 1 = normal · 2 = detailed',
+            '<code>/verbose 0|1</code> — Detail level',
+            '  0 = quiet · 1 = terminal card',
             '<code>/perm on|off</code> — Tool permission prompts',
             '<code>/effort low|high|max</code> — Thinking depth',
             '<code>/stop</code> — Interrupt current execution',
@@ -1079,8 +1079,8 @@ export class BridgeManager {
                 '`/new` — New conversation',
                 '`/sessions` — List recent sessions',
                 '`/session <n>` — Switch to session #n',
-                '`/verbose 0|1|2` — Detail level',
-                '> 0 = quiet · 1 = normal · 2 = detailed',
+                '`/verbose 0|1` — Detail level',
+                '> 0 = quiet · 1 = terminal card',
                 '`/perm on|off` — Tool permission prompts',
                 '`/hooks pause|resume` — Toggle IM approval',
                 '`/status` — Bridge status',
@@ -1097,8 +1097,8 @@ export class BridgeManager {
             '/new — New conversation',
             '/sessions — List recent sessions',
             '/session <n> — Switch to session #n',
-            '/verbose 0|1|2 — Detail level',
-            '  0 = quiet · 1 = normal · 2 = detailed',
+            '/verbose 0|1 — Detail level',
+            '  0 = quiet · 1 = terminal card',
             '/perm on|off — Tool permission prompts',
             '/effort low|high|max — Thinking depth',
             '/stop — Interrupt current execution',
