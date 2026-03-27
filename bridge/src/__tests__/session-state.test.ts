@@ -85,6 +85,22 @@ describe('SessionStateManager', () => {
     });
   });
 
+  describe('SessionMode', () => {
+    it('returns full SessionMode with defaults', () => {
+      const mode = state.getSessionMode('telegram', '1');
+      expect(mode.permissionMode).toBe('default');
+      expect(mode.effort).toBeUndefined();
+    });
+
+    it('accumulates settings into single SessionMode', () => {
+      state.setPermMode('telegram', '1', 'off');
+      state.setEffort('telegram', '1', 'high');
+      const mode = state.getSessionMode('telegram', '1');
+      expect(mode.permissionMode).toBe('bypassPermissions');
+      expect(mode.effort).toBe('high');
+    });
+  });
+
   describe('activity tracking', () => {
     it('returns false on first call', () => {
       expect(state.checkAndUpdateLastActive('telegram', '1')).toBe(false);

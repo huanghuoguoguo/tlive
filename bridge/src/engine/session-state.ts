@@ -1,4 +1,5 @@
 import type { VerboseLevel } from './terminal-card-renderer.js';
+import type { SessionMode } from '../messages/types.js';
 
 /**
  * Manages per-chat session state: verbose levels, permission modes, effort,
@@ -8,12 +9,15 @@ import type { VerboseLevel } from './terminal-card-renderer.js';
  */
 export class SessionStateManager {
   private verboseLevels = new Map<string, VerboseLevel>();
-  private permModes = new Map<string, 'on' | 'off'>();
-  private effortLevels = new Map<string, 'low' | 'medium' | 'high' | 'max'>();
+  private modes = new Map<string, SessionMode>();
   private processingChats = new Set<string>();
   private lastActive = new Map<string, number>();
   private sessionThreads = new Map<string, string>();
   private runtimes = new Map<string, 'claude' | 'codex'>();
+
+  private defaultMode(): SessionMode {
+    return { permissionMode: 'default' };
+  }
 
   /** Combine channelType + chatId into a single map key */
   stateKey(channelType: string, chatId: string): string {
@@ -29,19 +33,31 @@ export class SessionStateManager {
   }
 
   getPermMode(channelType: string, chatId: string): 'on' | 'off' {
-    return this.permModes.get(this.stateKey(channelType, chatId)) ?? 'on';
+    const mode = this.modes.get(this.stateKey(channelType, chatId));
+    if (!mode) return 'on';
+    return mode.permissionMode === 'bypassPermissions' ? 'off' : 'on';
   }
 
   setPermMode(channelType: string, chatId: string, mode: 'on' | 'off'): void {
-    this.permModes.set(this.stateKey(channelType, chatId), mode);
+    const key = this.stateKey(channelType, chatId);
+    const current = this.modes.get(key) || this.defaultMode();
+    current.permissionMode = mode === 'off' ? 'bypassPermissions' : 'default';
+    this.modes.set(key, current);
   }
 
   getEffort(channelType: string, chatId: string): 'low' | 'medium' | 'high' | 'max' | undefined {
-    return this.effortLevels.get(this.stateKey(channelType, chatId));
+    return this.modes.get(this.stateKey(channelType, chatId))?.effort;
   }
 
   setEffort(channelType: string, chatId: string, level: 'low' | 'medium' | 'high' | 'max'): void {
-    this.effortLevels.set(this.stateKey(channelType, chatId), level);
+    const key = this.stateKey(channelType, chatId);
+    const current = this.modes.get(key) || this.defaultMode();
+    current.effort = level;
+    this.modes.set(key, current);
+  }
+
+  getSessionMode(channelType: string, chatId: string): SessionMode {
+    return this.modes.get(this.stateKey(channelType, chatId)) || this.defaultMode();
   }
 
   isProcessing(chatKey: string): boolean {
