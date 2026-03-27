@@ -187,6 +187,26 @@ export class ClaudeSDKProvider implements LLMProvider {
                 input: Record<string, unknown>,
                 options: { decisionReason?: string; title?: string; suggestions?: unknown[]; signal?: AbortSignal } = {},
               ): Promise<PermissionResult> => {
+                // AskUserQuestion — route to dedicated handler
+                if (toolName === 'AskUserQuestion' && params.onAskUserQuestion) {
+                  const questions = (input as Record<string, unknown>).questions as Array<{
+                    question: string;
+                    header: string;
+                    options: Array<{ label: string; description?: string }>;
+                    multiSelect: boolean;
+                  }> ?? [];
+                  if (questions.length > 0) {
+                    try {
+                      const answers = await params.onAskUserQuestion(questions, options.signal);
+                      return {
+                        behavior: 'allow' as const,
+                        updatedInput: { questions: (input as Record<string, unknown>).questions, answers },
+                      };
+                    } catch {
+                      return { behavior: 'deny' as const, message: 'User did not answer' };
+                    }
+                  }
+                }
                 // If no handler (perm off) → auto-allow
                 if (!params.onPermissionRequest) {
                   return { behavior: 'allow' as const, updatedInput: input };
