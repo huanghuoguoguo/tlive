@@ -1,6 +1,6 @@
 import { CostTracker, type UsageStats } from './cost-tracker.js';
 import { redactSensitiveContent } from './content-filter.js';
-import { getToolIcon, getToolTitle, getToolCommand, getToolResultPreview } from './tool-registry.js';
+import { getToolTitle, getToolResultPreview } from './tool-registry.js';
 
 export type VerboseLevel = 0 | 1;
 
@@ -47,7 +47,7 @@ interface AskUserQuestionState {
   buttons: Array<{ label: string; callbackData: string; style: string }>;
 }
 
-const SEPARATOR = '━━━━━━━━━━━━━━━━━━';
+const _SEPARATOR = '━━━━━━━━━━━━━━━━━━'; // kept for reference, no longer used
 
 export class TerminalCardRenderer {
   private toolEntries: ToolEntry[] = [];
@@ -293,154 +293,132 @@ export class TerminalCardRenderer {
     return this.collapsedCount + this.toolEntries.filter(e => !e.parentToolUseId).length;
   }
 
-  private formatToolHeader(entry: ToolEntry): string {
-    const emoji = entry.running ? '🔄' : getToolIcon(entry.name);
-    const cmd = getToolCommand(entry.name, entry.input || {});
-    return cmd ? `${emoji} \`${cmd}\`` : `${emoji} ${entry.name}`;
-  }
-
   render(): string {
-    const parts: string[] = [];
-
     // Error
     if (this.errorMessage) {
-      parts.push(`❌ Error: ${this.errorMessage}`);
-      return this.applyPlatformLimit(redactSensitiveContent(parts.join('\n')));
+      return this.applyPlatformLimit(redactSensitiveContent(`❌ Error: ${this.errorMessage}`));
     }
 
-    // Tool section
+    const toolLines: string[] = [];
+    const afterLines: string[] = [];
+
+    // === TOOL SECTION (goes inside code block) ===
+
     if (this.completed && this.totalToolCount() > 0) {
-      // Collapse tool log on completion — but still show agent summaries
-      parts.push(`⚡ ${this.totalToolCount()} tools`);
-      for (const agent of this.agents) {
-        if (agent.status !== 'running') {
-          const icon = agent.status === 'completed' ? '●' : agent.status === 'failed' ? '❌' : '⏹';
-          parts.push(`${icon} Agent: ${agent.summary ?? agent.description}`);
-        }
-      }
+      toolLines.push(`⚡ ${this.totalToolCount()} tools`);
     } else {
-      // Build parent→children map
+      // Collapsed count
+      if (this.collapsedCount > 0) {
+        toolLines.push(`+${this.collapsedCount} more`);
+      }
+
+      // Build tree and render tool entries
       const childTools = new Map<string, ToolEntry[]>();
       const topLevel: ToolEntry[] = [];
-
       for (const entry of this.toolEntries) {
         if (entry.parentToolUseId) {
-          const children = childTools.get(entry.parentToolUseId) || [];
-          children.push(entry);
-          childTools.set(entry.parentToolUseId, children);
+          const c = childTools.get(entry.parentToolUseId) || [];
+          c.push(entry);
+          childTools.set(entry.parentToolUseId, c);
         } else {
           topLevel.push(entry);
         }
       }
 
-      // Collapsed count
-      if (this.collapsedCount > 0) {
-        parts.push(`+${this.collapsedCount} more tool uses`);
-      }
-
-      // Render top-level entries with nested children
       for (const entry of topLevel) {
+        const prefix = entry.running ? '🔄' : '●';
+        toolLines.push(`${prefix} ${entry.title}`);
+
+        // Result (non-agent top-level)
         const agent = this.agents.find(a => a.toolUseId === entry.id);
         const children = childTools.get(entry.id) || [];
-        const isAgentEntry = agent || children.length > 0;
-
-        parts.push(this.formatToolHeader(entry));
-
-        // Result preview for non-agent top-level tools
-        if (entry.resultPreview && !isAgentEntry) {
-          const lines = entry.resultPreview.split('\n');
-          for (const line of lines) {
-            parts.push(`   ${line}`);
+        if (entry.resultPreview && !agent && children.length === 0) {
+          for (const line of entry.resultPreview.split('\n')) {
+            toolLines.push(`  → ${line}`);
           }
         }
 
-        // Render agent children
-        if (isAgentEntry) {
+        // Agent children
+        if (agent || children.length > 0) {
           for (const child of children) {
-            const childEmoji = child.running ? '🔄' : getToolIcon(child.name);
-            const childCmd = getToolCommand(child.name, child.input || {});
-            parts.push(`   ↳ ${childEmoji} \`${childCmd || child.name}\``);
+            const cp = child.running ? '🔄 ' : '';
+            toolLines.push(`  ↳ ${cp}${child.title}`);
             if (child.resultPreview) {
               for (const line of child.resultPreview.split('\n')) {
-                parts.push(`      ${line}`);
+                toolLines.push(`    → ${line}`);
               }
             }
           }
-          // Agent completion summary
           if (agent && agent.status !== 'running') {
-            const statusIcon = agent.status === 'completed' ? '✓' : agent.status === 'failed' ? '✗' : '⏹';
+            const icon = agent.status === 'completed' ? '✓' : '✗';
             const stats: string[] = [];
             if (agent.usage) {
               if (agent.usage.tool_uses > 0) stats.push(`${agent.usage.tool_uses} tool uses`);
               if (agent.usage.duration_ms > 0) stats.push(`${Math.round(agent.usage.duration_ms / 1000)}s`);
             }
             const summary = agent.summary || 'Done';
-            parts.push(`   ↳ ${statusIcon} ${summary}${stats.length ? ` · ${stats.join(' · ')}` : ''}`);
+            toolLines.push(`  ↳ ${icon} ${summary}${stats.length ? ` · ${stats.join(' · ')}` : ''}`);
           }
         }
-
-        // Blank line between tool entries
-        parts.push('');
       }
 
-      // Remove trailing blank line from tool entries
-      if (parts.length > 0 && parts[parts.length - 1] === '') {
-        parts.pop();
-      }
-
-      // Show agents without toolUseId (legacy/unlinked agents) as standalone headers
+      // Legacy agents
       for (const agent of this.agents) {
-        if (agent.toolUseId) continue; // already rendered as part of tool tree
+        if (agent.toolUseId) continue;
         if (agent.status === 'running') {
-          let line = `🔄 Agent: ${agent.description}`;
-          if (agent.lastTool) line += ` → ${getToolIcon(agent.lastTool)} ${agent.lastTool}`;
+          let line = `🔄 ${agent.description}`;
+          if (agent.lastTool) line += ` → ${agent.lastTool}`;
           if (agent.usage) line += ` (${agent.usage.tool_uses} tools, ${Math.round(agent.usage.duration_ms / 1000)}s)`;
-          parts.push(line);
+          toolLines.push(line);
         } else {
-          const statusIcon = agent.status === 'completed' ? '●' : agent.status === 'failed' ? '❌' : '⏹';
-          parts.push(`${statusIcon} Agent: ${agent.summary ?? agent.description}`);
+          const icon = agent.status === 'completed' ? '●' : '❌';
+          toolLines.push(`${icon} ${agent.summary ?? agent.description}`);
         }
       }
     }
 
-    // Separator before permission/question/response
-    const hasPermission = !!this.pendingPermission;
-    const hasQuestion = !!this.pendingQuestion;
-    const hasResponse = this.responseText.length > 0;
-    const needsSeparator = hasPermission || hasQuestion || (this.completed && hasResponse);
+    // === AFTER SECTION (outside code block) ===
 
-    if (needsSeparator && parts.length > 0) {
-      parts.push(SEPARATOR);
+    // Permission
+    if (this.pendingPermission) {
+      const p = this.pendingPermission;
+      afterLines.push(`🔐 **${p.toolName}**`);
+      if (p.input) afterLines.push(`\`${p.input.slice(0, 200)}\``);
+      if (p.reason && p.reason !== p.toolName) afterLines.push(p.reason);
     }
 
-    // Permission section
-    if (hasPermission) {
-      const p = this.pendingPermission!;
-      parts.push(`🔐 **${p.toolName}**`);
-      if (p.input) parts.push(`\`${p.input.slice(0, 200)}\``);
-      if (p.reason && p.reason !== p.toolName) parts.push(p.reason);
-    }
-
-    // Question section
-    if (hasQuestion && !hasPermission) {
-      const q = this.pendingQuestion!;
-      parts.push(`❓ ${q.header}: ${q.question}`);
-      parts.push('');
+    // Question
+    if (this.pendingQuestion && !this.pendingPermission) {
+      const q = this.pendingQuestion;
+      afterLines.push(`❓ ${q.header}: ${q.question}`);
+      afterLines.push('');
       q.options.forEach((opt, i) => {
-        let line = `${i + 1}. ${opt.label}`;
-        if (opt.description) line += ` — ${opt.description}`;
-        parts.push(line);
+        afterLines.push(`${i + 1}. ${opt.label}${opt.description ? ` — ${opt.description}` : ''}`);
       });
     }
 
     // Text response
-    if (hasResponse && !hasPermission && !hasQuestion) {
-      parts.push(this.responseText);
+    if (this.responseText && !this.pendingPermission && !this.pendingQuestion) {
+      afterLines.push(this.responseText);
     }
 
-    // Cost line
+    // Cost
     if (this.costLine) {
-      parts.push(this.costLine);
+      afterLines.push(this.costLine);
+    }
+
+    // === COMBINE ===
+    const parts: string[] = [];
+
+    if (toolLines.length > 0) {
+      parts.push('```');
+      parts.push(...toolLines);
+      parts.push('```');
+    }
+
+    if (afterLines.length > 0) {
+      if (parts.length > 0) parts.push(''); // blank line after code block
+      parts.push(...afterLines);
     }
 
     return this.applyPlatformLimit(redactSensitiveContent(parts.join('\n')));

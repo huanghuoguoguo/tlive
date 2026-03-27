@@ -37,18 +37,18 @@ describe('TerminalCardRenderer', () => {
   // ─── Rolling window ─────────────────────────────
 
   describe('rolling window', () => {
-    it('shows tool entries with emoji and backtick-wrapped command', async () => {
+    it('shows tool entries wrapped in code fences', async () => {
       const r = createRenderer();
       r.onToolStart('Read', { file_path: '/tmp/main.ts' });
       vi.advanceTimersByTime(300);
       await vi.runAllTimersAsync();
       const content = flushCallback.mock.calls[0][0] as string;
-      expect(content).toContain('🔄');
-      expect(content).toContain('`/tmp/main.ts`');
+      expect(content).toContain('```');
+      expect(content).toContain('🔄 Read(main.ts)');
       r.dispose();
     });
 
-    it('shows tool icon for completed tools and 🔄 for running tools', async () => {
+    it('shows ● for completed tools and 🔄 for running tools', async () => {
       const r = createRenderer();
       const id1 = r.onToolStart('Read', { file_path: '/tmp/a.ts' });
       r.onToolComplete(id1);
@@ -56,10 +56,8 @@ describe('TerminalCardRenderer', () => {
       vi.advanceTimersByTime(300);
       await vi.runAllTimersAsync();
       const content = flushCallback.mock.calls[0][0] as string;
-      expect(content).toContain('📖');
-      expect(content).toContain('`/tmp/a.ts`');
-      expect(content).toContain('🔄');
-      expect(content).toContain('`npm test`');
+      expect(content).toContain('● Read(a.ts)');
+      expect(content).toContain('🔄 Bash(npm test)');
       r.dispose();
     });
 
@@ -74,7 +72,7 @@ describe('TerminalCardRenderer', () => {
       vi.advanceTimersByTime(300);
       await vi.runAllTimersAsync();
       const content = flushCallback.mock.calls[0][0] as string;
-      expect(content).toContain('+2 more tool uses');
+      expect(content).toContain('+2 more');
       expect(content).not.toContain('1.ts');
       expect(content).not.toContain('2.ts');
       expect(content).toContain('3.ts');
@@ -100,31 +98,31 @@ describe('TerminalCardRenderer', () => {
   // ─── Tool results ───────────────────────────────
 
   describe('tool results', () => {
-    it('shows Bash output with 3-space indent', async () => {
+    it('shows Bash output with arrow indent inside code block', async () => {
       const r = createRenderer();
       const id = r.onToolStart('Bash', { command: 'echo hello' });
       r.onToolComplete(id, 'hello');
       vi.advanceTimersByTime(300);
       await vi.runAllTimersAsync();
       const content = flushCallback.mock.calls[0][0] as string;
-      expect(content).toContain('🖥️');
-      expect(content).toContain('`echo hello`');
-      expect(content).toContain('   hello');
+      expect(content).toContain('● Bash(echo hello)');
+      expect(content).toContain('  → hello');
+      // Wrapped in code fences
+      expect(content.startsWith('```\n')).toBe(true);
+      expect(content.endsWith('\n```'));
       r.dispose();
     });
 
-    it('shows multi-line output with 3-space indent', async () => {
+    it('shows multi-line output with arrow indent', async () => {
       const r = createRenderer();
       const id = r.onToolStart('Bash', { command: 'ls' });
       r.onToolComplete(id, 'file1\nfile2\nfile3');
       vi.advanceTimersByTime(300);
       await vi.runAllTimersAsync();
       const content = flushCallback.mock.calls[0][0] as string;
-      expect(content).toContain('   file1');
-      expect(content).toContain('   file2');
-      expect(content).toContain('   file3');
-      // No tree connectors
-      expect(content).not.toContain('├');
+      expect(content).toContain('  → file1');
+      expect(content).toContain('  → file2');
+      expect(content).toContain('  → file3');
       r.dispose();
     });
 
@@ -135,9 +133,8 @@ describe('TerminalCardRenderer', () => {
       vi.advanceTimersByTime(300);
       await vi.runAllTimersAsync();
       const content = flushCallback.mock.calls[0][0] as string;
-      expect(content).toContain('🖥️');
-      expect(content).toContain('`rm -rf /`');
-      expect(content).toContain('   ❌ Denied');
+      expect(content).toContain('● Bash(rm -rf /)');
+      expect(content).toContain('  → ❌ Denied');
       r.dispose();
     });
 
@@ -148,7 +145,7 @@ describe('TerminalCardRenderer', () => {
       vi.advanceTimersByTime(300);
       await vi.runAllTimersAsync();
       const content = flushCallback.mock.calls[0][0] as string;
-      expect(content).toContain('   ❌ Error: command not found');
+      expect(content).toContain('  → ❌ Error: command not found');
       r.dispose();
     });
 
@@ -159,13 +156,12 @@ describe('TerminalCardRenderer', () => {
       vi.advanceTimersByTime(300);
       await vi.runAllTimersAsync();
       const content = flushCallback.mock.calls[0][0] as string;
-      expect(content).toContain('📖');
-      expect(content).toContain('`/tmp/foo.ts`');
+      expect(content).toContain('● Read(foo.ts)');
       expect(content).not.toContain('file content here');
       r.dispose();
     });
 
-    it('adds blank lines between tool entries', async () => {
+    it('tool entries are compact (no blank lines between them)', async () => {
       const r = createRenderer();
       const id1 = r.onToolStart('Bash', { command: 'echo a' });
       r.onToolComplete(id1, 'a');
@@ -174,8 +170,8 @@ describe('TerminalCardRenderer', () => {
       vi.advanceTimersByTime(300);
       await vi.runAllTimersAsync();
       const content = flushCallback.mock.calls[0][0] as string;
-      // There should be a blank line between the two tool blocks
-      expect(content).toContain('   a\n\n');
+      // No double newlines between tool entries inside code block
+      expect(content).not.toContain('a\n\n');
       r.dispose();
     });
   });
@@ -183,7 +179,7 @@ describe('TerminalCardRenderer', () => {
   // ─── Permission inline ──────────────────────────
 
   describe('permission inline', () => {
-    it('shows separator + 🔐 section with bold tool name and code-wrapped input', async () => {
+    it('shows 🔐 section outside code block', async () => {
       const r = createRenderer();
       r.onToolStart('Bash', { command: 'rm -rf /tmp/stuff' });
       r.onPermissionNeeded(
@@ -195,10 +191,15 @@ describe('TerminalCardRenderer', () => {
       vi.advanceTimersByTime(300);
       await vi.runAllTimersAsync();
       const content = flushCallback.mock.calls[0][0] as string;
-      expect(content).toContain('━━━━━━━━━━━━━━━━━━');
+      // Tool section in code block
+      expect(content).toContain('```');
+      expect(content).toContain('Bash(rm -rf /tmp/stuff)');
+      // Permission outside code block
       expect(content).toContain('🔐 **Bash**');
       expect(content).toContain('`rm -rf /tmp/stuff`');
       expect(content).toContain('Dangerous command');
+      // No separator line
+      expect(content).not.toContain('━━━━━━━━━━━━━━━━━━');
       r.dispose();
     });
 
@@ -239,7 +240,7 @@ describe('TerminalCardRenderer', () => {
   // ─── AskUserQuestion inline ─────────────────────
 
   describe('AskUserQuestion inline', () => {
-    it('shows ❓ with numbered options', async () => {
+    it('shows ❓ with numbered options outside code block', async () => {
       const r = createRenderer();
       r.onToolStart('Read', { file_path: '/tmp/x.ts' });
       r.onQuestionNeeded(
@@ -255,10 +256,12 @@ describe('TerminalCardRenderer', () => {
       vi.advanceTimersByTime(300);
       await vi.runAllTimersAsync();
       const content = flushCallback.mock.calls[0][0] as string;
-      expect(content).toContain('━━━━━━━━━━━━━━━━━━');
+      // Question is outside code block
       expect(content).toContain('❓ Format: How should I format the output?');
       expect(content).toContain('1. Summary — Brief overview');
       expect(content).toContain('2. Detailed — Full explanation');
+      // No separator
+      expect(content).not.toContain('━━━━━━━━━━━━━━━━━━');
       r.dispose();
     });
 
@@ -300,7 +303,7 @@ describe('TerminalCardRenderer', () => {
   // ─── Completion phase ───────────────────────────
 
   describe('completion phase', () => {
-    it('collapses tool log and shows text + cost', async () => {
+    it('collapses tool log in code block and shows text + cost outside', async () => {
       const r = createRenderer();
       const id1 = r.onToolStart('Read', { file_path: '/tmp/a.ts' });
       r.onToolComplete(id1);
@@ -310,13 +313,15 @@ describe('TerminalCardRenderer', () => {
       r.onComplete(defaultStats);
       await vi.runAllTimersAsync();
       const content = flushCallback.mock.calls[0][0] as string;
-      expect(content).toContain('⚡ 2 tools');
+      expect(content).toContain('```\n⚡ 2 tools\n```');
       expect(content).not.toContain('Read');
       expect(content).not.toContain('echo done');
-      expect(content).toContain('━━━━━━━━━━━━━━━━━━');
+      // Response text outside code block
       expect(content).toContain('Here is the result.');
       expect(content).toContain('📊');
       expect(content).toContain('$0.05');
+      // No separator
+      expect(content).not.toContain('━━━━━━━━━━━━━━━━━━');
       r.dispose();
     });
 
@@ -327,6 +332,7 @@ describe('TerminalCardRenderer', () => {
       const content = flushCallback.mock.calls[0][0] as string;
       expect(content).toContain('📊');
       expect(content).not.toContain('⚡');
+      expect(content).not.toContain('```');
       r.dispose();
     });
 
@@ -508,13 +514,14 @@ describe('TerminalCardRenderer', () => {
   // ─── Agent nesting ──────────────────────────────
 
   describe('agent nesting', () => {
-    it('shows running agent with 🔄', async () => {
+    it('shows running agent with 🔄 inside code block', async () => {
       const r = createRenderer();
       r.onAgentStart('Researching codebase');
       vi.advanceTimersByTime(300);
       await vi.runAllTimersAsync();
       const content = flushCallback.mock.calls[0][0] as string;
-      expect(content).toContain('🔄 Agent: Researching codebase');
+      expect(content).toContain('```');
+      expect(content).toContain('🔄 Researching codebase');
       r.dispose();
     });
 
@@ -525,8 +532,8 @@ describe('TerminalCardRenderer', () => {
       vi.advanceTimersByTime(300);
       await vi.runAllTimersAsync();
       const content = flushCallback.mock.calls[0][0] as string;
-      expect(content).toContain('🔄 Agent: Researching');
-      expect(content).toContain('🔍 Grep');
+      expect(content).toContain('🔄 Researching');
+      expect(content).toContain('Grep');
       expect(content).toContain('5 tools');
       expect(content).toContain('3s');
       r.dispose();
@@ -539,7 +546,7 @@ describe('TerminalCardRenderer', () => {
       vi.advanceTimersByTime(300);
       await vi.runAllTimersAsync();
       const content = flushCallback.mock.calls[0][0] as string;
-      expect(content).toContain('● Agent: Found 3 files');
+      expect(content).toContain('● Found 3 files');
       r.dispose();
     });
 
@@ -550,7 +557,7 @@ describe('TerminalCardRenderer', () => {
       vi.advanceTimersByTime(300);
       await vi.runAllTimersAsync();
       const content = flushCallback.mock.calls[0][0] as string;
-      expect(content).toContain('❌ Agent: Timed out');
+      expect(content).toContain('❌ Timed out');
       r.dispose();
     });
   });
@@ -571,7 +578,7 @@ describe('TerminalCardRenderer', () => {
       await vi.runAllTimersAsync();
       expect(flushCallback).toHaveBeenCalled();
       const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
-      expect(content).toContain('/a.ts');
+      expect(content).toContain('a.ts');
       r.dispose();
     });
 
@@ -584,7 +591,7 @@ describe('TerminalCardRenderer', () => {
       vi.advanceTimersByTime(300);
       await vi.runAllTimersAsync();
       const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
-      expect(content).toContain('`echo hi`');
+      expect(content).toContain('Bash(echo hi)');
       expect(content).toContain('hi'); // result shown with the tool
       expect(content).not.toContain('🔄'); // not running — already completed
       r.dispose();
@@ -599,7 +606,7 @@ describe('TerminalCardRenderer', () => {
       vi.advanceTimersByTime(300);
       await vi.runAllTimersAsync();
       const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
-      expect(content).toContain('`rm -rf /`'); // tool was flushed
+      expect(content).toContain('Bash(rm -rf /)'); // tool was flushed
       expect(content).toContain('🔐'); // permission shown
       r.dispose();
     });
@@ -656,12 +663,12 @@ describe('TerminalCardRenderer', () => {
       await vi.runAllTimersAsync();
 
       const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
-      // Top-level tool
-      expect(content).toContain('🖥️');
-      expect(content).toContain('`npm test`');
+      // Wrapped in code block
+      expect(content).toContain('```');
+      // Top-level tool with ● prefix
+      expect(content).toContain('● Bash(npm test)');
       // Agent with nested tools using ↳
-      expect(content).toContain('🤖');
-      expect(content).toContain('`Explore codebase`');
+      expect(content).toContain('Agent(Explore codebase)');
       expect(content).toContain('↳');
       expect(content).toContain('main.ts');
       expect(content).toContain('TODO');
@@ -681,7 +688,7 @@ describe('TerminalCardRenderer', () => {
 
       const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
       expect(content).toContain('🔄');
-      expect(content).toContain('`Fix bug`');
+      expect(content).toContain('Agent(Fix bug)');
       expect(content).toContain('a.ts');
       r.dispose();
     });
@@ -697,9 +704,9 @@ describe('TerminalCardRenderer', () => {
       await vi.runAllTimersAsync();
 
       const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
-      expect(content).toContain('📖');
+      expect(content).toContain('● Read');
       expect(content).toContain('a.ts');
-      expect(content).toContain('✏️');
+      expect(content).toContain('● Edit');
       expect(content).toContain('b.ts');
       // No nesting indicators for top-level tools
       expect(content).not.toContain('↳');
