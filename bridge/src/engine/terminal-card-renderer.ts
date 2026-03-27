@@ -1,4 +1,5 @@
 import { CostTracker, type UsageStats } from './cost-tracker.js';
+import { redactSensitiveContent } from './content-filter.js';
 import { getToolIcon, getToolTitle, getToolResultPreview } from './tool-registry.js';
 
 export type VerboseLevel = 0 | 1;
@@ -281,7 +282,7 @@ export class TerminalCardRenderer {
     // Error
     if (this.errorMessage) {
       parts.push(`❌ Error: ${this.errorMessage}`);
-      return this.applyPlatformLimit(parts.join('\n'));
+      return this.applyPlatformLimit(redactSensitiveContent(parts.join('\n')));
     }
 
     // Agent headers
@@ -359,7 +360,7 @@ export class TerminalCardRenderer {
       parts.push(this.costLine);
     }
 
-    return this.applyPlatformLimit(parts.join('\n'));
+    return this.applyPlatformLimit(redactSensitiveContent(parts.join('\n')));
   }
 
   private applyPlatformLimit(content: string): string {
