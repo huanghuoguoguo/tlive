@@ -240,9 +240,105 @@ No verbose 2. Two levels are sufficient for IM.
 | `onAgentProgress()` / `onAgentComplete()` | Agent tree headers in log |
 | `onToolProgress()` for long-running | ⏳ elapsed timer in log entry |
 
+## AskUserQuestion Handling
+
+SDK's `canUseTool` fires with `toolName === "AskUserQuestion"` when Claude needs clarifying input. Input format:
+
+```json
+{
+  "questions": [{
+    "question": "How should I format the output?",
+    "header": "Format",
+    "options": [
+      { "label": "Summary", "description": "Brief overview" },
+      { "label": "Detailed", "description": "Full explanation" }
+    ],
+    "multiSelect": false
+  }]
+}
+```
+
+Display in the terminal card as interactive section (similar to permission prompt):
+
+```
+━━━━━━━━━━━━━━━━━━
+❓ Format: How should I format the output?
+
+1. Summary — Brief overview
+2. Detailed — Full explanation
+
+[1️⃣ Summary] [2️⃣ Detailed]
+```
+
+For `multiSelect: true`, allow multiple selections. User can also reply with text (mapped as free-text answer).
+
+Response format back to SDK:
+```typescript
+return {
+  behavior: 'allow',
+  updatedInput: {
+    questions: input.questions,
+    answers: { "How should I format the output?": "Summary" }
+  }
+};
+```
+
+**Limitation**: AskUserQuestion is NOT available in subagents.
+
+## Permission Button Design
+
+SDK officially supports only `allow` and `deny` responses. The "Always" concept (`updatedPermissions` + `suggestions`) exists in TypeScript types but is undocumented.
+
+Button options:
+- **✅ Yes** → `{ behavior: 'allow', updatedInput: input }`
+- **❌ No** → `{ behavior: 'deny', message: 'User denied this action' }`
+- **📌 Always** → `{ behavior: 'allow', updatedInput: input, updatedPermissions: options.suggestions }` (best-effort, may not persist across subagents)
+
+## SDK Integration Points
+
+### `setPermissionMode()` — Dynamic Permission Changes
+
+The SDK supports changing permission mode mid-session via `Query.setPermissionMode()`. The `/perm` command should use this instead of just controlling `canUseTool`:
+
+- `/perm off` → `query.setPermissionMode('acceptEdits')` or `'bypassPermissions'`
+- `/perm on` → `query.setPermissionMode('default')`
+- `/perm plan` → `query.setPermissionMode('plan')` (read-only mode)
+
+### `includePartialMessages: true`
+
+Already enabled. Provides `stream_event` messages with `content_block_delta` for real-time text and tool input streaming. The terminal card renderer should use these for:
+- Live text streaming (character by character)
+- Tool input streaming (show command being typed)
+
+### Query Runtime Controls
+
+All available mid-session via the Query object:
+
+| Method | IM Command | Description |
+|--------|-----------|-------------|
+| `interrupt()` | `/stop` | Stop current turn |
+| `stopTask(taskId)` | (auto) | Stop a runaway subagent |
+| `setPermissionMode(mode)` | `/perm off\|on\|plan` | Change permission mode live |
+| `setModel(model)` | `/model sonnet\|opus` | Switch model mid-session |
+| `applyFlagSettings(settings)` | (internal) | Update permission rules dynamically |
+| `streamInput(stream)` | user messages | Send follow-up messages mid-execution |
+| `supportedCommands()` | `/skills` | List available slash commands |
+| `accountInfo()` | `/account` | Show account info |
+
+### Streaming Input
+
+SDK supports `Query.streamInput()` to send follow-up messages mid-execution. The IM bridge can use this for:
+- User replies during long-running tasks
+- Interrupt + redirect ("stop that, do this instead")
+
+### Structured Outputs
+
+SDK supports `outputFormat: { type: 'json_schema', schema }` for validated JSON responses. Not needed for the terminal card, but useful for future features (e.g., structured code review reports).
+
 ## Out of Scope
 
 - Multi-card design (rejected — single card matches terminal metaphor)
 - Per-tool-call separate messages (rejected — too noisy)
 - verbose 2 terminal-level detail (YAGNI for IM)
 - Web terminal integration (separate feature)
+- V2 Session API (marked @alpha/unstable, revisit when stable)
