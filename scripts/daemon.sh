@@ -35,10 +35,11 @@ start() {
     exit 1
   fi
 
-  echo "Starting Bridge..."
+  local runtime="${TL_RUNTIME:-claude}"
+  echo "Starting Bridge (runtime: ${runtime})..."
   # Pass the launch directory as default workdir so Claude sessions
   # use the user's project directory, not the bridge install path
-  TL_DEFAULT_WORKDIR="${TL_DEFAULT_WORKDIR:-$(pwd)}" node "$bridge_entry" >> "$LOG_DIR/bridge.log" 2>&1 &
+  TL_DEFAULT_WORKDIR="${TL_DEFAULT_WORKDIR:-$(pwd)}" TL_RUNTIME="${runtime}" node "$bridge_entry" >> "$LOG_DIR/bridge.log" 2>&1 &
   echo $! > "$RUNTIME_DIR/bridge.pid"
   echo "Bridge started (PID $(cat "$RUNTIME_DIR/bridge.pid"))"
 }
@@ -56,8 +57,9 @@ stop() {
 
 status() {
   echo "=== TLive Status ==="
+  local runtime="${TL_RUNTIME:-claude}"
   if is_running "$RUNTIME_DIR/bridge.pid"; then
-    echo "Bridge:       running (PID $(cat "$RUNTIME_DIR/bridge.pid"))"
+    echo "Bridge:       running (PID $(cat "$RUNTIME_DIR/bridge.pid"), runtime: ${runtime})"
   else
     echo "Bridge:       not running"
   fi

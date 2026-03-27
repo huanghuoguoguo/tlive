@@ -36,7 +36,7 @@ Setup (one-time):
   tlive install skills       Install /tlive skill + hooks to Claude Code
 
 Service Management:
-  tlive start                Start IM Bridge daemon
+  tlive start [--runtime R]  Start IM Bridge (R: claude|codex, default: claude)
   tlive stop                 Stop IM Bridge daemon
   tlive status               Show Bridge + Web Terminal status
   tlive logs [N]             Show last N log lines (default: 50)
@@ -48,6 +48,17 @@ Hook Control:
   tlive hooks                Show hook approval status
   tlive hooks pause          Auto-allow all, no IM notifications
   tlive hooks resume         Resume IM approval flow
+
+IM Commands (in Telegram/Discord/Feishu):
+  /new                       New conversation
+  /runtime claude|codex      Switch AI provider
+  /perm on|off               Permission prompts
+  /effort low|medium|high|max  Thinking depth
+  /stop                      Interrupt execution
+  /verbose 0|1               Detail level (0=quiet, 1=terminal card)
+  /sessions                  List recent sessions
+  /session <n>               Switch to session
+  /help                      Show all commands
 
 In Claude Code (AI-guided):
   /tlive                     Start Bridge (with pre-checks)
@@ -130,9 +141,22 @@ switch (command) {
     break;
   }
 
-  case 'start':
+  case 'start': {
+    // Parse --runtime flag
+    const rtIdx = args.indexOf('--runtime');
+    if (rtIdx !== -1 && args[rtIdx + 1]) {
+      const rt = args[rtIdx + 1].toLowerCase();
+      if (['claude', 'codex'].includes(rt)) {
+        process.env.TL_RUNTIME = rt;
+        console.log(`Runtime: ${rt}`);
+      } else {
+        console.error(`Unknown runtime: ${rt}. Use: claude | codex`);
+        process.exit(1);
+      }
+    }
     run(`bash ${DAEMON_SH} start`);
     break;
+  }
 
   case 'stop':
     run(`bash ${DAEMON_SH} stop`);
