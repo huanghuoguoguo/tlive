@@ -146,11 +146,10 @@ export class MessageRenderer {
       return this.applyPlatformLimit(redactSensitiveContent(`❌ ${this.errorMessage}`));
     }
 
-    // Permission phase
+    // Permission phase — show full command (user needs to assess risk)
     if (this.pendingPermission) {
       const p = this.pendingPermission;
-      const truncInput = p.input.length > 80 ? p.input.slice(0, 77) + '...' : p.input;
-      return this.applyPlatformLimit(redactSensitiveContent(`🔐 ${p.toolName}: ${truncInput}`));
+      return this.applyPlatformLimit(redactSensitiveContent(`🔐 ${p.toolName}: ${p.input}`));
     }
 
     // Done phase (completed or error with tools)

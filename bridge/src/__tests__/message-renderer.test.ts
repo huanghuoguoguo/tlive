@@ -164,15 +164,14 @@ describe('MessageRenderer', () => {
       r.dispose();
     });
 
-    it('truncates permission input to 80 chars', async () => {
+    it('shows full permission input without truncation', async () => {
       const r = createRenderer();
-      const longInput = 'a'.repeat(100);
+      const longInput = 'a'.repeat(200);
       r.onToolStart('Bash');
       r.onPermissionNeeded('Bash', longInput, 'perm-1', defaultButtons);
       await advance(300);
       const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
-      expect(content).not.toContain(longInput);
-      expect(content).toContain('...');
+      expect(content).toContain(longInput);
       r.dispose();
     });
 

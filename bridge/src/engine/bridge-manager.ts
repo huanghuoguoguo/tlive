@@ -500,7 +500,7 @@ export class BridgeManager {
       throttleMs: 300,
       onPermissionTimeout: async (toolName, input, buttons) => {
         permissionReminderTool = toolName;
-        permissionReminderInput = input.length > 80 ? input.slice(0, 77) + '...' : input;
+        permissionReminderInput = input;
         const text = `⚠️ Permission pending — ${toolName}: ${permissionReminderInput}`;
         const targetChatId = threadId && adapter.channelType === 'discord' ? threadId : msg.chatId;
         const outMsg: OutboundMessage = adapter.channelType === 'telegram'

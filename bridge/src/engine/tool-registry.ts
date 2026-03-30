@@ -58,10 +58,8 @@ export function getToolCommand(name: string, input: Record<string, unknown>): st
       return `"${str(input.pattern)}" in ${str(input.path) || '.'}`;
     case 'Glob':
       return str(input.pattern);
-    case 'Bash': {
-      const cmd = str(input.command);
-      return cmd.length > 80 ? cmd.slice(0, 77) + '...' : cmd;
-    }
+    case 'Bash':
+      return str(input.command);
     case 'Agent':
       return str(input.description) || str(input.prompt)?.slice(0, 60) || '';
     default:
