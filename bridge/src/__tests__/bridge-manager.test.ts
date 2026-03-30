@@ -25,6 +25,8 @@ describe('BridgeManager', () => {
   let manager: BridgeManager;
 
   beforeEach(() => {
+    // Set required env vars for loadConfig validation
+    process.env.TL_TOKEN = 'test-token';
     initBridgeContext({
       defaultWorkdir: '/tmp',
       store: {
