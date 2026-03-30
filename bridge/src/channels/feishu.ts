@@ -186,9 +186,9 @@ export class FeishuAdapter extends BaseChannelAdapter {
               path: { message_id: msg.message_id, file_key: fileKey },
               params: { type: 'file' },
             });
-            if (resp?.data) {
+            if ((resp as any)?.data) {
               const chunks: Buffer[] = [];
-              for await (const chunk of resp.data as AsyncIterable<Buffer>) {
+              for await (const chunk of (resp as any).data as AsyncIterable<Buffer>) {
                 chunks.push(chunk);
               }
               const buf = Buffer.concat(chunks);
@@ -330,7 +330,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
           if (imageKey) {
             const idType = message.receiveIdType || 'chat_id';
             const result = await this.client.im.message.create({
-              params: { receive_id_type: idType },
+              params: { receive_id_type: idType as any },
               data: {
                 receive_id: message.chatId,
                 msg_type: 'image',
@@ -354,7 +354,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
           if (fileKey) {
             const idType = message.receiveIdType || 'chat_id';
             const result = await this.client.im.message.create({
-              params: { receive_id_type: idType },
+              params: { receive_id_type: idType as any },
               data: {
                 receive_id: message.chatId,
                 msg_type: 'file',
@@ -387,8 +387,8 @@ export class FeishuAdapter extends BaseChannelAdapter {
       let result: FeishuCreateMessageResult;
       try {
         result = await this.client.im.message.create({
-          params: { receive_id_type: idType },
-          data,
+          params: { receive_id_type: idType as any },
+          data: data as any,
         }) as FeishuCreateMessageResult;
       } catch (createErr) {
         // Reply target withdrawn/deleted — retry without root_id
@@ -396,8 +396,8 @@ export class FeishuAdapter extends BaseChannelAdapter {
         if (message.replyToMessageId && (code === 230011 || code === 231003)) {
           delete data.root_id;
           result = await this.client.im.message.create({
-            params: { receive_id_type: idType },
-            data,
+            params: { receive_id_type: idType as any },
+            data: data as any,
           }) as FeishuCreateMessageResult;
         } else {
           throw createErr;

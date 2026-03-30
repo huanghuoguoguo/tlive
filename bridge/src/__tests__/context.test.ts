@@ -10,6 +10,7 @@ describe('BridgeContext', () => {
 
   it('stores and retrieves context', () => {
     const ctx: BridgeContext = {
+      defaultWorkdir: '/tmp',
       store: {} as any,
       llm: {} as any,
       permissions: {} as any,
@@ -24,8 +25,8 @@ describe('BridgeContext', () => {
   });
 
   it('overwrites previous context', () => {
-    const ctx1: BridgeContext = { store: {} as any, llm: {} as any, permissions: {} as any, core: {} as any };
-    const ctx2: BridgeContext = { store: {} as any, llm: {} as any, permissions: {} as any, core: {} as any };
+    const ctx1: BridgeContext = { defaultWorkdir: '/tmp', store: {} as any, llm: {} as any, permissions: {} as any, core: {} as any };
+    const ctx2: BridgeContext = { defaultWorkdir: '/tmp', store: {} as any, llm: {} as any, permissions: {} as any, core: {} as any };
     initBridgeContext(ctx1);
     initBridgeContext(ctx2);
     expect(getBridgeContext()).toBe(ctx2);

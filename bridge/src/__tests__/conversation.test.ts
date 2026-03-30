@@ -49,6 +49,7 @@ describe('ConversationEngine', () => {
     ]);
 
     initBridgeContext({
+      defaultWorkdir: '/tmp',
       store: mockStore as any,
       llm: mockLLM as any,
       permissions: {} as any,
@@ -113,7 +114,7 @@ describe('ConversationEngine', () => {
         controls: undefined,
       })
     };
-    initBridgeContext({ store: mockStore as any, llm: errorLLM as any, permissions: {} as any, core: {} as any });
+    initBridgeContext({ defaultWorkdir: '/tmp', store: mockStore as any, llm: errorLLM as any, permissions: {} as any, core: {} as any });
     engine = new ConversationEngine();
 
     await engine.processMessage({ sessionId: 's1', text: 'hi' });

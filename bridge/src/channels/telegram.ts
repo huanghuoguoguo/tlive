@@ -376,7 +376,7 @@ export class TelegramAdapter extends BaseChannelAdapter {
   async addReaction(_chatId: string, messageId: string, emoji: string): Promise<void> {
     if (!this.bot) return;
     try {
-      await this.api.setMessageReaction(_chatId, parseInt(messageId, 10), [{ type: 'emoji', emoji }]);
+      await this.api.setMessageReaction(_chatId, parseInt(messageId, 10), [{ type: 'emoji', emoji } as any]);
     } catch { /* non-fatal */ }
   }
 

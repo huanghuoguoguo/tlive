@@ -26,6 +26,7 @@ describe('BridgeManager', () => {
 
   beforeEach(() => {
     initBridgeContext({
+      defaultWorkdir: '/tmp',
       store: {
         getSession: vi.fn().mockResolvedValue({ id: 's1', workingDirectory: '/tmp', createdAt: '' }),
         saveMessage: vi.fn(), getMessages: vi.fn().mockResolvedValue([]),

@@ -713,10 +713,8 @@ export class BridgeManager {
       clearInterval(typingInterval);
       renderer.dispose();
       this.activeControls.delete(this.state.stateKey(msg.channelType, msg.chatId));
-      // Close Feishu streaming card
-      if (feishuSession) {
-        feishuSession.close().catch(() => {});
-      }
+      // Close Feishu streaming card (no-op: streaming disabled)
+      // if (feishuSession) { feishuSession.close().catch(() => {}); }
     }
 
     return true;
