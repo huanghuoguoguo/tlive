@@ -14,7 +14,7 @@ export interface MessageRendererOptions {
 
 /** Tools silently ignored — never counted or displayed */
 const HIDDEN_TOOLS = new Set([
-  'TodoWrite', 'TaskCreate', 'TaskList', 'TaskGet',
+  'TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet',
   'TaskStop', 'TaskOutput', 'ToolSearch', 'TodoRead',
 ]);
 
@@ -69,6 +69,8 @@ export class MessageRenderer {
         this.scheduleFlush();
       }, 1000);
     }
+
+    this.scheduleFlush();
   }
 
   onToolComplete(_toolUseId: string): void {

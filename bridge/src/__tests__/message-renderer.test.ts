@@ -99,15 +99,18 @@ describe('MessageRenderer', () => {
     it('throttles flushes at the configured interval', async () => {
       const r = createRenderer();
       r.onToolStart('Bash');
-      // At 100ms — no flush yet (elapsed tick at 1000ms hasn't fired)
+      // At 100ms — no flush yet (300ms throttle hasn't expired)
       await advance(100);
       expect(flushCallback).not.toHaveBeenCalled();
-      // At 1000ms — elapsed tick fires, schedules flush
-      await advance(900);
-      expect(flushCallback).not.toHaveBeenCalled(); // flush scheduled but not fired (300ms throttle)
-      // At 1300ms — throttle fires
-      await advance(300);
-      expect(flushCallback).toHaveBeenCalled();
+      // At 300ms — throttle fires, first flush
+      await advance(200);
+      expect(flushCallback).toHaveBeenCalledTimes(1);
+      // Subsequent tool starts are also throttled
+      r.onToolStart('Read');
+      await advance(100);
+      expect(flushCallback).toHaveBeenCalledTimes(1); // still throttled
+      await advance(200);
+      expect(flushCallback).toHaveBeenCalledTimes(2); // second flush
       r.dispose();
     });
 
