@@ -11,7 +11,7 @@ import type { LLMProvider } from '../providers/base.js';
 import { loadConfig } from '../config.js';
 import { markdownToTelegram } from '../markdown/index.js';
 import { downgradeHeadings } from '../markdown/feishu.js';
-import { TerminalCardRenderer, type VerboseLevel } from './terminal-card-renderer.js';
+import { MessageRenderer } from './message-renderer.js';
 import { SessionStateManager } from './session-state.js';
 import { PermissionCoordinator } from './permission-coordinator.js';
 import { CommandRouter } from './command-router.js';
@@ -512,12 +512,9 @@ export class BridgeManager {
     }
 
     const platformLimits: Record<string, number> = { telegram: 4096, discord: 2000, feishu: 30000 };
-    const windowSizes: Record<string, number> = { telegram: 5, discord: 6, feishu: 8 };
-    const renderer = new TerminalCardRenderer({
-      verboseLevel,
+    const renderer = new MessageRenderer({
       platformLimit: platformLimits[adapter.channelType] ?? 4096,
       throttleMs: 300,
-      windowSize: windowSizes[adapter.channelType] ?? 8,
       flushCallback: async (content, isEdit, buttons) => {
         // Feishu streaming path
         if (feishuSession) {
@@ -541,9 +538,8 @@ export class BridgeManager {
         } else if (adapter.channelType === 'discord') {
           outMsg = { chatId: msg.chatId, text: content, threadId };
         } else {
-          outMsg = { chatId: msg.chatId, text: content, feishuHeader: { template: 'blue', title: '💬 Claude' } };
+          outMsg = { chatId: msg.chatId, text: content };
         }
-        // Attach buttons if permission/question is pending
         if (buttons?.length) {
           outMsg.buttons = buttons.map(b => ({ ...b, style: b.style as 'primary' | 'danger' | 'default' }));
         }
@@ -569,7 +565,6 @@ export class BridgeManager {
     });
 
     let completedStats: import('./cost-tracker.js').UsageStats | undefined;
-    const toolIdMap = new Map<string, string>(); // SDK tool_use_id → renderer tool ID
 
     // Build SDK-level permission handler based on /perm mode
     const permMode = this.state.getPermMode(msg.channelType, msg.chatId);
@@ -617,7 +612,7 @@ export class BridgeManager {
           }
 
           buttons.push({ label: '❌ No', callbackData: `perm:deny:${permId}`, style: 'danger' });
-          renderer.onPermissionNeeded(toolName, inputStr, promptSentence, buttons);
+          renderer.onPermissionNeeded(toolName, inputStr, permId, buttons);
 
           // Wait for user response (5 min timeout)
           const result = await this.permissions.getGateway().waitFor(permId, {
@@ -649,25 +644,22 @@ export class BridgeManager {
         },
         onTextDelta: (delta) => renderer.onTextDelta(delta),
         onToolStart: (event) => {
-          const parentId = (event as any).parentToolUseId ? toolIdMap.get((event as any).parentToolUseId) ?? (event as any).parentToolUseId : undefined;
-          const rendererToolId = renderer.onToolStart(event.name, event.input, parentId);
-          if (event.id) toolIdMap.set(event.id, rendererToolId);
+          renderer.onToolStart(event.name);
         },
-        onToolResult: (event) => {
-          const rendererToolId = toolIdMap.get(event.toolUseId) ?? event.toolUseId;
-          renderer.onToolComplete(rendererToolId, event.content, event.isError);
+        onToolResult: (_event) => {
+          // No-op — MessageRenderer counts on start, not complete
         },
-        onAgentStart: (data) => {
-          const toolUseId = data.taskId ? (toolIdMap.get(data.taskId) ?? data.taskId) : undefined;
-          renderer.onAgentStart(data.description, toolUseId);
+        onAgentStart: (_data) => {
+          renderer.onToolStart('Agent');
         },
-        onAgentProgress: (data) => {
-          const usage = data.usage ? { tool_uses: data.usage.toolUses, duration_ms: data.usage.durationMs } : undefined;
-          renderer.onAgentProgress(data.description, data.lastTool, usage);
+        onAgentProgress: (_data) => {
+          // No-op — flat display
         },
-        onAgentComplete: (data) => renderer.onAgentComplete(data.summary, data.status as 'completed' | 'failed' | 'stopped'),
-        onToolProgress: (data) => {
-          renderer.onAgentProgress(`${data.toolName} running...`, undefined, { tool_uses: 0, duration_ms: data.elapsed * 1000 });
+        onAgentComplete: (_data) => {
+          // No-op — flat display
+        },
+        onToolProgress: (_data) => {
+          // No-op — flat display
         },
         onRateLimit: (data) => {
           if (data.status === 'rejected') {
@@ -682,9 +674,7 @@ export class BridgeManager {
           }
           const usage = { input_tokens: event.usage.inputTokens, output_tokens: event.usage.outputTokens, cost_usd: event.usage.costUsd };
           completedStats = costTracker.finish(usage);
-          if (verboseLevel > 0) {
-            renderer.onComplete(completedStats);
-          }
+          renderer.onComplete(completedStats);
         },
         onPromptSuggestion: (suggestion) => {
           // Send as a quick-reply button after the response completes
@@ -699,24 +689,6 @@ export class BridgeManager {
         onError: (err) => renderer.onError(err),
       });
 
-      // Level 0: deliver final response via delivery layer (renderer didn't flush text)
-      if (verboseLevel === 0) {
-        const responseText = renderer.getResponseText().trim() || result.text.trim();
-        if (!completedStats) {
-          const usage = {
-            input_tokens: result.usage?.inputTokens ?? 0,
-            output_tokens: result.usage?.outputTokens ?? 0,
-            cost_usd: result.usage?.costUsd,
-          };
-          completedStats = costTracker.finish(usage);
-        }
-        const costLine = CostTracker.format(completedStats);
-        const fullText = responseText ? `${responseText}\n${costLine}` : costLine;
-        const deliverTarget = threadId && adapter.channelType === 'discord' ? threadId : msg.chatId;
-        await this.delivery.deliver(adapter, deliverTarget, fullText, {
-          platformLimit: platformLimits[adapter.channelType] ?? 4096,
-        });
-      }
       // Success: change to done reaction
       adapter.addReaction(reactionChatId, msg.messageId, reactions.done).catch(() => {});
     } catch (err) {
