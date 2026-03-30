@@ -21,9 +21,9 @@ TL_TOKEN="${TL_TOKEN:-}"
 # Inject TLIVE_SESSION_ID + hook type
 if command -v jq &>/dev/null; then
   if [ -n "$TLIVE_SESSION_ID" ]; then
-    HOOK_JSON=$(echo "$HOOK_JSON" | jq --arg sid "$TLIVE_SESSION_ID" '. + {tlive_session_id: $sid, tlive_hook_type: "notification"}')
+    HOOK_JSON=$(echo "$HOOK_JSON" | jq --arg sid "$TLIVE_SESSION_ID" --arg cwd "$PWD" '. + {tlive_session_id: $sid, tlive_hook_type: "notification", tlive_cwd: $cwd}')
   else
-    HOOK_JSON=$(echo "$HOOK_JSON" | jq '. + {tlive_hook_type: "notification"}')
+    HOOK_JSON=$(echo "$HOOK_JSON" | jq --arg cwd "$PWD" '. + {tlive_hook_type: "notification", tlive_cwd: $cwd}')
   fi
 fi
 

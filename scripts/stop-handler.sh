@@ -14,9 +14,9 @@ TL_TOKEN="${TL_TOKEN:-}"
 # Always inject hook type; inject session ID if available
 if command -v jq &>/dev/null; then
   if [ -n "$TLIVE_SESSION_ID" ]; then
-    HOOK_JSON=$(echo "$HOOK_JSON" | jq --arg sid "$TLIVE_SESSION_ID" '. + {tlive_session_id: $sid, tlive_hook_type: "stop"}')
+    HOOK_JSON=$(echo "$HOOK_JSON" | jq --arg sid "$TLIVE_SESSION_ID" --arg cwd "$PWD" '. + {tlive_session_id: $sid, tlive_hook_type: "stop", tlive_cwd: $cwd}')
   else
-    HOOK_JSON=$(echo "$HOOK_JSON" | jq '. + {tlive_hook_type: "stop"}')
+    HOOK_JSON=$(echo "$HOOK_JSON" | jq --arg cwd "$PWD" '. + {tlive_hook_type: "stop", tlive_cwd: $cwd}')
   fi
 fi
 

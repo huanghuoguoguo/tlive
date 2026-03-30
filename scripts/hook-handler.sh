@@ -13,7 +13,7 @@ HOOK_JSON=$(cat)
 
 # Inject TLIVE_SESSION_ID
 if command -v jq &>/dev/null && [ -n "$TLIVE_SESSION_ID" ]; then
-  HOOK_JSON=$(echo "$HOOK_JSON" | jq --arg sid "$TLIVE_SESSION_ID" '. + {tlive_session_id: $sid}')
+  HOOK_JSON=$(echo "$HOOK_JSON" | jq --arg sid "$TLIVE_SESSION_ID" --arg cwd "$PWD" '. + {tlive_session_id: $sid, tlive_cwd: $cwd}')
 fi
 
 # Source config

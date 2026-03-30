@@ -53,6 +53,7 @@ function getLocalIP(): string {
 export interface HookNotificationData {
   tlive_hook_type?: string;
   tlive_session_id?: string;
+  tlive_cwd?: string;
   notification_type?: string;
   message?: string;
   last_assistant_message?: string;
@@ -182,13 +183,25 @@ export class BridgeManager {
     let type: 'stop' | 'idle_prompt' | 'generic';
     let summary: string | undefined;
 
+    // Build context suffix: project name + short session ID
+    const contextParts: string[] = [];
+    if (hook.tlive_cwd) {
+      const projectName = hook.tlive_cwd.split('/').pop() || '';
+      if (projectName) contextParts.push(projectName);
+    }
+    if (hook.tlive_session_id) {
+      const shortId = hook.tlive_session_id.slice(-6);
+      contextParts.push(`#${shortId}`);
+    }
+    const contextSuffix = contextParts.length > 0 ? ' · ' + contextParts.join(' · ') : '';
+
     if (hookType === 'stop') {
       type = 'stop';
       const raw = (hook.last_assistant_message || hook.last_output || '').trim();
       summary = raw ? (raw.length > 3000 ? raw.slice(0, 2997) + '...' : raw) : undefined;
-      title = 'Terminal';
+      title = `Terminal${contextSuffix}`;
     } else if (hook.notification_type === 'idle_prompt') {
-      title = 'Terminal · ' + (hook.message || 'Waiting for input...');
+      title = `Terminal${contextSuffix} · ` + (hook.message || 'Waiting for input...');
       type = 'idle_prompt';
     } else {
       title = hook.message || 'Notification';
