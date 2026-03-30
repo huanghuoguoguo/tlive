@@ -598,11 +598,12 @@ export class BridgeManager {
           this.permissions.setPendingSdkPerm(chatKey, permId);
           console.log(`[bridge] Permission request: ${toolName} (${permId}) for ${chatKey}`);
 
-          // If SDK aborts (subagent stopped), clean up gateway entry immediately
+          // If SDK aborts (subagent stopped), clean up gateway entry and remove from queue
           const abortCleanup = () => {
             console.log(`[bridge] Permission cancelled by SDK: ${toolName} (${permId})`);
             this.permissions.getGateway().resolve(permId, 'deny', 'Cancelled by SDK');
             this.permissions.clearPendingSdkPerm(chatKey);
+            renderer.onPermissionResolved(permId);
           };
           if (signal?.aborted) { abortCleanup(); return 'deny' as const; }
           signal?.addEventListener('abort', abortCleanup, { once: true });
@@ -625,7 +626,7 @@ export class BridgeManager {
             },
           });
           signal?.removeEventListener('abort', abortCleanup);
-          renderer.onPermissionResolved();
+          renderer.onPermissionResolved(permId);
 
           // Update timeout reminder message if it was sent
           if (permissionReminderMsgId) {

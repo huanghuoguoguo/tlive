@@ -36,7 +36,7 @@ export class MessageRenderer {
   private completed = false;
   private costLine?: string;
   private errorMessage?: string;
-  private pendingPermission?: PermissionState;
+  private permissionQueue: PermissionState[] = [];
 
   private _messageId?: string;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -88,26 +88,41 @@ export class MessageRenderer {
     permId: string,
     buttons: Array<{ label: string; callbackData: string; style: string }>,
   ): void {
-    this.pendingPermission = { toolName, input, permId, buttons };
-    this.clearPermissionTimeout();
-    if (this.onPermissionTimeout) {
-      this.permissionTimeoutTimer = setTimeout(() => {
-        if (this.pendingPermission) {
-          this.onPermissionTimeout!(
-            this.pendingPermission.toolName,
-            this.pendingPermission.input,
-            this.pendingPermission.buttons,
-          );
-        }
-      }, 60_000);
+    this.permissionQueue.push({ toolName, input, permId, buttons });
+    // Only start timeout for the first permission (the one being displayed)
+    if (this.permissionQueue.length === 1) {
+      this.startPermissionTimeout();
     }
     this.scheduleFlush();
   }
 
-  onPermissionResolved(): void {
+  onPermissionResolved(permId?: string): void {
+    // Remove the resolved permission from queue
+    if (permId) {
+      const idx = this.permissionQueue.findIndex(p => p.permId === permId);
+      if (idx !== -1) this.permissionQueue.splice(idx, 1);
+    } else {
+      // No permId: remove the head (currently displayed one)
+      this.permissionQueue.shift();
+    }
+    // Restart timeout for next permission in queue
     this.clearPermissionTimeout();
-    this.pendingPermission = undefined;
+    if (this.permissionQueue.length > 0) {
+      this.startPermissionTimeout();
+    }
     this.scheduleFlush();
+  }
+
+  private startPermissionTimeout(): void {
+    this.clearPermissionTimeout();
+    if (this.onPermissionTimeout && this.permissionQueue.length > 0) {
+      this.permissionTimeoutTimer = setTimeout(() => {
+        const head = this.permissionQueue[0];
+        if (head) {
+          this.onPermissionTimeout!(head.toolName, head.input, head.buttons);
+        }
+      }, 60_000);
+    }
   }
 
   onTextDelta(text: string): void {
@@ -146,10 +161,13 @@ export class MessageRenderer {
       return this.applyPlatformLimit(redactSensitiveContent(`❌ ${this.errorMessage}`));
     }
 
-    // Permission phase — show full command (user needs to assess risk)
-    if (this.pendingPermission) {
-      const p = this.pendingPermission;
-      return this.applyPlatformLimit(redactSensitiveContent(`🔐 ${p.toolName}: ${p.input}`));
+    // Permission phase — show queue head, full command (user needs to assess risk)
+    if (this.permissionQueue.length > 0) {
+      const p = this.permissionQueue[0];
+      const queueHint = this.permissionQueue.length > 1
+        ? `\n⏳ +${this.permissionQueue.length - 1} more pending`
+        : '';
+      return this.applyPlatformLimit(redactSensitiveContent(`🔐 ${p.toolName}: ${p.input}${queueHint}`));
     }
 
     // Done phase (completed or error with tools)
@@ -267,7 +285,7 @@ export class MessageRenderer {
     this.flushing = true;
     try {
       const isEdit = !!this._messageId;
-      const flushButtons = this.pendingPermission?.buttons;
+      const flushButtons = this.permissionQueue[0]?.buttons;
       const result = await this.flushCallback(content, isEdit, flushButtons);
       if (!isEdit && typeof result === 'string') {
         this._messageId = result;
