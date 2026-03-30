@@ -3,7 +3,7 @@ import type { InboundMessage } from '../channels/types.js';
 import type { SessionStateManager } from './session-state.js';
 import type { ChannelRouter } from './router.js';
 import type { QueryControls } from '../providers/base.js';
-import type { VerboseLevel } from './terminal-card-renderer.js';
+import type { VerboseLevel } from './session-state.js';
 import { getBridgeContext } from '../context.js';
 import { existsSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';

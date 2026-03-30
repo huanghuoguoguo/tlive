@@ -1,5 +1,6 @@
-import type { VerboseLevel } from './terminal-card-renderer.js';
 import type { SessionMode } from '../messages/types.js';
+
+export type VerboseLevel = 0 | 1;
 
 /**
  * Manages per-chat session state: verbose levels, permission modes, effort,
