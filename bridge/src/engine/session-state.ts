@@ -117,4 +117,15 @@ export class SessionStateManager {
   setRuntime(channelType: string, chatId: string, runtime: 'claude' | 'codex'): void {
     this.runtimes.set(this.stateKey(channelType, chatId), runtime);
   }
+
+  getModel(channelType: string, chatId: string): string | undefined {
+    return this.modes.get(this.stateKey(channelType, chatId))?.model;
+  }
+
+  setModel(channelType: string, chatId: string, model: string | undefined): void {
+    const key = this.stateKey(channelType, chatId);
+    const current = this.modes.get(key) || this.defaultMode();
+    current.model = model;
+    this.modes.set(key, current);
+  }
 }

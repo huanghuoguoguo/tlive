@@ -47,6 +47,8 @@ interface ProcessMessageParams {
   /** SDK-level permission handler — forwarded to streamChat */
   sdkPermissionHandler?: PermissionRequestHandler;
   effort?: 'low' | 'medium' | 'high' | 'max';
+  /** Override model for this query */
+  model?: string;
   /** Override LLM provider (for per-chat runtime selection) */
   llm?: LLMProvider;
 }
@@ -89,6 +91,7 @@ export class ConversationEngine {
       const result = llm.streamChat({
         prompt,
         workingDirectory: workDir,
+        model: params.model,
         sessionId: session?.sdkSessionId,
         attachments: imageAttachments?.length ? imageAttachments : undefined,
         onPermissionRequest: params.sdkPermissionHandler,

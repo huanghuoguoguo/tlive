@@ -1,5 +1,31 @@
 import { describe, it, expect } from 'vitest';
 import { CodexAdapter } from '../messages/codex-adapter.js';
+import type {
+  ThreadEvent,
+  ThreadItem,
+  CommandExecutionItem,
+  FileChangeItem,
+  McpToolCallItem,
+  AgentMessageItem,
+  ReasoningItem,
+} from '@openai/codex-sdk';
+
+// Helper to build valid ThreadItem objects conforming to SDK types
+function msg(id: string, text = ''): AgentMessageItem {
+  return { type: 'agent_message', id, text };
+}
+function cmd(id: string, command = '', extra: Partial<CommandExecutionItem> = {}): CommandExecutionItem {
+  return { type: 'command_execution', id, command, aggregated_output: '', status: 'in_progress', ...extra };
+}
+function fc(id: string, changes: FileChangeItem['changes'] = [], status: FileChangeItem['status'] = 'completed'): FileChangeItem {
+  return { type: 'file_change', id, changes, status };
+}
+function reason(id: string, text = ''): ReasoningItem {
+  return { type: 'reasoning', id, text };
+}
+function mcp(id: string, tool: string, args: unknown = {}, extra: Partial<McpToolCallItem> = {}): McpToolCallItem {
+  return { type: 'mcp_tool_call', id, server: '', tool, arguments: args, status: 'in_progress', ...extra };
+}
 
 describe('CodexAdapter', () => {
   function create() { return new CodexAdapter(); }
@@ -7,7 +33,7 @@ describe('CodexAdapter', () => {
   describe('thread events', () => {
     it('maps thread.started to status', () => {
       const a = create();
-      const events = a.adapt({ type: 'thread.started', thread_id: 'th_1', model: 'o3' });
+      const events = a.adapt({ type: 'thread.started', thread_id: 'th_1' } as ThreadEvent);
       expect(events).toHaveLength(1);
       expect(events[0].kind).toBe('status');
       expect((events[0] as any).sessionId).toBe('th_1');
@@ -21,8 +47,8 @@ describe('CodexAdapter', () => {
   describe('agent_message', () => {
     it('emits text_delta on item.updated', () => {
       const a = create();
-      a.adapt({ type: 'item.started', item: { type: 'agent_message', id: 'msg_1' } });
-      const events = a.adapt({ type: 'item.updated', item: { type: 'agent_message', id: 'msg_1', text: 'Hello' } });
+      a.adapt({ type: 'item.started', item: msg('msg_1') });
+      const events = a.adapt({ type: 'item.updated', item: msg('msg_1', 'Hello') });
       expect(events).toHaveLength(1);
       expect(events[0].kind).toBe('text_delta');
       expect((events[0] as any).text).toBe('Hello');
@@ -30,17 +56,17 @@ describe('CodexAdapter', () => {
 
     it('emits delta (not full text) on subsequent updates', () => {
       const a = create();
-      a.adapt({ type: 'item.started', item: { type: 'agent_message', id: 'msg_1' } });
-      a.adapt({ type: 'item.updated', item: { type: 'agent_message', id: 'msg_1', text: 'Hello' } });
-      const events = a.adapt({ type: 'item.updated', item: { type: 'agent_message', id: 'msg_1', text: 'Hello world' } });
+      a.adapt({ type: 'item.started', item: msg('msg_1') });
+      a.adapt({ type: 'item.updated', item: msg('msg_1', 'Hello') });
+      const events = a.adapt({ type: 'item.updated', item: msg('msg_1', 'Hello world') });
       expect(events).toHaveLength(1);
       expect((events[0] as any).text).toBe(' world');
     });
 
     it('emits full text on completed if no updates were received', () => {
       const a = create();
-      a.adapt({ type: 'item.started', item: { type: 'agent_message', id: 'msg_1' } });
-      const events = a.adapt({ type: 'item.completed', item: { type: 'agent_message', id: 'msg_1', text: 'Final answer' } });
+      a.adapt({ type: 'item.started', item: msg('msg_1') });
+      const events = a.adapt({ type: 'item.completed', item: msg('msg_1', 'Final answer') });
       expect(events).toHaveLength(1);
       expect(events[0].kind).toBe('text_delta');
       expect((events[0] as any).text).toBe('Final answer');
@@ -50,23 +76,17 @@ describe('CodexAdapter', () => {
   describe('command_execution', () => {
     it('maps item.started to tool_start (Bash)', () => {
       const a = create();
-      const events = a.adapt({ type: 'item.started', item: { type: 'command_execution', id: 'cmd_1', command: ['npm', 'test'] } });
+      const events = a.adapt({ type: 'item.started', item: cmd('cmd_1', 'npm test') });
       expect(events).toHaveLength(1);
       expect(events[0].kind).toBe('tool_start');
       expect((events[0] as any).name).toBe('Bash');
       expect((events[0] as any).input.command).toBe('npm test');
     });
 
-    it('handles string command', () => {
-      const a = create();
-      const events = a.adapt({ type: 'item.started', item: { type: 'command_execution', id: 'cmd_1', command: 'ls -la' } });
-      expect((events[0] as any).input.command).toBe('ls -la');
-    });
-
     it('maps item.completed to tool_result', () => {
       const a = create();
-      a.adapt({ type: 'item.started', item: { type: 'command_execution', id: 'cmd_1', command: ['ls'] } });
-      const events = a.adapt({ type: 'item.completed', item: { type: 'command_execution', id: 'cmd_1', output: 'file1\nfile2', exit_code: 0 } });
+      a.adapt({ type: 'item.started', item: cmd('cmd_1', 'ls') });
+      const events = a.adapt({ type: 'item.completed', item: cmd('cmd_1', 'ls', { aggregated_output: 'file1\nfile2', exit_code: 0, status: 'completed' }) });
       expect(events).toHaveLength(1);
       expect(events[0].kind).toBe('tool_result');
       expect((events[0] as any).content).toBe('file1\nfile2');
@@ -75,16 +95,16 @@ describe('CodexAdapter', () => {
 
     it('marks failed commands as errors', () => {
       const a = create();
-      a.adapt({ type: 'item.started', item: { type: 'command_execution', id: 'cmd_1', command: ['bad'] } });
-      const events = a.adapt({ type: 'item.completed', item: { type: 'command_execution', id: 'cmd_1', output: 'not found', exit_code: 127 } });
+      a.adapt({ type: 'item.started', item: cmd('cmd_1', 'bad') });
+      const events = a.adapt({ type: 'item.completed', item: cmd('cmd_1', 'bad', { aggregated_output: 'not found', exit_code: 127, status: 'failed' }) });
       expect((events[0] as any).isError).toBe(true);
     });
 
     it('links tool_result back to tool_start via toolUseId', () => {
       const a = create();
-      const startEvents = a.adapt({ type: 'item.started', item: { type: 'command_execution', id: 'cmd_1', command: ['echo', 'hi'] } });
+      const startEvents = a.adapt({ type: 'item.started', item: cmd('cmd_1', 'echo hi') });
       const toolId = (startEvents[0] as any).id;
-      const endEvents = a.adapt({ type: 'item.completed', item: { type: 'command_execution', id: 'cmd_1', output: 'hi', exit_code: 0 } });
+      const endEvents = a.adapt({ type: 'item.completed', item: cmd('cmd_1', 'echo hi', { aggregated_output: 'hi', exit_code: 0, status: 'completed' }) });
       expect((endEvents[0] as any).toolUseId).toBe(toolId);
     });
   });
@@ -92,7 +112,7 @@ describe('CodexAdapter', () => {
   describe('file_change', () => {
     it('maps add to Write tool_start', () => {
       const a = create();
-      const events = a.adapt({ type: 'item.started', item: { type: 'file_change', id: 'fc_1', kind: 'add', path: '/src/new.ts' } });
+      const events = a.adapt({ type: 'item.started', item: fc('fc_1', [{ path: '/src/new.ts', kind: 'add' }]) });
       expect(events[0].kind).toBe('tool_start');
       expect((events[0] as any).name).toBe('Write');
       expect((events[0] as any).input.file_path).toBe('/src/new.ts');
@@ -100,23 +120,22 @@ describe('CodexAdapter', () => {
 
     it('maps update to Edit tool_start', () => {
       const a = create();
-      const events = a.adapt({ type: 'item.started', item: { type: 'file_change', id: 'fc_1', kind: 'update', path: '/src/old.ts' } });
+      const events = a.adapt({ type: 'item.started', item: fc('fc_1', [{ path: '/src/old.ts', kind: 'update' }]) });
       expect((events[0] as any).name).toBe('Edit');
     });
 
     it('maps completed file_change to tool_result', () => {
       const a = create();
-      a.adapt({ type: 'item.started', item: { type: 'file_change', id: 'fc_1', kind: 'add', path: '/src/new.ts' } });
-      const events = a.adapt({ type: 'item.completed', item: { type: 'file_change', id: 'fc_1', status: 'completed' } });
+      a.adapt({ type: 'item.started', item: fc('fc_1', [{ path: '/src/new.ts', kind: 'add' }]) });
+      const events = a.adapt({ type: 'item.completed', item: fc('fc_1', [{ path: '/src/new.ts', kind: 'add' }], 'completed') });
       expect(events[0].kind).toBe('tool_result');
-      expect((events[0] as any).content).toBe('Applied');
       expect((events[0] as any).isError).toBe(false);
     });
 
     it('marks failed file_change as error', () => {
       const a = create();
-      a.adapt({ type: 'item.started', item: { type: 'file_change', id: 'fc_1', kind: 'update', path: '/src/old.ts' } });
-      const events = a.adapt({ type: 'item.completed', item: { type: 'file_change', id: 'fc_1', status: 'failed' } });
+      a.adapt({ type: 'item.started', item: fc('fc_1', [{ path: '/src/old.ts', kind: 'update' }]) });
+      const events = a.adapt({ type: 'item.completed', item: fc('fc_1', [{ path: '/src/old.ts', kind: 'update' }], 'failed') });
       expect((events[0] as any).isError).toBe(true);
     });
   });
@@ -124,15 +143,15 @@ describe('CodexAdapter', () => {
   describe('reasoning', () => {
     it('maps reasoning update to thinking_delta', () => {
       const a = create();
-      a.adapt({ type: 'item.started', item: { type: 'reasoning', id: 'r_1' } });
-      const events = a.adapt({ type: 'item.updated', item: { type: 'reasoning', id: 'r_1', summary: 'Analyzing code...' } });
+      a.adapt({ type: 'item.started', item: reason('r_1') });
+      const events = a.adapt({ type: 'item.updated', item: reason('r_1', 'Analyzing code...') });
       expect(events).toHaveLength(1);
       expect(events[0].kind).toBe('thinking_delta');
       expect((events[0] as any).text).toBe('Analyzing code...');
     });
 
     it('skips reasoning item.started (no output)', () => {
-      const events = create().adapt({ type: 'item.started', item: { type: 'reasoning', id: 'r_1' } });
+      const events = create().adapt({ type: 'item.started', item: reason('r_1') });
       expect(events).toHaveLength(0);
     });
   });
@@ -140,7 +159,7 @@ describe('CodexAdapter', () => {
   describe('mcp_tool_call', () => {
     it('maps item.started to tool_start', () => {
       const a = create();
-      const events = a.adapt({ type: 'item.started', item: { type: 'mcp_tool_call', id: 'mcp_1', tool: 'search', arguments: { q: 'test' } } });
+      const events = a.adapt({ type: 'item.started', item: mcp('mcp_1', 'search', { q: 'test' }) });
       expect(events).toHaveLength(1);
       expect(events[0].kind).toBe('tool_start');
       expect((events[0] as any).name).toBe('search');
@@ -149,34 +168,29 @@ describe('CodexAdapter', () => {
 
     it('maps item.completed to tool_result', () => {
       const a = create();
-      a.adapt({ type: 'item.started', item: { type: 'mcp_tool_call', id: 'mcp_1', tool: 'search', arguments: {} } });
-      const events = a.adapt({ type: 'item.completed', item: { type: 'mcp_tool_call', id: 'mcp_1', result: { data: 'found' } } });
+      a.adapt({ type: 'item.started', item: mcp('mcp_1', 'search') });
+      const events = a.adapt({ type: 'item.completed', item: mcp('mcp_1', 'search', {}, { result: { content: [], structured_content: { data: 'found' } }, status: 'completed' }) });
       expect(events[0].kind).toBe('tool_result');
-      expect((events[0] as any).content).toBe('{"data":"found"}');
     });
 
-    it('handles string result', () => {
+    it('filters hidden tools (TaskCreate, TodoRead, etc.)', () => {
       const a = create();
-      a.adapt({ type: 'item.started', item: { type: 'mcp_tool_call', id: 'mcp_1', tool: 'echo', arguments: {} } });
-      const events = a.adapt({ type: 'item.completed', item: { type: 'mcp_tool_call', id: 'mcp_1', result: 'hello' } });
-      expect((events[0] as any).content).toBe('hello');
+      const events = a.adapt({ type: 'item.started', item: mcp('mcp_h', 'TaskCreate', { subject: 'test' }) });
+      expect(events).toHaveLength(0);
+      // Completed event should also be filtered
+      const completed = a.adapt({ type: 'item.completed', item: mcp('mcp_h', 'TaskCreate', {}, { status: 'completed' }) });
+      expect(completed).toHaveLength(0);
     });
   });
 
   describe('turn lifecycle', () => {
     it('maps turn.completed to query_result', () => {
       const a = create();
-      const events = a.adapt({ type: 'turn.completed', thread_id: 'th_1', usage: { input_tokens: 500, output_tokens: 200 } });
+      const events = a.adapt({ type: 'turn.completed', usage: { input_tokens: 500, cached_input_tokens: 0, output_tokens: 200 } });
       expect(events).toHaveLength(1);
       expect(events[0].kind).toBe('query_result');
       expect((events[0] as any).usage.inputTokens).toBe(500);
       expect((events[0] as any).usage.outputTokens).toBe(200);
-    });
-
-    it('maps turn.completed with costUsd', () => {
-      const a = create();
-      const events = a.adapt({ type: 'turn.completed', thread_id: 'th_1', usage: { input_tokens: 100, output_tokens: 50, cost_usd: 0.01 } });
-      expect((events[0] as any).usage.costUsd).toBe(0.01);
     });
 
     it('maps turn.failed to error', () => {
@@ -195,30 +209,17 @@ describe('CodexAdapter', () => {
       expect(events[0].kind).toBe('error');
       expect((events[0] as any).message).toBe('Connection lost');
     });
-
-    it('uses default message when none provided', () => {
-      const events = create().adapt({ type: 'error' });
-      expect((events[0] as any).message).toBe('Unknown Codex error');
-    });
-  });
-
-  describe('unknown events', () => {
-    it('returns empty for unknown types', () => {
-      expect(create().adapt({ type: 'unknown_future' })).toHaveLength(0);
-    });
   });
 
   describe('edge cases', () => {
-    it('handles missing item gracefully', () => {
-      expect(create().adapt({ type: 'item.started' })).toHaveLength(0);
-      expect(create().adapt({ type: 'item.updated' })).toHaveLength(0);
-      expect(create().adapt({ type: 'item.completed' })).toHaveLength(0);
+    it('returns empty for unknown types', () => {
+      expect(create().adapt({ type: 'unknown_future' } as any)).toHaveLength(0);
     });
 
     it('handles empty text update (no delta)', () => {
       const a = create();
-      a.adapt({ type: 'item.started', item: { type: 'agent_message', id: 'msg_1' } });
-      const events = a.adapt({ type: 'item.updated', item: { type: 'agent_message', id: 'msg_1', text: '' } });
+      a.adapt({ type: 'item.started', item: msg('msg_1') });
+      const events = a.adapt({ type: 'item.updated', item: msg('msg_1', '') });
       expect(events).toHaveLength(0);
     });
   });

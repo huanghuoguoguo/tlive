@@ -176,7 +176,9 @@ async function main() {
   // Initialize components
   const store = new JsonFileStore(join(tliveHome, 'data'));
   const permissions = new PendingPermissions();
-  const llm = resolveProvider(config.runtime, permissions);
+  const llm = resolveProvider(config.runtime, permissions, {
+    claudeSettingSources: config.claudeSettingSources,
+  });
 
   // Initialize context
   initBridgeContext({

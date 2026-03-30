@@ -222,7 +222,9 @@ In terminal (tlive):
 
 In IM (from phone):
   /new                       Start new conversation
+  /model <name>              Switch model (e.g. claude-sonnet-4-6)
   /runtime claude|codex      Switch AI provider
+  /settings user|full|isolated  Claude settings scope
   /perm on|off               Permission prompts on/off
   /effort low|medium|high|max  Thinking depth
   /stop                      Interrupt execution

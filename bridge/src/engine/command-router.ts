@@ -5,6 +5,9 @@ import type { ChannelRouter } from './router.js';
 import type { QueryControls } from '../providers/base.js';
 import type { VerboseLevel } from './session-state.js';
 import { getBridgeContext } from '../context.js';
+import { ClaudeSDKProvider } from '../providers/claude-sdk.js';
+import { checkCodexAvailable } from '../providers/index.js';
+import type { ClaudeSettingSource } from '../config.js';
 import { existsSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
@@ -259,13 +262,98 @@ export class CommandRouter {
         const runtime = parts[1]?.toLowerCase();
         const RUNTIMES = ['claude', 'codex'] as const;
         if (runtime && RUNTIMES.includes(runtime as any)) {
+          // Pre-check: reject if Codex SDK not installed
+          if (runtime === 'codex' && !await checkCodexAvailable()) {
+            await adapter.send({
+              chatId: msg.chatId,
+              text: '❌ Codex SDK not installed.\nRun: `npm install @openai/codex-sdk` in the bridge directory.',
+            });
+            return true;
+          }
+          const prevRuntime = this.state.getRuntime(msg.channelType, msg.chatId) || 'claude';
           this.state.setRuntime(msg.channelType, msg.chatId, runtime as 'claude' | 'codex');
+          // Switching provider → old session ID is invalid for the new provider
+          if (prevRuntime !== runtime) {
+            const newSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            await this.router.rebind(msg.channelType, msg.chatId, newSessionId);
+            this.state.clearLastActive(msg.channelType, msg.chatId);
+          }
           const icons: Record<string, string> = { claude: '🟣', codex: '🟢' };
           const text = `${icons[runtime] || '🔄'} Runtime: **${runtime}**`;
           await adapter.send({ chatId: msg.chatId, text });
         } else {
           const current = this.state.getRuntime(msg.channelType, msg.chatId) || 'claude';
-          const text = `🔄 Runtime: **${current}**\nUsage: \`/runtime claude|codex\``;
+          const codexStatus = await checkCodexAvailable() ? '✅' : '❌ (not installed)';
+          const text = `🔄 Runtime: **${current}**\nUsage: \`/runtime claude|codex\`\nclaude: ✅ · codex: ${codexStatus}`;
+          await adapter.send({ chatId: msg.chatId, text });
+        }
+        return true;
+      }
+      case '/model': {
+        const model = parts.slice(1).join(' ').trim();
+        if (model) {
+          if (model === 'reset' || model === 'default') {
+            this.state.setModel(msg.channelType, msg.chatId, undefined);
+            await adapter.send({ chatId: msg.chatId, text: '🤖 Model: reset to default' });
+          } else {
+            this.state.setModel(msg.channelType, msg.chatId, model);
+            await adapter.send({ chatId: msg.chatId, text: `🤖 Model: **${model}**` });
+          }
+        } else {
+          const current = this.state.getModel(msg.channelType, msg.chatId) || 'default';
+          const text = `🤖 Model: **${current}**\nUsage: \`/model <name>\` or \`/model reset\`\nExamples: \`claude-sonnet-4-6\`, \`claude-opus-4-6\``;
+          await adapter.send({ chatId: msg.chatId, text });
+        }
+        return true;
+      }
+      case '/settings': {
+        const llm = getBridgeContext().llm;
+        const arg = parts[1]?.toLowerCase();
+        const runtime = this.state.getRuntime(msg.channelType, msg.chatId) || 'claude';
+
+        if (runtime === 'codex' || !(llm instanceof ClaudeSDKProvider)) {
+          // Codex runtime — show Codex-specific info
+          const text = [
+            '⚙️ **Codex Settings**',
+            `  Model: \`${this.state.getModel(msg.channelType, msg.chatId) || 'default'}\``,
+            `  Effort: \`${this.state.getEffort(msg.channelType, msg.chatId) || 'default'}\``,
+            `  Perm: \`${this.state.getPermMode(msg.channelType, msg.chatId)}\``,
+            '',
+            'Use `/model`, `/effort`, `/perm` to change.',
+            'Codex sandbox & network settings are set in config.',
+          ].join('\n');
+          await adapter.send({ chatId: msg.chatId, text });
+          return true;
+        }
+
+        // Claude runtime — settings sources control
+        const PRESETS: Record<string, ClaudeSettingSource[]> = {
+          user: ['user'],
+          full: ['user', 'project', 'local'],
+          isolated: [],
+        };
+
+        if (arg && arg in PRESETS) {
+          llm.setSettingSources(PRESETS[arg]);
+          const labels: Record<string, string> = {
+            user: '👤 user — auth & model only',
+            full: '📦 full — auth, CLAUDE.md, MCP, skills',
+            isolated: '🔒 isolated — no external settings',
+          };
+          await adapter.send({ chatId: msg.chatId, text: `⚙️ Settings: ${labels[arg]}` });
+        } else {
+          const current = llm.getSettingSources();
+          const preset = current.length === 0 ? 'isolated'
+            : current.length === 1 && current[0] === 'user' ? 'user'
+            : current.includes('project') ? 'full'
+            : current.join(',');
+          const text = [
+            `⚙️ Settings: **${preset}** (${current.join(', ') || 'none'})`,
+            'Usage: `/settings user|full|isolated`',
+            '  user — ~/.claude/settings.json (auth, model)',
+            '  full — + CLAUDE.md, MCP servers, skills',
+            '  isolated — no external settings',
+          ].join('\n');
           await adapter.send({ chatId: msg.chatId, text });
         }
         return true;
@@ -282,7 +370,9 @@ export class CommandRouter {
             '  0 = quiet · 1 = terminal card',
             '<code>/perm on|off</code> — Tool permission prompts',
             '<code>/effort low|high|max</code> — Thinking depth',
+            '<code>/model &lt;name&gt;</code> — Switch model',
             '<code>/runtime claude|codex</code> — Switch AI provider',
+            '<code>/settings user|full|isolated</code> — Claude settings scope',
             '<code>/stop</code> — Interrupt current execution',
             '<code>/hooks pause|resume</code> — Toggle IM approval',
             '<code>/status</code> — Bridge status',
@@ -306,7 +396,9 @@ export class CommandRouter {
                 '`/verbose 0|1` — Detail level',
                 '> 0 = quiet · 1 = terminal card',
                 '`/perm on|off` — Tool permission prompts',
+                '`/model <name>` — Switch model',
                 '`/runtime claude|codex` — Switch AI provider',
+                '`/settings user|full|isolated` — Claude settings scope',
                 '`/hooks pause|resume` — Toggle IM approval',
                 '`/status` — Bridge status',
                 '`/approve <code>` — Approve pairing request',
@@ -326,7 +418,9 @@ export class CommandRouter {
             '  0 = quiet · 1 = terminal card',
             '/perm on|off — Tool permission prompts',
             '/effort low|high|max — Thinking depth',
+            '/model <name> — Switch model',
             '/runtime claude|codex — Switch AI provider',
+            '/settings user|full|isolated — Claude settings scope',
             '/stop — Interrupt current execution',
             '/hooks pause|resume — Toggle IM approval',
             '/status — Bridge status',

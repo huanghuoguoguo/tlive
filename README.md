@@ -173,7 +173,9 @@ tlive hooks resume         # Resume hooks (IM approval)
 /tlive status              # Check status
 /tlive doctor              # Diagnostics
 
+/model <name>                  # Switch model (e.g. claude-sonnet-4-6)
 /runtime claude|codex          # Switch AI provider
+/settings user|full|isolated   # Claude settings scope
 /perm on|off                   # Permission prompts
 /effort low|medium|high|max    # Thinking depth
 /stop                          # Interrupt execution
@@ -213,9 +215,15 @@ TL_DC_BOT_TOKEN=...
 # Feishu
 TL_FS_APP_ID=...
 TL_FS_APP_SECRET=...
+
+# Claude Code settings scope (default: user)
+# user = auth/model only · full = +CLAUDE.md/MCP/skills · isolated = none
+TL_CLAUDE_SETTINGS=user
 ```
 
 See [config.env.example](config.env.example) for all options.
+
+> **Settings scope:** By default, bridge only loads `~/.claude/settings.json` (API key, model config). Set `TL_CLAUDE_SETTINGS=user,project,local` or use `/settings full` in chat to also load project CLAUDE.md, MCP servers, and skills.
 
 ### Remote Access (frp / tunnels)
 

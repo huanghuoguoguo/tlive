@@ -228,7 +228,8 @@ export class MessageRenderer {
 
     // Completed — no platform limit applied here; bridge-manager handles overflow chunking
     if (this.responseText) {
-      lines.push(this.responseText);
+      // Ensure text ends cleanly before separator (strip trailing whitespace but keep content)
+      lines.push(this.responseText.trimEnd());
       lines.push(SEPARATOR);
     }
     if (this.totalTools > 0) {

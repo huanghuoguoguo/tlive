@@ -23,7 +23,7 @@ import { join } from 'node:path';
 import { homedir, networkInterfaces } from 'node:os';
 
 /** Bridge commands handled synchronously (don't block adapter loop) */
-const QUICK_COMMANDS = new Set(['/new', '/status', '/verbose', '/hooks', '/sessions', '/session', '/help', '/perm', '/effort', '/stop', '/approve', '/pairings', '/runtime']);
+const QUICK_COMMANDS = new Set(['/new', '/status', '/verbose', '/hooks', '/sessions', '/session', '/help', '/perm', '/effort', '/stop', '/approve', '/pairings', '/runtime', '/settings', '/model']);
 
 function isPrivateIPv4(ip: string): boolean {
   const parts = ip.split('.').map(Number);
@@ -130,7 +130,10 @@ export class BridgeManager {
     if (!runtime) return getBridgeContext().llm;
 
     if (!this.providerCache.has(runtime)) {
-      this.providerCache.set(runtime, resolveProvider(runtime, this.permissions.getGateway()));
+      const config = loadConfig();
+      this.providerCache.set(runtime, resolveProvider(runtime, this.permissions.getGateway(), {
+        claudeSettingSources: config.claudeSettingSources,
+      }));
     }
     return this.providerCache.get(runtime)!;
   }
@@ -687,6 +690,7 @@ export class BridgeManager {
         llm: this.getProvider(msg.channelType, msg.chatId),
         sdkPermissionHandler,
         effort: this.state.getEffort(msg.channelType, msg.chatId),
+        model: this.state.getModel(msg.channelType, msg.chatId),
         onControls: (ctrl) => {
           const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
           this.activeControls.set(chatKey, ctrl);

@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-03-30
+
+### Added
+- `/model <name>` command — switch model per session (works for both Claude and Codex)
+- `/settings user|full|isolated` command — control Claude Code settings scope
+- `TL_CLAUDE_SETTINGS` config — choose which Claude Code settings files to load (default: `user`)
+- `TL_ANTHROPIC_API_KEY` / `OPENAI_API_KEY` support in config.env — non-TL_ vars injected into process.env
+- `settingSources` integration — load user's `~/.claude/settings.json` for auth/model config
+- Codex provider: effort mapping (`modelReasoningEffort`), env passthrough, auth error detection
+- Codex adapter: full SDK type safety (replaced all `any` with SDK types), hidden tools filtering, `web_search`/`todo_list` support
+- Codex session continuity — `thread_id` persisted via `query_result` for thread resumption
+- Codex resume fallback — auto start new thread if resume fails (cross-provider session switch)
+- `/runtime codex` pre-check — rejects switch if SDK not installed
+- `/runtime` status shows availability of both providers
+- Codex cost display — shows only duration when SDK reports 0 tokens
+
+### Changed
+- `/runtime` switch auto-creates new session (prevents cross-provider session ID conflicts)
+- `/settings` is provider-aware: Claude shows settings sources, Codex shows current config summary
+- Codex SDK loaded via dynamic `import()` (pure ESM compatibility fix)
+- `renderDone()` trims response text before separator (prevents missing newline)
+
 ## [Unreleased]
 
 ### Added

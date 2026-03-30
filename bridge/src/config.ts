@@ -2,6 +2,13 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
+/** Which Claude Code filesystem settings to load in bridge mode.
+ *  - 'user'    → ~/.claude/settings.json (auth, model overrides)
+ *  - 'project' → .claude/settings.json + CLAUDE.md (project rules, MCP, skills)
+ *  - 'local'   → .claude/settings.local.json (developer overrides)
+ *  Default: ['user'] — only global auth/model config. */
+export type ClaudeSettingSource = 'user' | 'project' | 'local';
+
 export interface Config {
   port: number;
   token: string;
@@ -11,6 +18,8 @@ export interface Config {
   defaultWorkdir: string;
   defaultModel: string;
   coreUrl: string;
+  /** Claude Code settings sources to load (default: ['user']) */
+  claudeSettingSources: ClaudeSettingSource[];
   telegram: {
     botToken: string;
     chatId: string;
@@ -81,7 +90,15 @@ export function loadConfig(): Config {
   // 1. Load env file
   const envFile = loadEnvFile(join(homedir(), '.tlive', 'config.env'));
 
-  // 2. Merge: env vars override env file
+  // 2. Inject non-TL_ vars into process.env so providers can access them
+  //    (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY) — process.env takes precedence
+  for (const [key, value] of Object.entries(envFile)) {
+    if (!key.startsWith('TL_') && !(key in process.env)) {
+      process.env[key] = value;
+    }
+  }
+
+  // 3. Merge: env vars override env file
   const get = (key: string, defaultValue = ''): string =>
     process.env[key] ?? envFile[key] ?? defaultValue;
 
@@ -93,6 +110,7 @@ export function loadConfig(): Config {
     publicUrl: get('TL_PUBLIC_URL'),
     enabledChannels: parseList(get('TL_ENABLED_CHANNELS')),
     runtime: (get('TL_RUNTIME', 'claude') as Config['runtime']),
+    claudeSettingSources: parseList(get('TL_CLAUDE_SETTINGS', 'user')) as ClaudeSettingSource[],
     defaultWorkdir: get('TL_DEFAULT_WORKDIR', process.cwd()),
     defaultModel: get('TL_DEFAULT_MODEL'),
     coreUrl: get('TL_CORE_URL', `http://localhost:${port}`),

@@ -13,6 +13,7 @@ import { ClaudeAdapter } from '../messages/claude-adapter.js';
 import type { CanonicalEvent } from '../messages/schema.js';
 import type { LLMProvider, StreamChatParams, StreamChatResult, QueryControls } from './base.js';
 import type { PendingPermissions } from '../permissions/gateway.js';
+import type { ClaudeSettingSource } from '../config.js';
 
 // ── Auth error classification ──
 
@@ -80,12 +81,14 @@ export type PermissionTimeoutCallback = (toolName: string, toolUseId: string) =>
 export class ClaudeSDKProvider implements LLMProvider {
   private pendingPerms: PendingPermissions;
   private cliPath: string | undefined;
+  private settingSources: ClaudeSettingSource[];
 
   /** Called when a permission request times out — set by main.ts to send IM notifications */
   onPermissionTimeout?: PermissionTimeoutCallback;
 
-  constructor(pendingPerms: PendingPermissions) {
+  constructor(pendingPerms: PendingPermissions, settingSources?: ClaudeSettingSource[]) {
     this.pendingPerms = pendingPerms;
+    this.settingSources = settingSources?.length ? [...settingSources] : ['user'];
 
     // Preflight check
     this.cliPath = findClaudeCli();
@@ -99,12 +102,26 @@ export class ClaudeSDKProvider implements LLMProvider {
     } else {
       console.warn('[claude-sdk] Claude CLI not found — SDK will use default resolution');
     }
+
+    const srcLabel = this.settingSources.length > 0 ? this.settingSources.join(', ') : 'none (isolation mode)';
+    console.log(`[claude-sdk] Settings sources: ${srcLabel}`);
+  }
+
+  getSettingSources(): ClaudeSettingSource[] {
+    return [...this.settingSources];
+  }
+
+  setSettingSources(sources: ClaudeSettingSource[]): void {
+    this.settingSources = [...sources];
+    const label = sources.length > 0 ? sources.join(', ') : 'none (isolation mode)';
+    console.log(`[claude-sdk] Settings sources changed: ${label}`);
   }
 
   streamChat(params: StreamChatParams): StreamChatResult {
     const pendingPerms = this.pendingPerms;
     const cliPath = this.cliPath;
     const onPermissionTimeout = this.onPermissionTimeout;
+    const settingSources = this.settingSources;
 
     // Query controls exposed for interrupt/stopTask
     let controls: QueryControls | undefined;
@@ -151,9 +168,17 @@ export class ClaudeSDKProvider implements LLMProvider {
               agentProgressSummaries: true,
               // Enable prompt suggestions (predicted next user prompt after each turn)
               promptSuggestions: true,
+              // Controls which Claude Code settings files to load.
+              // Default ['user'] loads ~/.claude/settings.json (auth, model).
+              // Add 'project' for CLAUDE.md, MCP, skills; 'local' for dev overrides.
+              // Empty array = full isolation (SDK default).
+              // Configured via TL_CLAUDE_SETTINGS env var.
+              settingSources,
               // Use Claude Code's native permission rules for fine-grained control.
               // Safe read-only tools + safe Bash patterns are pre-approved.
               // Dangerous operations (write, delete, network) still trigger canUseTool.
+              // These are passed as flag settings (highest priority), so they override
+              // any permission rules from user's settings.json.
               settings: {
                 permissions: {
                   allow: [
