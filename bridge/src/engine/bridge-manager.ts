@@ -4,7 +4,7 @@ import { ConversationEngine } from './conversation.js';
 import { ChannelRouter } from './router.js';
 import { PermissionBroker } from '../permissions/broker.js';
 import { PendingPermissions } from '../permissions/gateway.js';
-import { DeliveryLayer } from '../delivery/delivery.js';
+import { DeliveryLayer, chunkByParagraph } from '../delivery/delivery.js';
 import { getBridgeContext } from '../context.js';
 import { resolveProvider } from '../providers/index.js';
 import type { LLMProvider } from '../providers/base.js';
@@ -577,7 +577,26 @@ export class BridgeManager {
           clearInterval(typingInterval);
           return result.messageId;
         } else {
-          await adapter.editMessage(msg.chatId, renderer.messageId!, outMsg);
+          const limit = platformLimits[adapter.channelType] ?? 4096;
+          if (content.length > limit) {
+            // Overflow: edit first chunk into existing message, send rest as new messages
+            const chunks = chunkByParagraph(content, limit);
+            const firstOutMsg: OutboundMessage = adapter.channelType === 'telegram'
+              ? { chatId: msg.chatId, html: markdownToTelegram(chunks[0]), threadId }
+              : adapter.channelType === 'discord'
+                ? { chatId: msg.chatId, text: chunks[0], threadId }
+                : { chatId: msg.chatId, text: chunks[0] };
+            await adapter.editMessage(msg.chatId, renderer.messageId!, firstOutMsg);
+            const target = threadId && adapter.channelType === 'discord' ? threadId : msg.chatId;
+            for (let i = 1; i < chunks.length; i++) {
+              const overflowMsg: OutboundMessage = adapter.channelType === 'telegram'
+                ? { chatId: target, html: markdownToTelegram(chunks[i]) }
+                : { chatId: target, text: chunks[i] };
+              await adapter.send(overflowMsg);
+            }
+          } else {
+            await adapter.editMessage(msg.chatId, renderer.messageId!, outMsg);
+          }
         }
       },
     });
