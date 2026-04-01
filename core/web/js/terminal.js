@@ -32,15 +32,16 @@
     var overlay = document.getElementById('disconnect-overlay');
 
     var wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    var tokenParam = params.get('token') || '';
+    var tokenParam = params.get('token') ||
+        (document.cookie.match(/(?:^|;\s*)tl_token=([^;]*)/) || [])[1] || '';
     var wsUrl = wsProtocol + '//' + location.host + '/ws/session/' + sessionId + '?token=' + tokenParam;
+    var backLink = document.getElementById('back-link');
+    if (backLink && tokenParam) {
+        backLink.href = '/?token=' + encodeURIComponent(tokenParam);
+    }
     var ws = null;
     var reconnectTimer = null;
     var processExited = false;
-
-    // Host mode: server sends PTY size, we lock to it (no fit/resize)
-    // Client mode: no size message, we fit to browser and resize PTY
-    var lockedSize = null;
 
     function setConnected(connected) {
         if (connected) {
@@ -54,26 +55,13 @@
         }
     }
 
-    function sendResize() {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-                type: 'resize',
-                rows: term.rows,
-                cols: term.cols,
-            }));
-        }
-    }
-
     function connect() {
         ws = new WebSocket(wsUrl);
         ws.binaryType = 'arraybuffer';
 
         ws.onopen = function() {
             setConnected(true);
-            if (!lockedSize) {
-                fitAddon.fit();
-                sendResize();
-            }
+            fitAddon.fit();
         };
 
         ws.onmessage = function(event) {
@@ -85,10 +73,8 @@
                         showExitOverlay(ctrl.code);
                         return;
                     }
+                    // Ignore size messages — web viewer fits to its own viewport
                     if (ctrl.type === 'size') {
-                        // Server tells us the PTY's actual size — lock to it
-                        lockedSize = { rows: ctrl.rows, cols: ctrl.cols };
-                        term.resize(ctrl.cols, ctrl.rows);
                         return;
                     }
                 } catch(e) { /* not JSON, treat as terminal data */ }
@@ -114,14 +100,8 @@
         }
     });
 
-    term.onResize(function() {
-        if (!lockedSize) sendResize();
-    });
-
     window.addEventListener('resize', function() {
-        if (!lockedSize) {
-            fitAddon.fit();
-        }
+        fitAddon.fit();
     });
 
     // Fetch session info for header
@@ -143,7 +123,7 @@
             '<p class="disconnect-hint">Redirecting to dashboard...</p>';
         overlay.style.display = 'flex';
         setTimeout(function() {
-            window.location.href = '/?token=' + (new URLSearchParams(window.location.search).get('token') || '');
+            window.location.href = '/' + (tokenParam ? '?token=' + encodeURIComponent(tokenParam) : '');
         }, 3000);
     }
 

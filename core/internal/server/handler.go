@@ -10,17 +10,9 @@ import (
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		if origin == "" {
-			return true // Non-browser clients (curl, etc.)
-		}
-		// Allow localhost origins only (IPv4 + IPv6)
-		return strings.HasPrefix(origin, "http://localhost") ||
-			strings.HasPrefix(origin, "http://127.0.0.1") ||
-			strings.HasPrefix(origin, "http://[::1]") ||
-			strings.HasPrefix(origin, "https://localhost") ||
-			strings.HasPrefix(origin, "https://127.0.0.1") ||
-			strings.HasPrefix(origin, "https://[::1]")
+		// Token-based auth middleware already protects all routes,
+		// so allow any origin that passed authentication.
+		return true
 	},
 }
 

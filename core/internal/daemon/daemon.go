@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -223,7 +224,7 @@ func (d *Daemon) handleSessions(w http.ResponseWriter, r *http.Request) {
 
 // ansiRegex matches ANSI CSI sequences (colors, cursor movement, etc.),
 // OSC sequences (title, hyperlinks), and other common escape codes.
-var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z@]|\x1b\][^\x07]*\x07|\x1b[()][AB012]|\r`)
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;?<>=!]*[a-zA-Z@~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()][AB012]|\x1b[=>]|\r`)
 
 // stripANSI removes ANSI escape sequences and control characters from
 // terminal output, leaving only printable text suitable for display in HTML.
@@ -248,9 +249,14 @@ func (d *Daemon) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		Status     string `json:"status"`
 		Duration   string `json:"duration"`
 		LastOutput string `json:"last_output"`
+		PreviewRaw string `json:"preview_raw"`
+		Rows       uint16 `json:"rows"`
+		Cols       uint16 `json:"cols"`
 	}
 	infos := make([]sessionInfo, len(sessions))
 	for i, s := range sessions {
+		rawOutput := s.LastOutput(4096)
+		rows, cols := s.Size()
 		infos[i] = sessionInfo{
 			ID:         s.ID,
 			Command:    s.Command,
@@ -258,6 +264,9 @@ func (d *Daemon) handleListSessions(w http.ResponseWriter, r *http.Request) {
 			Status:     string(s.Status),
 			Duration:   s.Duration().Truncate(time.Second).String(),
 			LastOutput: stripANSI(string(s.LastOutput(200))),
+			PreviewRaw: base64.StdEncoding.EncodeToString(rawOutput),
+			Rows:       rows,
+			Cols:       cols,
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
