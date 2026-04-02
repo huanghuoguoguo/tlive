@@ -5,6 +5,9 @@ import type { Agent } from 'node:http';
 import type { Dispatcher } from 'undici';
 
 function getProtocol(url: string): string {
+  if (!url.includes('://')) {
+    throw new Error(`Invalid proxy URL: ${url}. Expected format: protocol://host:port`);
+  }
   return url.split('://')[0]?.toLowerCase() ?? '';
 }
 

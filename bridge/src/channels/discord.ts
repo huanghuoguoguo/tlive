@@ -48,7 +48,8 @@ export class DiscordAdapter extends BaseChannelAdapter {
     });
 
     if (this.config.proxy) {
-      console.log(`[discord] Using proxy: ${maskProxyUrl(this.config.proxy)}`);
+      console.log(`[discord] Using proxy for REST API: ${maskProxyUrl(this.config.proxy)}`);
+      console.log('[discord] Note: Gateway WebSocket is not proxied (discord.js limitation). Use system-level proxy (e.g., Clash TUN) for full proxy support.');
     }
 
     this.client.on('messageCreate', async (msg) => {
