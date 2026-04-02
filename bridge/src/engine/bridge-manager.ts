@@ -262,9 +262,12 @@ export class BridgeManager {
       // Callbacks, commands, and permission text are fast — await them.
       // Regular messages (Claude queries) are fire-and-forget so they don't
       // block the loop while waiting for LLM responses or permission approvals.
+      const hasPendingQuestion = this.permissions.getLatestPendingQuestion(adapter.channelType) !== null
+        || this.findPendingSdkQuestion(adapter.channelType, msg.chatId) !== null;
       const isQuickMessage = !!msg.callbackData
         || (msg.text && QUICK_COMMANDS.has(msg.text.split(' ')[0].toLowerCase()))
-        || this.permissions.parsePermissionText(msg.text || '') !== null;
+        || this.permissions.parsePermissionText(msg.text || '') !== null
+        || hasPendingQuestion;
       if (isQuickMessage) {
         try {
           await this.handleInboundMessage(adapter, msg);
