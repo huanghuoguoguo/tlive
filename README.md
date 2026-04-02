@@ -336,6 +336,10 @@ tlive/
 - `chmod 600` on config.env
 - Environment isolation for Claude CLI subprocess
 
+## Community
+
+[![LINUX DO](https://img.shields.io/badge/LINUX%20DO-Community-blue)](https://linux.do)
+
 ## License
 
 MIT
