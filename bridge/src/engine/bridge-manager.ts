@@ -153,6 +153,11 @@ export class BridgeManager {
     this.permissions.storeHookPermissionText(hookId, text);
   }
 
+  /** Delegate: store AskUserQuestion data */
+  storeQuestionData(hookId: string, questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }>): void {
+    this.permissions.storeQuestionData(hookId, questions);
+  }
+
   registerAdapter(adapter: BaseChannelAdapter): void {
     this.adapters.set(adapter.channelType, adapter);
   }
@@ -426,6 +431,19 @@ export class BridgeManager {
         msg.text = suggestion;
         msg.callbackData = undefined;
         return this.handleInboundMessage(adapter, msg);
+      }
+
+      // AskUserQuestion answer callbacks (askq:{hookId}:{optionIndex}:{sessionId})
+      if (msg.callbackData.startsWith('askq:')) {
+        const parts = msg.callbackData.split(':');
+        const hookId = parts[1];
+        const optionIndex = parseInt(parts[2], 10);
+        const sessionId = parts[3] || '';
+        await this.permissions.resolveAskQuestion(
+          hookId, optionIndex, sessionId,
+          msg.messageId, adapter, msg.chatId, this.coreAvailable,
+        );
+        return true;
       }
 
       // Hook permission callbacks (hook:allow:ID:sessionId, hook:allow_always:ID:sessionId, hook:deny:ID:sessionId)

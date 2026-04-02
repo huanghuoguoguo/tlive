@@ -248,6 +248,79 @@ async function main() {
         if (sentPermissionIds.has(perm.id)) continue;
         sentPermissionIds.add(perm.id);
 
+        // AskUserQuestion — render as interactive question card instead of permission card
+        if (perm.tool_name === 'AskUserQuestion') {
+          const sid = perm.session_id || '';
+          const inputData = (typeof perm.input === 'string'
+            ? (() => { try { return JSON.parse(perm.input as string); } catch { return {}; } })()
+            : perm.input) as Record<string, unknown>;
+          const questions = (inputData?.questions ?? []) as Array<{
+            question: string;
+            header: string;
+            options: Array<{ label: string; description?: string }>;
+            multiSelect: boolean;
+          }>;
+
+          if (questions.length > 0) {
+            const q = questions[0];
+            // Build question text with options list
+            const header = q.header ? `📋 **${q.header}**\n\n` : '';
+            const optionsList = q.options
+              .map((opt, i) => `${i + 1}. **${opt.label}**${opt.description ? ` — ${opt.description}` : ''}`)
+              .join('\n');
+            const questionText = `${header}${q.question}\n\n${optionsList}`;
+
+            // Build option buttons
+            const buttons: Array<{ label: string; callbackData: string; style: 'primary' | 'danger' }> = q.options.map((opt, idx) => ({
+              label: `${idx + 1}. ${opt.label}`,
+              callbackData: `askq:${perm.id}:${idx}:${sid}`,
+              style: 'primary' as const,
+            }));
+            buttons.push({
+              label: '❌ Skip',
+              callbackData: `hook:deny:${perm.id}:${sid}`,
+              style: 'danger' as const,
+            });
+
+            // Store question data for answer resolution
+            manager.storeQuestionData(perm.id, questions);
+
+            // Send to all active IM adapters
+            for (const adapter of manager.getAdapters()) {
+              const target = getHookTarget(adapter.channelType, config, manager);
+              if (!target.chatId) continue;
+
+              try {
+                const hints: Record<string, string> = {
+                  feishu: '\n\n💬 或回复数字选择 (如 **1**)',
+                  telegram: '\n\n💬 Or reply with number (e.g. <b>1</b>)',
+                  discord: '\n\n💬 Or reply with number (e.g. `1`)',
+                };
+                const hint = hints[adapter.channelType] || '';
+                const outMsg: import('./channels/types.js').OutboundMessage = {
+                  chatId: target.chatId,
+                  receiveIdType: target.receiveIdType,
+                  text: questionText + (adapter.channelType !== 'telegram' ? hint : ''),
+                  buttons,
+                  feishuHeader: adapter.channelType === 'feishu' ? { template: 'blue', title: '❓ Question' } : undefined,
+                };
+                if (adapter.channelType === 'telegram') {
+                  outMsg.html = questionText.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') + (hints.telegram || '');
+                  outMsg.text = undefined;
+                }
+                const sendResult = await adapter.send(outMsg);
+                if (perm.session_id) {
+                  manager.trackHookMessage(sendResult.messageId, perm.session_id);
+                }
+                manager.trackPermissionMessage(sendResult.messageId, perm.id, perm.session_id || '', adapter.channelType);
+              } catch (err) {
+                console.warn(`Failed to send question to ${adapter.channelType}: ${err}`);
+              }
+            }
+            continue; // Skip normal permission handling
+          }
+        }
+
         // Format tool info for IM display (human-readable)
         const text = formatPermissionCard(perm.tool_name, perm.input);
 

@@ -27,6 +27,8 @@ export class PermissionCoordinator {
   private latestPermission = new Map<string, { permissionId: string; sessionId: string; messageId: string }>();
   /** Track hook messages for reply routing (permission-adjacent) */
   private hookMessages = new Map<string, { sessionId: string; timestamp: number }>();
+  /** Store AskUserQuestion data for answer resolution */
+  private hookQuestionData = new Map<string, { questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }> }>();
 
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -123,6 +125,11 @@ export class PermissionCoordinator {
     for (const [id, entry] of this.permissionMessages) {
       if (Date.now() - entry.timestamp > 24 * 60 * 60 * 1000) this.permissionMessages.delete(id);
     }
+  }
+
+  /** Store AskUserQuestion data for later answer resolution */
+  storeQuestionData(hookId: string, questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }>): void {
+    this.hookQuestionData.set(hookId, { questions });
   }
 
   /** Store original permission card text for later card update */
@@ -244,6 +251,62 @@ export class PermissionCoordinator {
         },
       });
       // Track confirmation message for reply routing
+      if (sessionId) {
+        this.trackHookMessage(messageId, sessionId);
+      }
+    } catch (err) {
+      await adapter.send({ chatId, text: `❌ Failed to resolve: ${err}` });
+    }
+    return true;
+  }
+
+  /** Handle AskUserQuestion answer callback — resolve hook with selected answer */
+  async resolveAskQuestion(
+    hookId: string,
+    optionIndex: number,
+    sessionId: string,
+    messageId: string,
+    adapter: { editMessage: (chatId: string, messageId: string, msg: any) => Promise<any>; send: (msg: any) => Promise<any> },
+    chatId: string,
+    coreAvailable: boolean,
+  ): Promise<boolean> {
+    if (this.resolvedHookIds.has(hookId)) return true;
+    this.resolvedHookIds.set(hookId, Date.now());
+
+    const questionData = this.hookQuestionData.get(hookId);
+    if (!questionData || !coreAvailable) {
+      await adapter.send({ chatId, text: '❌ Question data not found' });
+      return true;
+    }
+
+    const q = questionData.questions[0];
+    const selected = q.options[optionIndex];
+    if (!selected) {
+      await adapter.send({ chatId, text: '❌ Invalid option' });
+      return true;
+    }
+    const answers: Record<string, string> = { [q.question]: selected.label };
+    const updatedInput = { questions: questionData.questions, answers };
+
+    try {
+      await fetch(`${this.coreUrl}/api/hooks/permission/${hookId}/resolve`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ decision: 'allow', updated_input: updatedInput }),
+        signal: AbortSignal.timeout(5000),
+      });
+      this.hookQuestionData.delete(hookId);
+      await adapter.editMessage(chatId, messageId, {
+        chatId,
+        text: `✅ Selected: ${selected.label}`,
+        feishuHeader: {
+          template: 'green',
+          title: `✅ ${selected.label}`,
+        },
+      });
       if (sessionId) {
         this.trackHookMessage(messageId, sessionId);
       }
