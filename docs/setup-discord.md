@@ -143,6 +143,20 @@ In addition to clicking buttons, you can reply `allow` or `deny` to permission r
 
 Commands like `/status`, `/help`, `/sessions` render as rich Discord embeds for a cleaner look.
 
+### Proxy
+
+If Discord is blocked in your region, set a global proxy:
+```env
+TL_PROXY=http://127.0.0.1:7890
+```
+
+Or a Discord-specific proxy (overrides the global one):
+```env
+TL_DC_PROXY=http://127.0.0.1:7890
+```
+
+Supported protocols: `http://`, `https://`. Note: SOCKS proxy is not supported for Discord due to a discord.js library limitation. For full proxy support (including WebSocket), use a system-level proxy such as Clash TUN mode.
+
 ## Troubleshooting
 
 **Bot shows as offline**

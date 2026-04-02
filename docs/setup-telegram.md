@@ -143,10 +143,17 @@ TL_TG_DISABLE_LINK_PREVIEW=false
 
 ### Proxy
 
-If `api.telegram.org` is blocked in your region:
+If `api.telegram.org` is blocked in your region, set a global proxy (applies to both Telegram and Discord):
+```env
+TL_PROXY=http://127.0.0.1:7890
+```
+
+Or set a Telegram-specific proxy (overrides the global one):
 ```env
 TL_TG_PROXY=socks5://127.0.0.1:1080
 ```
+
+Supported protocols: `http://`, `https://`, `socks4://`, `socks5://`.
 
 ## Troubleshooting
 

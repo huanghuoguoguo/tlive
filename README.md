@@ -212,6 +212,9 @@ TL_TG_DISABLE_LINK_PREVIEW=true   # cleaner messages
 # Discord
 TL_DC_BOT_TOKEN=...
 
+# Proxy (for regions where Telegram/Discord is blocked)
+# TL_PROXY=http://127.0.0.1:7890
+
 # Feishu
 TL_FS_APP_ID=...
 TL_FS_APP_SECRET=...
