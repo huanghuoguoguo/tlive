@@ -74,6 +74,7 @@ describe('DiscordAdapter', () => {
       botToken: 'test-bot-token',
       allowedUsers: ['user1', 'user2'],
       allowedChannels: ['channel1'],
+      proxy: '',
     });
   });
 
@@ -83,7 +84,7 @@ describe('DiscordAdapter', () => {
 
   describe('validateConfig()', () => {
     it('returns error when botToken is missing', () => {
-      const bad = new DiscordAdapter({ botToken: '', allowedUsers: [], allowedChannels: [] });
+      const bad = new DiscordAdapter({ botToken: '', allowedUsers: [], allowedChannels: [], proxy: '' });
       expect(bad.validateConfig()).toContain('TL_DC_BOT_TOKEN');
     });
 
@@ -106,17 +107,17 @@ describe('DiscordAdapter', () => {
     });
 
     it('allows all users when allowedUsers is empty', () => {
-      const open = new DiscordAdapter({ botToken: 'tok', allowedUsers: [], allowedChannels: [] });
+      const open = new DiscordAdapter({ botToken: 'tok', allowedUsers: [], allowedChannels: [], proxy: '' });
       expect(open.isAuthorized('anyone', 'anychannel')).toBe(true);
     });
 
     it('allows all channels when allowedChannels is empty', () => {
-      const open = new DiscordAdapter({ botToken: 'tok', allowedUsers: ['u1'], allowedChannels: [] });
+      const open = new DiscordAdapter({ botToken: 'tok', allowedUsers: ['u1'], allowedChannels: [], proxy: '' });
       expect(open.isAuthorized('u1', 'any-channel')).toBe(true);
     });
 
     it('denies if user passes but channel fails', () => {
-      const a = new DiscordAdapter({ botToken: 'tok', allowedUsers: ['u1'], allowedChannels: ['c1'] });
+      const a = new DiscordAdapter({ botToken: 'tok', allowedUsers: ['u1'], allowedChannels: ['c1'], proxy: '' });
       expect(a.isAuthorized('u1', 'c2')).toBe(false);
     });
   });

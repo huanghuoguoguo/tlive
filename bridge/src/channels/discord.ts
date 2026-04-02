@@ -15,11 +15,13 @@ import type { InboundMessage, OutboundMessage, SendResult, FileAttachment } from
 import { loadConfig } from '../config.js';
 import { chunkMarkdown } from '../delivery/delivery.js';
 import { classifyError } from './errors.js';
+import { createUndiciAgent } from '../proxy.js';
 
 interface DiscordConfig {
   botToken: string;
   allowedUsers: string[];
   allowedChannels: string[];
+  proxy: string;
 }
 
 export class DiscordAdapter extends BaseChannelAdapter {
@@ -34,6 +36,7 @@ export class DiscordAdapter extends BaseChannelAdapter {
   }
 
   async start(): Promise<void> {
+    const agent = createUndiciAgent(this.config.proxy);
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
@@ -41,7 +44,12 @@ export class DiscordAdapter extends BaseChannelAdapter {
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessageReactions,
       ],
+      rest: agent ? { agent } : {},
     });
+
+    if (this.config.proxy) {
+      console.log(`[discord] Using proxy: ${this.config.proxy}`);
+    }
 
     this.client.on('messageCreate', async (msg) => {
       if (msg.author.bot) return;
