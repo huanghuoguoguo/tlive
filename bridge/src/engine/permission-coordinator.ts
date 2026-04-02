@@ -127,6 +127,21 @@ export class PermissionCoordinator {
     }
   }
 
+  /** Get the latest pending AskUserQuestion for a channel type */
+  getLatestPendingQuestion(channelType: string): { hookId: string; sessionId: string; messageId: string } | null {
+    const latest = this.latestPermission.get(channelType);
+    if (!latest) return null;
+    // Check if this permission has question data (i.e., it's an AskUserQuestion)
+    if (!this.hookQuestionData.has(latest.permissionId)) return null;
+    // Check not already resolved
+    if (this.resolvedHookIds.has(latest.permissionId)) return null;
+    return {
+      hookId: latest.permissionId,
+      sessionId: latest.sessionId,
+      messageId: latest.messageId,
+    };
+  }
+
   /** Store AskUserQuestion data for later answer resolution */
   storeQuestionData(hookId: string, questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }>): void {
     this.hookQuestionData.set(hookId, { questions });

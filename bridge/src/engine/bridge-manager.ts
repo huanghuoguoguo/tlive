@@ -381,6 +381,28 @@ export class BridgeManager {
       }
     }
 
+    // Numeric text reply to pending AskUserQuestion (e.g. "1", "2", "3")
+    if (msg.text) {
+      const trimmed = msg.text.trim();
+      const numMatch = trimmed.match(/^(\d+)$/);
+      if (numMatch) {
+        const optionIndex = parseInt(numMatch[1], 10) - 1; // 1-based to 0-based
+        const pendingQuestion = this.permissions.getLatestPendingQuestion(adapter.channelType);
+        if (pendingQuestion && optionIndex >= 0) {
+          await this.permissions.resolveAskQuestion(
+            pendingQuestion.hookId,
+            optionIndex,
+            pendingQuestion.sessionId,
+            pendingQuestion.messageId,
+            adapter,
+            msg.chatId,
+            this.coreAvailable,
+          );
+          return true;
+        }
+      }
+    }
+
     // Reply routing: quote-reply to a hook message → send to PTY stdin
     if ((msg.text || msg.attachments?.length) && msg.replyToMessageId && this.permissions.isHookMessage(msg.replyToMessageId)) {
       const entry = this.permissions.getHookMessage(msg.replyToMessageId)!;
