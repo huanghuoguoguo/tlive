@@ -62,22 +62,6 @@ function download(url, dest) {
   });
 }
 
-function copyHookScripts() {
-  mkdirSync(BIN_DIR, { recursive: true });
-
-  const scripts = ['hook-handler.mjs', 'notify-handler.mjs', 'stop-handler.mjs', 'statusline.mjs'];
-  for (const script of scripts) {
-    const src = join(__dirname, script);
-    const dest = join(BIN_DIR, script);
-    if (existsSync(src)) {
-      copyFileSync(src, dest);
-      if (platform() !== 'win32') {
-        try { chmodSync(dest, 0o755); } catch {}
-      }
-    }
-  }
-  console.log(`Hook scripts installed to ${BIN_DIR}`);
-}
 
 function copyReferenceDocs() {
   const docsDir = join(homedir(), '.tlive', 'docs');
