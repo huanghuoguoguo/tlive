@@ -804,11 +804,9 @@ export class BridgeManager {
       this.sdkQuestionData.set(permId, { questions });
 
       // Send question card via adapter
-      const hint = msg.channelType === 'telegram'
+      const hint = msg.channelType === 'feishu'
         ? '\n\n💬 回复数字选择，或直接输入内容'
-        : msg.channelType === 'feishu'
-          ? '\n\n💬 回复数字选择，或直接输入内容'
-          : '\n\n💬 Reply with number to select, or type your answer';
+        : '\n\n💬 Reply with number to select, or type your answer';
 
       const outMsg: import('../channels/types.js').OutboundMessage = {
         chatId: msg.chatId,

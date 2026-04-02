@@ -293,7 +293,7 @@ async function main() {
               try {
                 const hints: Record<string, string> = {
                   feishu: '\n\n💬 回复数字选择，或直接输入内容',
-                  telegram: '\n\n💬 回复数字选择，或直接输入内容',
+                  telegram: '\n\n💬 Reply with number to select, or type your answer',
                   discord: '\n\n💬 Reply with number to select, or type your answer',
                 };
                 const hint = hints[adapter.channelType] || '';
