@@ -82,6 +82,10 @@ export class BridgeManager {
   private chatIdFile: string;
   /** Cached LLM providers keyed by runtime name */
   private providerCache = new Map<string, LLMProvider>();
+  /** SDK AskUserQuestion: store question data and selected option index */
+  private sdkQuestionData = new Map<string, { questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }> }>();
+  private sdkQuestionAnswers = new Map<string, number>();
+  private sdkQuestionTextAnswers = new Map<string, string>();
 
   constructor() {
     const config = loadConfig();
@@ -151,6 +155,22 @@ export class BridgeManager {
   /** Delegate: store original permission card text */
   storeHookPermissionText(hookId: string, text: string): void {
     this.permissions.storeHookPermissionText(hookId, text);
+  }
+
+  /** Delegate: store AskUserQuestion data */
+  storeQuestionData(hookId: string, questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }>): void {
+    this.permissions.storeQuestionData(hookId, questions);
+  }
+
+  /** Find a pending SDK AskUserQuestion for numeric text reply */
+  private findPendingSdkQuestion(_channelType: string, _chatId: string): { permId: string } | null {
+    // Find the most recent pending SDK askq permission
+    for (const [permId] of this.sdkQuestionData) {
+      if (this.permissions.getGateway().isPending(permId)) {
+        return { permId };
+      }
+    }
+    return null;
   }
 
   registerAdapter(adapter: BaseChannelAdapter): void {
@@ -242,9 +262,12 @@ export class BridgeManager {
       // Callbacks, commands, and permission text are fast — await them.
       // Regular messages (Claude queries) are fire-and-forget so they don't
       // block the loop while waiting for LLM responses or permission approvals.
+      const hasPendingQuestion = this.permissions.getLatestPendingQuestion(adapter.channelType) !== null
+        || this.findPendingSdkQuestion(adapter.channelType, msg.chatId) !== null;
       const isQuickMessage = !!msg.callbackData
         || (msg.text && QUICK_COMMANDS.has(msg.text.split(' ')[0].toLowerCase()))
-        || this.permissions.parsePermissionText(msg.text || '') !== null;
+        || this.permissions.parsePermissionText(msg.text || '') !== null
+        || hasPendingQuestion;
       if (isQuickMessage) {
         try {
           await this.handleInboundMessage(adapter, msg);
@@ -376,6 +399,50 @@ export class BridgeManager {
       }
     }
 
+    // Text reply to pending AskUserQuestion — numeric (select option) or free text (direct input)
+    if (msg.text) {
+      const trimmed = msg.text.trim();
+      // Check for any pending AskUserQuestion (hook or SDK mode)
+      const pendingHookQ = this.permissions.getLatestPendingQuestion(adapter.channelType);
+      const pendingSdkQ = this.findPendingSdkQuestion(adapter.channelType, msg.chatId);
+
+      if (pendingHookQ || pendingSdkQ) {
+        const numMatch = trimmed.match(/^(\d+)$/);
+        if (numMatch) {
+          // Numeric reply — select option by index
+          const optionIndex = parseInt(numMatch[1], 10) - 1;
+          if (optionIndex >= 0) {
+            if (pendingHookQ) {
+              await this.permissions.resolveAskQuestion(
+                pendingHookQ.hookId, optionIndex, pendingHookQ.sessionId,
+                pendingHookQ.messageId, adapter, msg.chatId, this.coreAvailable,
+              );
+              return true;
+            }
+            if (pendingSdkQ) {
+              this.sdkQuestionAnswers.set(pendingSdkQ.permId, optionIndex);
+              this.permissions.getGateway().resolve(pendingSdkQ.permId, 'allow');
+              return true;
+            }
+          }
+        } else {
+          // Free text reply — use text as direct answer
+          if (pendingHookQ) {
+            await this.permissions.resolveAskQuestionWithText(
+              pendingHookQ.hookId, trimmed, pendingHookQ.sessionId,
+              pendingHookQ.messageId, adapter, msg.chatId, this.coreAvailable,
+            );
+            return true;
+          }
+          if (pendingSdkQ) {
+            this.sdkQuestionTextAnswers.set(pendingSdkQ.permId, trimmed);
+            this.permissions.getGateway().resolve(pendingSdkQ.permId, 'allow');
+            return true;
+          }
+        }
+      }
+    }
+
     // Reply routing: quote-reply to a hook message → send to PTY stdin
     if ((msg.text || msg.attachments?.length) && msg.replyToMessageId && this.permissions.isHookMessage(msg.replyToMessageId)) {
       const entry = this.permissions.getHookMessage(msg.replyToMessageId)!;
@@ -428,6 +495,31 @@ export class BridgeManager {
         return this.handleInboundMessage(adapter, msg);
       }
 
+      // AskUserQuestion answer callbacks (askq:{hookId}:{optionIndex}:{sessionId})
+      if (msg.callbackData.startsWith('askq:')) {
+        const parts = msg.callbackData.split(':');
+        const hookId = parts[1];
+        const optionIndex = parseInt(parts[2], 10);
+        const sessionId = parts[3] || '';
+        await this.permissions.resolveAskQuestion(
+          hookId, optionIndex, sessionId,
+          msg.messageId, adapter, msg.chatId, this.coreAvailable,
+        );
+        return true;
+      }
+
+      // AskUserQuestion skip callback — resolve with allow + empty answers (askq_skip:{hookId}:{sessionId})
+      if (msg.callbackData.startsWith('askq_skip:')) {
+        const parts = msg.callbackData.split(':');
+        const hookId = parts[1];
+        const sessionId = parts[2] || '';
+        await this.permissions.resolveAskQuestionSkip(
+          hookId, sessionId,
+          msg.messageId, adapter, msg.chatId, this.coreAvailable,
+        );
+        return true;
+      }
+
       // Hook permission callbacks (hook:allow:ID:sessionId, hook:allow_always:ID:sessionId, hook:deny:ID:sessionId)
       if (msg.callbackData.startsWith('hook:')) {
         const parts = msg.callbackData.split(':');
@@ -464,6 +556,47 @@ export class BridgeManager {
         this.permissions.addAllowedBashPrefix(prefix);
         console.log(`[bridge] Added Bash(${prefix} *) to session whitelist`);
         return true;
+      }
+
+      // SDK AskUserQuestion answer callbacks (perm:allow:permId:askq:optionIndex)
+      if (msg.callbackData.includes(':askq:')) {
+        const parts = msg.callbackData.split(':');
+        const askqIdx = parts.indexOf('askq');
+        if (askqIdx >= 0) {
+          const permId = parts.slice(2, askqIdx).join(':');
+          const optionIndex = parseInt(parts[askqIdx + 1], 10);
+          const qData = this.sdkQuestionData.get(permId);
+          const selected = qData?.questions?.[0]?.options?.[optionIndex];
+          this.sdkQuestionAnswers.set(permId, optionIndex);
+          this.permissions.getGateway().resolve(permId, 'allow');
+          if (selected) {
+            adapter.editMessage(msg.chatId, msg.messageId, {
+              chatId: msg.chatId,
+              text: `✅ Selected: ${selected.label}`,
+              feishuHeader: { template: 'green', title: `✅ ${selected.label}` },
+            }).catch(() => {});
+          }
+          return true;
+        }
+      }
+
+      // SDK AskUserQuestion skip (perm:allow:permId:askq_skip) — resolve with allow + empty answers
+      if (msg.callbackData.includes(':askq_skip')) {
+        const parts = msg.callbackData.split(':');
+        const skipIdx = parts.indexOf('askq_skip');
+        if (skipIdx >= 0) {
+          const permId = parts.slice(2, skipIdx).join(':');
+          // Mark as skip so sdkAskQuestionHandler returns empty answers
+          this.sdkQuestionTextAnswers.set(permId, '');
+          this.permissions.getGateway().resolve(permId, 'allow');
+          adapter.editMessage(msg.chatId, msg.messageId, {
+            chatId: msg.chatId,
+            text: '⏭ Skipped',
+            buttons: [],
+            feishuHeader: { template: 'grey', title: '⏭ Skipped' },
+          }).catch(() => {});
+          return true;
+        }
       }
 
       // Regular permission broker callbacks (perm:allow:ID, perm:deny:ID)
@@ -682,6 +815,108 @@ export class BridgeManager {
         }
       : undefined;
 
+    // Build SDK-level AskUserQuestion handler
+    const sdkAskQuestionHandler = async (
+      questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }>,
+      signal?: AbortSignal,
+    ): Promise<Record<string, string>> => {
+      if (!questions.length) return {};
+      const q = questions[0];
+      const permId = `askq-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      // Build question text
+      const header = q.header ? `📋 **${q.header}**\n\n` : '';
+      const optionsList = q.options
+        .map((opt, i) => `${i + 1}. **${opt.label}**${opt.description ? ` — ${opt.description}` : ''}`)
+        .join('\n');
+      const questionText = `${header}${q.question}\n\n${optionsList}`;
+
+      // Build option buttons
+      const buttons: Array<{ label: string; callbackData: string; style: 'primary' | 'danger' }> = q.options.map((opt, idx) => ({
+        label: `${idx + 1}. ${opt.label}`,
+        callbackData: `perm:allow:${permId}:askq:${idx}`,
+        style: 'primary' as const,
+      }));
+      buttons.push({
+        label: '❌ Skip',
+        callbackData: `perm:allow:${permId}:askq_skip`,
+        style: 'danger' as const,
+      });
+
+      // Store question data for answer resolution
+      this.sdkQuestionData.set(permId, { questions });
+
+      // Send question card via adapter
+      const hint = msg.channelType === 'feishu'
+        ? '\n\n💬 回复数字选择，或直接输入内容'
+        : '\n\n💬 Reply with number to select, or type your answer';
+
+      const outMsg: import('../channels/types.js').OutboundMessage = {
+        chatId: msg.chatId,
+        text: msg.channelType !== 'telegram' ? questionText + hint : undefined,
+        html: msg.channelType === 'telegram' ? questionText.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') + hint : undefined,
+        buttons,
+        feishuHeader: msg.channelType === 'feishu' ? { template: 'blue', title: '❓ Question' } : undefined,
+      };
+      const sendResult = await adapter.send(outMsg);
+      this.permissions.trackPermissionMessage(sendResult.messageId, permId, binding.sessionId, msg.channelType);
+
+      // Abort handling
+      const abortCleanup = () => {
+        this.permissions.getGateway().resolve(permId, 'deny', 'Cancelled');
+        this.sdkQuestionData.delete(permId);
+      };
+      if (signal?.aborted) { abortCleanup(); throw new Error('Cancelled'); }
+      signal?.addEventListener('abort', abortCleanup, { once: true });
+
+      // Wait for answer (5 min timeout)
+      const result = await this.permissions.getGateway().waitFor(permId, {
+        timeoutMs: 5 * 60 * 1000,
+        onTimeout: () => { this.sdkQuestionData.delete(permId); },
+      });
+      signal?.removeEventListener('abort', abortCleanup);
+
+      if (result.behavior === 'deny') {
+        this.sdkQuestionData.delete(permId);
+        // Return empty answers instead of throwing — Claude handles gracefully
+        adapter.editMessage(msg.chatId, sendResult.messageId, {
+          chatId: msg.chatId,
+          text: '⏭ Skipped',
+          buttons: [],
+          feishuHeader: msg.channelType === 'feishu' ? { template: 'grey', title: '⏭ Skipped' } : undefined,
+        }).catch(() => {});
+        return { [q.question]: '' };
+      }
+
+      // Check for free text answer first, then option index
+      const textAnswer = this.sdkQuestionTextAnswers.get(permId);
+      this.sdkQuestionTextAnswers.delete(permId);
+      this.sdkQuestionData.delete(permId);
+
+      if (textAnswer !== undefined) {
+        // Free text reply
+        adapter.editMessage(msg.chatId, sendResult.messageId, {
+          chatId: msg.chatId,
+          text: `✅ Answer: ${textAnswer.length > 50 ? textAnswer.slice(0, 47) + '...' : textAnswer}`,
+          feishuHeader: msg.channelType === 'feishu' ? { template: 'green', title: '✅ Answered' } : undefined,
+        }).catch(() => {});
+        return { [q.question]: textAnswer };
+      }
+
+      // Option index reply
+      const optionIndex = this.sdkQuestionAnswers.get(permId) ?? 0;
+      this.sdkQuestionAnswers.delete(permId);
+      const selected = q.options[optionIndex];
+
+      adapter.editMessage(msg.chatId, sendResult.messageId, {
+        chatId: msg.chatId,
+        text: `✅ Selected: ${selected?.label ?? '?'}`,
+        feishuHeader: msg.channelType === 'feishu' ? { template: 'green', title: `✅ ${selected?.label ?? '?'}` } : undefined,
+      }).catch(() => {});
+
+      return { [q.question]: selected?.label ?? '' };
+    };
+
     try {
       const result = await this.engine.processMessage({
         sessionId: binding.sessionId,
@@ -689,6 +924,7 @@ export class BridgeManager {
         attachments: msg.attachments,
         llm: this.getProvider(msg.channelType, msg.chatId),
         sdkPermissionHandler,
+        sdkAskQuestionHandler,
         effort: this.state.getEffort(msg.channelType, msg.chatId),
         model: this.state.getModel(msg.channelType, msg.chatId),
         onControls: (ctrl) => {

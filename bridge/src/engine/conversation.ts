@@ -1,6 +1,7 @@
 import { getBridgeContext } from '../context.js';
 import type { CanonicalEvent } from '../messages/schema.js';
 import type { LLMProvider, FileAttachment, PermissionRequestHandler, QueryControls } from '../providers/base.js';
+import type { AskUserQuestionHandler } from '../messages/types.js';
 
 const TEXT_MIME_PREFIXES = ['text/', 'application/json', 'application/xml', 'application/javascript', 'application/typescript', 'application/x-yaml', 'application/toml'];
 
@@ -46,6 +47,8 @@ interface ProcessMessageParams {
   onControls?: (controls: QueryControls) => void;
   /** SDK-level permission handler — forwarded to streamChat */
   sdkPermissionHandler?: PermissionRequestHandler;
+  /** SDK-level AskUserQuestion handler — forwarded to streamChat */
+  sdkAskQuestionHandler?: AskUserQuestionHandler;
   effort?: 'low' | 'medium' | 'high' | 'max';
   /** Override model for this query */
   model?: string;
@@ -95,6 +98,7 @@ export class ConversationEngine {
         sessionId: session?.sdkSessionId,
         attachments: imageAttachments?.length ? imageAttachments : undefined,
         onPermissionRequest: params.sdkPermissionHandler,
+        onAskUserQuestion: params.sdkAskQuestionHandler,
         effort: params.effort,
       });
 

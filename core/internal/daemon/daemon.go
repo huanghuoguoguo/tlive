@@ -394,12 +394,15 @@ func (d *Daemon) handleHookPermission(w http.ResponseWriter, r *http.Request) {
 	req := d.hooks.AddPermission(body.ToolName, body.Input, sessionID, suggestions)
 
 	// Long-poll: block until resolved or timeout
-	decision := d.hooks.WaitForResolution(req)
+	resolution := d.hooks.WaitForResolution(req)
 
 	w.Header().Set("Content-Type", "application/json")
-	resp := map[string]interface{}{"decision": decision}
+	resp := map[string]interface{}{"decision": resolution.Decision}
+	if len(resolution.UpdatedInput) > 0 {
+		resp["updated_input"] = json.RawMessage(resolution.UpdatedInput)
+	}
 	// Include suggestions for "allow_always" so hook script can build updatedPermissions
-	if decision == "allow_always" && req.Suggestions != nil {
+	if resolution.Decision == "allow_always" && req.Suggestions != nil {
 		resp["suggestions"] = json.RawMessage(req.Suggestions)
 	}
 	json.NewEncoder(w).Encode(resp)
@@ -421,14 +424,15 @@ func (d *Daemon) handleHookPermissionResolve(w http.ResponseWriter, r *http.Requ
 	id := parts[0]
 
 	var body struct {
-		Decision string `json:"decision"`
+		Decision     string          `json:"decision"`
+		UpdatedInput json.RawMessage `json:"updated_input,omitempty"`
 	}
 	json.NewDecoder(r.Body).Decode(&body)
 	if body.Decision != "allow" && body.Decision != "deny" && body.Decision != "allow_always" {
 		body.Decision = "deny"
 	}
 
-	ok := d.hooks.Resolve(id, body.Decision)
+	ok := d.hooks.Resolve(id, body.Decision, body.UpdatedInput)
 	if !ok {
 		http.Error(w, "permission not found or already resolved", http.StatusNotFound)
 		return

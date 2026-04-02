@@ -9,6 +9,12 @@ import (
 	"time"
 )
 
+// HookResolution carries the decision and optional updatedInput back to Claude Code
+type HookResolution struct {
+	Decision     string          `json:"decision"`
+	UpdatedInput json.RawMessage `json:"updated_input,omitempty"`
+}
+
 // HookPermissionRequest represents a pending permission request from a Claude Code hook
 type HookPermissionRequest struct {
 	ID          string          `json:"id"`
@@ -18,7 +24,7 @@ type HookPermissionRequest struct {
 	Suggestions json.RawMessage `json:"permission_suggestions,omitempty"`
 	CreatedAt   time.Time       `json:"created_at"`
 	Resolved    bool            `json:"-"`
-	Result      chan string      `json:"-"` // receives "allow", "allow_always", or "deny"
+	Result      chan HookResolution `json:"-"` // receives resolution with decision + optional updatedInput
 }
 
 // HookManager manages pending hook permission requests
@@ -48,7 +54,7 @@ func (hm *HookManager) AddPermission(toolName string, input json.RawMessage, ses
 		SessionID:   sessionID,
 		Suggestions: suggestions,
 		CreatedAt:   time.Now(),
-		Result:      make(chan string, 1),
+		Result:      make(chan HookResolution, 1),
 	}
 
 	hm.mu.Lock()
@@ -58,8 +64,8 @@ func (hm *HookManager) AddPermission(toolName string, input json.RawMessage, ses
 	return req
 }
 
-// WaitForResolution blocks until resolved or timeout. Returns "allow" or "deny".
-func (hm *HookManager) WaitForResolution(req *HookPermissionRequest) string {
+// WaitForResolution blocks until resolved or timeout. Returns a HookResolution.
+func (hm *HookManager) WaitForResolution(req *HookPermissionRequest) HookResolution {
 	ctx, cancel := context.WithTimeout(context.Background(), hm.timeout)
 	defer cancel()
 	defer func() {
@@ -73,12 +79,12 @@ func (hm *HookManager) WaitForResolution(req *HookPermissionRequest) string {
 		return result
 	case <-ctx.Done():
 		// Timeout → deny for safety
-		return "deny"
+		return HookResolution{Decision: "deny"}
 	}
 }
 
 // Resolve resolves a pending permission
-func (hm *HookManager) Resolve(id string, decision string) bool {
+func (hm *HookManager) Resolve(id string, decision string, updatedInput json.RawMessage) bool {
 	hm.mu.RLock()
 	req, ok := hm.pending[id]
 	hm.mu.RUnlock()
@@ -87,7 +93,7 @@ func (hm *HookManager) Resolve(id string, decision string) bool {
 	}
 
 	select {
-	case req.Result <- decision:
+	case req.Result <- HookResolution{Decision: decision, UpdatedInput: updatedInput}:
 		return true
 	default:
 		return false

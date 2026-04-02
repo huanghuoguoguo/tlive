@@ -160,6 +160,29 @@ export class DiscordAdapter extends BaseChannelAdapter {
     return channel as TextChannel | ThreadChannel;
   }
 
+  /** Split buttons into ActionRows (Discord max 5 buttons per row) */
+  private static buildButtonRows(buttons: NonNullable<OutboundMessage['buttons']>): ActionRowBuilder<ButtonBuilder>[] {
+    const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+    let current = new ActionRowBuilder<ButtonBuilder>();
+    for (const btn of buttons) {
+      if (current.components.length >= 5) {
+        rows.push(current);
+        current = new ActionRowBuilder<ButtonBuilder>();
+      }
+      const builder = new ButtonBuilder()
+        .setLabel(btn.label)
+        .setStyle(btn.style === 'danger' ? ButtonStyle.Danger : ButtonStyle.Primary);
+      if (btn.url) {
+        builder.setURL(btn.url).setStyle(ButtonStyle.Link);
+      } else {
+        builder.setCustomId(btn.callbackData);
+      }
+      current.addComponents(builder);
+    }
+    if (current.components.length > 0) rows.push(current);
+    return rows;
+  }
+
   async send(message: OutboundMessage): Promise<SendResult> {
     const channel = await this.resolveChannel(message);
 
@@ -205,16 +228,7 @@ export class DiscordAdapter extends BaseChannelAdapter {
 
       const payload: Record<string, unknown> = { embeds: [embed] };
       if (message.buttons?.length) {
-        const row = new ActionRowBuilder<ButtonBuilder>();
-        for (const btn of message.buttons) {
-          row.addComponents(
-            new ButtonBuilder()
-              .setCustomId(btn.callbackData)
-              .setLabel(btn.label)
-              .setStyle(btn.style === 'danger' ? ButtonStyle.Danger : ButtonStyle.Primary)
-          );
-        }
-        payload.components = [row];
+        payload.components = DiscordAdapter.buildButtonRows(message.buttons);
       }
 
       try {
@@ -240,15 +254,7 @@ export class DiscordAdapter extends BaseChannelAdapter {
 
         // Buttons on last chunk only
         if (i === chunks.length - 1 && message.buttons?.length) {
-          const row = new ActionRowBuilder<ButtonBuilder>();
-          for (const btn of message.buttons) {
-            const button = new ButtonBuilder()
-              .setCustomId(btn.callbackData)
-              .setLabel(btn.label)
-              .setStyle(btn.style === 'danger' ? ButtonStyle.Danger : ButtonStyle.Primary);
-            row.addComponents(button);
-          }
-          payload.components = [row];
+          payload.components = DiscordAdapter.buildButtonRows(message.buttons);
         }
 
         lastSent = await channel.send(payload) as Message;
@@ -290,15 +296,9 @@ export class DiscordAdapter extends BaseChannelAdapter {
     const payload: Parameters<Message['edit']>[0] = { content: truncated };
 
     if (message.buttons?.length) {
-      const row = new ActionRowBuilder<ButtonBuilder>();
-      for (const btn of message.buttons) {
-        const button = new ButtonBuilder()
-          .setCustomId(btn.callbackData)
-          .setLabel(btn.label)
-          .setStyle(btn.style === 'danger' ? ButtonStyle.Danger : ButtonStyle.Primary);
-        row.addComponents(button);
-      }
-      payload.components = [row];
+      payload.components = DiscordAdapter.buildButtonRows(message.buttons);
+    } else if (message.buttons) {
+      payload.components = []; // clear existing buttons
     }
 
     await existing.edit(payload);

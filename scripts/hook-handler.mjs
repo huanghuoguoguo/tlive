@@ -80,24 +80,34 @@ try {
 }
 
 const decision = body.decision || 'allow';
+const updatedInput = body.updated_input;
 
 switch (decision) {
-  case 'allow':
-    process.stdout.write(JSON.stringify({
+  case 'allow': {
+    const output = {
       hookSpecificOutput: {
         hookEventName: 'PermissionRequest',
         decision: { behavior: 'allow' },
       },
-    }));
+    };
+    if (updatedInput) {
+      output.hookSpecificOutput.decision.updatedInput = updatedInput;
+    }
+    process.stdout.write(JSON.stringify(output));
     break;
+  }
   case 'allow_always': {
     const suggestions = body.suggestions || [];
-    process.stdout.write(JSON.stringify({
+    const output = {
       hookSpecificOutput: {
         hookEventName: 'PermissionRequest',
         decision: { behavior: 'allow', updatedPermissions: suggestions },
       },
-    }));
+    };
+    if (updatedInput) {
+      output.hookSpecificOutput.decision.updatedInput = updatedInput;
+    }
+    process.stdout.write(JSON.stringify(output));
     break;
   }
   case 'deny':

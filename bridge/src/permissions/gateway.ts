@@ -51,6 +51,10 @@ export class PendingPermissions {
     this.pending.clear();
   }
 
+  isPending(id: string): boolean {
+    return this.pending.has(id);
+  }
+
   pendingCount(): number {
     return this.pending.size;
   }

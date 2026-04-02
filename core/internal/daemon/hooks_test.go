@@ -32,12 +32,12 @@ func TestHookManager_WaitForResolution_Allow(t *testing.T) {
 
 	go func() {
 		time.Sleep(20 * time.Millisecond)
-		hm.Resolve(req.ID, "allow")
+		hm.Resolve(req.ID, "allow", nil)
 	}()
 
 	result := hm.WaitForResolution(req)
-	if result != "allow" {
-		t.Errorf("expected 'allow', got %q", result)
+	if result.Decision != "allow" {
+		t.Errorf("expected 'allow', got %q", result.Decision)
 	}
 }
 
@@ -52,8 +52,8 @@ func TestHookManager_WaitForResolution_Timeout(t *testing.T) {
 	result := hm.WaitForResolution(req)
 	elapsed := time.Since(start)
 
-	if result != "deny" {
-		t.Errorf("expected 'deny' on timeout, got %q", result)
+	if result.Decision != "deny" {
+		t.Errorf("expected 'deny' on timeout, got %q", result.Decision)
 	}
 	if elapsed > 500*time.Millisecond {
 		t.Errorf("expected timeout within 500ms, took %v", elapsed)
@@ -62,7 +62,7 @@ func TestHookManager_WaitForResolution_Timeout(t *testing.T) {
 
 func TestHookManager_Resolve_UnknownID(t *testing.T) {
 	hm := NewHookManager()
-	ok := hm.Resolve("nonexistent-id", "allow")
+	ok := hm.Resolve("nonexistent-id", "allow", nil)
 	if ok {
 		t.Error("expected false for unknown ID, got true")
 	}

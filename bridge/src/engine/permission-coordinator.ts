@@ -27,6 +27,8 @@ export class PermissionCoordinator {
   private latestPermission = new Map<string, { permissionId: string; sessionId: string; messageId: string }>();
   /** Track hook messages for reply routing (permission-adjacent) */
   private hookMessages = new Map<string, { sessionId: string; timestamp: number }>();
+  /** Store AskUserQuestion data for answer resolution */
+  private hookQuestionData = new Map<string, { questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }>; ts: number }>();
 
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -125,6 +127,26 @@ export class PermissionCoordinator {
     }
   }
 
+  /** Get the latest pending AskUserQuestion for a channel type */
+  getLatestPendingQuestion(channelType: string): { hookId: string; sessionId: string; messageId: string } | null {
+    const latest = this.latestPermission.get(channelType);
+    if (!latest) return null;
+    // Check if this permission has question data (i.e., it's an AskUserQuestion)
+    if (!this.hookQuestionData.has(latest.permissionId)) return null;
+    // Check not already resolved
+    if (this.resolvedHookIds.has(latest.permissionId)) return null;
+    return {
+      hookId: latest.permissionId,
+      sessionId: latest.sessionId,
+      messageId: latest.messageId,
+    };
+  }
+
+  /** Store AskUserQuestion data for later answer resolution */
+  storeQuestionData(hookId: string, questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }>): void {
+    this.hookQuestionData.set(hookId, { questions, ts: Date.now() });
+  }
+
   /** Store original permission card text for later card update */
   storeHookPermissionText(hookId: string, text: string): void {
     this.hookPermissionTexts.set(hookId, { text, ts: Date.now() });
@@ -153,6 +175,9 @@ export class PermissionCoordinator {
     }
     for (const [id, entry] of this.hookPermissionTexts) {
       if (entry.ts < cutoff) this.hookPermissionTexts.delete(id);
+    }
+    for (const [id, entry] of this.hookQuestionData) {
+      if (entry.ts < cutoff) this.hookQuestionData.delete(id);
     }
   }
 
@@ -233,17 +258,200 @@ export class PermissionCoordinator {
         deny: '❌ Denied',
       };
       const label = labels[decision] || '✅ Allowed';
-      const originalText = this.hookPermissionTexts.get(hookId)?.text || '';
-      this.hookPermissionTexts.delete(hookId);
+
+      // AskUserQuestion cards use hookQuestionData, not hookPermissionTexts
+      if (this.hookQuestionData.has(hookId)) {
+        this.hookQuestionData.delete(hookId);
+        await adapter.editMessage(chatId, messageId, {
+          chatId,
+          text: decision === 'deny' ? '❌ Skipped' : label,
+          buttons: [], // clear buttons
+          feishuHeader: {
+            template: decision === 'deny' ? 'red' : 'green',
+            title: decision === 'deny' ? '❌ Skipped' : label,
+          },
+        });
+      } else {
+        const originalText = this.hookPermissionTexts.get(hookId)?.text || '';
+        this.hookPermissionTexts.delete(hookId);
+        await adapter.editMessage(chatId, messageId, {
+          chatId,
+          text: originalText + `\n\n${label}`,
+          buttons: [], // clear buttons
+          feishuHeader: {
+            template: decision === 'deny' ? 'red' : 'green',
+            title: label,
+          },
+        });
+      }
+      // Track confirmation message for reply routing
+      if (sessionId) {
+        this.trackHookMessage(messageId, sessionId);
+      }
+    } catch (err) {
+      await adapter.send({ chatId, text: `❌ Failed to resolve: ${err}` });
+    }
+    return true;
+  }
+
+  /** Handle AskUserQuestion answer callback — resolve hook with selected answer */
+  async resolveAskQuestion(
+    hookId: string,
+    optionIndex: number,
+    sessionId: string,
+    messageId: string,
+    adapter: { editMessage: (chatId: string, messageId: string, msg: any) => Promise<any>; send: (msg: any) => Promise<any> },
+    chatId: string,
+    coreAvailable: boolean,
+  ): Promise<boolean> {
+    if (this.resolvedHookIds.has(hookId)) return true;
+
+    if (!coreAvailable) {
+      await adapter.send({ chatId, text: '❌ Go Core not available' });
+      return true;
+    }
+    const questionData = this.hookQuestionData.get(hookId);
+    if (!questionData) {
+      await adapter.send({ chatId, text: '❌ Question data not found' });
+      return true;
+    }
+
+    const q = questionData.questions[0];
+    const selected = q.options[optionIndex];
+    if (!selected) {
+      await adapter.send({ chatId, text: `❌ Invalid option (1-${q.options.length})` });
+      return true;
+    }
+
+    // Mark resolved only after validation passes
+    this.resolvedHookIds.set(hookId, Date.now());
+    const answers: Record<string, string> = { [q.question]: selected.label };
+    const updatedInput = { questions: questionData.questions, answers };
+
+    try {
+      await fetch(`${this.coreUrl}/api/hooks/permission/${hookId}/resolve`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ decision: 'allow', updated_input: updatedInput }),
+        signal: AbortSignal.timeout(5000),
+      });
+      this.hookQuestionData.delete(hookId);
       await adapter.editMessage(chatId, messageId, {
         chatId,
-        text: originalText + `\n\n${label}`,
+        text: `✅ Selected: ${selected.label}`,
         feishuHeader: {
-          template: decision === 'deny' ? 'red' : 'green',
-          title: label,
+          template: 'green',
+          title: `✅ ${selected.label}`,
         },
       });
-      // Track confirmation message for reply routing
+      if (sessionId) {
+        this.trackHookMessage(messageId, sessionId);
+      }
+    } catch (err) {
+      await adapter.send({ chatId, text: `❌ Failed to resolve: ${err}` });
+    }
+    return true;
+  }
+
+  /** Handle AskUserQuestion skip — resolve hook with allow + empty answers */
+  async resolveAskQuestionSkip(
+    hookId: string,
+    sessionId: string,
+    messageId: string,
+    adapter: { editMessage: (chatId: string, messageId: string, msg: any) => Promise<any>; send: (msg: any) => Promise<any> },
+    chatId: string,
+    coreAvailable: boolean,
+  ): Promise<boolean> {
+    if (this.resolvedHookIds.has(hookId)) return true;
+
+    if (!coreAvailable) {
+      await adapter.send({ chatId, text: '❌ Go Core not available' });
+      return true;
+    }
+    const questionData = this.hookQuestionData.get(hookId);
+    if (!questionData) {
+      await adapter.send({ chatId, text: '❌ Question data not found' });
+      return true;
+    }
+
+    this.resolvedHookIds.set(hookId, Date.now());
+    const q = questionData.questions[0];
+    const answers: Record<string, string> = { [q.question]: '' };
+    const updatedInput = { questions: questionData.questions, answers };
+
+    try {
+      await fetch(`${this.coreUrl}/api/hooks/permission/${hookId}/resolve`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ decision: 'allow', updated_input: updatedInput }),
+        signal: AbortSignal.timeout(5000),
+      });
+      this.hookQuestionData.delete(hookId);
+      await adapter.editMessage(chatId, messageId, {
+        chatId,
+        text: '⏭ Skipped',
+        buttons: [],
+        feishuHeader: { template: 'grey', title: '⏭ Skipped' },
+      });
+      if (sessionId) {
+        this.trackHookMessage(messageId, sessionId);
+      }
+    } catch (err) {
+      await adapter.send({ chatId, text: `❌ Failed to resolve: ${err}` });
+    }
+    return true;
+  }
+
+  /** Handle AskUserQuestion free text reply — resolve hook with text as answer */
+  async resolveAskQuestionWithText(
+    hookId: string,
+    text: string,
+    sessionId: string,
+    messageId: string,
+    adapter: { editMessage: (chatId: string, messageId: string, msg: any) => Promise<any>; send: (msg: any) => Promise<any> },
+    chatId: string,
+    coreAvailable: boolean,
+  ): Promise<boolean> {
+    if (this.resolvedHookIds.has(hookId)) return true;
+
+    if (!coreAvailable) {
+      await adapter.send({ chatId, text: '❌ Go Core not available' });
+      return true;
+    }
+    const questionData = this.hookQuestionData.get(hookId);
+    if (!questionData) {
+      await adapter.send({ chatId, text: '❌ Question data not found' });
+      return true;
+    }
+
+    this.resolvedHookIds.set(hookId, Date.now());
+    const q = questionData.questions[0];
+    const answers: Record<string, string> = { [q.question]: text };
+    const updatedInput = { questions: questionData.questions, answers };
+
+    try {
+      await fetch(`${this.coreUrl}/api/hooks/permission/${hookId}/resolve`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ decision: 'allow', updated_input: updatedInput }),
+        signal: AbortSignal.timeout(5000),
+      });
+      this.hookQuestionData.delete(hookId);
+      const preview = text.length > 50 ? text.slice(0, 47) + '...' : text;
+      await adapter.editMessage(chatId, messageId, {
+        chatId,
+        text: `✅ Answer: ${preview}`,
+        feishuHeader: { template: 'green', title: '✅ Answered' },
+      });
       if (sessionId) {
         this.trackHookMessage(messageId, sessionId);
       }

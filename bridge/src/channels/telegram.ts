@@ -379,6 +379,9 @@ export class TelegramAdapter extends BaseChannelAdapter {
           return { text: b.label, callback_data: b.callbackData };
         })],
       };
+    } else if (message.buttons) {
+      // Empty array = clear existing buttons
+      opts.reply_markup = { inline_keyboard: [] };
     }
     try {
       await this.api.editMessageText(chatId, parseInt(messageId, 10), text, opts);
