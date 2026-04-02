@@ -27,6 +27,12 @@ func Start(name string, args []string, rows, cols uint16, extraEnv ...string) (P
 		cmdLine = name + " " + strings.Join(args, " ")
 	}
 
+	// Windows: wrap with cmd /c to resolve .cmd/.bat scripts in PATH
+	// Only needed when the command is not a direct .exe path
+	if !strings.ContainsAny(name, `\/`) && !strings.HasSuffix(strings.ToLower(name), ".exe") {
+		cmdLine = "cmd /c " + cmdLine
+	}
+
 	// conpty doesn't support per-process env, set on parent
 	for _, env := range extraEnv {
 		if parts := strings.SplitN(env, "=", 2); len(parts) == 2 {
