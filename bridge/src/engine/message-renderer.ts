@@ -292,7 +292,22 @@ export class MessageRenderer {
     try {
       const isEdit = !!this._messageId;
       const flushButtons = this.permissionQueue[0]?.buttons;
-      const result = await this.flushCallback(content, isEdit, flushButtons);
+      let result: string | void = undefined;
+      try {
+        result = await this.flushCallback(content, isEdit, flushButtons);
+      } catch (err: any) {
+        // Retry once for transient network errors
+        const code = err?.code ?? '';
+        const retryable = err?.retryable || ['ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'UND_ERR_SOCKET'].includes(code);
+        if (retryable) {
+          await new Promise(r => setTimeout(r, 1000));
+          try {
+            result = await this.flushCallback(content, isEdit, flushButtons);
+          } catch {
+            // give up after one retry
+          }
+        }
+      }
       if (!isEdit && typeof result === 'string') {
         this._messageId = result;
       }

@@ -456,6 +456,56 @@ export class BridgeManager {
 
     // Reply routing: quote-reply to a hook message → send to PTY stdin
     if ((msg.text || msg.attachments?.length) && msg.replyToMessageId && this.permissions.isHookMessage(msg.replyToMessageId)) {
+      // Before forwarding to PTY, check Core for a pending AskUserQuestion that
+      // the bridge hasn't polled yet (race condition: hook creates perm, bridge
+      // polls every 2s, user replies before the next poll cycle).
+      if (msg.text && this.coreAvailable) {
+        try {
+          const pendingResp = await fetch(`${this.coreUrl}/api/hooks/pending`, {
+            headers: { Authorization: `Bearer ${this.token}` },
+            signal: AbortSignal.timeout(2000),
+          });
+          if (pendingResp.ok) {
+            const pending = await pendingResp.json() as Array<{ id: string; tool_name: string; input: unknown; session_id?: string }>;
+            const askq = pending.find((p: { tool_name: string }) => p.tool_name === 'AskUserQuestion');
+            if (askq) {
+              // There's a pending AskUserQuestion — handle text as question answer
+              const inputData = (typeof askq.input === 'string'
+                ? (() => { try { return JSON.parse(askq.input as string); } catch { return {}; } })()
+                : askq.input) as Record<string, unknown>;
+              const questions = (inputData?.questions ?? []) as Array<{
+                question: string; header: string;
+                options: Array<{ label: string; description?: string }>; multiSelect: boolean;
+              }>;
+              if (questions.length > 0) {
+                const q = questions[0];
+                const trimmed = msg.text.trim();
+                // Store question data if not already stored
+                if (!this.permissions.getQuestionData(askq.id)) {
+                  this.permissions.storeQuestionData(askq.id, questions);
+                  this.permissions.trackPermissionMessage(msg.replyToMessageId, askq.id, askq.session_id || '', adapter.channelType);
+                }
+                // Numeric → option selection; else → free text
+                const numMatch = trimmed.match(/^(\d+)$/);
+                const idx = numMatch ? parseInt(numMatch[1], 10) - 1 : -1;
+                if (idx >= 0 && idx < q.options.length) {
+                  await this.permissions.resolveAskQuestion(
+                    askq.id, idx, askq.session_id || '',
+                    msg.replyToMessageId, adapter, msg.chatId, this.coreAvailable,
+                  );
+                } else {
+                  await this.permissions.resolveAskQuestionWithText(
+                    askq.id, trimmed, askq.session_id || '',
+                    msg.replyToMessageId, adapter, msg.chatId, this.coreAvailable,
+                  );
+                }
+                return true;
+              }
+            }
+          }
+        } catch { /* non-fatal: fall through to normal PTY routing */ }
+      }
+
       const entry = this.permissions.getHookMessage(msg.replyToMessageId)!;
       if (entry.sessionId && this.coreAvailable) {
         try {
@@ -507,13 +557,49 @@ export class BridgeManager {
       }
 
       // AskUserQuestion answer callbacks (askq:{hookId}:{optionIndex}:{sessionId})
-      if (msg.callbackData.startsWith('askq:')) {
+      // NOTE: check toggle/submit/skip BEFORE this — they also start with "askq"
+      if (msg.callbackData.startsWith('askq:') && !msg.callbackData.startsWith('askq_')) {
         const parts = msg.callbackData.split(':');
         const hookId = parts[1];
         const optionIndex = parseInt(parts[2], 10);
         const sessionId = parts[3] || '';
         await this.permissions.resolveAskQuestion(
           hookId, optionIndex, sessionId,
+          msg.messageId, adapter, msg.chatId, this.coreAvailable,
+        );
+        return true;
+      }
+
+      // AskUserQuestion multi-select toggle (askq_toggle:{hookId}:{idx}:{sessionId})
+      if (msg.callbackData.startsWith('askq_toggle:')) {
+        const parts = msg.callbackData.split(':');
+        const hookId = parts[1];
+        const optionIndex = parseInt(parts[2], 10);
+        const sessionId = parts[3] || '';
+        const selected = this.permissions.toggleMultiSelectOption(hookId, optionIndex);
+        if (selected === null) return true;
+
+        // Re-render the card with updated checkboxes
+        const card = this.permissions.buildMultiSelectCard(hookId, sessionId, selected, adapter.channelType);
+        if (card) {
+          await adapter.editMessage(msg.chatId, msg.messageId, {
+            chatId: msg.chatId,
+            text: card.text,
+            html: card.html,
+            buttons: card.buttons,
+            feishuHeader: adapter.channelType === 'feishu' ? { template: 'blue', title: '❓ Terminal' } : undefined,
+          });
+        }
+        return true;
+      }
+
+      // AskUserQuestion multi-select submit (askq_submit:{hookId}:{sessionId})
+      if (msg.callbackData.startsWith('askq_submit:')) {
+        const parts = msg.callbackData.split(':');
+        const hookId = parts[1];
+        const sessionId = parts[2] || '';
+        await this.permissions.resolveMultiSelect(
+          hookId, sessionId,
           msg.messageId, adapter, msg.chatId, this.coreAvailable,
         );
         return true;
@@ -528,6 +614,33 @@ export class BridgeManager {
           hookId, sessionId,
           msg.messageId, adapter, msg.chatId, this.coreAvailable,
         );
+        return true;
+      }
+
+      // SDK AskUserQuestion multi-select submit (askq_submit_sdk:{permId})
+      if (msg.callbackData.startsWith('askq_submit_sdk:')) {
+        const permId = msg.callbackData.split(':')[1];
+        const selected = this.permissions.getToggledSelections(permId);
+        if (selected.size === 0) {
+          await adapter.send({ chatId: msg.chatId, text: '⚠️ No options selected' });
+          return true;
+        }
+        const qData = this.sdkQuestionData.get(permId);
+        if (qData) {
+          const q = qData.questions[0];
+          const selectedLabels = [...selected].sort((a, b) => a - b).map(i => q.options[i]?.label).filter(Boolean);
+          const answerText = selectedLabels.join(',');
+          this.sdkQuestionTextAnswers.set(permId, answerText);
+          // Edit card to show selection
+          adapter.editMessage(msg.chatId, msg.messageId, {
+            chatId: msg.chatId,
+            text: `✅ Selected: ${selectedLabels.join(', ')}`,
+            buttons: [],
+            feishuHeader: msg.channelType === 'feishu' ? { template: 'green', title: '✅ Answered' } : undefined,
+          }).catch(() => {});
+        }
+        this.permissions.cleanupQuestion(permId);
+        this.permissions.getGateway().resolve(permId, 'allow');
         return true;
       }
 
@@ -854,20 +967,34 @@ export class BridgeManager {
         .join('\n');
       const questionText = `${header}${q.question}\n\n${optionsList}`;
 
-      // Build option buttons
-      const buttons: Array<{ label: string; callbackData: string; style: 'primary' | 'danger' }> = q.options.map((opt, idx) => ({
-        label: `${idx + 1}. ${opt.label}`,
-        callbackData: `perm:allow:${permId}:askq:${idx}`,
-        style: 'primary' as const,
-      }));
-      buttons.push({
-        label: '❌ Skip',
-        callbackData: `perm:allow:${permId}:askq_skip`,
-        style: 'danger' as const,
-      });
+      // Build option buttons: multiSelect uses toggle+submit, singleSelect uses direct select
+      const isMulti = q.multiSelect;
+      const buttons: Array<{ label: string; callbackData: string; style: 'primary' | 'danger'; row?: number }> = isMulti
+        ? [
+            ...q.options.map((opt, idx) => ({
+              label: `☐ ${opt.label}`,
+              callbackData: `askq_toggle:${permId}:${idx}:sdk`,
+              style: 'primary' as const,
+              row: idx,
+            })),
+            { label: '✅ Submit', callbackData: `askq_submit_sdk:${permId}`, style: 'primary' as const, row: q.options.length },
+            { label: '❌ Skip', callbackData: `perm:allow:${permId}:askq_skip`, style: 'danger' as const, row: q.options.length },
+          ]
+        : [
+            ...q.options.map((opt, idx) => ({
+              label: `${idx + 1}. ${opt.label}`,
+              callbackData: `perm:allow:${permId}:askq:${idx}`,
+              style: 'primary' as const,
+            })),
+            { label: '❌ Skip', callbackData: `perm:allow:${permId}:askq_skip`, style: 'danger' as const },
+          ];
 
-      // Store question data for answer resolution
+      // Store question data for answer resolution (also needed for toggle state)
       this.sdkQuestionData.set(permId, { questions, chatId: msg.chatId });
+      // Store in permission coordinator for toggle tracking (reuse hookQuestionData)
+      if (isMulti) {
+        this.permissions.storeQuestionData(permId, questions);
+      }
 
       // Create gateway entry BEFORE sending — prevents race condition where user
       // replies before waitFor is called, causing isPending() to return false
@@ -883,9 +1010,9 @@ export class BridgeManager {
       });
 
       // Send question card AFTER gateway entry exists — user replies are now safe
-      const hint = msg.channelType === 'feishu'
-        ? '\n\n💬 回复数字选择，或直接输入内容'
-        : '\n\n💬 Reply with number to select, or type your answer';
+      const hint = isMulti
+        ? (msg.channelType === 'feishu' ? '\n\n💬 点击选项切换选中，然后按 Submit 确认' : '\n\n💬 Tap options to toggle, then Submit')
+        : (msg.channelType === 'feishu' ? '\n\n💬 回复数字选择，或直接输入内容' : '\n\n💬 Reply with number to select, or type your answer');
 
       const outMsg: import('../channels/types.js').OutboundMessage = {
         chatId: msg.chatId,
