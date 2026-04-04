@@ -381,7 +381,7 @@ Service Management:
   tlive status               Show Bridge + Web Terminal status
   tlive logs [N]             Show last N log lines (default: 50)
   tlive doctor               Run diagnostic checks
-  tlive update               Update to latest version
+  tlive upgrade              Upgrade to latest version (hot reload)
   tlive version              Show version info
 
 Hook Control:
@@ -407,7 +407,7 @@ In Claude Code (AI-guided):
   /tlive doctor              Diagnose issues + suggest fixes
 `;
 
-const NODE_COMMANDS = new Set(['setup', 'start', 'stop', 'status', 'logs', 'hooks', 'doctor', 'version', 'update']);
+const NODE_COMMANDS = new Set(['setup', 'start', 'stop', 'status', 'logs', 'hooks', 'doctor', 'version', 'update', 'upgrade']);
 const CORE_COMMANDS = new Set(['install']);
 
 function run(cmd, opts = {}) {
@@ -522,19 +522,43 @@ switch (command) {
     break;
   }
 
-  case 'update': {
+  case 'update':
+  case 'upgrade': {
     const current = getVersion();
     console.log(`Current version: ${current}`);
-    console.log('Updating...');
+
+    // Check latest version first
+    let latest;
+    try {
+      latest = execSync('npm view tlive version', { encoding: 'utf-8', timeout: 10000 }).trim();
+    } catch (e) {
+      console.error('Failed to check latest version. Are you online?');
+      process.exit(1);
+    }
+
+    if (latest === current) {
+      console.log('\n✅ Already up to date.');
+      break;
+    }
+
+    console.log(`Latest version: ${latest}`);
+    console.log('\nUpdating...');
+
     try {
       execSync('npm install -g tlive@latest', { stdio: 'inherit' });
-      const updated = execSync('npm view tlive version', { encoding: 'utf-8', timeout: 5000 }).trim();
-      console.log(`\nUpdated to ${updated || 'latest'}.`);
+      console.log(`\n✅ Updated to ${latest}.`);
+
+      // Show changelog hint
+      console.log('\nChangelog: https://github.com/huanghuoguoguo/tlive/releases');
+
       // Restart bridge if running
       if (getBridgePid()) {
-        console.log('Restarting bridge...');
+        console.log('\nRestarting bridge...');
         daemonStop();
-        daemonStart();
+        // Small delay to ensure port is released
+        setTimeout(() => {
+          daemonStart();
+        }, 1000);
       }
     } catch (err) {
       console.error(`Update failed: ${err.message || err}`);
@@ -661,7 +685,7 @@ switch (command) {
 
   default: {
     // Check for typos of known commands before forwarding to Go Core
-    const known = ['setup', 'start', 'stop', 'status', 'logs', 'hooks', 'doctor', 'install', 'help', 'version', 'update'];
+    const known = ['setup', 'start', 'stop', 'status', 'logs', 'hooks', 'doctor', 'install', 'help', 'version', 'update', 'upgrade'];
     const similar = known.find(k => {
       if (Math.abs(k.length - command.length) > 2) return false;
       let diff = 0;
