@@ -10,7 +10,7 @@ import (
 )
 
 func TestStartAndRead(t *testing.T) {
-	proc, err := Start("echo", []string{"hello"}, 24, 80)
+	proc, err := Start("echo", []string{"hello"}, 24, 80, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestStartAndRead(t *testing.T) {
 }
 
 func TestPid(t *testing.T) {
-	proc, err := Start("sleep", []string{"1"}, 24, 80)
+	proc, err := Start("sleep", []string{"1"}, 24, 80, "")
 	if err != nil {
 		t.Fatal(err)
 	}
