@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0](https://github.com/huanghuoguoguo/tlive/compare/v0.7.1...v0.8.0) (2026-04-04)
+
+
+### Features
+
+* **bridge:** remove Codex support, simplify to Claude-only ([6d302c6](https://github.com/huanghuoguoguo/tlive/commit/6d302c6d515b9ad3bbc7130f0f80e7f34f3c1f70))
+
 ## [0.7.1](https://github.com/y49/tlive/compare/v0.7.0...v0.7.1) (2026-04-03)
 
 
