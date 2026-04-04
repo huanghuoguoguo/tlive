@@ -12,7 +12,6 @@ export type ClaudeSettingSource = 'user' | 'project' | 'local';
 export interface Config {
   port: number;
   token: string;
-  publicUrl: string;
   enabledChannels: string[];
   defaultWorkdir: string;
   defaultModel: string;
@@ -118,7 +117,6 @@ export function loadConfig(): Config {
   const config: Config = {
     port,
     token: get('TL_TOKEN'),
-    publicUrl: get('TL_PUBLIC_URL'),
     enabledChannels: parseList(get('TL_ENABLED_CHANNELS')),
     claudeSettingSources: parseList(get('TL_CLAUDE_SETTINGS', 'user')) as ClaudeSettingSource[],
     proxy: globalProxy,

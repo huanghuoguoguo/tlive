@@ -281,7 +281,7 @@ func (d *Daemon) handleListSessions(w http.ResponseWriter, r *http.Request) {
 			Status:     string(s.Status),
 			Duration:   s.Duration().Truncate(time.Second).String(),
 			Cwd:        s.Cwd,
-			LastOutput: stripANSI(string(s.LastOutput(200))),
+			LastOutput: stripANSI(string(rawOutput[:min(200, len(rawOutput))])),
 			PreviewRaw: base64.StdEncoding.EncodeToString(rawOutput),
 			Rows:       rows,
 			Cols:       cols,

@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MessageRenderer } from '../engine/message-renderer.js';
-import type { UsageStats } from '../engine/cost-tracker.js';
 
 describe('MessageRenderer', () => {
   let flushCallback: ReturnType<typeof vi.fn>;
@@ -17,10 +16,12 @@ describe('MessageRenderer', () => {
     vi.useRealTimers();
   });
 
-  function createRenderer(platformLimit = 4096, throttleMs = 300) {
+  function createRenderer(platformLimit = 4096, throttleMs = 300, cwd?: string, model?: string) {
     return new MessageRenderer({
       platformLimit,
       throttleMs,
+      cwd,
+      model,
       flushCallback: flushCallback as any,
     });
   }
@@ -33,13 +34,6 @@ describe('MessageRenderer', () => {
       await Promise.resolve();
     }
   }
-
-  const defaultStats: UsageStats = {
-    inputTokens: 1000,
-    outputTokens: 500,
-    costUsd: 0.05,
-    durationMs: 10000,
-  };
 
   const defaultButtons = [
     { label: 'Allow', callbackData: 'perm:allow:abc', style: 'primary' },
@@ -266,13 +260,13 @@ describe('MessageRenderer', () => {
   // ─── Done phase ──────────────────────────────────
 
   describe('done phase', () => {
-    it('shows response text + separator + tool summary + cost', async () => {
-      const r = createRenderer();
+    it('shows response text + separator + tool summary + footer', async () => {
+      const r = createRenderer(4096, 300, '/home/user/workspace', 'glm-5');
       r.onToolStart('Bash');
       r.onToolStart('Read');
       r.onToolStart('Read');
       r.onTextDelta('Here is the result.');
-      r.onComplete(defaultStats);
+      r.onComplete();
       await advance(0); // drain microtasks
       const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
       expect(content).toContain('Here is the result.');
@@ -280,21 +274,55 @@ describe('MessageRenderer', () => {
       expect(content).toContain('🖥️ Bash ×1');
       expect(content).toContain('📖 Read ×2');
       expect(content).toContain('3 total');
-      expect(content).toContain('📊');
-      expect(content).toContain('$0.05');
+      expect(content).toContain('[glm-5]');
+      expect(content).toContain('workspace');
+      r.dispose();
+    });
+
+    it('shows short path with ~ for homedir', async () => {
+      const home = require('node:os').homedir();
+      const r = createRenderer(4096, 300, `${home}/projects/myapp`, 'claude-3');
+      r.onToolStart('Bash');
+      r.onComplete();
+      await advance(0);
+      const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
+      expect(content).toContain('[claude-3]');
+      expect(content).toContain('~');
+      expect(content).toContain('myapp');
+      r.dispose();
+    });
+
+    it('shows only model when no cwd', async () => {
+      const r = createRenderer(4096, 300, undefined, 'glm-4');
+      r.onToolStart('Bash');
+      r.onComplete();
+      await advance(0);
+      const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
+      expect(content).toContain('[glm-4]');
+      expect(content).not.toContain('│');
+      r.dispose();
+    });
+
+    it('shows only cwd when no model', async () => {
+      const r = createRenderer(4096, 300, '/home/user/workspace', undefined);
+      r.onToolStart('Bash');
+      r.onComplete();
+      await advance(0);
+      const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
+      expect(content).toContain('workspace');
+      expect(content).not.toContain('│');
       r.dispose();
     });
 
     it('omits separator when response is empty', async () => {
       const r = createRenderer();
       r.onToolStart('Bash');
-      r.onComplete(defaultStats);
+      r.onComplete();
       await advance(0);
       const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
       expect(content).not.toContain('───────────────');
       expect(content).toContain('🖥️ Bash ×1');
       expect(content).toContain('1 total');
-      expect(content).toContain('📊');
       r.dispose();
     });
 
@@ -329,7 +357,7 @@ describe('MessageRenderer', () => {
       r.onToolStart('TaskCreate');
       r.onToolStart('ToolSearch');
       r.onToolStart('Read');
-      r.onComplete(defaultStats);
+      r.onComplete();
       await advance(0);
       const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
       expect(content).toContain('2 total');
@@ -416,7 +444,7 @@ describe('MessageRenderer', () => {
       const r = createRenderer(200);
       r.onToolStart('Bash');
       r.onTextDelta('x'.repeat(500));
-      r.onComplete(defaultStats);
+      r.onComplete();
       await advance(0);
       const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
       // Done phase does NOT truncate — bridge-manager handles overflow chunking
@@ -471,7 +499,7 @@ describe('MessageRenderer', () => {
       await advance(2000);
 
       const callsBefore = flushCallback.mock.calls.length;
-      r.onComplete(defaultStats);
+      r.onComplete();
       await advance(0);
       const callsAfterComplete = flushCallback.mock.calls.length;
       expect(callsAfterComplete).toBeGreaterThan(callsBefore);
@@ -487,7 +515,7 @@ describe('MessageRenderer', () => {
 
   describe('full lifecycle integration', () => {
     it('tools → permission → more tools → done', async () => {
-      const r = createRenderer();
+      const r = createRenderer(4096, 300, '/home/user/workspace', 'glm-5');
 
       // Phase 1: tools executing
       r.onToolStart('Read');
@@ -520,13 +548,14 @@ describe('MessageRenderer', () => {
 
       // Phase 4: complete
       r.onTextDelta('All done!');
-      r.onComplete(defaultStats);
+      r.onComplete();
       await advance(0);
       content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
       expect(content).toContain('All done!');
       expect(content).toContain('───────────────');
       expect(content).toContain('5 total');
-      expect(content).toContain('📊');
+      expect(content).toContain('[glm-5]');
+      expect(content).toContain('workspace');
       r.dispose();
     });
   });

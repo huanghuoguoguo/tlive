@@ -11,6 +11,8 @@ import type { ChannelType } from './channels/types.js';
 import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { shortPath, truncate, getTliveHome, getTliveRuntimeDir } from './utils/index.js';
+import { CHANNEL_TYPES } from './utils/index.js';
 
 /** Format a permission card for IM display — human-readable, not raw JSON */
 function formatPermissionCard(toolName: string, input: unknown): string {
@@ -21,34 +23,33 @@ function formatPermissionCard(toolName: string, input: unknown): string {
     case 'Bash': {
       const cmd = String(data.command || '');
       const desc = data.description ? `\n${data.description}` : '';
-      parts.push(`\n🖥 Bash${desc}\n\`\`\`\n${cmd.length > 500 ? cmd.slice(0, 497) + '...' : cmd}\n\`\`\``);
+      parts.push(`\n🖥 Bash${desc}\n\`\`\`\n${truncate(cmd, 500)}\n\`\`\``);
       break;
     }
     case 'Edit': {
-      const file = String(data.file_path || '').replace(homedir(), '~').replace(/\\/g, '/');
+      const file = shortPath(String(data.file_path || ''));
       const oldStr = String(data.old_string || '');
       const newStr = String(data.new_string || '');
       const diffLines: string[] = [];
       oldStr.split('\n').forEach(l => diffLines.push(`- ${l}`));
       newStr.split('\n').forEach(l => diffLines.push(`+ ${l}`));
-      const diff = diffLines.join('\n');
-      parts.push(`\n📝 Edit: \`${file}\`\n\`\`\`diff\n${diff.length > 500 ? diff.slice(0, 497) + '...' : diff}\n\`\`\``);
+      const diff = truncate(diffLines.join('\n'), 500);
+      parts.push(`\n📝 Edit: \`${file}\`\n\`\`\`diff\n${diff}\n\`\`\``);
       break;
     }
     case 'Write': {
-      const file = String(data.file_path || '').replace(homedir(), '~').replace(/\\/g, '/');
+      const file = shortPath(String(data.file_path || ''));
       const content = String(data.content || '');
-      const preview = content.length > 200 ? content.slice(0, 197) + '...' : content;
-      parts.push(`\n📄 Write: \`${file}\` (${content.length} chars)\n\`\`\`\n${preview}\n\`\`\``);
+      parts.push(`\n📄 Write: \`${file}\` (${content.length} chars)\n\`\`\`\n${truncate(content, 200)}\n\`\`\``);
       break;
     }
     case 'Read': {
-      const file = String(data.file_path || '').replace(homedir(), '~').replace(/\\/g, '/');
+      const file = shortPath(String(data.file_path || ''));
       parts.push(`\n📖 Read: \`${file}\``);
       break;
     }
     case 'NotebookEdit': {
-      const file = String(data.file_path || '').replace(homedir(), '~').replace(/\\/g, '/');
+      const file = shortPath(String(data.file_path || ''));
       parts.push(`\n📓 NotebookEdit: \`${file}\``);
       break;
     }
@@ -59,7 +60,7 @@ function formatPermissionCard(toolName: string, input: unknown): string {
       break;
     }
     case 'Agent': {
-      const desc = String(data.description || data.prompt || '').slice(0, 200);
+      const desc = truncate(String(data.description || data.prompt || ''), 200);
       const agentType = data.subagent_type ? ` (${data.subagent_type})` : '';
       parts.push(`\n🤖 Agent${agentType}\n${desc}`);
       break;
@@ -71,8 +72,7 @@ function formatPermissionCard(toolName: string, input: unknown): string {
     default: {
       // MCP tools or unknown — show tool name + key fields
       const inputStr = typeof input === 'string' ? input : JSON.stringify(input, null, 2);
-      const truncated = inputStr.length > 500 ? inputStr.slice(0, 497) + '...' : inputStr;
-      parts.push(`\n🔧 ${toolName}\n\`\`\`\n${truncated}\n\`\`\``);
+      parts.push(`\n🔧 ${toolName}\n\`\`\`\n${truncate(inputStr, 500)}\n\`\`\``);
       break;
     }
   }
@@ -85,10 +85,10 @@ function formatPermissionCard(toolName: string, input: unknown): string {
  *  Feishu: prefer allowedUsers[0] via user_id (always routes to P2P chat).
  *  Telegram/Discord: use configured chatId/channelId. */
 function getHookTarget(channelType: string, config: ReturnType<typeof loadConfig>, manager: BridgeManager) {
-  if (channelType === 'telegram') {
+  if (channelType === CHANNEL_TYPES.TELEGRAM) {
     return { chatId: config.telegram.chatId, receiveIdType: undefined };
   }
-  if (channelType === 'discord') {
+  if (channelType === CHANNEL_TYPES.DISCORD) {
     return { chatId: config.discord.allowedChannels[0] || '', receiveIdType: undefined };
   }
   // Feishu: try user_id P2P first, fall back to lastChatId
@@ -103,24 +103,47 @@ function getHookTarget(channelType: string, config: ReturnType<typeof loadConfig
 // Whether Go Core daemon is reachable (for web terminal links in IM)
 let coreAvailable = false;
 let coreClient: CoreClientImpl | null = null;
+// Cached config (loaded once at startup)
+let cachedConfig: ReturnType<typeof loadConfig> | null = null;
 
 // Track hook permission IDs already sent to IM (avoid duplicates across polls)
-const sentPermissionIds = new Set<string>();
+// Cleanup: remove IDs older than 10 minutes (permissions expire in 5 min)
+const sentPermissionIds = new Map<string, number>();
+// Track notification IDs already sent to IM
+const sentNotificationIds = new Map<string, number>();
 // Cache session cwd — a session's cwd never changes after creation
 const sessionCwdCache = new Map<string, string>();
+
+/** Cleanup stale entries from tracking maps (called periodically) */
+function cleanupStaleEntries(): void {
+  const now = Date.now();
+  const maxAge = 10 * 60 * 1000; // 10 minutes
+  for (const [id, timestamp] of sentPermissionIds) {
+    if (now - timestamp > maxAge) {
+      sentPermissionIds.delete(id);
+    }
+  }
+  for (const [id, timestamp] of sentNotificationIds) {
+    if (now - timestamp > maxAge) {
+      sentNotificationIds.delete(id);
+    }
+  }
+}
 
 export function isCoreAvailable(): boolean {
   return coreAvailable;
 }
 
 export function getCoreUrl(): string {
-  const config = loadConfig();
-  return config.publicUrl || config.coreUrl;
+  if (!cachedConfig) {
+    cachedConfig = loadConfig();
+  }
+  return cachedConfig.coreUrl;
 }
 
-function writeStatusFile(tliveHome: string, data: Record<string, unknown>): void {
+function writeStatusFile(data: Record<string, unknown>): void {
   try {
-    const runtimeDir = join(tliveHome, 'runtime');
+    const runtimeDir = getTliveRuntimeDir();
     mkdirSync(runtimeDir, { recursive: true });
     writeFileSync(join(runtimeDir, 'status.json'), JSON.stringify(data, null, 2));
   } catch {
@@ -129,8 +152,9 @@ function writeStatusFile(tliveHome: string, data: Record<string, unknown>): void
 }
 
 async function main() {
-  const config = loadConfig();
-  const tliveHome = join(homedir(), '.tlive');
+  cachedConfig = loadConfig();
+  const config = cachedConfig;
+  const tliveHome = getTliveHome();
 
   const logger = new Logger(
     join(tliveHome, 'logs', 'bridge.log'),
@@ -141,7 +165,7 @@ async function main() {
   logger.info(`Enabled channels: ${config.enabledChannels.join(', ') || 'none'}`);
 
   // Write startup status
-  writeStatusFile(tliveHome, {
+  writeStatusFile({
     pid: process.pid,
     startedAt: new Date().toISOString(),
     channels: config.enabledChannels,
@@ -160,20 +184,29 @@ async function main() {
     logger.info('Go Core not running — IM-only mode (no web terminal links)');
   }
 
-  // Periodically re-check Core availability
+  // Periodically re-check Core availability and cleanup stale entries
   const coreStatusInterval = setInterval(async () => {
     try {
       const resp = await fetch(`${config.coreUrl}/api/status`, {
         headers: { Authorization: `Bearer ${config.token}` },
         signal: AbortSignal.timeout(3000),
       });
-      coreAvailable = resp.ok;
-      manager.setCoreAvailable(coreAvailable);
+      const newAvailable = resp.ok;
+      // Only update if status changed
+      if (newAvailable !== coreAvailable) {
+        coreAvailable = newAvailable;
+        manager.setCoreAvailable(coreAvailable);
+      }
     } catch {
-      coreAvailable = false;
-      manager.setCoreAvailable(false);
+      if (coreAvailable) {
+        coreAvailable = false;
+        manager.setCoreAvailable(false);
+      }
     }
   }, 30_000);
+
+  // Cleanup stale tracking entries every 5 minutes
+  const cleanupInterval = setInterval(cleanupStaleEntries, 5 * 60 * 1000);
 
   // Initialize components
   const store = new JsonFileStore(join(tliveHome, 'data'));
@@ -220,8 +253,7 @@ async function main() {
   }
 
   if (coreAvailable) {
-    const webUrl = config.publicUrl || config.coreUrl;
-    logger.info(`Web terminal available at ${webUrl}`);
+    logger.info(`Web terminal available at ${config.coreUrl}`);
   }
 
   // Poll Go Core for pending hook permissions (if Core is available)
@@ -263,7 +295,7 @@ async function main() {
       for (const perm of pending) {
         // Check if we already sent this permission to IM (avoid duplicates)
         if (sentPermissionIds.has(perm.id)) continue;
-        sentPermissionIds.add(perm.id);
+        sentPermissionIds.set(perm.id, Date.now());
 
         // Build context label consistent with hook notifications (e.g. "tlive · #5f6dea")
         const contextParts: string[] = [];
@@ -419,9 +451,7 @@ async function main() {
     }
   }, 2000);
 
-  // Track notification IDs already sent to IM.
   // Record startup time to skip stale notifications from before this Bridge process started.
-  const sentNotificationIds = new Set<string>();
   const bridgeStartTime = new Date();
 
   // Poll Go Core for hook notifications (idle_prompt, stop, etc.)
@@ -437,7 +467,7 @@ async function main() {
 
       for (const notif of notifications) {
         if (sentNotificationIds.has(notif.id)) continue;
-        sentNotificationIds.add(notif.id);
+        sentNotificationIds.set(notif.id, Date.now());
 
         // Skip notifications from before this Bridge process started
         const notifTime = (notif as { timestamp?: string }).timestamp;
@@ -486,8 +516,9 @@ async function main() {
     clearInterval(hookPollInterval);
     clearInterval(notifyPollInterval);
     clearInterval(coreStatusInterval);
+    clearInterval(cleanupInterval);
     clearInterval(keepAliveInterval);
-    writeStatusFile(tliveHome, {
+    writeStatusFile({
       pid: process.pid,
       exitedAt: new Date().toISOString(),
       exitReason: reason,

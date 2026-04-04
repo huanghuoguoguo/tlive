@@ -1,10 +1,31 @@
-import { CostTracker, type UsageStats } from './cost-tracker.js';
 import { redactSensitiveContent } from './content-filter.js';
 import { getToolIcon } from './tool-registry.js';
+import { homedir } from 'node:os';
+
+/** Shorten path: replace homedir with ~, show compact form */
+function shortPath(path: string): string {
+  const home = homedir();
+  let p = path.startsWith(home) ? '~' + path.slice(home.length) : path;
+  const parts = p.split('/');
+  if (parts.length > 2) {
+    // If starts with ~, keep ~ and last segment: ~/.../myapp
+    if (p.startsWith('~')) {
+      p = '~/' + parts[parts.length - 1];
+    } else {
+      // Otherwise show last 2 segments: .../projects/myapp
+      p = '.../' + parts.slice(-2).join('/');
+    }
+  }
+  return p;
+}
 
 export interface MessageRendererOptions {
   platformLimit: number;
   throttleMs?: number;
+  /** Working directory for footer display */
+  cwd?: string;
+  /** Model name for footer display */
+  model?: string;
   flushCallback: (
     content: string,
     isEdit: boolean,
@@ -34,7 +55,7 @@ export class MessageRenderer {
   private totalTools = 0;
   private responseText = '';
   private completed = false;
-  private costLine?: string;
+  private footerLine?: string;
   private errorMessage?: string;
   private permissionQueue: PermissionState[] = [];
 
@@ -49,6 +70,8 @@ export class MessageRenderer {
   private onPermissionTimeout?: MessageRendererOptions['onPermissionTimeout'];
   private flushing = false;
   private pendingFlush = false;
+  private cwd?: string;
+  private model?: string;
 
   get messageId(): string | undefined {
     return this._messageId;
@@ -59,6 +82,8 @@ export class MessageRenderer {
     this.throttleMs = options.throttleMs ?? 300;
     this.flushCallback = options.flushCallback;
     this.onPermissionTimeout = options.onPermissionTimeout;
+    this.cwd = options.cwd;
+    this.model = options.model;
   }
 
   onToolStart(name: string): void {
@@ -130,9 +155,9 @@ export class MessageRenderer {
     this.scheduleFlush();
   }
 
-  onComplete(stats: UsageStats): void {
+  onComplete(): void {
     this.completed = true;
-    this.costLine = CostTracker.format(stats);
+    this.footerLine = this.buildFooter();
     this.stopTimers();
     const content = this.render();
     this.doFlush(content);
@@ -225,8 +250,8 @@ export class MessageRenderer {
       if (this.totalTools > 0) {
         lines.push(this.renderToolSummary());
       }
-      if (this.costLine) {
-        lines.push(this.costLine);
+      if (this.footerLine) {
+        lines.push(this.footerLine);
       }
       return this.applyPlatformLimit(redactSensitiveContent(lines.join('\n')));
     }
@@ -240,10 +265,21 @@ export class MessageRenderer {
     if (this.totalTools > 0) {
       lines.push(this.renderToolSummary());
     }
-    if (this.costLine) {
-      lines.push(this.costLine);
+    if (this.footerLine) {
+      lines.push(this.footerLine);
     }
     return redactSensitiveContent(lines.join('\n'));
+  }
+
+  private buildFooter(): string {
+    const parts: string[] = [];
+    if (this.model) {
+      parts.push(`[${this.model}]`);
+    }
+    if (this.cwd) {
+      parts.push(shortPath(this.cwd));
+    }
+    return parts.length > 0 ? parts.join(' │ ') : '';
   }
 
   private applyPlatformLimit(content: string): string {

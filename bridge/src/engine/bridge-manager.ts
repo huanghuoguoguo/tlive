@@ -19,6 +19,11 @@ import { CostTracker } from './cost-tracker.js';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { homedir, networkInterfaces } from 'node:os';
+import { getTliveRuntimeDir, shortPath } from '../utils/path.js';
+import { safeParseObject } from '../utils/json.js';
+import { generateSessionId } from '../utils/id.js';
+import { truncate } from '../utils/string.js';
+import { CHANNEL_TYPES, PLATFORM_LIMITS, PLATFORM_REACTIONS, type ChannelType } from '../utils/constants.js';
 
 /** Bridge commands handled synchronously (don't block adapter loop) */
 const QUICK_COMMANDS = new Set(['/new', '/status', '/verbose', '/hooks', '/sessions', '/session', '/help', '/perm', '/effort', '/stop', '/approve', '/pairings', '/settings', '/model', '/bash', '/cd', '/pwd']);
@@ -75,6 +80,8 @@ export class BridgeManager {
   private lastChatId = new Map<string, string>();
   /** Pending image attachments waiting for a text message to merge with (key: channelType:chatId) */
   private pendingAttachments = new Map<string, { attachments: import('../channels/types.js').FileAttachment[]; timestamp: number }>();
+  /** Debounce timer for chatId persistence */
+  private chatIdPersistTimer: ReturnType<typeof setTimeout> | null = null;
 
   private commands: CommandRouter;
   private chatIdFile: string;
@@ -85,14 +92,14 @@ export class BridgeManager {
 
   constructor() {
     const config = loadConfig();
-    const effectivePublicUrl = config.publicUrl || `http://${getLocalIP()}:${config.port || 8080}`;
+    const localUrl = `http://${getLocalIP()}:${config.port || 8080}`;
     const gateway = new PendingPermissions();
-    const broker = new PermissionBroker(gateway, effectivePublicUrl);
+    const broker = new PermissionBroker(gateway, localUrl);
     this.coreUrl = config.coreUrl;
     this.token = config.token;
     this.permissions = new PermissionCoordinator(gateway, broker, this.coreUrl, this.token);
     // Load persisted chatIds (so hook routing works without needing a message first)
-    this.chatIdFile = join(homedir(), '.tlive', 'runtime', 'chat-ids.json');
+    this.chatIdFile = join(getTliveRuntimeDir(), 'chat-ids.json');
     try {
       const data = JSON.parse(readFileSync(this.chatIdFile, 'utf-8'));
       for (const [k, v] of Object.entries(data)) {
@@ -107,6 +114,20 @@ export class BridgeManager {
       this.activeControls,
       this.permissions,
     );
+  }
+
+  /** Persist chatIds to file (debounced to avoid blocking message loop) */
+  private persistChatIds(): void {
+    if (this.chatIdPersistTimer) {
+      clearTimeout(this.chatIdPersistTimer);
+    }
+    this.chatIdPersistTimer = setTimeout(() => {
+      try {
+        mkdirSync(getTliveRuntimeDir(), { recursive: true });
+        writeFileSync(this.chatIdFile, JSON.stringify(Object.fromEntries(this.lastChatId)));
+      } catch { /* non-fatal */ }
+      this.chatIdPersistTimer = null;
+    }, 1000); // 1 second debounce
   }
 
   /** Expose coreAvailable flag for main.ts polling loop */
@@ -220,8 +241,7 @@ export class BridgeManager {
     let terminalUrl: string | undefined;
     if (this.coreAvailable && hook.tlive_session_id) {
       const config = loadConfig();
-      const baseUrl = config.publicUrl || `http://${getLocalIP()}:${config.port || 8080}`;
-      terminalUrl = `${baseUrl}/terminal.html?id=${hook.tlive_session_id}&token=${this.token}`;
+      terminalUrl = `http://${getLocalIP()}:${config.port || 8080}/terminal.html?id=${hook.tlive_session_id}&token=${this.token}`;
     }
 
     const formatted = formatNotification({ type, title, summary, terminalUrl }, adapter.channelType as any);
@@ -303,11 +323,8 @@ export class BridgeManager {
     // Track last active chatId per channel type (used for hook notification routing)
     if (msg.chatId) {
       this.lastChatId.set(adapter.channelType, msg.chatId);
-      // Persist so hooks work even after Bridge restart
-      try {
-        mkdirSync(join(homedir(), '.tlive', 'runtime'), { recursive: true });
-        writeFileSync(this.chatIdFile, JSON.stringify(Object.fromEntries(this.lastChatId)));
-      } catch { /* non-fatal */ }
+      // Persist debounced (non-blocking)
+      this.persistChatIds();
     }
 
     // Image buffering: cache image-only messages, merge into next text message
@@ -754,19 +771,15 @@ export class BridgeManager {
 
     // Resolve threadId: use existing thread if message came from one, or reuse session thread
     let threadId = msg.threadId;
-    if (!threadId && adapter.channelType === 'discord') {
+    if (!threadId && adapter.channelType === CHANNEL_TYPES.DISCORD) {
       threadId = this.state.getThread(msg.channelType, msg.chatId);
-    }
-    // For Telegram topics, always pass threadId through
-    if (!threadId && msg.threadId) {
-      threadId = msg.threadId;
     }
 
     // Reaction target: for Discord threads, reaction goes on the original channel message
     const reactionChatId = msg.chatId;
 
     // Start typing heartbeat (in thread if available)
-    const typingTarget = threadId && adapter.channelType === 'discord' ? threadId : msg.chatId;
+    const typingTarget = threadId && adapter.channelType === CHANNEL_TYPES.DISCORD ? threadId : msg.chatId;
     const typingInterval = setInterval(() => {
       adapter.sendTyping(typingTarget).catch(() => {});
     }, 4000);
@@ -775,13 +788,8 @@ export class BridgeManager {
     const costTracker = new CostTracker();
     costTracker.start();
 
-    // Add processing reaction
-    const reactionEmojis: Record<string, { processing: string; done: string; error: string }> = {
-      telegram: { processing: '\u{1F914}', done: '\u{1F44D}', error: '\u{1F631}' },
-      feishu: { processing: 'Typing', done: 'OK', error: 'FACEPALM' },
-      discord: { processing: '\u{1F914}', done: '\u{1F44D}', error: '\u{274C}' },
-    };
-    const reactions = reactionEmojis[adapter.channelType] || reactionEmojis.telegram;
+    // Add processing reaction (use centralized platform reactions)
+    const reactions = PLATFORM_REACTIONS[adapter.channelType as ChannelType] ?? PLATFORM_REACTIONS[CHANNEL_TYPES.TELEGRAM];
     adapter.addReaction(reactionChatId, msg.messageId, reactions.processing).catch(() => {});
 
     // Feishu streaming disabled — new renderer uses short status lines
@@ -789,19 +797,18 @@ export class BridgeManager {
     // edited with im.message.patch (needed for permission buttons)
     let feishuSession: import('../channels/feishu-streaming.js').FeishuStreamingSession | null = null;
 
-    const platformLimits: Record<string, number> = { telegram: 4096, discord: 2000, feishu: 30000 };
     let permissionReminderMsgId: string | undefined;
     let permissionReminderTool: string | undefined;
     let permissionReminderInput: string | undefined;
     const renderer = new MessageRenderer({
-      platformLimit: platformLimits[adapter.channelType] ?? 4096,
+      platformLimit: PLATFORM_LIMITS[adapter.channelType as ChannelType] ?? 4096,
       throttleMs: 300,
       onPermissionTimeout: async (toolName, input, buttons) => {
         permissionReminderTool = toolName;
         permissionReminderInput = input;
         const text = `⚠️ Permission pending — ${toolName}: ${permissionReminderInput}`;
-        const targetChatId = threadId && adapter.channelType === 'discord' ? threadId : msg.chatId;
-        const outMsg: OutboundMessage = adapter.channelType === 'telegram'
+        const targetChatId = threadId && adapter.channelType === CHANNEL_TYPES.DISCORD ? threadId : msg.chatId;
+        const outMsg: OutboundMessage = adapter.channelType === CHANNEL_TYPES.TELEGRAM
           ? { chatId: targetChatId, html: markdownToTelegram(text) }
           : { chatId: targetChatId, text };
         outMsg.buttons = buttons.map(b => ({ ...b, style: b.style as 'primary' | 'danger' | 'default' }));
@@ -855,7 +862,7 @@ export class BridgeManager {
           clearInterval(typingInterval);
           return result.messageId;
         } else {
-          const limit = platformLimits[adapter.channelType] ?? 4096;
+          const limit = PLATFORM_LIMITS[adapter.channelType as ChannelType] ?? 4096;
           if (content.length > limit) {
             // Overflow: edit first chunk into existing message, send rest as new messages
             const chunks = chunkByParagraph(content, limit);
@@ -1131,7 +1138,7 @@ export class BridgeManager {
           }
           const usage = { input_tokens: event.usage.inputTokens, output_tokens: event.usage.outputTokens, cost_usd: event.usage.costUsd };
           completedStats = costTracker.finish(usage);
-          renderer.onComplete(completedStats);
+          renderer.onComplete();
         },
         onPromptSuggestion: (suggestion) => {
           // Send as a quick-reply button after the response completes

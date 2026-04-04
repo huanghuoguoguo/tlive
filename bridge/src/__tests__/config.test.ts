@@ -24,11 +24,9 @@ describe('loadConfig', () => {
   it('loads from env vars', () => {
     process.env.TL_PORT = '9090';
     process.env.TL_TOKEN = 'test-token';
-    process.env.TL_PUBLIC_URL = 'https://example.com';
     const config = loadConfig();
     expect(config.port).toBe(9090);
     expect(config.token).toBe('test-token');
-    expect(config.publicUrl).toBe('https://example.com');
     expect(config.coreUrl).toBe('http://localhost:9090');
   });
 
