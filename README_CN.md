@@ -1,12 +1,12 @@
 # tlive
 
 [![npm version](https://img.shields.io/npm/v/tlive)](https://www.npmjs.com/package/tlive)
-[![CI](https://github.com/y49/tlive/actions/workflows/ci.yml/badge.svg)](https://github.com/y49/tlive/actions/workflows/ci.yml)
+[![CI](https://github.com/huanghuoguoguo/tlive/actions/workflows/ci.yml/badge.svg)](https://github.com/huanghuoguoguo/tlive/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [English](README.md)
 
-**Terminal Live** — 从 Telegram、Discord、飞书监控和操控 AI 编码工具（Claude Code、Codex）。
+**Terminal Live** — 从 Telegram、Discord、飞书监控和操控 Claude Code。
 
 三大功能，按需组合：
 
@@ -22,16 +22,19 @@
 ## 快速开始
 
 ```bash
-# 1. 安装
-npm install -g tlive
+# 安装（一行命令）
+curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash
 
-# 2. 配置 IM 平台（交互式引导）
+# 或指定版本：
+# curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash -s -- v0.7.1
+
+# 1. 配置 IM 平台（交互式引导）
 tlive setup
 
-# 3. 注册 hooks + Claude Code 技能
+# 2. 注册 hooks + Claude Code 技能
 tlive install skills
 
-# 4. 在 Claude Code 中启动桥接
+# 3. 在 Claude Code 中启动桥接
 /tlive
 ```
 
@@ -138,7 +141,6 @@ tlive hooks resume             # 恢复 IM 审批
 | 输入状态 | ✅ | ✅ | — |
 | 权限按钮 | 内联键盘 | Button 组件 | 互动卡片 |
 | 内容脱敏 | ✅ | ✅ | ✅ |
-| 多引擎 (Claude/Codex) | ✅ | ✅ | ✅ |
 | 分级权限按钮 | ✅ | ✅ | ✅ |
 
 ## 命令
@@ -168,7 +170,6 @@ tlive hooks resume         # 恢复 Hook（IM 审批）
 /tlive status              # 查看状态
 /tlive doctor              # 诊断
 
-/runtime claude|codex          # 切换 AI 引擎
 /perm on|off                   # 权限提示
 /effort low|medium|high|max    # 思考深度
 /stop                          # 中断执行
@@ -176,6 +177,9 @@ tlive hooks resume         # 恢复 Hook（IM 审批）
 /new                           # 新对话
 /sessions                      # 列出会话
 /session <n>                   # 切换会话
+/cd <path>                     # 切换目录
+/pwd                           # 显示当前目录
+/bash <cmd>                    # 执行 shell 命令
 /hooks pause|resume            # 切换 Hook 审批
 /help                          # 显示所有命令
 ```
@@ -244,8 +248,8 @@ TL_FS_APP_SECRET=...
 ┌─ Node.js Bridge ────────────────────────────────────────────┐
 │                                                              │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐ │
-│  │Claude/Codex │  │ Telegram     │  │ Hook 轮询          │ │
-│  │ SDK         │  │ Discord      │  │ (转发到 IM,        │ │
+│  │Claude SDK   │  │ Telegram     │  │ Hook 轮询          │ │
+│  │             │  │ Discord      │  │ (转发到 IM,        │ │
 │  │             │  │ 飞书         │  │  点击后解析)        │ │
 │  └─────────────┘  └──────────────┘  └────────────────────┘ │
 └──────────────────────────────────────────────────────────────┘
@@ -271,7 +275,7 @@ cd bridge && npm install && npm run build && npm test
 
 ```
 tlive/
-├── SKILL.md                # Claude Code / Codex 技能
+├── SKILL.md                # Claude Code 技能
 ├── config.env.example
 ├── core/                   # Go → tlive 二进制
 │   ├── cmd/tlive/          # CLI（Web 终端、停止、配置、安装）
@@ -284,7 +288,7 @@ tlive/
 │   └── web/                # 内嵌 Web UI
 ├── bridge/                 # Node.js → Bridge 守护进程
 │   └── src/
-│       ├── providers/      # Claude SDK + Codex SDK providers
+│       ├── providers/      # Claude SDK provider
 │       ├── messages/       # Zod schemas, canonical events, adapters
 │       ├── channels/       # Telegram、Discord、飞书适配器
 │       ├── engine/         # 会话状态、权限、命令、渲染器

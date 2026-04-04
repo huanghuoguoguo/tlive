@@ -1,12 +1,12 @@
 # tlive
 
 [![npm version](https://img.shields.io/npm/v/tlive)](https://www.npmjs.com/package/tlive)
-[![CI](https://github.com/y49/tlive/actions/workflows/ci.yml/badge.svg)](https://github.com/y49/tlive/actions/workflows/ci.yml)
+[![CI](https://github.com/huanghuoguoguo/tlive/actions/workflows/ci.yml/badge.svg)](https://github.com/huanghuoguoguo/tlive/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [中文文档](README_CN.md)
 
-**Terminal Live** — monitor and chat with AI coding agents (Claude Code, Codex) from Telegram, Discord & Feishu.
+**Terminal Live** — monitor and chat with Claude Code from Telegram, Discord & Feishu.
 
 Three features, use any combination:
 
@@ -22,16 +22,19 @@ Three features, use any combination:
 ## Quick Start
 
 ```bash
-# 1. Install
-npm install -g tlive
+# Install (one-line)
+curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash
 
-# 2. Configure your IM platform (interactive wizard)
+# Or with a specific version:
+# curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash -s -- v0.7.1
+
+# 1. Configure your IM platform (interactive wizard)
 tlive setup
 
-# 3. Register hooks + Claude Code skill
+# 2. Register hooks + Claude Code skill
 tlive install skills
 
-# 4. In Claude Code, start the bridge
+# 3. In Claude Code, start the bridge
 /tlive
 ```
 
@@ -143,7 +146,6 @@ tlive hooks resume             # Back to IM approval
 | Pairing mode | ✅ | — | — |
 | Webhook mode | ✅ | — | WebSocket |
 | Content redaction | ✅ | ✅ | ✅ |
-| Multi-provider (Claude/Codex) | ✅ | ✅ | ✅ |
 | Graduated permission buttons | ✅ | ✅ | ✅ |
 
 ## Commands
@@ -174,7 +176,6 @@ tlive hooks resume         # Resume hooks (IM approval)
 /tlive doctor              # Diagnostics
 
 /model <name>                  # Switch model (e.g. claude-sonnet-4-6)
-/runtime claude|codex          # Switch AI provider
 /settings user|full|isolated   # Claude settings scope
 /perm on|off                   # Permission prompts
 /effort low|medium|high|max    # Thinking depth
@@ -183,6 +184,9 @@ tlive hooks resume         # Resume hooks (IM approval)
 /new                           # New conversation
 /sessions                      # List sessions
 /session <n>                   # Switch to session
+/cd <path>                     # Change directory
+/pwd                           # Show current directory
+/bash <cmd>                    # Execute shell command
 /hooks pause|resume            # Toggle hook approval
 /approve <code>                # Approve Telegram pairing
 /pairings                      # List pending pairings
@@ -271,8 +275,8 @@ To access the web terminal from outside your LAN (e.g. via frpc, Cloudflare Tunn
 ┌─ Node.js Bridge ────────────────────────────────────────────┐
 │                                                              │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐ │
-│  │Claude/Codex │  │ Telegram     │  │ Hook Poll          │ │
-│  │ SDK         │  │ Discord      │  │ (forward to IM,    │ │
+│  │Claude SDK   │  │ Telegram     │  │ Hook Poll          │ │
+│  │             │  │ Discord      │  │ (forward to IM,    │ │
 │  │             │  │ Feishu       │  │  resolve on click) │ │
 │  └─────────────┘  └──────────────┘  └────────────────────┘ │
 └──────────────────────────────────────────────────────────────┘
@@ -298,7 +302,7 @@ cd bridge && npm install && npm run build && npm test
 
 ```
 tlive/
-├── SKILL.md                # Claude Code / Codex skill
+├── SKILL.md                # Claude Code skill
 ├── config.env.example
 ├── core/                   # Go → tlive binary
 │   ├── cmd/tlive/          # CLI (web terminal, stop, setup, install)
@@ -311,7 +315,7 @@ tlive/
 │   └── web/                # Embedded Web UI
 ├── bridge/                 # Node.js → Bridge daemon
 │   └── src/
-│       ├── providers/      # Claude SDK + Codex SDK providers
+│       ├── providers/      # Claude SDK provider
 │       ├── messages/       # Zod schemas, canonical events, adapters
 │       ├── channels/       # Telegram, Discord, Feishu adapters
 │       ├── engine/         # Session state, permissions, commands, renderer
