@@ -24,17 +24,22 @@ curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.s
 ## 快速开始
 
 ```bash
-# 1. 配置（交互式引导）
-tlive setup
+# 1. Clone 项目
+git clone https://github.com/huanghuoguoguo/tlive.git
+cd tlive
 
-# 2. 注册 Claude Code 集成
-tlive install skills
+# 2. 在项目目录启动 Claude Code
+claude
 
-# 3. 启动守护进程
-tlive start
+# 3. 说 "帮我配置 tlive"
+# Claude Code 会引导你完成所有配置
 ```
 
-然后在 Claude Code 中执行 `/tlive`，就可以从手机发消息给 Claude 了。
+就这么简单！Claude Code 会帮你：
+- 选择 IM 平台（Telegram/Discord/飞书/QQ Bot）
+- 获取平台凭证
+- 配置 Claude Code 集成
+- 启动服务
 
 ## 功能
 

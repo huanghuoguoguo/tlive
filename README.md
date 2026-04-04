@@ -26,17 +26,22 @@ curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.s
 ## Quick Start
 
 ```bash
-# 1. Configure (interactive wizard)
-tlive setup
+# 1. Clone the repo
+git clone https://github.com/huanghuoguoguo/tlive.git
+cd tlive
 
-# 2. Register Claude Code integration
-tlive install skills
+# 2. Start Claude Code in the project
+claude
 
-# 3. Start daemon
-tlive start
+# 3. Say "help me setup tlive"
+# Claude Code will guide you through all configuration
 ```
 
-Then run `/tlive` in Claude Code. You can now message Claude from your phone.
+That's it! Claude Code will help you:
+- Choose IM platforms (Telegram/Discord/Feishu/QQ Bot)
+- Get platform credentials
+- Configure Claude Code integration
+- Start the service
 
 ## Features
 
