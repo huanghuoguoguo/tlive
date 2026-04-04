@@ -5,7 +5,17 @@
 
 [中文文档](README_CN.md)
 
+> **Fork of [y49/tlive](https://github.com/y49/tlive)** — Claude-only version with enhancements.
+
 **Control Claude Code from your phone** — Send tasks via Telegram, Discord, or Feishu. Watch progress in real-time. Approve permissions remotely.
+
+## Changes from Original
+
+- **Removed Codex support** — Claude-only, simplified codebase
+- **Enhanced session scanner** — Efficient tail reading (32KB) with 5s cache
+- **Fixed O(n) binding lookup** — Direct session ID indexing
+- **Added `/bash`, `/cd`, `/pwd` commands** — More shell control
+- **Improved daemon mode** — Auto-start on demand, no manual activation needed
 
 ## Install
 

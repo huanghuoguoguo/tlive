@@ -1,6 +1,6 @@
 {
   "name": "tlive",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Terminal live monitoring + IM bridge for AI coding tools",
   "type": "module",
   "bin": {
@@ -48,7 +48,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/y49/tlive"
+    "url": "https://github.com/huanghuoguoguo/tlive"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.77",

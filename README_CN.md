@@ -3,9 +3,17 @@
 [![CI](https://github.com/huanghuoguoguo/tlive/actions/workflows/ci.yml/badge.svg)](https://github.com/huanghuoguoguo/tlive/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[中文文档](README_CN.md)
+> **Fork 自 [y49/tlive](https://github.com/y49/tlive)** — 仅支持 Claude 的增强版本。
 
 **在手机上操控 Claude Code** — 从 Telegram、Discord、飞书发送任务，实时查看进度，远程审批权限。
+
+## 与原版的差异
+
+- **移除 Codex 支持** — 仅支持 Claude，精简代码
+- **增强会话扫描** — 高效尾部读取（32KB）+ 5秒缓存
+- **修复 O(n) 查找** — 直接按 session ID 索引绑定关系
+- **新增 `/bash`、`/cd`、`/pwd` 命令** — 更多 shell 控制能力
+- **改进守护进程** — 按需自动启动，无需手动激活
 
 ## 安装
 
