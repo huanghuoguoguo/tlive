@@ -18,7 +18,6 @@ describe('loadConfig', () => {
   it('uses defaults when no env vars set', () => {
     const config = loadConfig();
     expect(config.port).toBe(8080);
-    expect(config.runtime).toBe('claude');
     expect(config.coreUrl).toBe('http://localhost:8080');
   });
 

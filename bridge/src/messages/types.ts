@@ -1,5 +1,3 @@
-import type { CanonicalEvent } from './schema.js';
-
 /** File attachment for LLM vision/file input */
 export interface FileAttachment {
   type: 'image' | 'file';
@@ -41,22 +39,4 @@ export interface SessionMode {
   systemPrompt?: string;
   allowedTools?: string[];
   disallowedTools?: string[];
-}
-
-/** Provider-agnostic interface (implemented in sub-project 2) */
-export interface ProviderBackend {
-  startQuery(params: {
-    prompt: string;
-    workingDirectory: string;
-    sessionId?: string;
-    mode: SessionMode;
-    attachments?: FileAttachment[];
-    onPermissionRequest?: PermissionRequestHandler;
-    onAskUserQuestion?: AskUserQuestionHandler;
-  }): {
-    stream: ReadableStream<CanonicalEvent>;
-    controls?: QueryControls;
-  };
-
-  dispose(): Promise<void>;
 }

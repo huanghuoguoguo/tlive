@@ -6,11 +6,22 @@ import type { QueryControls } from '../providers/base.js';
 import type { VerboseLevel } from './session-state.js';
 import { getBridgeContext } from '../context.js';
 import { ClaudeSDKProvider } from '../providers/claude-sdk.js';
-import { checkCodexAvailable } from '../providers/index.js';
+import { escapeHtml } from '../formatting/escape.js';
 import type { ClaudeSettingSource } from '../config.js';
-import { existsSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
+import { join, dirname, basename } from 'node:path';
 import { homedir } from 'node:os';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
+import { scanClaudeSessions } from '../session-scanner.js';
+
+const execAsync = promisify(exec);
+
+/** Shorten path by replacing home directory with ~ */
+function shortPath(path: string): string {
+  const home = homedir();
+  return path.startsWith(home) ? path.replace(home, '~') : path;
+}
 
 export class CommandRouter {
   constructor(
@@ -29,7 +40,7 @@ export class CommandRouter {
     switch (cmd) {
       case '/status': {
         const ctx = getBridgeContext();
-        const healthy = (ctx.core as { isHealthy?: () => boolean }).isHealthy?.() ?? false;
+        const healthy = ctx.core?.isHealthy() ?? false;
         const coreStatus = healthy ? '🟢 connected' : '🔴 disconnected';
         const channelList = Array.from(this.getAdapters().keys()).join(', ') || 'none';
 
@@ -65,25 +76,33 @@ export class CommandRouter {
         return true;
       }
       case '/new': {
+        // Just clear session, keep current cwd
+        const { store } = getBridgeContext();
+        const binding = await store.getBinding(msg.channelType, msg.chatId);
+
         const newSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        await this.router.rebind(msg.channelType, msg.chatId, newSessionId);
+        await this.router.rebind(msg.channelType, msg.chatId, newSessionId, {
+          cwd: binding?.cwd,
+        });
+
         this.state.clearLastActive(msg.channelType, msg.chatId);
-        // Clear Discord thread binding so next conversation creates a fresh thread
         this.state.clearThread(msg.channelType, msg.chatId);
         this.permissions.clearSessionWhitelist();
+
+        const cwdLabel = binding?.cwd ? ` in ${shortPath(binding.cwd)}` : '';
         if (adapter.channelType === 'feishu') {
           await adapter.send({
             chatId: msg.chatId,
-            text: 'Session cleared. Send a message to begin.',
+            text: `Session cleared${cwdLabel}. Send a message to begin.`,
             feishuHeader: { template: 'green', title: '🆕 New Session' },
           });
         } else if (adapter.channelType === 'discord') {
           await adapter.send({
             chatId: msg.chatId,
-            embed: { title: '🆕 New Session', description: 'Session cleared. Send a message to begin.', color: 0x00CC66 },
+            embed: { title: '🆕 New Session', description: `Session cleared${cwdLabel}. Send a message to begin.`, color: 0x00CC66 },
           });
         } else {
-          await adapter.send({ chatId: msg.chatId, html: '🆕 <b>New session started.</b> Send a message to begin.' });
+          await adapter.send({ chatId: msg.chatId, html: `🆕 <b>New session started${cwdLabel}.</b> Send a message to begin.` });
         }
         return true;
       }
@@ -175,43 +194,40 @@ export class CommandRouter {
         return true;
       }
       case '/sessions': {
-        const { store } = getBridgeContext();
-        const allSessions = await store.listSessions();
-        const binding = await this.router.resolve(msg.channelType, msg.chatId);
-        const currentSessionId = binding?.sessionId;
+        const { store, defaultWorkdir } = getBridgeContext();
+        const binding = await store.getBinding(msg.channelType, msg.chatId);
+        const currentCwd = binding?.cwd || defaultWorkdir;
+        const showAll = parts[1]?.toLowerCase() === '--all' || parts[1]?.toLowerCase() === '-a';
 
-        if (allSessions.length === 0) {
-          await adapter.send({ chatId: msg.chatId, text: 'No sessions found.' });
+        const sessions = scanClaudeSessions(10, showAll ? undefined : currentCwd);
+        const currentSdkId = binding?.sdkSessionId;
+
+        if (sessions.length === 0) {
+          const hint = showAll ? '' : ` in ${shortPath(currentCwd)}\nUse /sessions --all to see all projects.`;
+          await adapter.send({ chatId: msg.chatId, text: `No sessions found${hint}` });
           return true;
         }
 
-        const sorted = allSessions
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, 10);
-
         const lines: string[] = [];
-        for (let i = 0; i < sorted.length; i++) {
-          const s = sorted[i];
-          const isCurrent = s.id === currentSessionId;
+        for (let i = 0; i < sessions.length; i++) {
+          const s = sessions[i];
+          const isCurrent = currentSdkId === s.sdkSessionId;
           const marker = isCurrent ? ' ◀' : '';
-          const date = new Date(s.createdAt).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-          const msgs = await store.getMessages(s.id);
-          const firstUser = msgs.find(m => m.role === 'user');
-          const preview = firstUser
-            ? (firstUser.content.length > 40 ? firstUser.content.slice(0, 37) + '...' : firstUser.content)
-            : '(empty)';
-          lines.push(`${i + 1}. ${date} — ${preview}${marker}`);
+          const date = new Date(s.mtime).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+          const cwdShort = shortPath(s.cwd);
+          lines.push(`${i + 1}. ${date} · ${cwdShort} · ${s.preview}${marker}`);
         }
 
+        const filterHint = showAll ? ' (all projects)' : ` (${shortPath(currentCwd)})`;
         const footer = '\nUse /session <n> to switch';
 
         if (adapter.channelType === 'telegram') {
-          await adapter.send({ chatId: msg.chatId, html: `<b>📋 Sessions</b>\n\n${lines.join('\n')}${footer}` });
+          await adapter.send({ chatId: msg.chatId, html: `<b>📋 Sessions${filterHint}</b>\n\n${lines.join('\n')}${footer}` });
         } else if (adapter.channelType === 'discord') {
           await adapter.send({
             chatId: msg.chatId,
             embed: {
-              title: '📋 Sessions',
+              title: `📋 Sessions${filterHint}`,
               color: 0x3399FF,
               description: lines.join('\n') + footer,
             },
@@ -220,7 +236,7 @@ export class CommandRouter {
           await adapter.send({
             chatId: msg.chatId,
             text: `${lines.join('\n')}${footer}`,
-            feishuHeader: { template: 'blue', title: '📋 Sessions' },
+            feishuHeader: { template: 'blue', title: `📋 Sessions${filterHint}` },
           });
         }
         return true;
@@ -232,62 +248,106 @@ export class CommandRouter {
           return true;
         }
 
-        const { store } = getBridgeContext();
-        const allSessions = await store.listSessions();
-        const sorted = allSessions
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, 10);
+        const { store, defaultWorkdir } = getBridgeContext();
+        const binding = await store.getBinding(msg.channelType, msg.chatId);
+        const currentCwd = binding?.cwd || defaultWorkdir;
+        const sessions = scanClaudeSessions(10, currentCwd);
 
-        if (idx > sorted.length) {
+        if (idx > sessions.length) {
           await adapter.send({ chatId: msg.chatId, text: `Session ${idx} not found. Use /sessions to list.` });
           return true;
         }
 
-        const target = sorted[idx - 1];
-        await this.router.rebind(msg.channelType, msg.chatId, target.id);
+        const target = sessions[idx - 1];
+
+        const newBindingId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        await this.router.rebind(msg.channelType, msg.chatId, newBindingId, {
+          sdkSessionId: target.sdkSessionId,
+          cwd: target.cwd, // update cwd to session's directory
+        });
+
         this.state.clearLastActive(msg.channelType, msg.chatId);
 
-        const msgs = await store.getMessages(target.id);
-        const firstUser = msgs.find(m => m.role === 'user');
-        const preview = firstUser
-          ? (firstUser.content.length > 50 ? firstUser.content.slice(0, 47) + '...' : firstUser.content)
-          : '(empty)';
-        const hasContext = target.sdkSessionId ? '✅ has context' : '⚠️ no SDK session';
         await adapter.send({
           chatId: msg.chatId,
-          text: `🔄 Switched to session ${idx}\n${preview}\n${hasContext}`,
+          text: `🔄 Switched to session ${idx}\n${shortPath(target.cwd)} · ${target.preview}`,
         });
         return true;
       }
-      case '/runtime': {
-        const runtime = parts[1]?.toLowerCase();
-        const RUNTIMES = ['claude', 'codex'] as const;
-        if (runtime && RUNTIMES.includes(runtime as any)) {
-          // Pre-check: reject if Codex SDK not installed
-          if (runtime === 'codex' && !await checkCodexAvailable()) {
-            await adapter.send({
-              chatId: msg.chatId,
-              text: '❌ Codex SDK not installed.\nRun: `npm install @openai/codex-sdk` in the bridge directory.',
-            });
-            return true;
-          }
-          const prevRuntime = this.state.getRuntime(msg.channelType, msg.chatId) || 'claude';
-          this.state.setRuntime(msg.channelType, msg.chatId, runtime as 'claude' | 'codex');
-          // Switching provider → old session ID is invalid for the new provider
-          if (prevRuntime !== runtime) {
-            const newSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-            await this.router.rebind(msg.channelType, msg.chatId, newSessionId);
-            this.state.clearLastActive(msg.channelType, msg.chatId);
-          }
-          const icons: Record<string, string> = { claude: '🟣', codex: '🟢' };
-          const text = `${icons[runtime] || '🔄'} Runtime: **${runtime}**`;
-          await adapter.send({ chatId: msg.chatId, text });
-        } else {
-          const current = this.state.getRuntime(msg.channelType, msg.chatId) || 'claude';
-          const codexStatus = await checkCodexAvailable() ? '✅' : '❌ (not installed)';
-          const text = `🔄 Runtime: **${current}**\nUsage: \`/runtime claude|codex\`\nclaude: ✅ · codex: ${codexStatus}`;
-          await adapter.send({ chatId: msg.chatId, text });
+      case '/bash': {
+        const cmdText = msg.text.slice('/bash '.length).trim();
+        if (!cmdText) {
+          await adapter.send({ chatId: msg.chatId, text: 'Usage: /bash <command>' });
+          return true;
         }
+
+        const { store, defaultWorkdir } = getBridgeContext();
+        const binding = await store.getBinding(msg.channelType, msg.chatId);
+        const cwd = binding?.cwd || defaultWorkdir;
+
+        try {
+          const { stdout, stderr } = await execAsync(cmdText, {
+            cwd,
+            timeout: 30_000,
+            maxBuffer: 4 * 1024 * 1024,
+          });
+
+          const output = (stdout + (stderr ? '\n⚠️ stderr:\n' + stderr : '')).trim();
+          const truncated = output.length > 3000 ? output.slice(0, 2997) + '...' : output;
+
+          if (adapter.channelType === 'telegram') {
+            await adapter.send({ chatId: msg.chatId, html: `<pre>${escapeHtml(truncated || '(no output)')}</pre>` });
+          } else {
+            await adapter.send({ chatId: msg.chatId, text: '```\n' + (truncated || '(no output)') + '\n```' });
+          }
+        } catch (err: any) {
+          const errMsg = err.stderr || err.message || String(err);
+          const truncated = errMsg.length > 1000 ? errMsg.slice(0, 997) + '...' : errMsg;
+          await adapter.send({ chatId: msg.chatId, text: `❌ ${truncated}` });
+        }
+        return true;
+      }
+      case '/cd': {
+        const path = parts.slice(1).join(' ').trim();
+        const { store, defaultWorkdir } = getBridgeContext();
+
+        if (!path) {
+          // Show current directory
+          const binding = await store.getBinding(msg.channelType, msg.chatId);
+          const current = binding?.cwd || defaultWorkdir;
+          await adapter.send({ chatId: msg.chatId, text: `📂 ${shortPath(current)}` });
+          return true;
+        }
+
+        // Handle ~ expansion
+        const expandedPath = path.startsWith('~') ? join(homedir(), path.slice(1)) : path;
+
+        // Resolve relative paths
+        const binding = await store.getBinding(msg.channelType, msg.chatId);
+        const baseCwd = binding?.cwd || defaultWorkdir;
+        const resolvedPath = expandedPath.startsWith('/') ? expandedPath : join(baseCwd, expandedPath);
+
+        if (!existsSync(resolvedPath)) {
+          await adapter.send({ chatId: msg.chatId, text: `❌ Directory not found: ${shortPath(resolvedPath)}` });
+          return true;
+        }
+
+        // Update binding
+        if (binding) {
+          binding.cwd = resolvedPath;
+          await store.saveBinding(binding);
+        } else {
+          await this.router.rebind(msg.channelType, msg.chatId, `session-${Date.now()}`, { cwd: resolvedPath });
+        }
+
+        await adapter.send({ chatId: msg.chatId, text: `📂 ${shortPath(resolvedPath)}` });
+        return true;
+      }
+      case '/pwd': {
+        const { store, defaultWorkdir } = getBridgeContext();
+        const binding = await store.getBinding(msg.channelType, msg.chatId);
+        const current = binding?.cwd || defaultWorkdir;
+        await adapter.send({ chatId: msg.chatId, text: shortPath(current) });
         return true;
       }
       case '/model': {
@@ -310,24 +370,12 @@ export class CommandRouter {
       case '/settings': {
         const llm = getBridgeContext().llm;
         const arg = parts[1]?.toLowerCase();
-        const runtime = this.state.getRuntime(msg.channelType, msg.chatId) || 'claude';
 
-        if (runtime === 'codex' || !(llm instanceof ClaudeSDKProvider)) {
-          // Codex runtime — show Codex-specific info
-          const text = [
-            '⚙️ **Codex Settings**',
-            `  Model: \`${this.state.getModel(msg.channelType, msg.chatId) || 'default'}\``,
-            `  Effort: \`${this.state.getEffort(msg.channelType, msg.chatId) || 'default'}\``,
-            `  Perm: \`${this.state.getPermMode(msg.channelType, msg.chatId)}\``,
-            '',
-            'Use `/model`, `/effort`, `/perm` to change.',
-            'Codex sandbox & network settings are set in config.',
-          ].join('\n');
-          await adapter.send({ chatId: msg.chatId, text });
+        if (!(llm instanceof ClaudeSDKProvider)) {
+          await adapter.send({ chatId: msg.chatId, text: '⚠️ Settings only available for Claude provider' });
           return true;
         }
 
-        // Claude runtime — settings sources control
         const PRESETS: Record<string, ClaudeSettingSource[]> = {
           user: ['user'],
           full: ['user', 'project', 'local'],
@@ -365,14 +413,17 @@ export class CommandRouter {
             '<b>❓ TLive Commands</b>',
             '',
             '<code>/new</code> — New conversation',
-            '<code>/sessions</code> — List recent sessions',
+            '<code>/sessions</code> — List sessions in current directory',
+            '<code>/sessions --all</code> — List all sessions',
             '<code>/session &lt;n&gt;</code> — Switch to session #n',
+            '<code>/cd &lt;path&gt;</code> — Change directory',
+            '<code>/pwd</code> — Show current directory',
+            '<code>/bash &lt;cmd&gt;</code> — Execute shell command',
             '<code>/verbose 0|1</code> — Detail level',
             '  0 = quiet · 1 = terminal card',
             '<code>/perm on|off</code> — Tool permission prompts',
             '<code>/effort low|high|max</code> — Thinking depth',
             '<code>/model &lt;name&gt;</code> — Switch model',
-            '<code>/runtime claude|codex</code> — Switch AI provider',
             '<code>/settings user|full|isolated</code> — Claude settings scope',
             '<code>/stop</code> — Interrupt current execution',
             '<code>/hooks pause|resume</code> — Toggle IM approval',
@@ -392,13 +443,16 @@ export class CommandRouter {
               color: 0x5865F2,
               description: [
                 '`/new` — New conversation',
-                '`/sessions` — List recent sessions',
+                '`/sessions` — List sessions in current directory',
+                '`/sessions --all` — List all sessions',
                 '`/session <n>` — Switch to session #n',
+                '`/cd <path>` — Change directory',
+                '`/pwd` — Show current directory',
+                '`/bash <cmd>` — Execute shell command',
                 '`/verbose 0|1` — Detail level',
                 '> 0 = quiet · 1 = terminal card',
                 '`/perm on|off` — Tool permission prompts',
                 '`/model <name>` — Switch model',
-                '`/runtime claude|codex` — Switch AI provider',
                 '`/settings user|full|isolated` — Claude settings scope',
                 '`/hooks pause|resume` — Toggle IM approval',
                 '`/status` — Bridge status',
@@ -413,20 +467,21 @@ export class CommandRouter {
         } else {
           const feishuLines = [
             '/new — New conversation',
-            '/sessions — List recent sessions',
+            '/sessions — List sessions in current directory',
+            '/sessions --all — List all sessions',
             '/session <n> — Switch to session #n',
+            '/cd <path> — Change directory',
+            '/pwd — Show current directory',
+            '/bash <cmd> — Execute shell command',
             '/verbose 0|1 — Detail level',
             '  0 = quiet · 1 = terminal card',
             '/perm on|off — Tool permission prompts',
             '/effort low|high|max — Thinking depth',
             '/model <name> — Switch model',
-            '/runtime claude|codex — Switch AI provider',
             '/settings user|full|isolated — Claude settings scope',
             '/stop — Interrupt current execution',
             '/hooks pause|resume — Toggle IM approval',
             '/status — Bridge status',
-            '/approve <code> — Approve pairing request',
-            '/pairings — List pending pairings',
             '/help — This message',
             '',
             '💬 回复 **allow** / **deny** 审批权限',
@@ -435,6 +490,12 @@ export class CommandRouter {
             chatId: msg.chatId,
             text: feishuLines.join('\n'),
             feishuHeader: { template: 'indigo', title: '❓ TLive Commands' },
+            buttons: [
+              { label: '📋 Sessions', callbackData: 'cmd:sessions', style: 'primary' },
+              { label: '📂 cd', callbackData: 'cmd:cd', style: 'primary' },
+              { label: '🆕 New', callbackData: 'cmd:new', style: 'primary' },
+              { label: '📍 PWD', callbackData: 'cmd:pwd', style: 'primary' },
+            ],
           });
         }
         return true;
@@ -445,7 +506,6 @@ export class CommandRouter {
           await adapter.send({ chatId: msg.chatId, text: 'Usage: /approve <pairing_code>' });
           return true;
         }
-        // Try to approve pairing on Telegram adapter
         const tgAdapter = this.getAdapters().get('telegram');
         if (tgAdapter && 'approvePairing' in tgAdapter) {
           const result = (tgAdapter as any).approvePairing(code);

@@ -1,12 +1,7 @@
 import type { CanonicalEvent } from '../messages/schema.js';
+import type { FileAttachment, PermissionRequestHandler, QueryControls } from '../messages/types.js';
 
-/** Called by canUseTool when permission prompting is enabled. */
-export type PermissionRequestHandler = (
-  toolName: string,
-  toolInput: Record<string, unknown>,
-  promptSentence: string,
-  signal?: AbortSignal,
-) => Promise<'allow' | 'allow_always' | 'deny'>;
+export type { FileAttachment, PermissionRequestHandler, QueryControls };
 
 export interface StreamChatParams {
   prompt: string;
@@ -30,19 +25,6 @@ export interface StreamChatParams {
   ) => Promise<Record<string, string>>;
   /** Controls Claude's thinking depth: low/medium/high/max */
   effort?: 'low' | 'medium' | 'high' | 'max';
-}
-
-export interface FileAttachment {
-  type: 'image' | 'file';
-  name: string;
-  mimeType: string;
-  base64Data: string;
-}
-
-/** Controls for an active query — interrupt, stop subagents, etc. */
-export interface QueryControls {
-  interrupt(): Promise<void>;
-  stopTask(taskId: string): Promise<void>;
 }
 
 export interface StreamChatResult {

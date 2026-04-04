@@ -14,8 +14,6 @@ export class SessionStateManager {
   private processingChats = new Map<string, number>();
   private lastActive = new Map<string, number>();
   private sessionThreads = new Map<string, string>();
-  private runtimes = new Map<string, 'claude' | 'codex'>();
-
   private defaultMode(): SessionMode {
     return { permissionMode: 'default' };
   }
@@ -108,14 +106,6 @@ export class SessionStateManager {
 
   clearLastActive(channelType: string, chatId: string): void {
     this.lastActive.delete(this.stateKey(channelType, chatId));
-  }
-
-  getRuntime(channelType: string, chatId: string): 'claude' | 'codex' | undefined {
-    return this.runtimes.get(this.stateKey(channelType, chatId));
-  }
-
-  setRuntime(channelType: string, chatId: string, runtime: 'claude' | 'codex'): void {
-    this.runtimes.set(this.stateKey(channelType, chatId), runtime);
   }
 
   getModel(channelType: string, chatId: string): string | undefined {

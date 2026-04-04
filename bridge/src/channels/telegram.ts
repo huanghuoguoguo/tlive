@@ -76,17 +76,18 @@ export class TelegramAdapter extends BaseChannelAdapter {
       // Register native commands to BotFather menu
       await this.bot.api.setMyCommands([
         { command: 'new', description: 'New conversation' },
-        { command: 'sessions', description: 'List recent sessions' },
+        { command: 'sessions', description: 'List sessions in current dir' },
         { command: 'session', description: 'Switch to session #n' },
+        { command: 'cd', description: 'Change directory' },
+        { command: 'pwd', description: 'Show current directory' },
+        { command: 'bash', description: 'Execute shell command' },
         { command: 'verbose', description: 'Set detail level (0/1)' },
         { command: 'model', description: 'Switch model' },
-        { command: 'runtime', description: 'Switch provider (claude/codex)' },
-        { command: 'settings', description: 'Settings scope (user/full/isolated)' },
+        { command: 'settings', description: 'Settings scope' },
         { command: 'perm', description: 'Permission prompts (on/off)' },
-        { command: 'effort', description: 'Thinking depth (low/high/max)' },
+        { command: 'effort', description: 'Thinking depth' },
         { command: 'stop', description: 'Interrupt execution' },
         { command: 'status', description: 'Bridge status' },
-        { command: 'hooks', description: 'Pause/resume IM approval' },
         { command: 'help', description: 'Show all commands' },
       ]);
       console.log('[telegram] Registered bot commands to menu');

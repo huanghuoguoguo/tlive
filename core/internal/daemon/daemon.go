@@ -11,10 +11,13 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/termlive/termlive/core/internal/claude"
 )
 
 // DaemonConfig holds configuration for the daemon HTTP server.
@@ -102,6 +105,7 @@ type CreateSessionRequest struct {
 	Args    []string `json:"args"`
 	Rows    uint16   `json:"rows"`
 	Cols    uint16   `json:"cols"`
+	Cwd     string   `json:"cwd"` // Working directory for the PTY
 }
 
 // CreateSessionResponse is the JSON response for POST /api/sessions.
@@ -244,27 +248,34 @@ func stripANSI(s string) string {
 func (d *Daemon) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	sessions := d.mgr.Store().List()
 	type sessionInfo struct {
-		ID         string `json:"id"`
-		Command    string `json:"command"`
-		Pid        int    `json:"pid"`
-		Status     string `json:"status"`
-		Duration   string `json:"duration"`
-		Cwd        string `json:"cwd"`
-		LastOutput string `json:"last_output"`
-		PreviewRaw string `json:"preview_raw"`
-		Rows       uint16 `json:"rows"`
-		Cols       uint16 `json:"cols"`
+		ID           string `json:"id"`
+		Type         string `json:"type"`         // "pty" or "claude"
+		Command      string `json:"command"`
+		Pid          int    `json:"pid"`
+		Status       string `json:"status"`
+		Duration     string `json:"duration"`
+		Cwd          string `json:"cwd"`
+		LastOutput   string `json:"last_output"`
+		PreviewRaw   string `json:"preview_raw"`
+		Preview      string `json:"preview"`     // For Claude sessions: last message
+		Rows         uint16 `json:"rows"`
+		Cols         uint16 `json:"cols"`
+		SdkSessionId string `json:"sdk_session_id,omitempty"` // For Claude sessions
+		Mtime        int64  `json:"mtime"`        // Unix millis for sorting
 	}
-	infos := make([]sessionInfo, len(sessions))
-	for i, s := range sessions {
+
+	// PTY sessions
+	var infos []sessionInfo
+	for _, s := range sessions {
 		rawOutput := s.LastOutput(8192)
 		// Align to valid UTF-8 boundary to avoid splitting multi-byte characters
 		for len(rawOutput) > 0 && !utf8.RuneStart(rawOutput[0]) {
 			rawOutput = rawOutput[1:]
 		}
 		rows, cols := s.Size()
-		infos[i] = sessionInfo{
+		infos = append(infos, sessionInfo{
 			ID:         s.ID,
+			Type:       "pty",
 			Command:    s.Command,
 			Pid:        s.Pid,
 			Status:     string(s.Status),
@@ -274,10 +285,68 @@ func (d *Daemon) handleListSessions(w http.ResponseWriter, r *http.Request) {
 			PreviewRaw: base64.StdEncoding.EncodeToString(rawOutput),
 			Rows:       rows,
 			Cols:       cols,
+			Mtime:      s.StartTime.UnixMilli(),
+		})
+	}
+
+	// Claude SDK sessions (from ~/.claude/projects/*.jsonl)
+	filterCwd := r.URL.Query().Get("cwd")
+	claudeSessions := claude.ScanClaudeSessions(20, filterCwd)
+
+	// Build a set of Claude session IDs that are currently active in PTY sessions
+	activeClaudeSessions := make(map[string]bool)
+	for _, s := range sessions {
+		// Check if PTY is running claude with --continue or --resume
+		for i, arg := range s.Args {
+			if (arg == "--continue" || arg == "--resume") && i+1 < len(s.Args) {
+				activeClaudeSessions[s.Args[i+1]] = true
+			}
 		}
 	}
+
+	for _, cs := range claudeSessions {
+		// Status: running if a PTY is using this session, otherwise stopped
+		status := "stopped"
+		if activeClaudeSessions[cs.SdkSessionId] {
+			status = "running"
+		}
+		infos = append(infos, sessionInfo{
+			ID:           cs.SdkSessionId,
+			Type:         "claude",
+			Command:      "claude",
+			Pid:          0,
+			Status:       status,
+			Duration:     formatMtimeDuration(cs.Mtime),
+			Cwd:          cs.Cwd,
+			Preview:      cs.Preview,
+			SdkSessionId: cs.SdkSessionId,
+			Mtime:        cs.Mtime,
+		})
+	}
+
+	// Sort by mtime descending (most recent first)
+	sort.Slice(infos, func(i, j int) bool {
+		return infos[i].Mtime > infos[j].Mtime
+	})
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(infos)
+}
+
+// formatMtimeDuration converts mtime (ms) to a human-readable duration string
+func formatMtimeDuration(mtimeMs int64) string {
+	t := time.UnixMilli(mtimeMs)
+	d := time.Since(t)
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	if d < 24*time.Hour {
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	}
+	return fmt.Sprintf("%dd", int(d.Hours()/24))
 }
 
 func (d *Daemon) handleCreateSession(w http.ResponseWriter, r *http.Request) {
@@ -298,7 +367,7 @@ func (d *Daemon) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ms, err := d.mgr.CreateSession(req.Command, req.Args, SessionConfig{
-		Rows: req.Rows, Cols: req.Cols,
+		Rows: req.Rows, Cols: req.Cols, Cwd: req.Cwd,
 	})
 	if err != nil {
 		http.Error(w, "failed to create session: "+err.Error(), http.StatusInternalServerError)

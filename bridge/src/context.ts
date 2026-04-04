@@ -1,23 +1,11 @@
-export type { BridgeStore } from './store/interface.js';
-export type { LLMProvider } from './providers/base.js';
-
-export interface PermissionGateway {}
-export interface CoreClient {}
-
-export interface LifecycleHooks {
-  onBridgeStart?(): Promise<void>;
-  onBridgeStop?(): Promise<void>;
-}
-
-import type { BridgeStore } from './store/interface.js';
-import type { LLMProvider } from './providers/base.js';
+import type { ClaudeSDKProvider } from './providers/claude-sdk.js';
+import type { JsonFileStore } from './store/json-file.js';
+import type { CoreClientImpl } from './core-client.js';
 
 export interface BridgeContext {
-  store: BridgeStore;
-  llm: LLMProvider;
-  permissions: PermissionGateway;
-  core: CoreClient;
-  lifecycle?: LifecycleHooks;
+  store: JsonFileStore;
+  llm: ClaudeSDKProvider;
+  core: CoreClientImpl | null;
   defaultWorkdir: string;
 }
 

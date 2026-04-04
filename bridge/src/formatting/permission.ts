@@ -1,5 +1,6 @@
 import type { ChannelType, OutboundMessage } from '../channels/types.js';
 import type { PermissionCardData } from './types.js';
+import { escapeHtml } from './escape.js';
 
 interface PermissionMessage {
   text?: string;
@@ -84,8 +85,4 @@ export function formatPermissionCard(data: PermissionCardData, channelType: Chan
       };
     }
   }
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

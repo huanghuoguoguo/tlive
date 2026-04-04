@@ -37,7 +37,7 @@ export class CostTracker {
 
   static format(stats: UsageStats): string {
     const duration = formatDuration(stats.durationMs);
-    // When tokens are 0 (e.g. Codex SDK doesn't expose token counts), show only duration
+    // When tokens are 0, show only duration
     if (stats.inputTokens === 0 && stats.outputTokens === 0) {
       return `📊 ${duration}`;
     }

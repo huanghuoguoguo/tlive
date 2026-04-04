@@ -1,9 +1,9 @@
 import { loadConfig } from './config.js';
-import { initBridgeContext, type PermissionGateway, type CoreClient } from './context.js';
+import { initBridgeContext } from './context.js';
 import { CoreClientImpl } from './core-client.js';
 import { Logger } from './logger.js';
 import { JsonFileStore } from './store/json-file.js';
-import { resolveProvider, ClaudeSDKProvider } from './providers/index.js';
+import { ClaudeSDKProvider } from './providers/claude-sdk.js';
 import { PendingPermissions } from './permissions/gateway.js';
 import { BridgeManager, type HookNotificationData } from './engine/bridge-manager.js';
 import { createAdapter } from './channels/index.js';
@@ -178,16 +178,13 @@ async function main() {
   // Initialize components
   const store = new JsonFileStore(join(tliveHome, 'data'));
   const permissions = new PendingPermissions();
-  const llm = resolveProvider(config.runtime, permissions, {
-    claudeSettingSources: config.claudeSettingSources,
-  });
+  const llm = new ClaudeSDKProvider(permissions, config.claudeSettingSources);
 
   // Initialize context
   initBridgeContext({
     store,
     llm,
-    permissions: permissions as PermissionGateway,
-    core: (coreClient ?? {}) as CoreClient,
+    core: coreClient,
     defaultWorkdir: config.defaultWorkdir,
   });
 
@@ -453,15 +450,30 @@ async function main() {
         // Skip non-hook notifications (no tlive_hook_type means not from our scripts)
         if (!hookData.tlive_hook_type) continue;
 
-        for (const adapter of manager.getAdapters()) {
-          const target = getHookTarget(adapter.channelType, config, manager);
-          if (!target.chatId) continue;
-          try {
-            await manager.sendHookNotification(adapter, target.chatId, hookData, target.receiveIdType);
-          } catch (err) {
-            logger.warn(`Failed to send notification to ${adapter.channelType}: ${err}`);
+        // Find the channel that owns this session (by sdkSessionId or sessionId)
+        const sessionId = hookData.tlive_session_id;
+        let targetChannel: { channelType: string; chatId: string } | null = null;
+
+        if (sessionId) {
+          // Use indexed lookup instead of O(n) scan
+          const binding = await store.getBindingBySessionId(sessionId);
+          if (binding) {
+            targetChannel = { channelType: binding.channelType, chatId: binding.chatId };
           }
         }
+
+        if (targetChannel) {
+          // Only send to the channel that owns this session
+          const adapter = manager.getAdapter(targetChannel.channelType);
+          if (adapter) {
+            try {
+              await manager.sendHookNotification(adapter, targetChannel.chatId, hookData);
+            } catch (err) {
+              logger.warn(`Failed to send notification to ${targetChannel.channelType}: ${err}`);
+            }
+          }
+        }
+        // If no targetChannel found, this session was created via Web UI — don't spam IM channels
       }
     } catch {
       // Non-fatal

@@ -21,7 +21,7 @@ type windowsProcess struct {
 	closeErr  error
 }
 
-func Start(name string, args []string, rows, cols uint16, extraEnv ...string) (Process, error) {
+func Start(name string, args []string, rows, cols uint16, dir string, extraEnv ...string) (Process, error) {
 	cmdLine := name
 	if len(args) > 0 {
 		cmdLine = name + " " + strings.Join(args, " ")
@@ -31,6 +31,11 @@ func Start(name string, args []string, rows, cols uint16, extraEnv ...string) (P
 	// Only needed when the command is not a direct .exe path
 	if !strings.ContainsAny(name, `\/`) && !strings.HasSuffix(strings.ToLower(name), ".exe") {
 		cmdLine = "cmd /c " + cmdLine
+	}
+
+	// Set working directory if specified
+	if dir != "" {
+		cmdLine = "cmd /c cd /d " + dir + " && " + cmdLine
 	}
 
 	// conpty doesn't support per-process env, set on parent

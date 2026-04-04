@@ -17,36 +17,6 @@ describe('JsonFileStore', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  // Sessions
-  it('saves and retrieves session', async () => {
-    const session = { id: 's1', workingDirectory: '/tmp', createdAt: new Date().toISOString() };
-    await store.saveSession(session);
-    const got = await store.getSession('s1');
-    expect(got).toEqual(session);
-  });
-
-  it('lists sessions', async () => {
-    await store.saveSession({ id: 's1', workingDirectory: '/tmp', createdAt: '' });
-    await store.saveSession({ id: 's2', workingDirectory: '/home', createdAt: '' });
-    const list = await store.listSessions();
-    expect(list).toHaveLength(2);
-  });
-
-  it('deletes session', async () => {
-    await store.saveSession({ id: 's1', workingDirectory: '/tmp', createdAt: '' });
-    await store.deleteSession('s1');
-    expect(await store.getSession('s1')).toBeNull();
-  });
-
-  // Messages
-  it('saves and retrieves messages', async () => {
-    await store.saveMessage('s1', { role: 'user', content: 'hello', timestamp: '' });
-    await store.saveMessage('s1', { role: 'assistant', content: 'hi', timestamp: '' });
-    const msgs = await store.getMessages('s1');
-    expect(msgs).toHaveLength(2);
-    expect(msgs[0].content).toBe('hello');
-  });
-
   // Bindings
   it('saves and retrieves binding', async () => {
     const binding = { channelType: 'telegram', chatId: '123', sessionId: 's1', createdAt: '' };
@@ -59,6 +29,14 @@ describe('JsonFileStore', () => {
     await store.saveBinding({ channelType: 'telegram', chatId: '123', sessionId: 's1', createdAt: '' });
     await store.deleteBinding('telegram', '123');
     expect(await store.getBinding('telegram', '123')).toBeNull();
+  });
+
+  it('persists sdkSessionId and cwd in binding', async () => {
+    const binding = { channelType: 'telegram', chatId: '123', sessionId: 's1', sdkSessionId: 'uuid-1', cwd: '/home/test', createdAt: '' };
+    await store.saveBinding(binding);
+    const got = await store.getBinding('telegram', '123');
+    expect(got?.sdkSessionId).toBe('uuid-1');
+    expect(got?.cwd).toBe('/home/test');
   });
 
   // Dedup

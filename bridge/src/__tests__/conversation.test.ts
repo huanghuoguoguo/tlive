@@ -6,14 +6,9 @@ import type { CanonicalEvent } from '../messages/schema.js';
 // Mock store
 function createMockStore() {
   return {
-    getSession: vi.fn().mockResolvedValue({ id: 's1', workingDirectory: '/tmp', createdAt: '' }),
-    saveMessage: vi.fn().mockResolvedValue(undefined),
-    getMessages: vi.fn().mockResolvedValue([]),
     acquireLock: vi.fn().mockResolvedValue(true),
     renewLock: vi.fn().mockResolvedValue(true),
     releaseLock: vi.fn().mockResolvedValue(undefined),
-    // other methods as stubs
-    saveSession: vi.fn(), deleteSession: vi.fn(), listSessions: vi.fn(),
     getBinding: vi.fn(), saveBinding: vi.fn(), deleteBinding: vi.fn(), listBindings: vi.fn(),
     isDuplicate: vi.fn(), markProcessed: vi.fn(),
   };
@@ -52,8 +47,7 @@ describe('ConversationEngine', () => {
       defaultWorkdir: '/tmp',
       store: mockStore as any,
       llm: mockLLM as any,
-      permissions: {} as any,
-      core: {} as any,
+      core: null,
     });
 
     engine = new ConversationEngine();
@@ -61,31 +55,24 @@ describe('ConversationEngine', () => {
 
   it('processes message and returns full response', async () => {
     const result = await engine.processMessage({
-      sessionId: 's1',
+      sdkSessionId: 's1',
+      workingDirectory: '/tmp',
       text: 'hi',
     });
     expect(result.text).toBe('Hello world');
   });
 
   it('acquires and releases session lock', async () => {
-    await engine.processMessage({ sessionId: 's1', text: 'hi' });
+    await engine.processMessage({ sdkSessionId: 's1', workingDirectory: '/tmp', text: 'hi' });
     expect(mockStore.acquireLock).toHaveBeenCalledWith('session:s1', expect.any(Number));
     expect(mockStore.releaseLock).toHaveBeenCalledWith('session:s1');
-  });
-
-  it('saves user and assistant messages', async () => {
-    await engine.processMessage({ sessionId: 's1', text: 'hi' });
-    expect(mockStore.saveMessage).toHaveBeenCalledTimes(2);
-    // First call: user message
-    expect(mockStore.saveMessage.mock.calls[0][1].role).toBe('user');
-    // Second call: assistant message
-    expect(mockStore.saveMessage.mock.calls[1][1].role).toBe('assistant');
   });
 
   it('calls onTextDelta for streaming', async () => {
     const deltas: string[] = [];
     await engine.processMessage({
-      sessionId: 's1',
+      sdkSessionId: 's1',
+      workingDirectory: '/tmp',
       text: 'hi',
       onTextDelta: (d) => deltas.push(d),
     });
@@ -95,11 +82,23 @@ describe('ConversationEngine', () => {
   it('calls onQueryResult with usage', async () => {
     let resultData: any;
     await engine.processMessage({
-      sessionId: 's1',
+      sdkSessionId: 's1',
+      workingDirectory: '/tmp',
       text: 'hi',
       onQueryResult: (r) => { resultData = r; },
     });
     expect(resultData.usage.inputTokens).toBe(10);
+  });
+
+  it('calls onSdkSessionId when SDK returns sessionId', async () => {
+    let capturedId: string | undefined;
+    await engine.processMessage({
+      sdkSessionId: 's1',
+      workingDirectory: '/tmp',
+      text: 'hi',
+      onSdkSessionId: (id) => { capturedId = id; },
+    });
+    expect(capturedId).toBe('s1');
   });
 
   it('releases lock even on error', async () => {
@@ -114,10 +113,10 @@ describe('ConversationEngine', () => {
         controls: undefined,
       })
     };
-    initBridgeContext({ defaultWorkdir: '/tmp', store: mockStore as any, llm: errorLLM as any, permissions: {} as any, core: {} as any });
+    initBridgeContext({ defaultWorkdir: '/tmp', store: mockStore as any, llm: errorLLM as any, core: null });
     engine = new ConversationEngine();
 
-    await engine.processMessage({ sessionId: 's1', text: 'hi' });
+    await engine.processMessage({ sdkSessionId: 's1', workingDirectory: '/tmp', text: 'hi' });
     expect(mockStore.releaseLock).toHaveBeenCalled();
   });
 });

@@ -2,6 +2,7 @@ import type { ChannelType, OutboundMessage } from '../channels/types.js';
 import type { NotificationData } from './types.js';
 import { markdownToTelegram } from '../markdown/telegram.js';
 import { downgradeHeadings } from '../markdown/feishu.js';
+import { escapeHtml } from './escape.js';
 
 interface NotificationMessage {
   text?: string;
@@ -33,10 +34,6 @@ const EMOJI_MAP: Record<NotificationData['type'], string> = {
 
 function truncateSummary(s: string, max = 3000): string {
   return s.length > max ? s.slice(0, max - 3) + '...' : s;
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 export function formatNotification(data: NotificationData, channelType: ChannelType): NotificationMessage {

@@ -41,6 +41,11 @@ header {
     align-items: center;
     gap: 10px;
 }
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
 .logo {
     color: var(--accent);
     font-size: 18px;
@@ -49,6 +54,25 @@ header h1 {
     font-size: 17px;
     font-weight: 600;
     letter-spacing: -0.3px;
+}
+
+/* New Session Button */
+.new-btn {
+    padding: 6px 14px;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+}
+.new-btn:hover {
+    opacity: 0.9;
+}
+.new-btn:active {
+    transform: scale(0.97);
 }
 
 /* ===== Status Badge ===== */
@@ -208,6 +232,18 @@ main {
     background: rgba(78, 204, 163, 0.08);
     color: var(--accent);
     border: 1px solid rgba(78, 204, 163, 0.15);
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.session-card .meta-cwd.empty {
+    background: transparent;
+    color: var(--text-tertiary);
+    border: none;
+}
+.session-card .meta-duration {
+    color: var(--text-tertiary);
 }
 .session-card .preview {
     margin-top: 10px;
@@ -221,6 +257,37 @@ main {
     white-space: pre;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* Claude session preview */
+.session-card .claude-preview {
+    display: block;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Type badge */
+.session-card .type-badge {
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-weight: 500;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+.session-card.pty-session .type-badge {
+    background: rgba(78, 204, 163, 0.12);
+    color: var(--accent);
+}
+.session-card.claude-session .type-badge {
+    background: rgba(210, 153, 34, 0.12);
+    color: var(--warning);
+}
+.session-card.claude-session {
+    border-top-color: var(--warning);
+}
+.session-card.claude-session:hover {
+    border-top-color: var(--warning);
 }
 
 /* ===== Empty State ===== */

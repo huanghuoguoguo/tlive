@@ -14,7 +14,6 @@ export interface Config {
   token: string;
   publicUrl: string;
   enabledChannels: string[];
-  runtime: 'claude' | 'codex' | 'auto';
   defaultWorkdir: string;
   defaultModel: string;
   coreUrl: string;
@@ -95,7 +94,7 @@ export function loadConfig(): Config {
   const envFile = loadEnvFile(join(homedir(), '.tlive', 'config.env'));
 
   // 2. Inject non-TL_ vars into process.env so providers can access them
-  //    (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY) — process.env takes precedence
+  //    (e.g. ANTHROPIC_API_KEY) — process.env takes precedence
   for (const [key, value] of Object.entries(envFile)) {
     if (!key.startsWith('TL_') && !(key in process.env)) {
       process.env[key] = value;
@@ -114,7 +113,6 @@ export function loadConfig(): Config {
     token: get('TL_TOKEN'),
     publicUrl: get('TL_PUBLIC_URL'),
     enabledChannels: parseList(get('TL_ENABLED_CHANNELS')),
-    runtime: (get('TL_RUNTIME', 'claude') as Config['runtime']),
     claudeSettingSources: parseList(get('TL_CLAUDE_SETTINGS', 'user')) as ClaudeSettingSource[],
     proxy: globalProxy,
     defaultWorkdir: get('TL_DEFAULT_WORKDIR', process.cwd()),

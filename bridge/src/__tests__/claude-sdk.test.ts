@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { ClaudeSDKProvider } from '../providers/claude-sdk.js';
 
 describe('ClaudeSDKProvider', () => {
@@ -12,9 +12,8 @@ describe('ClaudeSDKProvider', () => {
     expect(result.stream).toBeInstanceOf(ReadableStream);
   });
 
-  it('resolveProvider returns ClaudeSDKProvider for claude runtime', async () => {
-    const { resolveProvider } = await import('../providers/index.js');
-    const provider = resolveProvider('claude', {} as any);
+  it('constructor accepts permissions and setting sources', () => {
+    const provider = new ClaudeSDKProvider({} as any, ['user']);
     expect(provider).toBeInstanceOf(ClaudeSDKProvider);
   });
 });

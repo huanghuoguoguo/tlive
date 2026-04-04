@@ -1,6 +1,6 @@
 import { getBridgeContext } from '../context.js';
 import type { CanonicalEvent } from '../messages/schema.js';
-import type { LLMProvider, FileAttachment, PermissionRequestHandler, QueryControls } from '../providers/base.js';
+import type { FileAttachment, PermissionRequestHandler, QueryControls } from '../providers/base.js';
 import type { AskUserQuestionHandler } from '../messages/types.js';
 
 const TEXT_MIME_PREFIXES = ['text/', 'application/json', 'application/xml', 'application/javascript', 'application/typescript', 'application/x-yaml', 'application/toml'];
@@ -29,13 +29,16 @@ function buildPromptWithAttachments(text: string, attachments?: FileAttachment[]
 }
 
 interface ProcessMessageParams {
-  sessionId: string;
+  sdkSessionId?: string;
+  workingDirectory: string;
   text: string;
   attachments?: FileAttachment[];
   onTextDelta?: (delta: string) => void;
   onToolStart?: (event: { id: string; name: string; input: Record<string, unknown> }) => void;
   onToolResult?: (event: { toolUseId: string; content: string; isError: boolean }) => void;
   onQueryResult?: (event: { sessionId: string; isError: boolean; usage: { inputTokens: number; outputTokens: number; costUsd?: number }; permissionDenials?: Array<{ toolName: string; toolUseId: string }> }) => void;
+  /** Called when SDK returns a sessionId (for resume) — caller should persist it */
+  onSdkSessionId?: (id: string) => void;
   onError?: (error: string) => void;
   onAgentStart?: (data: { description: string; taskId?: string }) => void;
   onAgentProgress?: (data: { description: string; lastTool?: string; usage?: { toolUses: number; durationMs: number } }) => void;
@@ -52,21 +55,17 @@ interface ProcessMessageParams {
   effort?: 'low' | 'medium' | 'high' | 'max';
   /** Override model for this query */
   model?: string;
-  /** Override LLM provider (for per-chat runtime selection) */
-  llm?: LLMProvider;
 }
 
 interface ProcessMessageResult {
   text: string;
-  sessionId: string;
   usage?: { inputTokens: number; outputTokens: number; costUsd?: number };
 }
 
 export class ConversationEngine {
   async processMessage(params: ProcessMessageParams): Promise<ProcessMessageResult> {
-    const { store, llm: defaultLlm, defaultWorkdir } = getBridgeContext();
-    const llm = params.llm || defaultLlm;
-    const lockKey = `session:${params.sessionId}`;
+    const { store, llm } = getBridgeContext();
+    const lockKey = `session:${params.sdkSessionId || `new-${Date.now()}`}`;
     let fullText = '';
     let usage: { inputTokens: number; outputTokens: number; costUsd?: number } | undefined;
 
@@ -78,24 +77,12 @@ export class ConversationEngine {
       const imageAttachments = params.attachments?.filter(a => a.type === 'image');
       const prompt = buildPromptWithAttachments(params.text, params.attachments);
 
-      // 3. Save user message
-      await store.saveMessage(params.sessionId, {
-        role: 'user',
-        content: prompt,
-        timestamp: new Date().toISOString(),
-      });
-
-      // 4. Get session info — use config's defaultWorkdir instead of process.cwd()
-      //    (bridge daemon CWD may differ from user's project directory)
-      const session = await store.getSession(params.sessionId);
-      const workDir = session?.workingDirectory ?? defaultWorkdir;
-
-      // 5. Stream LLM response (pass images as attachments for vision)
+      // 3. Stream LLM response
       const result = llm.streamChat({
         prompt,
-        workingDirectory: workDir,
+        workingDirectory: params.workingDirectory,
         model: params.model,
-        sessionId: session?.sdkSessionId,
+        sessionId: params.sdkSessionId,
         attachments: imageAttachments?.length ? imageAttachments : undefined,
         onPermissionRequest: params.sdkPermissionHandler,
         onAskUserQuestion: params.sdkAskQuestionHandler,
@@ -107,7 +94,7 @@ export class ConversationEngine {
         params.onControls?.(result.controls);
       }
 
-      // 6. Consume stream — reader now gives CanonicalEvent objects directly
+      // 4. Consume stream
       const reader = result.stream.getReader();
       while (true) {
         const { done, value } = await reader.read();
@@ -119,7 +106,6 @@ export class ConversationEngine {
             params.onTextDelta?.(value.text);
             break;
           case 'thinking_delta':
-            // Not accumulated — thinking is internal
             break;
           case 'tool_start':
             params.onToolStart?.(value);
@@ -130,13 +116,7 @@ export class ConversationEngine {
           case 'query_result': {
             usage = value.usage;
             if (value.sessionId) {
-              const existing = await store.getSession(params.sessionId);
-              await store.saveSession({
-                id: params.sessionId,
-                workingDirectory: existing?.workingDirectory ?? defaultWorkdir,
-                createdAt: existing?.createdAt ?? new Date().toISOString(),
-                sdkSessionId: value.sessionId,
-              });
+              params.onSdkSessionId?.(value.sessionId);
             }
             params.onQueryResult?.(value);
             break;
@@ -164,19 +144,11 @@ export class ConversationEngine {
             break;
         }
       }
-
-      // 7. Save assistant message
-      await store.saveMessage(params.sessionId, {
-        role: 'assistant',
-        content: fullText,
-        timestamp: new Date().toISOString(),
-      });
-
     } finally {
-      // 8. Release lock
+      // 5. Release lock
       await store.releaseLock(lockKey);
     }
 
-    return { text: fullText, sessionId: params.sessionId, usage };
+    return { text: fullText, usage };
   }
 }

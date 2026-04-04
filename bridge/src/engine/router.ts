@@ -19,12 +19,14 @@ export class ChannelRouter {
     return binding;
   }
 
-  async rebind(channelType: string, chatId: string, sessionId: string): Promise<ChannelBinding> {
+  async rebind(channelType: string, chatId: string, sessionId: string, opts?: { sdkSessionId?: string; cwd?: string }): Promise<ChannelBinding> {
     const { store } = getBridgeContext();
     const binding: ChannelBinding = {
       channelType,
       chatId,
       sessionId,
+      sdkSessionId: opts?.sdkSessionId,
+      cwd: opts?.cwd,
       createdAt: new Date().toISOString(),
     };
     await store.saveBinding(binding);

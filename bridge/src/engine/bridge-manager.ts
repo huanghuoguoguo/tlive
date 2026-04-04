@@ -6,8 +6,6 @@ import { PermissionBroker } from '../permissions/broker.js';
 import { PendingPermissions } from '../permissions/gateway.js';
 import { DeliveryLayer, chunkByParagraph } from '../delivery/delivery.js';
 import { getBridgeContext } from '../context.js';
-import { resolveProvider } from '../providers/index.js';
-import type { LLMProvider } from '../providers/base.js';
 import { loadConfig } from '../config.js';
 import { markdownToTelegram } from '../markdown/index.js';
 import { downgradeHeadings } from '../markdown/feishu.js';
@@ -23,7 +21,7 @@ import { join, basename } from 'node:path';
 import { homedir, networkInterfaces } from 'node:os';
 
 /** Bridge commands handled synchronously (don't block adapter loop) */
-const QUICK_COMMANDS = new Set(['/new', '/status', '/verbose', '/hooks', '/sessions', '/session', '/help', '/perm', '/effort', '/stop', '/approve', '/pairings', '/runtime', '/settings', '/model']);
+const QUICK_COMMANDS = new Set(['/new', '/status', '/verbose', '/hooks', '/sessions', '/session', '/help', '/perm', '/effort', '/stop', '/approve', '/pairings', '/settings', '/model', '/bash', '/cd', '/pwd']);
 
 function isPrivateIPv4(ip: string): boolean {
   const parts = ip.split('.').map(Number);
@@ -80,8 +78,6 @@ export class BridgeManager {
 
   private commands: CommandRouter;
   private chatIdFile: string;
-  /** Cached LLM providers keyed by runtime name */
-  private providerCache = new Map<string, LLMProvider>();
   /** SDK AskUserQuestion: store question data and selected option index */
   private sdkQuestionData = new Map<string, { questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }>; chatId: string }>();
   private sdkQuestionAnswers = new Map<string, number>();
@@ -123,23 +119,13 @@ export class BridgeManager {
     return Array.from(this.adapters.values());
   }
 
+  getAdapter(channelType: string): BaseChannelAdapter | undefined {
+    return this.adapters.get(channelType);
+  }
+
   /** Get the last active chatId for a given channel type (for hook routing) */
   getLastChatId(channelType: string): string {
     return this.lastChatId.get(channelType) ?? '';
-  }
-
-  /** Resolve LLM provider for a chat — uses per-chat runtime if set, else global default */
-  private getProvider(channelType: string, chatId: string): LLMProvider {
-    const runtime = this.state.getRuntime(channelType, chatId);
-    if (!runtime) return getBridgeContext().llm;
-
-    if (!this.providerCache.has(runtime)) {
-      const config = loadConfig();
-      this.providerCache.set(runtime, resolveProvider(runtime, this.permissions.getGateway(), {
-        claudeSettingSources: config.claudeSettingSources,
-      }));
-    }
-    return this.providerCache.get(runtime)!;
   }
 
   /** Delegate: track a hook message for reply routing */
@@ -644,6 +630,22 @@ export class BridgeManager {
         return true;
       }
 
+      // Command shortcuts from help menu buttons
+      if (msg.callbackData.startsWith('cmd:')) {
+        const cmd = msg.callbackData.slice(4);
+        // Inject as a text message
+        const cmdMsg: InboundMessage = {
+          channelType: msg.channelType,
+          chatId: msg.chatId,
+          text: '/' + cmd,
+          userId: msg.userId,
+          messageId: msg.messageId,
+        };
+        // Process through normal command flow
+        await this.handleInboundMessage(adapter, cmdMsg);
+        return true;
+      }
+
       // Hook permission callbacks (hook:allow:ID:sessionId, hook:allow_always:ID:sessionId, hook:deny:ID:sessionId)
       if (msg.callbackData.startsWith('hook:')) {
         const parts = msg.callbackData.split(':');
@@ -748,6 +750,7 @@ export class BridgeManager {
     }
 
     const binding = await this.router.resolve(msg.channelType, msg.chatId);
+    const { store, defaultWorkdir } = getBridgeContext();
 
     // Resolve threadId: use existing thread if message came from one, or reuse session thread
     let threadId = msg.threadId;
@@ -1080,10 +1083,10 @@ export class BridgeManager {
 
     try {
       const result = await this.engine.processMessage({
-        sessionId: binding.sessionId,
+        sdkSessionId: binding.sdkSessionId,
+        workingDirectory: binding.cwd || defaultWorkdir,
         text: msg.text,
         attachments: msg.attachments,
-        llm: this.getProvider(msg.channelType, msg.chatId),
         sdkPermissionHandler,
         sdkAskQuestionHandler,
         effort: this.state.getEffort(msg.channelType, msg.chatId),
@@ -1091,6 +1094,10 @@ export class BridgeManager {
         onControls: (ctrl) => {
           const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
           this.activeControls.set(chatKey, ctrl);
+        },
+        onSdkSessionId: async (id) => {
+          binding.sdkSessionId = id;
+          await store.saveBinding(binding);
         },
         onTextDelta: (delta) => renderer.onTextDelta(delta),
         onToolStart: (event) => {
