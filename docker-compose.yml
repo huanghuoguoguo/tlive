@@ -20,7 +20,6 @@ services:
       - TL_PORT=${TL_PORT:-8080}
       - TL_PUBLIC_URL=${TL_PUBLIC_URL:-}
       - TL_ENABLED_CHANNELS=${TL_ENABLED_CHANNELS:-}
-      - TL_RUNTIME=${TL_RUNTIME:-claude}
       # Telegram
       - TL_TG_BOT_TOKEN=${TL_TG_BOT_TOKEN:-}
       - TL_TG_CHAT_ID=${TL_TG_CHAT_ID:-}
@@ -33,4 +32,8 @@ services:
       - TL_FS_APP_ID=${TL_FS_APP_ID:-}
       - TL_FS_APP_SECRET=${TL_FS_APP_SECRET:-}
       - TL_FS_ALLOWED_USERS=${TL_FS_ALLOWED_USERS:-}
+      # QQ Bot
+      - TL_QQ_APP_ID=${TL_QQ_APP_ID:-}
+      - TL_QQ_CLIENT_SECRET=${TL_QQ_CLIENT_SECRET:-}
+      - TL_QQ_ALLOWED_USERS=${TL_QQ_ALLOWED_USERS:-}
     restart: unless-stopped

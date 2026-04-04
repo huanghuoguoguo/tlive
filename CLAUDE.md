@@ -46,13 +46,25 @@ tlive/
 ## 常用命令
 
 在 Claude Code 中：
-- `/tlive` — 启动服务
+- `/tlive` — 启动 Bridge 服务（自动运行，无需手动）
 - `/tlive status` — 查看状态
 - `/tlive logs` — 查看日志
 - `/tlive stop` — 停止服务
 
+守护进程（Core，可选）：
+- `tlive start` — 启动 Core 后台服务（用于 Web 终端功能）
+- `tlive stop` — 停止
+- `tlive status` — 查看状态
+
+Bridge 自动运行，无需手动启动。Core 仅用于可选的 Web 终端功能。
+
 在 IM 中：
 - 直接发送消息给机器人即可与 Claude 对话
 - `/new` — 新对话
+- `/sessions` — 列出当前目录的会话
+- `/session <n>` — 切换到会话 #n
 - `/stop` — 中断执行
 - `/perm on|off` — 开关权限提示
+- `/cd <path>` — 切换工作目录
+- `/bash <cmd>` — 执行 shell 命令
+- `/help` — 显示所有命令

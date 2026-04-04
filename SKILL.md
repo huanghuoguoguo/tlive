@@ -1,13 +1,12 @@
 ---
 name: tlive
 description: |
-  IM bridge for AI coding tools — chat with Claude Code / Codex from
-  Telegram, Discord, or Feishu. Approve permissions, get streaming responses,
-  manage sessions from your phone.
+  IM bridge for Claude Code — chat from Telegram, Discord, Feishu, or QQ Bot.
+  Approve permissions, get streaming responses, manage sessions from your phone.
   Use for: starting IM bridge, configuring IM platforms, checking status,
   diagnosing issues.
   Trigger phrases: "tlive", "IM bridge", "消息桥接", "手机交互", "启动桥接",
-  "连接飞书", "连接Telegram", "诊断", "查看日志", "配置".
+  "连接飞书", "连接Telegram", "连接QQ", "诊断", "查看日志", "配置".
   Do NOT use for: building bots, webhook integrations, or general coding tasks.
 argument-hint: "setup | stop | status | logs [N] | reconfigure | doctor"
 allowed-tools:
@@ -22,9 +21,9 @@ allowed-tools:
 
 # TLive — IM Bridge Skill
 
-You are managing the TLive IM Bridge — bidirectional chat with AI coding tools from Telegram, Discord, or Feishu.
+You are managing the TLive IM Bridge — bidirectional chat with Claude Code from Telegram, Discord, Feishu, or QQ Bot.
 
-The Bridge uses the Claude Agent SDK (or Codex SDK) to interact with the AI coding tool. It is completely independent from the optional Go Core web terminal server.
+The Bridge uses the Claude Agent SDK to interact with Claude Code. It is completely independent from the optional Go Core web terminal server.
 
 User data: `~/.tlive/`
 
@@ -43,15 +42,10 @@ User data: `~/.tlive/`
 
 **Disambiguation: `status` vs `doctor`** — Use `status` when the user just wants to check if the bridge is running. Use `doctor` when the user reports a problem or suspects something is broken. When in doubt and the user describes a symptom (e.g., "没反应了", "挂了"), prefer `doctor`.
 
-## Runtime Detection
-
-- `AskUserQuestion` available → Claude Code → interactive wizard
-- Not available → Codex / other → show config example, non-interactive
-
 ## Config Check (all commands except `setup`)
 
 Before any command except `setup`, check `~/.tlive/config.env`:
-- **Missing** → Claude Code: auto-start `setup` wizard. Codex: show `~/.tlive/docs/config.env.example` and stop.
+- **Missing** → auto-start `setup` wizard
 - **Exists** → proceed
 
 ## Subcommands
@@ -61,9 +55,9 @@ Before any command except `setup`, check `~/.tlive/config.env`:
 ```
 1. Check config.env → if missing, auto-start setup
 2. Check Bridge PID → if running, show status instead
-3. Start Bridge: tlive start (uses TL_RUNTIME from config, default: claude)
+3. Start Bridge: tlive start
 4. Wait 2s, verify alive: tlive status
-5. Report runtime, channels + web terminal status
+5. Report channels + web terminal status
 ```
 
 ### `setup`
@@ -78,6 +72,7 @@ AskUserQuestion: "Which IM platforms to enable?
 1. Telegram — streaming preview, inline permission buttons
 2. Discord — team use, channel-level access control
 3. Feishu (飞书) — streaming cards, tool progress
+4. QQ Bot — for QQ users, interactive buttons
 Enter numbers (e.g., 1,3):"
 ```
 
@@ -86,15 +81,15 @@ Enter numbers (e.g., 1,3):"
 - **Telegram**: Bot Token → confirm (masked) → Chat ID (optional) → Allowed User IDs (optional). **Important:** At least one of Chat ID or Allowed User IDs should be set.
 - **Discord**: Bot Token → confirm (masked) → Allowed User IDs → Allowed Channel IDs (optional). **Important:** At least one of Allowed User IDs or Allowed Channel IDs should be set.
 - **Feishu**: App ID → confirm → App Secret → confirm (masked) → Allowed User IDs (optional).
+- **QQ Bot**: App ID → confirm → Client Secret → confirm (masked) → Allowed Users (optional).
 
 **Step 3 — General settings:**
-- Runtime: claude (default) or codex
 - Port (default 8080)
 - Public URL (optional, for web links in IM messages)
 - Auto-generate TL_TOKEN (32-char hex)
 
 **Step 4 — Write config and validate:**
-1. Read `~/.tlive/docs/config.env.example` as the template — use its exact variable names (e.g., `TL_TG_*` for Telegram, `TL_DC_*` for Discord, `TL_FS_*` for Feishu). Do NOT invent variable names.
+1. Read `~/.tlive/docs/config.env.example` as the template — use its exact variable names (e.g., `TL_TG_*` for Telegram, `TL_DC_*` for Discord, `TL_FS_*` for Feishu, `TL_QQ_*` for QQ Bot). Do NOT invent variable names.
 2. Show a summary table (secrets masked to last 4 chars)
 3. Ask user to confirm before writing
 4. `mkdir -p ~/.tlive/{data,logs,runtime}`
@@ -111,7 +106,7 @@ Enter numbers (e.g., 1,3):"
 4. Collect new values one at a time, show where to find each value (show full guide from `~/.tlive/docs/setup-guides.md` only if asked)
 5. Update config file
 6. Re-validate any changed tokens
-7. Remind: "Run `/tlive stop` then `/tlive start` to apply changes."
+7. Note: "Changes apply to new conversations. No restart needed."
 
 ### `stop`
 
@@ -147,38 +142,42 @@ Then validate IM tokens if configured — read `~/.tlive/docs/token-validation.m
 Show a clear overview of the TLive system and available commands:
 
 ```
-TLive — Three features, use any combination:
+TLive — Control Claude Code from your phone
 
 In Claude Code (/tlive):
   /tlive               Start IM Bridge (chat from phone)
   /tlive setup         Configure IM platforms (AI-guided)
   /tlive reconfigure   Modify specific config fields
   /tlive stop          Stop Bridge
-  /tlive status        Show Bridge + Web Terminal + Hooks status
+  /tlive status        Show Bridge + Web Terminal status
   /tlive logs [N]      Show last N log lines
   /tlive doctor        Diagnose issues + suggest fixes
 
 In terminal (tlive):
-  tlive <cmd>          Wrap command with web terminal (e.g. tlive claude)
-  tlive setup          Configure IM platforms (interactive)
-  tlive install skills Install /tlive skill + hooks to Claude Code
-  tlive hooks pause    Auto-allow permissions, no IM notifications
-  tlive hooks resume   Resume IM approval flow
+  tlive <cmd>          Wrap command with web terminal (optional)
+  tlive start          Start Core daemon (for web terminal)
+  tlive stop           Stop daemon
+  tlive status         Check status
 
 In IM (from phone):
   /new                       Start new conversation
+  /sessions                  List sessions in current directory
+  /sessions --all            List all sessions
+  /session <n>               Switch to session #n
+  /cd <path>                 Change working directory
+  /pwd                       Show current directory
+  /bash <cmd>                Execute shell command
   /model <name>              Switch model (e.g. claude-sonnet-4-6)
-  /runtime claude|codex      Switch AI provider
   /settings user|full|isolated  Claude settings scope
   /perm on|off               Permission prompts on/off
-  /effort low|medium|high|max  Thinking depth
+  /effort low|high|max       Thinking depth
   /stop                      Interrupt execution
   /verbose 0|1               Detail level (quiet/terminal card)
-  /sessions                  List recent sessions
-  /session <n>               Switch to session
   /hooks pause|resume        Toggle hook approval
   /status                    Check status
-  /help                      Show commands
+  /help                      Show all commands
+
+Settings hot-reload: Changes apply to new conversations. No restart needed.
 ```
 
 ## Notes
@@ -186,6 +185,6 @@ In IM (from phone):
 - Always mask secrets in output (show only last 4 characters)
 - Always check for config.env before starting — without it the daemon crashes and leaves a stale PID file
 - Bridge and Go Core web terminal are independent — Bridge works without Go Core
-- Go Core is started separately via `tlive <cmd>` in a terminal, not by this skill
+- Go Core is optional, only for web terminal feature (`tlive <cmd>`)
 - Config at `~/.tlive/config.env` — shared by both Bridge and Go Core
-- The daemon runs as a background Node.js process
+- Settings hot-reload: config changes apply to new conversations, no restart needed

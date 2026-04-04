@@ -43,21 +43,34 @@ claude
 
 ## 功能
 
-| 功能 | 说明 |
-|------|------|
-| **IM 对话** | 手机发消息 → Claude 执行 → 流式返回结果 |
-| **权限审批** | Claude 需要执行命令时，手机收到审批请求 |
-| **Web 终端** | `tlive <cmd>` 包装任意命令，手机浏览器查看 |
+| 功能 | 必需 | 说明 |
+|------|------|------|
+| **IM 对话** | 是 | 手机发消息 → Claude 执行 → 流式返回结果 |
+| **权限审批** | 是 | Claude 需要执行命令时，手机收到审批请求 |
+| **Web 终端** | 否 | `tlive <cmd>` 包装任意命令，手机浏览器查看 |
 
-## 守护进程
+## 架构
 
-`tlive start` 启动后台服务，开机自启、持续运行。你不需要手动开启 — Claude 需要时自动唤醒。
-
-```bash
-tlive start    # 启动守护进程
-tlive stop     # 停止
-tlive status   # 查看状态
 ```
+┌─────────────┐     ┌──────────────────┐     ┌─────────────┐
+│  Telegram   │     │                  │     │             │
+├─────────────┤     │   Bridge (TS)    │     │  ~/.claude  │
+│   Discord   │────▶│   IM 适配器      │◀────│   sessions  │
+├─────────────┤     │                  │     │             │
+│    飞书     │     │   (必需)         │     │  (扫描读取) │
+├─────────────┤     └──────────────────┘     └─────────────┘
+│   QQ Bot    │
+└─────────────┘
+
+┌──────────────────┐
+│   Core (Go)      │     可选：`tlive <cmd>` 网页终端
+│   (可选)         │     IM 功能不需要此组件
+└──────────────────┘
+```
+
+**Bridge**（必需）：通过扫描 session 文件连接 IM 平台和 Claude Code。
+
+**Core**（可选）：提供网页终端功能。IM 对话和权限审批不需要此组件。
 
 ## IM 命令
 
@@ -72,45 +85,26 @@ Claude 会自动执行并返回结果。常用命令：
 | 命令 | 说明 |
 |------|------|
 | `/new` | 新对话 |
+| `/sessions` | 列出当前目录的会话 |
+| `/session <n>` | 切换到会话 #n |
 | `/stop` | 中断执行 |
 | `/verbose 0\|1` | 详细度（0=简洁，1=显示工具调用） |
 | `/perm on\|off` | 开关权限提示 |
 | `/cd <路径>` | 切换工作目录 |
 | `/bash <命令>` | 执行 shell 命令 |
+| `/help` | 显示所有命令 |
 
-## 平台配置
+## 设置
 
-| 平台 | 配置时间 | 说明 |
-|------|----------|------|
-| [Telegram](docs/setup-telegram-cn.md) | ~2 分钟 | 个人用户首选 |
-| [Discord](docs/setup-discord-cn.md) | ~5 分钟 | 团队用户 |
-| [飞书](docs/setup-feishu-cn.md) | ~15 分钟 | 国内团队 |
-| [QQ Bot](docs/setup-qqbot-cn.md) | ~5 分钟 | QQ 用户 |
+Claude Code 设置从会话的工作目录加载，每次对话都会重新读取：
 
-## Claude Code 配置
+| 优先级 | 来源 | 路径 |
+|--------|------|------|
+| 低 | `user` | `~/.claude/settings.json` |
+| 中 | `project` | `<cwd>/.claude/settings.json` |
+| **高** | `local` | `<cwd>/.claude/settings.local.json` |
 
-tlive 从以下来源读取 Claude Code 设置（通过 `TL_CLAUDE_SETTINGS` 配置）：
-
-| 来源 | 路径 | 用途 |
-|------|------|------|
-| `user` | `~/.claude/settings.json` | 全局认证和模型 |
-| `project` | `.claude/settings.json` | 项目规则、MCP |
-| `local` | `.claude/settings.local.json` | 本地覆盖 |
-
-示例 `.claude/settings.local.json`：
-```json
-{
-  "env": {
-    "ANTHROPIC_AUTH_TOKEN": "你的API密钥",
-    "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
-  }
-}
-```
-
-然后在 `~/.tlive/config.env` 中：
-```env
-TL_CLAUDE_SETTINGS=user,project,local
-```
+通过 `TL_CLAUDE_SETTINGS=user,project,local` 配置（顺序=优先级，后面的覆盖前面的）。修改后新对话生效。
 
 ## 更多文档
 

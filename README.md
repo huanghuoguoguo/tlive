@@ -45,21 +45,34 @@ That's it! Claude Code will help you:
 
 ## Features
 
-| Feature | Description |
-|---------|-------------|
-| **IM Chat** | Phone → Claude → Streaming response with tool visibility |
-| **Permission Approval** | Approve tool executions from your phone |
-| **Web Terminal** | `tlive <cmd>` wraps any command, view in browser |
+| Feature | Required | Description |
+|---------|----------|-------------|
+| **IM Chat** | Yes | Phone → Claude → Streaming response with tool visibility |
+| **Permission Approval** | Yes | Approve tool executions from your phone |
+| **Web Terminal** | No | `tlive <cmd>` wraps any command, view in browser |
 
-## Daemon Mode
+## Architecture
 
-`tlive start` runs as a background service. Auto-starts on boot, stays running. No manual activation needed — Claude wakes it up when needed.
-
-```bash
-tlive start    # Start daemon
-tlive stop     # Stop
-tlive status   # Check status
 ```
+┌─────────────┐     ┌──────────────────┐     ┌─────────────┐
+│   Telegram  │     │                  │     │             │
+├─────────────┤     │   Bridge (TS)    │     │  ~/.claude  │
+│   Discord   │────▶│   IM Adapter     │◀────│   sessions  │
+├─────────────┤     │                  │     │             │
+│   Feishu    │     │   (Required)     │     │  (scanned)  │
+├─────────────┤     └──────────────────┘     └─────────────┘
+│   QQ Bot    │
+└─────────────┘
+
+┌──────────────────┐
+│   Core (Go)      │     Optional: `tlive <cmd>` web terminal
+│   (Optional)     │     Not needed for IM features
+└──────────────────┘
+```
+
+**Bridge** (Required): Connects IM platforms to Claude Code by scanning session files.
+
+**Core** (Optional): Provides web terminal feature. Not needed for IM chat or permission approvals.
 
 ## IM Commands
 
@@ -74,45 +87,26 @@ Claude executes and returns results. Key commands:
 | Command | Description |
 |---------|-------------|
 | `/new` | New conversation |
+| `/sessions` | List sessions in current directory |
+| `/session <n>` | Switch to session #n |
 | `/stop` | Interrupt execution |
 | `/verbose 0\|1` | Detail level (0=concise, 1=show tool calls) |
 | `/perm on\|off` | Toggle permission prompts |
 | `/cd <path>` | Change working directory |
 | `/bash <cmd>` | Execute shell command |
+| `/help` | Show all commands |
 
-## Platform Setup
+## Settings
 
-| Platform | Setup Time | Notes |
-|----------|------------|-------|
-| [Telegram](docs/setup-telegram.md) | ~2 min | Best for individuals |
-| [Discord](docs/setup-discord.md) | ~5 min | For teams |
-| [Feishu](docs/setup-feishu.md) | ~15 min | For Chinese teams |
-| [QQ Bot](docs/setup-qqbot.md) | ~5 min | For QQ users |
+Claude Code settings are loaded per conversation from the session's working directory:
 
-## Claude Code Configuration
+| Priority | Source | Path |
+|----------|--------|------|
+| Low | `user` | `~/.claude/settings.json` |
+| Medium | `project` | `<cwd>/.claude/settings.json` |
+| **High** | `local` | `<cwd>/.claude/settings.local.json` |
 
-tlive reads Claude Code settings from these sources (configure via `TL_CLAUDE_SETTINGS`):
-
-| Source | Path | Purpose |
-|--------|------|---------|
-| `user` | `~/.claude/settings.json` | Global auth and model |
-| `project` | `.claude/settings.json` | Project rules, MCP |
-| `local` | `.claude/settings.local.json` | Local overrides |
-
-Example `.claude/settings.local.json`:
-```json
-{
-  "env": {
-    "ANTHROPIC_AUTH_TOKEN": "your-api-key",
-    "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
-  }
-}
-```
-
-Then in `~/.tlive/config.env`:
-```env
-TL_CLAUDE_SETTINGS=user,project,local
-```
+Configure via `TL_CLAUDE_SETTINGS=user,project,local` (order = priority). Changes apply to new conversations.
 
 ## Documentation
 

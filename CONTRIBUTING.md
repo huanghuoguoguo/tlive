@@ -2,14 +2,14 @@
 
 Thanks for your interest in contributing! All contributions are welcome — bug reports, feature requests, docs improvements, and code.
 
-Check [open issues](https://github.com/y49/tlive/issues) for things to work on, or open a new one to start a discussion.
+Check [open issues](https://github.com/huanghuoguoguo/tlive/issues) for things to work on, or open a new one to start a discussion.
 
 ## Development Setup
 
 **Prerequisites:** Go 1.24+, Node.js 18+, npm
 
 ```bash
-git clone https://github.com/y49/tlive.git
+git clone https://github.com/huanghuoguoguo/tlive.git
 cd tlive
 ```
 
