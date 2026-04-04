@@ -5,7 +5,7 @@
 
 > **Fork 自 [y49/tlive](https://github.com/y49/tlive)** — 仅支持 Claude 的增强版本。
 
-**在手机上操控 Claude Code** — 从 Telegram、Discord、飞书发送任务，实时查看进度，远程审批权限。
+**在手机上操控 Claude Code** — 从 Telegram、Discord、飞书、QQ Bot 发送任务，实时查看进度，远程审批权限。
 
 ## 与原版的差异
 
@@ -56,7 +56,7 @@ tlive status   # 查看状态
 
 ## IM 命令
 
-在 Telegram/Discord/飞书中直接发送：
+在 Telegram/Discord/飞书/QQ Bot 中直接发送：
 
 ```
 修复 auth.ts 里的登录 bug
@@ -80,6 +80,32 @@ Claude 会自动执行并返回结果。常用命令：
 | [Telegram](docs/setup-telegram-cn.md) | ~2 分钟 | 个人用户首选 |
 | [Discord](docs/setup-discord-cn.md) | ~5 分钟 | 团队用户 |
 | [飞书](docs/setup-feishu-cn.md) | ~15 分钟 | 国内团队 |
+| [QQ Bot](docs/setup-qqbot-cn.md) | ~5 分钟 | QQ 用户 |
+
+## Claude Code 配置
+
+tlive 从以下来源读取 Claude Code 设置（通过 `TL_CLAUDE_SETTINGS` 配置）：
+
+| 来源 | 路径 | 用途 |
+|------|------|------|
+| `user` | `~/.claude/settings.json` | 全局认证和模型 |
+| `project` | `.claude/settings.json` | 项目规则、MCP |
+| `local` | `.claude/settings.local.json` | 本地覆盖 |
+
+示例 `.claude/settings.local.json`：
+```json
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "你的API密钥",
+    "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
+  }
+}
+```
+
+然后在 `~/.tlive/config.env` 中：
+```env
+TL_CLAUDE_SETTINGS=user,project,local
+```
 
 ## 更多文档
 

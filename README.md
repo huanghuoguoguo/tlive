@@ -7,7 +7,7 @@
 
 > **Fork of [y49/tlive](https://github.com/y49/tlive)** — Claude-only version with enhancements.
 
-**Control Claude Code from your phone** — Send tasks via Telegram, Discord, or Feishu. Watch progress in real-time. Approve permissions remotely.
+**Control Claude Code from your phone** — Send tasks via Telegram, Discord, Feishu, or QQ Bot. Watch progress in real-time. Approve permissions remotely.
 
 ## Changes from Original
 
@@ -58,7 +58,7 @@ tlive status   # Check status
 
 ## IM Commands
 
-Send directly in Telegram/Discord/Feishu:
+Send directly in Telegram/Discord/Feishu/QQ Bot:
 
 ```
 Fix the login bug in auth.ts
@@ -82,6 +82,32 @@ Claude executes and returns results. Key commands:
 | [Telegram](docs/setup-telegram.md) | ~2 min | Best for individuals |
 | [Discord](docs/setup-discord.md) | ~5 min | For teams |
 | [Feishu](docs/setup-feishu.md) | ~15 min | For Chinese teams |
+| [QQ Bot](docs/setup-qqbot.md) | ~5 min | For QQ users |
+
+## Claude Code Configuration
+
+tlive reads Claude Code settings from these sources (configure via `TL_CLAUDE_SETTINGS`):
+
+| Source | Path | Purpose |
+|--------|------|---------|
+| `user` | `~/.claude/settings.json` | Global auth and model |
+| `project` | `.claude/settings.json` | Project rules, MCP |
+| `local` | `.claude/settings.local.json` | Local overrides |
+
+Example `.claude/settings.local.json`:
+```json
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "your-api-key",
+    "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
+  }
+}
+```
+
+Then in `~/.tlive/config.env`:
+```env
+TL_CLAUDE_SETTINGS=user,project,local
+```
 
 ## Documentation
 

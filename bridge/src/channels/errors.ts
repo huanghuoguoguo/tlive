@@ -67,5 +67,13 @@ export function classifyError(channel: ChannelType | string, err: unknown): Brid
     if (code === 99991401 || code === 99991403) return new AuthError(message);
   }
 
+  if (channel === 'qqbot') {
+    const status = e?.response?.statusCode ?? e?.status;
+    if (status === 429) return new RateLimitError(message, 60000); // QQ Bot rate limit default 60s
+    if (status === 401 || status === 403) return new AuthError(message);
+    if (status === 400) return new FormatError(message);
+    if (status >= 500) return new PlatformError(message, status);
+  }
+
   return new PlatformError(message, e?.response?.statusCode ?? e?.status);
 }

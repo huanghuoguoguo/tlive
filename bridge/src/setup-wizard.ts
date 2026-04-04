@@ -92,7 +92,7 @@ export async function runSetupWizard(): Promise<void> {
   const currentChannels = (config.TL_ENABLED_CHANNELS || '').split(',').filter(Boolean);
   const platforms = await askChoice(
     '\nWhich IM platforms do you want to enable?',
-    ['Telegram', 'Discord', 'Feishu'],
+    ['Telegram', 'Discord', 'Feishu', 'QQBot'],
     currentChannels,
   );
   config.TL_ENABLED_CHANNELS = platforms.join(',');
@@ -117,6 +117,13 @@ export async function runSetupWizard(): Promise<void> {
     console.log('\n--- Feishu ---');
     config.TL_FS_APP_ID = await ask('App ID', config.TL_FS_APP_ID || '');
     config.TL_FS_APP_SECRET = await ask('App Secret', config.TL_FS_APP_SECRET || '');
+  }
+
+  if (platforms.includes('qqbot')) {
+    console.log('\n--- QQ Bot ---');
+    config.TL_QQ_APP_ID = await ask('App ID (from QQ Open Platform)', config.TL_QQ_APP_ID || '');
+    config.TL_QQ_CLIENT_SECRET = await ask('Client Secret', config.TL_QQ_CLIENT_SECRET || '');
+    config.TL_QQ_ALLOWED_USERS = await ask('Allowed user openids (comma-separated, blank = all)', config.TL_QQ_ALLOWED_USERS || '');
   }
 
   // General

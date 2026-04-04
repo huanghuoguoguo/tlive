@@ -2,6 +2,7 @@
 import './telegram.js';   // Task 23
 import './discord.js';    // Task 24
 import './feishu.js';     // Task 25
+import './qqbot.js';      // QQ Bot adapter
 
 export { BaseChannelAdapter, createAdapter, registerAdapterFactory, getRegisteredTypes } from './base.js';
 export type { ChannelType, InboundMessage, OutboundMessage, SendResult, Button, FileAttachment } from './types.js';

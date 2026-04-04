@@ -99,5 +99,16 @@ export function formatNotification(data: NotificationData, channelType: ChannelT
         feishuElements: elements,
       };
     }
+
+    case 'qqbot': {
+      const parts = [`**${emoji} ${data.title}**`];
+      if (summary) parts.push('', summary.slice(0, 2000));
+      if (data.terminalUrl) {
+        parts.push('', `🔗 [Open Terminal](${data.terminalUrl})`);
+      }
+      return {
+        text: parts.join('\n'),
+      };
+    }
   }
 }

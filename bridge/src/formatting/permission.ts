@@ -84,5 +84,26 @@ export function formatPermissionCard(data: PermissionCardData, channelType: Chan
         buttons,
       };
     }
+
+    case 'qqbot': {
+      const parts = [
+        `**\uD83D\uDD10 Permission Required**`,
+        '',
+        `**Tool:** \`${data.toolName}\``,
+        '```',
+        input,
+        '```',
+        '',
+        `\u23F1 Expires in ${expires} minutes`,
+      ];
+      if (data.terminalUrl) {
+        parts.push(`\uD83D\uDD17 [Open Terminal](${data.terminalUrl})`);
+      }
+      parts.push('', '💬 回复 **allow** / **deny** 或点击按钮');
+      return {
+        text: parts.join('\n'),
+        buttons,
+      };
+    }
   }
 }

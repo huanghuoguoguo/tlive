@@ -1,4 +1,4 @@
-export type ChannelType = 'telegram' | 'discord' | 'feishu';
+export type ChannelType = 'telegram' | 'discord' | 'feishu' | 'qqbot';
 
 export interface InboundMessage {
   channelType: ChannelType;

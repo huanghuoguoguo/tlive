@@ -53,6 +53,13 @@ export interface Config {
     webhookPort: number;
     allowedUsers: string[];
   };
+  qqbot: {
+    appId: string;
+    clientSecret: string;
+    allowedUsers: string[];
+    /** HTTP/SOCKS proxy URL — overrides global TL_PROXY */
+    proxy: string;
+  };
 }
 
 function parseList(value: string | undefined): string[] {
@@ -143,6 +150,12 @@ export function loadConfig(): Config {
       webhookPort: parseInt(get('TL_FS_WEBHOOK_PORT', '9100'), 10),
       allowedUsers: parseList(get('TL_FS_ALLOWED_USERS')),
     },
+    qqbot: {
+      appId: get('TL_QQ_APP_ID'),
+      clientSecret: get('TL_QQ_CLIENT_SECRET'),
+      allowedUsers: parseList(get('TL_QQ_ALLOWED_USERS')),
+      proxy: get('TL_QQ_PROXY') || globalProxy,
+    },
   };
 
   // Validate required fields
@@ -168,6 +181,14 @@ export function loadConfig(): Config {
         }
         if (!config.feishu.appSecret) {
           throw new Error('Config error: TL_FS_APP_SECRET is required (feishu is in enabled channels)');
+        }
+        break;
+      case 'qqbot':
+        if (!config.qqbot.appId) {
+          throw new Error('Config error: TL_QQ_APP_ID is required (qqbot is in enabled channels)');
+        }
+        if (!config.qqbot.clientSecret) {
+          throw new Error('Config error: TL_QQ_CLIENT_SECRET is required (qqbot is in enabled channels)');
         }
         break;
     }
