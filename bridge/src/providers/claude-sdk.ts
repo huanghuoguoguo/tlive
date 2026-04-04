@@ -4,9 +4,9 @@
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, writeFileSync, mkdirSync, unlinkSync, readdirSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { tmpdir } from 'node:os';
+import { tmpdir, homedir } from 'node:os';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { ClaudeAdapter } from '../messages/claude-adapter.js';
@@ -154,6 +154,8 @@ export class ClaudeSDKProvider implements LLMProvider {
           };
 
           let stderrBuf = '';
+            // Track temp image files for cleanup
+            let imagePaths: string[] = [];
 
           try {
             // Save image attachments to temp files so Claude Code can read them
@@ -161,7 +163,6 @@ export class ClaudeSDKProvider implements LLMProvider {
             if (params.attachments?.length) {
               const imgDir = join(tmpdir(), 'tlive-images');
               mkdirSync(imgDir, { recursive: true });
-              const imagePaths: string[] = [];
               for (const att of params.attachments) {
                 if (att.type === 'image') {
                   const ext = att.mimeType === 'image/png' ? '.png' : att.mimeType === 'image/gif' ? '.gif' : '.jpg';
@@ -345,6 +346,28 @@ export class ClaudeSDKProvider implements LLMProvider {
 
             controller.enqueue({ kind: 'error', message } as CanonicalEvent);
             controller.close();
+          } finally {
+            // Clean up temp image files
+            for (const path of imagePaths) {
+              try { unlinkSync(path); } catch { /* ignore */ }
+            }
+            // Periodically clean up old files in tlive-images dir (files older than 1 hour)
+            try {
+              const imgDir = join(tmpdir(), 'tlive-images');
+              if (existsSync(imgDir)) {
+                const now = Date.now();
+                const maxAge = 60 * 60 * 1000; // 1 hour
+                for (const file of readdirSync(imgDir)) {
+                  const filePath = join(imgDir, file);
+                  try {
+                    const stat = existsSync(filePath) && require('fs').statSync(filePath);
+                    if (stat && now - stat.mtimeMs > maxAge) {
+                      unlinkSync(filePath);
+                    }
+                  } catch { /* ignore */ }
+                }
+              }
+            } catch { /* ignore cleanup errors */ }
           }
         })();
       },

@@ -36,10 +36,12 @@ interface ProcessMessageParams {
   onTextDelta?: (delta: string) => void;
   onToolStart?: (event: { id: string; name: string; input: Record<string, unknown> }) => void;
   onToolResult?: (event: { toolUseId: string; content: string; isError: boolean }) => void;
-  onQueryResult?: (event: { sessionId: string; isError: boolean; usage: { inputTokens: number; outputTokens: number; costUsd?: number }; permissionDenials?: Array<{ toolName: string; toolUseId: string }> }) => void;
+  /** Called when query completes — returns Promise to allow async flush of final message */
+  onQueryResult?: (event: { sessionId: string; isError: boolean; usage: { inputTokens: number; outputTokens: number; costUsd?: number }; permissionDenials?: Array<{ toolName: string; toolUseId: string }> }) => void | Promise<void>;
   /** Called when SDK returns a sessionId (for resume) — caller should persist it */
-  onSdkSessionId?: (id: string) => void;
-  onError?: (error: string) => void;
+  onSdkSessionId?: (id: string) => void | Promise<void>;
+  /** Called on error — returns Promise to allow async flush */
+  onError?: (error: string) => void | Promise<void>;
   onAgentStart?: (data: { description: string; taskId?: string }) => void;
   onAgentProgress?: (data: { description: string; lastTool?: string; usage?: { toolUses: number; durationMs: number } }) => void;
   onAgentComplete?: (data: { summary: string; status: string }) => void;
@@ -115,10 +117,13 @@ export class ConversationEngine {
             break;
           case 'query_result': {
             usage = value.usage;
-            if (value.sessionId) {
-              params.onSdkSessionId?.(value.sessionId);
+            if (value.sessionId && params.onSdkSessionId) {
+              await params.onSdkSessionId(value.sessionId);
             }
-            params.onQueryResult?.(value);
+            // Wait for onQueryResult to complete (it may flush final message)
+            if (params.onQueryResult) {
+              await params.onQueryResult(value);
+            }
             break;
           }
           case 'agent_start':
@@ -140,7 +145,9 @@ export class ConversationEngine {
             params.onRateLimit?.(value);
             break;
           case 'error':
-            params.onError?.(value.message);
+            if (params.onError) {
+              await params.onError(value.message);
+            }
             break;
         }
       }

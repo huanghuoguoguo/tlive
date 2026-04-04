@@ -1,5 +1,6 @@
 import { getBridgeContext } from '../context.js';
 import type { ChannelBinding } from '../store/interface.js';
+import { generateSessionId } from '../utils/id.js';
 
 export class ChannelRouter {
   async resolve(channelType: string, chatId: string): Promise<ChannelBinding> {
@@ -12,7 +13,7 @@ export class ChannelRouter {
     binding = {
       channelType,
       chatId,
-      sessionId: `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      sessionId: generateSessionId(),
       createdAt: new Date().toISOString(),
     };
     await store.saveBinding(binding);

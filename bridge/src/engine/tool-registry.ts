@@ -1,4 +1,5 @@
 import { basename } from 'node:path';
+import { truncate } from '../utils/string.js';
 
 const TOOL_ICONS: Record<string, string> = {
   Read: '📖', Edit: '✏️', Write: '📝',
@@ -39,8 +40,7 @@ export function getToolTitle(name: string, input: Record<string, unknown>): stri
     case 'Bash': {
       const cmd = str(input.command);
       if (!cmd) return name;
-      const truncated = cmd.length > 80 ? cmd.slice(0, 77) + '...' : cmd;
-      return `${name}(${truncated})`;
+      return `${name}(${truncate(cmd, 80)})`;
     }
     case 'Agent': {
       const desc = str(input.description) || str(input.prompt)?.slice(0, 60);
@@ -71,8 +71,7 @@ export function getToolCommand(name: string, input: Record<string, unknown>): st
 
 export function getToolResultPreview(name: string, result: string, isError = false): string {
   if (isError) {
-    const preview = result.length > 200 ? result.slice(0, 197) + '...' : result;
-    return `❌ Error: ${preview}`;
+    return `❌ Error: ${truncate(result, 200)}`;
   }
   if (!result || SILENT_RESULT_TOOLS.has(name)) return '';
 

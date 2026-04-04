@@ -2,10 +2,13 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from '
 import { join } from 'node:path';
 import type { BridgeStore, ChannelBinding } from './interface.js';
 
+/** Max entries to keep in processed IDs (prevents unbounded growth) */
+const MAX_PROCESSED_IDS = 10000;
+
 export class JsonFileStore implements BridgeStore {
   private dataDir: string;
   private bindings = new Map<string, ChannelBinding>(); // key: channelType:chatId
-  private processedIds = new Set<string>();
+  private processedIds = new Map<string, number>(); // id -> timestamp
   private locks = new Map<string, number>(); // key -> expiresAt timestamp
 
   constructor(dataDir: string) {
@@ -52,11 +55,20 @@ export class JsonFileStore implements BridgeStore {
       }
     }
 
-    // Load processed IDs
-    const processed = this.readJson<string[]>(this.processedPath());
+    // Load processed IDs (legacy format: string[], new format: Record<string, number>)
+    const processed = this.readJson<string[] | Record<string, number>>(this.processedPath());
     if (processed) {
-      for (const id of processed) {
-        this.processedIds.add(id);
+      const now = Date.now();
+      if (Array.isArray(processed)) {
+        // Legacy format: convert to map with current timestamp
+        for (const id of processed) {
+          this.processedIds.set(id, now);
+        }
+      } else {
+        // New format: direct map
+        for (const [id, ts] of Object.entries(processed)) {
+          this.processedIds.set(id, ts as number);
+        }
       }
     }
   }
@@ -107,8 +119,17 @@ export class JsonFileStore implements BridgeStore {
   }
 
   async markProcessed(messageId: string): Promise<void> {
-    this.processedIds.add(messageId);
-    this.atomicWrite(this.processedPath(), [...this.processedIds]);
+    const now = Date.now();
+    this.processedIds.set(messageId, now);
+
+    // Prune old entries if over limit (keep most recent half)
+    if (this.processedIds.size > MAX_PROCESSED_IDS) {
+      const entries = [...this.processedIds.entries()];
+      entries.sort((a, b) => b[1] - a[1]); // Sort by timestamp descending
+      this.processedIds = new Map(entries.slice(0, MAX_PROCESSED_IDS / 2));
+    }
+
+    this.atomicWrite(this.processedPath(), [...this.processedIds.keys()]);
   }
 
   // ---- Locks ----

@@ -12,12 +12,13 @@ import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { shortPath, truncate, getTliveHome, getTliveRuntimeDir } from './utils/index.js';
+import { safeParseObject } from './utils/json.js';
 import { CHANNEL_TYPES } from './utils/index.js';
 
 /** Format a permission card for IM display — human-readable, not raw JSON */
 function formatPermissionCard(toolName: string, input: unknown): string {
   const parts: string[] = ['🔐 Permission Required'];
-  const data = (typeof input === 'string' ? (() => { try { return JSON.parse(input); } catch { return {}; } })() : input) as Record<string, unknown>;
+  const data = safeParseObject(input as Record<string, unknown>);
 
   switch (toolName) {
     case 'Bash': {
@@ -184,7 +185,25 @@ async function main() {
     logger.info('Go Core not running — IM-only mode (no web terminal links)');
   }
 
+  // Initialize components
+  const store = new JsonFileStore(join(tliveHome, 'data'));
+  const permissions = new PendingPermissions();
+  const llm = new ClaudeSDKProvider(permissions, config.claudeSettingSources);
+
+  // Initialize context
+  initBridgeContext({
+    store,
+    llm,
+    core: coreClient,
+    defaultWorkdir: config.defaultWorkdir,
+  });
+
+  // Start Bridge Manager with enabled IM adapters
+  const manager = new BridgeManager();
+  manager.setCoreAvailable(coreAvailable);
+
   // Periodically re-check Core availability and cleanup stale entries
+  // (defined after manager is created to avoid reference-before-definition)
   const coreStatusInterval = setInterval(async () => {
     try {
       const resp = await fetch(`${config.coreUrl}/api/status`, {
@@ -207,23 +226,6 @@ async function main() {
 
   // Cleanup stale tracking entries every 5 minutes
   const cleanupInterval = setInterval(cleanupStaleEntries, 5 * 60 * 1000);
-
-  // Initialize components
-  const store = new JsonFileStore(join(tliveHome, 'data'));
-  const permissions = new PendingPermissions();
-  const llm = new ClaudeSDKProvider(permissions, config.claudeSettingSources);
-
-  // Initialize context
-  initBridgeContext({
-    store,
-    llm,
-    core: coreClient,
-    defaultWorkdir: config.defaultWorkdir,
-  });
-
-  // Start Bridge Manager with enabled IM adapters
-  const manager = new BridgeManager();
-  manager.setCoreAvailable(coreAvailable);
 
   for (const channelType of config.enabledChannels) {
     try {
@@ -307,9 +309,7 @@ async function main() {
         // AskUserQuestion — render as interactive question card instead of permission card
         if (perm.tool_name === 'AskUserQuestion') {
           const sid = perm.session_id || '';
-          const inputData = (typeof perm.input === 'string'
-            ? (() => { try { return JSON.parse(perm.input as string); } catch { return {}; } })()
-            : perm.input) as Record<string, unknown>;
+          const inputData = safeParseObject(perm.input as Record<string, unknown>);
           const questions = (inputData?.questions ?? []) as Array<{
             question: string;
             header: string;

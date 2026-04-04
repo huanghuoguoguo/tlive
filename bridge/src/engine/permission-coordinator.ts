@@ -1,5 +1,6 @@
 import { PendingPermissions } from '../permissions/gateway.js';
 import { PermissionBroker } from '../permissions/broker.js';
+import { truncate } from '../utils/string.js';
 
 /**
  * Coordinates all permission-related state and resolution logic.
@@ -249,6 +250,10 @@ export class PermissionCoordinator {
 
   /** Resolve a hook permission via Core API */
   async resolveHookPermission(permissionId: string, decision: string, channelType: string, coreAvailable: boolean): Promise<void> {
+    // Deduplicate: skip if already resolved (race between button and text)
+    if (this.resolvedHookIds.has(permissionId)) return;
+    this.resolvedHookIds.set(permissionId, Date.now());
+
     if (!coreAvailable) throw new Error('Go Core not available');
     try {
       await fetch(`${this.coreUrl}/api/hooks/permission/${permissionId}/resolve`, {
@@ -689,10 +694,9 @@ export class PermissionCoordinator {
       });
       const ctx = questionData.contextSuffix || '';
       this.hookQuestionData.delete(hookId);
-      const preview = text.length > 50 ? text.slice(0, 47) + '...' : text;
       await adapter.editMessage(chatId, messageId, {
         chatId,
-        text: `✅ Answer: ${preview}`,
+        text: `✅ Answer: ${truncate(text, 50)}`,
         buttons: [],
         feishuHeader: { template: 'green', title: `✅ Terminal${ctx}` },
       });

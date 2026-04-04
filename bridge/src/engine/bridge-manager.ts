@@ -89,6 +89,8 @@ export class BridgeManager {
   private sdkQuestionData = new Map<string, { questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }>; chatId: string }>();
   private sdkQuestionAnswers = new Map<string, number>();
   private sdkQuestionTextAnswers = new Map<string, string>();
+  /** Cleanup timer for SDK question data */
+  private sdkQuestionCleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     const config = loadConfig();
@@ -193,10 +195,33 @@ export class BridgeManager {
       this.runAdapterLoop(adapter);
     }
     this.permissions.startPruning();
+    // Periodic cleanup of SDK question data (5 minute TTL)
+    this.sdkQuestionCleanupTimer = setInterval(() => {
+      const now = Date.now();
+      const maxAge = 5 * 60 * 1000;
+      for (const [id, data] of this.sdkQuestionData) {
+        // Check if the permission is still pending; if not, clean up
+        if (!this.permissions.getGateway().isPending(id)) {
+          this.sdkQuestionData.delete(id);
+          this.sdkQuestionAnswers.delete(id);
+          this.sdkQuestionTextAnswers.delete(id);
+        }
+      }
+      // Also clean up stale pending attachments (older than 5 minutes)
+      for (const [key, entry] of this.pendingAttachments) {
+        if (now - entry.timestamp > maxAge) {
+          this.pendingAttachments.delete(key);
+        }
+      }
+    }, 60_000);
   }
 
   async stop(): Promise<void> {
     this.running = false;
+    if (this.sdkQuestionCleanupTimer) {
+      clearInterval(this.sdkQuestionCleanupTimer);
+      this.sdkQuestionCleanupTimer = null;
+    }
     this.permissions.stopPruning();
     this.permissions.getGateway().denyAll();
     for (const adapter of this.adapters.values()) {
@@ -228,7 +253,7 @@ export class BridgeManager {
     if (hookType === 'stop') {
       type = 'stop';
       const raw = (hook.last_assistant_message || hook.last_output || '').trim();
-      summary = raw ? (raw.length > 3000 ? raw.slice(0, 2997) + '...' : raw) : undefined;
+      summary = raw ? truncate(raw, 3000) : undefined;
       title = `Terminal${contextSuffix}`;
     } else if (hook.notification_type === 'idle_prompt') {
       title = `Terminal${contextSuffix} · ` + (hook.message || 'Waiting for input...');
@@ -473,9 +498,7 @@ export class BridgeManager {
             const askq = pending.find((p: { tool_name: string }) => p.tool_name === 'AskUserQuestion');
             if (askq) {
               // There's a pending AskUserQuestion — handle text as question answer
-              const inputData = (typeof askq.input === 'string'
-                ? (() => { try { return JSON.parse(askq.input as string); } catch { return {}; } })()
-                : askq.input) as Record<string, unknown>;
+              const inputData = safeParseObject(askq.input as Record<string, unknown>);
               const questions = (inputData?.questions ?? []) as Array<{
                 question: string; header: string;
                 options: Array<{ label: string; description?: string }>; multiSelect: boolean;
@@ -509,7 +532,11 @@ export class BridgeManager {
         } catch { /* non-fatal: fall through to normal PTY routing */ }
       }
 
-      const entry = this.permissions.getHookMessage(msg.replyToMessageId)!;
+      const entry = this.permissions.getHookMessage(msg.replyToMessageId);
+      if (!entry) {
+        await adapter.send({ chatId: msg.chatId, text: '⚠️ Hook message expired or not found' });
+        return true;
+      }
       if (entry.sessionId && this.coreAvailable) {
         try {
           // If images attached, save as temp files and include paths in the text
@@ -760,8 +787,7 @@ export class BridgeManager {
     // Check for session expiry (>30 min inactivity) and auto-create new session
     const expired = this.state.checkAndUpdateLastActive(msg.channelType, msg.chatId);
     if (expired) {
-      const newSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      await this.router.rebind(msg.channelType, msg.chatId, newSessionId);
+      await this.router.rebind(msg.channelType, msg.chatId, generateSessionId());
       this.state.clearThread(msg.channelType, msg.chatId);
       this.permissions.clearSessionWhitelist();
     }
@@ -803,6 +829,8 @@ export class BridgeManager {
     const renderer = new MessageRenderer({
       platformLimit: PLATFORM_LIMITS[adapter.channelType as ChannelType] ?? 4096,
       throttleMs: 300,
+      cwd: binding.cwd || defaultWorkdir,
+      sessionId: binding.sdkSessionId,
       onPermissionTimeout: async (toolName, input, buttons) => {
         permissionReminderTool = toolName;
         permissionReminderInput = input;
@@ -1062,7 +1090,7 @@ export class BridgeManager {
         // Free text reply
         adapter.editMessage(msg.chatId, sendResult.messageId, {
           chatId: msg.chatId,
-          text: `✅ Answer: ${textAnswer.length > 50 ? textAnswer.slice(0, 47) + '...' : textAnswer}`,
+          text: `✅ Answer: ${truncate(textAnswer, 50)}`,
           buttons: [],
           feishuHeader: msg.channelType === 'feishu' ? { template: 'green', title: '✅ Answered' } : undefined,
         }).catch(() => {});
@@ -1108,22 +1136,25 @@ export class BridgeManager {
         },
         onTextDelta: (delta) => renderer.onTextDelta(delta),
         onToolStart: (event) => {
-          renderer.onToolStart(event.name);
+          renderer.onToolStart(event.name, event.input);
         },
         onToolResult: (_event) => {
-          // No-op — MessageRenderer counts on start, not complete
+          renderer.onToolComplete(_event.toolUseId);
         },
-        onAgentStart: (_data) => {
-          renderer.onToolStart('Agent');
+        onAgentStart: (data) => {
+          renderer.onToolStart('Agent', { description: data.description, prompt: '' });
         },
-        onAgentProgress: (_data) => {
-          // No-op — flat display
+        onAgentProgress: (data) => {
+          // Update progress for long-running agents
+          if (data.usage?.durationMs) {
+            renderer.onToolProgress({ toolName: 'Agent', elapsed: data.usage.durationMs });
+          }
         },
         onAgentComplete: (_data) => {
-          // No-op — flat display
+          renderer.onToolComplete('agent-complete');
         },
-        onToolProgress: (_data) => {
-          // No-op — flat display
+        onToolProgress: (data) => {
+          renderer.onToolProgress(data);
         },
         onRateLimit: (data) => {
           if (data.status === 'rejected') {
@@ -1132,25 +1163,28 @@ export class BridgeManager {
             renderer.onTextDelta(`\n⚠️ Rate limit: ${Math.round(data.utilization * 100)}% used\n`);
           }
         },
-        onQueryResult: (event) => {
+        onQueryResult: async (event) => {
           if (event.permissionDenials?.length) {
             console.warn(`[bridge] Permission denials: ${event.permissionDenials.map(d => d.toolName).join(', ')}`);
           }
           const usage = { input_tokens: event.usage.inputTokens, output_tokens: event.usage.outputTokens, cost_usd: event.usage.costUsd };
           completedStats = costTracker.finish(usage);
-          renderer.onComplete();
+          // Wait for final message to be sent
+          await renderer.onComplete();
         },
         onPromptSuggestion: (suggestion) => {
           // Send as a quick-reply button after the response completes
           const chatId = threadId && adapter.channelType === 'discord' ? threadId : msg.chatId;
-          const truncated = suggestion.length > 60 ? suggestion.slice(0, 57) + '...' : suggestion;
+          const truncated = truncate(suggestion, 60);
           adapter.send({
             chatId,
             text: `💡 ${truncated}`,
             buttons: [{ label: '💡 ' + truncated, callbackData: `suggest:${suggestion.slice(0, 200)}`, style: 'default' as const }],
           }).catch(() => {});
         },
-        onError: (err) => renderer.onError(err),
+        onError: async (err) => {
+          await renderer.onError(err);
+        },
       });
 
       // Success: change to done reaction

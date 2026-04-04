@@ -14,6 +14,8 @@ import { homedir } from 'node:os';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import { scanClaudeSessions } from '../session-scanner.js';
+import { truncate } from '../utils/string.js';
+import { generateSessionId } from '../utils/id.js';
 
 const execAsync = promisify(exec);
 
@@ -80,7 +82,7 @@ export class CommandRouter {
         const { store } = getBridgeContext();
         const binding = await store.getBinding(msg.channelType, msg.chatId);
 
-        const newSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const newSessionId = generateSessionId();
         await this.router.rebind(msg.channelType, msg.chatId, newSessionId, {
           cwd: binding?.cwd,
         });
@@ -260,7 +262,7 @@ export class CommandRouter {
 
         const target = sessions[idx - 1];
 
-        const newBindingId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const newBindingId = generateSessionId();
         await this.router.rebind(msg.channelType, msg.chatId, newBindingId, {
           sdkSessionId: target.sdkSessionId,
           cwd: target.cwd, // update cwd to session's directory
@@ -293,7 +295,7 @@ export class CommandRouter {
           });
 
           const output = (stdout + (stderr ? '\n⚠️ stderr:\n' + stderr : '')).trim();
-          const truncated = output.length > 3000 ? output.slice(0, 2997) + '...' : output;
+          const truncated = truncate(output, 3000);
 
           if (adapter.channelType === 'telegram') {
             await adapter.send({ chatId: msg.chatId, html: `<pre>${escapeHtml(truncated || '(no output)')}</pre>` });
@@ -302,7 +304,7 @@ export class CommandRouter {
           }
         } catch (err: any) {
           const errMsg = err.stderr || err.message || String(err);
-          const truncated = errMsg.length > 1000 ? errMsg.slice(0, 997) + '...' : errMsg;
+          const truncated = truncate(errMsg, 1000);
           await adapter.send({ chatId: msg.chatId, text: `❌ ${truncated}` });
         }
         return true;
@@ -337,7 +339,7 @@ export class CommandRouter {
           binding.cwd = resolvedPath;
           await store.saveBinding(binding);
         } else {
-          await this.router.rebind(msg.channelType, msg.chatId, `session-${Date.now()}`, { cwd: resolvedPath });
+          await this.router.rebind(msg.channelType, msg.chatId, generateSessionId(), { cwd: resolvedPath });
         }
 
         await adapter.send({ chatId: msg.chatId, text: `📂 ${shortPath(resolvedPath)}` });

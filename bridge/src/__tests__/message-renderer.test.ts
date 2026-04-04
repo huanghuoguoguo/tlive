@@ -111,8 +111,8 @@ describe('MessageRenderer', () => {
     it('shows elapsed time in seconds', async () => {
       const r = createRenderer();
       r.onToolStart('Bash');
-      // Advance 3s + 300ms throttle
-      await advance(3300);
+      // Advance past the 3s rate limit
+      await advance(3500);
       const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
       expect(content).toContain('3s');
       r.dispose();
@@ -387,12 +387,13 @@ describe('MessageRenderer', () => {
     it('first flush sends new message, subsequent are edits', async () => {
       const r = createRenderer();
       r.onToolStart('Bash');
-      await advance(1300);
+      await advance(300); // Initial flush (forceFlush=true)
       expect(flushCallback).toHaveBeenCalledWith(expect.any(String), false, undefined);
       expect(r.messageId).toBe('msg-1');
 
-      // Trigger another flush via elapsed tick
-      await advance(1300);
+      // Trigger another flush via new tool (forceFlush bypasses rate limit)
+      r.onToolStart('Read');
+      await advance(300);
       const lastCall = flushCallback.mock.calls[flushCallback.mock.calls.length - 1];
       expect(lastCall[1]).toBe(true); // isEdit
       r.dispose();
@@ -478,18 +479,20 @@ describe('MessageRenderer', () => {
   // ─── Elapsed time ────────────────────────────────
 
   describe('elapsed time', () => {
-    it('ticks every second and re-renders', async () => {
+    it('updates elapsed time with rate limiting (3s interval)', async () => {
       const r = createRenderer();
       r.onToolStart('Bash');
-      // After 1s tick + 300ms throttle
-      await advance(1300);
-      const content1 = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
-      expect(content1).toContain('1s');
+      await advance(300); // Initial flush
 
-      // After 2s tick + 300ms throttle (at t=2300)
+      // After 1s tick - rate limited (no update)
       await advance(1000);
+      const content1 = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
+      expect(content1).toContain('0s'); // Still 0s because rate limited
+
+      // After 3s+ from initial - should update
+      await advance(2500); // Total ~3.8s
       const content2 = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
-      expect(content2).toContain('2s');
+      expect(content2).toContain('3s');
       r.dispose();
     });
 

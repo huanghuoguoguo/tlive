@@ -1,23 +1,8 @@
 import { redactSensitiveContent } from './content-filter.js';
 import { getToolIcon } from './tool-registry.js';
 import { homedir } from 'node:os';
-
-/** Shorten path: replace homedir with ~, show compact form */
-function shortPath(path: string): string {
-  const home = homedir();
-  let p = path.startsWith(home) ? '~' + path.slice(home.length) : path;
-  const parts = p.split('/');
-  if (parts.length > 2) {
-    // If starts with ~, keep ~ and last segment: ~/.../myapp
-    if (p.startsWith('~')) {
-      p = '~/' + parts[parts.length - 1];
-    } else {
-      // Otherwise show last 2 segments: .../projects/myapp
-      p = '.../' + parts.slice(-2).join('/');
-    }
-  }
-  return p;
-}
+import { truncate } from '../utils/string.js';
+import { shortPath } from '../utils/path.js';
 
 export interface MessageRendererOptions {
   platformLimit: number;
@@ -26,6 +11,8 @@ export interface MessageRendererOptions {
   cwd?: string;
   /** Model name for footer display */
   model?: string;
+  /** Session ID for footer display (last 4 chars shown) */
+  sessionId?: string;
   flushCallback: (
     content: string,
     isEdit: boolean,
@@ -50,6 +37,13 @@ interface PermissionState {
   buttons: Array<{ label: string; callbackData: string; style: string }>;
 }
 
+/** Current tool execution state for progress display */
+interface CurrentTool {
+  name: string;
+  input: string;  // Brief description of what's being done
+  elapsed: number; // Seconds
+}
+
 export class MessageRenderer {
   private toolCounts = new Map<string, number>();
   private totalTools = 0;
@@ -58,6 +52,8 @@ export class MessageRenderer {
   private footerLine?: string;
   private errorMessage?: string;
   private permissionQueue: PermissionState[] = [];
+  /** Currently executing tool for detailed progress */
+  private currentTool: CurrentTool | null = null;
 
   private _messageId?: string;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -72,6 +68,15 @@ export class MessageRenderer {
   private pendingFlush = false;
   private cwd?: string;
   private model?: string;
+  private sessionId?: string;
+  /** Last rendered content - for change detection */
+  private lastRenderedContent = '';
+  /** Force next flush regardless of content change */
+  private forceFlush = false;
+  /** Last flush timestamp - for rate limiting elapsed updates */
+  private lastFlushTime = 0;
+  /** Minimum interval between elapsed-only updates (ms) */
+  private readonly elapsedUpdateInterval = 3000;
 
   get messageId(): string | undefined {
     return this._messageId;
@@ -84,27 +89,81 @@ export class MessageRenderer {
     this.onPermissionTimeout = options.onPermissionTimeout;
     this.cwd = options.cwd;
     this.model = options.model;
+    this.sessionId = options.sessionId;
   }
 
-  onToolStart(name: string): void {
+  onToolStart(name: string, input?: Record<string, unknown>): void {
     if (HIDDEN_TOOLS.has(name)) return;
     const current = this.toolCounts.get(name) ?? 0;
     this.toolCounts.set(name, current + 1);
     this.totalTools++;
 
+    // Set current tool for detailed progress
+    this.currentTool = {
+      name,
+      input: this.formatToolInput(name, input),
+      elapsed: 0,
+    };
+
     // Start elapsed timer on first tool
     if (!this.elapsedTimer) {
       this.elapsedTimer = setInterval(() => {
         this.elapsedSeconds++;
+        if (this.currentTool) {
+          this.currentTool.elapsed++;
+        }
+        // Update display every 3 seconds (balance between feedback and API calls)
         this.scheduleFlush();
       }, 1000);
     }
 
+    this.forceFlush = true; // Force update on new tool
     this.scheduleFlush();
   }
 
+  /** Update progress for currently running tool (e.g., elapsed time for Bash) */
+  onToolProgress(data: { toolName: string; elapsed: number }): void {
+    if (HIDDEN_TOOLS.has(data.toolName)) return;
+    if (this.currentTool && this.currentTool.name === data.toolName) {
+      this.currentTool.elapsed = Math.floor(data.elapsed / 1000);
+      // Don't force flush - let the 5-second interval handle it
+    }
+  }
+
+  /** Format tool input for brief display */
+  private formatToolInput(name: string, input?: Record<string, unknown>): string {
+    if (!input) return '';
+    switch (name) {
+      case 'Bash':
+        return truncate(String(input.command || ''), 60);
+      case 'Read':
+        return shortPath(String(input.file_path || ''));
+      case 'Edit':
+      case 'Write':
+        return shortPath(String(input.file_path || ''));
+      case 'Grep':
+        return `"${truncate(String(input.pattern || ''), 30)}" in ${input.path ? shortPath(String(input.path)) : 'files'}`;
+      case 'Glob':
+        return String(input.pattern || '');
+      case 'WebFetch':
+        return truncate(String(input.url || ''), 50);
+      case 'Agent':
+        return truncate(String(input.description || input.prompt || ''), 50);
+      default:
+        // Show first meaningful field
+        const keys = ['file_path', 'path', 'command', 'url', 'pattern', 'query'];
+        for (const key of keys) {
+          if (input[key]) {
+            return truncate(String(input[key]), 50);
+          }
+        }
+        return '';
+    }
+  }
+
   onToolComplete(_toolUseId: string): void {
-    // No-op — counter already incremented on start
+    // Clear current tool detail when done
+    this.currentTool = null;
   }
 
   onPermissionNeeded(
@@ -155,19 +214,19 @@ export class MessageRenderer {
     this.scheduleFlush();
   }
 
-  onComplete(): void {
+  onComplete(): Promise<void> {
     this.completed = true;
     this.footerLine = this.buildFooter();
     this.stopTimers();
     const content = this.render();
-    this.doFlush(content);
+    return this.doFlush(content);
   }
 
-  onError(error: string): void {
+  onError(error: string): Promise<void> {
     this.errorMessage = error;
     this.stopTimers();
     const content = this.render();
-    this.doFlush(content);
+    return this.doFlush(content);
   }
 
   getResponseText(): string {
@@ -224,6 +283,12 @@ export class MessageRenderer {
       const toolSummary = parts.join(' · ');
       const elapsed = `${this.elapsedSeconds}s`;
       lines.push(`⏳ ${toolSummary} (${this.totalTools} tools · ${elapsed})`);
+
+      // Show current tool detail if available
+      if (this.currentTool && this.currentTool.input) {
+        const currentElapsed = this.currentTool.elapsed > 0 ? ` (${this.currentTool.elapsed}s)` : '';
+        lines.push(`   └─ ${this.currentTool.name}: ${this.currentTool.input}${currentElapsed}`);
+      }
     }
 
     return this.applyPlatformLimit(redactSensitiveContent(lines.join('\n')));
@@ -279,6 +344,11 @@ export class MessageRenderer {
     if (this.cwd) {
       parts.push(shortPath(this.cwd));
     }
+    if (this.sessionId) {
+      // Show last 4 chars of session ID
+      const shortId = this.sessionId.length > 4 ? this.sessionId.slice(-4) : this.sessionId;
+      parts.push(`#${shortId}`);
+    }
     return parts.length > 0 ? parts.join(' │ ') : '';
   }
 
@@ -320,10 +390,38 @@ export class MessageRenderer {
 
   private async doFlush(content: string): Promise<void> {
     if (!content) return;
+
+    const now = Date.now();
+
+    // Check if only elapsed time changed (rate limited to every 3s)
+    if (!this.forceFlush) {
+      const contentChanged = content !== this.lastRenderedContent;
+      const timeSinceLastFlush = now - this.lastFlushTime;
+      const elapsedOnlyUpdate = this.lastRenderedContent &&
+        content.replace(/\d+s\)/, '') === this.lastRenderedContent.replace(/\d+s\)/, '');
+
+      // Skip if only elapsed changed and not enough time passed
+      if (elapsedOnlyUpdate && timeSinceLastFlush < this.elapsedUpdateInterval) {
+        return;
+      }
+
+      // Skip if content unchanged
+      if (!contentChanged) {
+        return;
+      }
+    }
+
     if (this.flushing) {
       this.pendingFlush = true;
+      // Don't update lastRenderedContent yet - will be updated when actually flushed
       return;
     }
+
+    // Update tracking state
+    this.lastRenderedContent = content;
+    this.lastFlushTime = now;
+    this.forceFlush = false;
+
     this.flushing = true;
     try {
       const isEdit = !!this._messageId;
@@ -341,7 +439,10 @@ export class MessageRenderer {
             result = await this.flushCallback(content, isEdit, flushButtons);
           } catch {
             // give up after one retry
+            console.error('[renderer] Failed to flush after retry:', err);
           }
+        } else {
+          console.error('[renderer] Failed to flush:', err);
         }
       }
       if (!isEdit && typeof result === 'string') {

@@ -1,6 +1,7 @@
 import { readdirSync, statSync, openSync, readSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { truncate } from './utils/string.js';
 
 export interface ScannedSession {
   sdkSessionId: string;   // .jsonl filename (UUID)
@@ -107,14 +108,14 @@ function parseSessionHeader(
     const READ_SIZE = 32 * 1024;
     const st = statSync(filePath);
     const fd = openSync(filePath, 'r');
-    const fileSize = st.size;
-    const offset = fileSize > READ_SIZE ? fileSize - READ_SIZE : 0;
-    const readLen = fileSize > READ_SIZE ? READ_SIZE : fileSize;
-    const buf = Buffer.alloc(readLen);
-    const bytesRead = readSync(fd, buf, 0, readLen, offset);
-    closeSync(fd);
-    const tail = buf.toString('utf-8', 0, bytesRead);
-    const lines = tail.split('\n');
+    try {
+      const fileSize = st.size;
+      const offset = fileSize > READ_SIZE ? fileSize - READ_SIZE : 0;
+      const readLen = fileSize > READ_SIZE ? READ_SIZE : fileSize;
+      const buf = Buffer.alloc(readLen);
+      const bytesRead = readSync(fd, buf, 0, readLen, offset);
+      const tail = buf.toString('utf-8', 0, bytesRead);
+      const lines = tail.split('\n');
 
     // Parse lines backwards to find last meaningful message
     let lastCwd = '';
@@ -145,8 +146,10 @@ function parseSessionHeader(
     if (lastCwd) cwd = lastCwd;
     if (lastUserMsg) {
       // Clean up and truncate preview
-      preview = lastUserMsg.trim().replace(/\s+/g, ' ');
-      if (preview.length > 40) preview = preview.slice(0, 37) + '...';
+      preview = truncate(lastUserMsg.trim().replace(/\s+/g, ' '), 40);
+    }
+    } finally {
+      closeSync(fd);
     }
   } catch {
     // File unreadable — use defaults
