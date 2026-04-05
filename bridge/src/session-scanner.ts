@@ -8,6 +8,7 @@ export interface ScannedSession {
   projectDir: string;     // encoded dir name, e.g. "-home-yhh-myproject"
   cwd: string;            // from last user message's cwd field
   mtime: number;          // file mtime (ms)
+  size: number;           // file size in bytes
   preview: string;        // last user message content, truncated to 40 chars
 }
 
@@ -64,7 +65,7 @@ function doScan(): ScannedSession[] {
   }
 
   // Collect all .jsonl files with mtime
-  const candidates: Array<{ path: string; projectDir: string; sessionId: string; mtime: number }> = [];
+  const candidates: Array<{ path: string; projectDir: string; sessionId: string; mtime: number; size: number }> = [];
 
   for (const dir of projectDirs) {
     const dirPath = join(projectsDir, dir);
@@ -85,6 +86,7 @@ function doScan(): ScannedSession[] {
           projectDir: dir,
           sessionId: file.replace('.jsonl', ''),
           mtime: st.mtimeMs,
+          size: st.size,
         });
       } catch {
         continue;
@@ -96,7 +98,7 @@ function doScan(): ScannedSession[] {
   candidates.sort((a, b) => b.mtime - a.mtime);
 
   // Parse header of each file for metadata
-  return candidates.map(c => parseSessionHeader(c.path, c.projectDir, c.sessionId, c.mtime));
+  return candidates.map(c => parseSessionHeader(c.path, c.projectDir, c.sessionId, c.mtime, c.size));
 }
 
 function parseSessionHeader(
@@ -104,6 +106,7 @@ function parseSessionHeader(
   projectDir: string,
   sessionId: string,
   mtime: number,
+  size: number,
 ): ScannedSession {
   let cwd = decodeDirName(projectDir);
   let preview = '(empty)';
@@ -160,7 +163,7 @@ function parseSessionHeader(
     // File unreadable — use defaults
   }
 
-  return { sdkSessionId: sessionId, projectDir, cwd, mtime, preview };
+  return { sdkSessionId: sessionId, projectDir, cwd, mtime, size, preview };
 }
 
 /** Decode project directory name back to path: "-home-yhh-myproject" → "/home/yhh/myproject" */

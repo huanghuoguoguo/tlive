@@ -25,6 +25,13 @@ function shortPath(path: string): string {
   return path.startsWith(home) ? path.replace(home, '~') : path;
 }
 
+/** Format file size in human-readable format */
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
+
 export class CommandRouter {
   constructor(
     private state: SessionStateManager,
@@ -217,7 +224,8 @@ export class CommandRouter {
           const marker = isCurrent ? ' ◀' : '';
           const date = new Date(s.mtime).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
           const cwdShort = shortPath(s.cwd);
-          lines.push(`${i + 1}. ${date} · ${cwdShort} · ${s.preview}${marker}`);
+          const sizeStr = formatSize(s.size);
+          lines.push(`${i + 1}. ${date} · ${cwdShort} · ${sizeStr} · ${s.preview}${marker}`);
         }
 
         const filterHint = showAll ? ' (all projects)' : ` (${shortPath(currentCwd)})`;
