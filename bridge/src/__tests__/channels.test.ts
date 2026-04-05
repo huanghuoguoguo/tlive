@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createAdapter, getRegisteredTypes } from '../channels/index.js';
 
+// Import adapters to trigger self-registration
+import '../channels/telegram.js';
+import '../channels/discord.js';
+import '../channels/feishu.js';
+
 describe('Channel Adapter Registry', () => {
   beforeEach(() => {
     process.env.TL_TOKEN = 'test-token';

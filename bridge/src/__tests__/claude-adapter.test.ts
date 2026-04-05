@@ -339,13 +339,16 @@ describe('ClaudeAdapter', () => {
       const events = adapter.mapMessage({
         type: 'result',
         subtype: 'error',
+        session_id: 'sess_err',
         errors: ['Rate limit exceeded', 'Timeout'],
       });
 
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
-        kind: 'error',
-        message: 'Rate limit exceeded; Timeout',
+        kind: 'query_result',
+        sessionId: 'sess_err',
+        isError: true,
+        error: 'Rate limit exceeded; Timeout',
       });
     });
 
@@ -353,12 +356,18 @@ describe('ClaudeAdapter', () => {
       const events = adapter.mapMessage({
         type: 'result',
         subtype: 'error',
+        session_id: 'sess_err2',
       });
 
-      expect(events[0]).toMatchObject({ kind: 'error', message: 'Unknown error' });
+      expect(events[0]).toMatchObject({
+        kind: 'query_result',
+        sessionId: 'sess_err2',
+        isError: true,
+        error: 'Unknown error',
+      });
     });
 
-    it('maps interrupt result to query_result + clean error message', () => {
+    it('maps interrupt result to query_result with Interrupted error', () => {
       const events = adapter.mapMessage({
         type: 'result',
         subtype: 'error_during_execution',
@@ -369,21 +378,18 @@ describe('ClaudeAdapter', () => {
         errors: ['[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=null'],
       });
 
-      // Should emit query_result (for usage tracking) + clean "Interrupted" error
-      expect(events).toHaveLength(2);
+      // Single query_result event with error included (prevents double flush)
+      expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
         kind: 'query_result',
         sessionId: 'sess_int',
         isError: true,
+        error: 'Interrupted',
         usage: { inputTokens: 500, outputTokens: 200, costUsd: 0.01 },
-      });
-      expect(events[1]).toMatchObject({
-        kind: 'error',
-        message: 'Interrupted',
       });
     });
 
-    it('maps non-interrupt error_during_execution to both query_result and error', () => {
+    it('maps non-interrupt error_during_execution to query_result with error', () => {
       const events = adapter.mapMessage({
         type: 'result',
         subtype: 'error_during_execution',
@@ -394,15 +400,14 @@ describe('ClaudeAdapter', () => {
         errors: ['Process crashed unexpectedly'],
       });
 
-      expect(events).toHaveLength(2);
+      // Single query_result event with error included (prevents double flush)
+      expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
         kind: 'query_result',
+        sessionId: 'sess_err',
         isError: true,
-        usage: { inputTokens: 300, outputTokens: 100 },
-      });
-      expect(events[1]).toMatchObject({
-        kind: 'error',
-        message: 'Process crashed unexpectedly',
+        error: 'Process crashed unexpectedly',
+        usage: { inputTokens: 300, outputTokens: 100, costUsd: 0.008 },
       });
     });
   });
