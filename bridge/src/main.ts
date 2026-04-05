@@ -6,7 +6,7 @@ import { JsonFileStore } from './store/json-file.js';
 import { ClaudeSDKProvider } from './providers/claude-sdk.js';
 import { PendingPermissions } from './permissions/gateway.js';
 import { BridgeManager, type HookNotificationData } from './engine/bridge-manager.js';
-import { createAdapter } from './channels/index.js';
+import { createAdapter, loadAdapters } from './channels/index.js';
 import type { ChannelType } from './channels/types.js';
 import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
@@ -226,6 +226,9 @@ async function main() {
 
   // Cleanup stale tracking entries every 5 minutes
   const cleanupInterval = setInterval(cleanupStaleEntries, 5 * 60 * 1000);
+
+  // Dynamically load only the adapters we need (reduces memory from ~180MB to ~60MB)
+  await loadAdapters(config.enabledChannels);
 
   for (const channelType of config.enabledChannels) {
     try {

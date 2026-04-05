@@ -120,8 +120,10 @@ export class ConversationEngine {
             if (value.sessionId && params.onSdkSessionId) {
               await params.onSdkSessionId(value.sessionId);
             }
-            // Wait for onQueryResult to complete (it may flush final message)
-            if (params.onQueryResult) {
+            // Handle error in query_result (combined event to prevent double flush)
+            if (value.isError && value.error && params.onError) {
+              await params.onError(value.error);
+            } else if (params.onQueryResult) {
               await params.onQueryResult(value);
             }
             break;

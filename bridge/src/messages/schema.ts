@@ -73,6 +73,7 @@ const queryResultSchema = z.object({
   isError: z.boolean(),
   usage: usageSchema,
   permissionDenials: z.array(permissionDenialSchema).optional(),
+  error: z.string().optional(), // Error message for isError=true cases
 }).passthrough();
 
 const errorSchema = z.object({

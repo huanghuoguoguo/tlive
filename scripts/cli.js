@@ -123,6 +123,29 @@ function daemonStart() {
   closeSync(logFd);
 
   console.log(`Bridge started (PID ${child.pid})`);
+
+  // Also start Go Core for web terminal (lightweight daemon)
+  // Both Bridge and Core are lightweight - mainly just message/conn forwarding
+  if (existsSync(CORE_BIN)) {
+    const port = process.env.TL_PORT || config.TL_PORT || '8080';
+    const coreLog = join(LOG_DIR, 'core.log');
+    const coreLogFd = openSync(coreLog, 'a');
+
+    const coreChild = spawn(CORE_BIN, ['daemon', '--port', port], {
+      detached: true,
+      windowsHide: true,
+      stdio: ['ignore', coreLogFd, coreLogFd],
+      env: {
+        ...process.env,
+        ...config,
+        TL_PORT: port,
+      },
+    });
+
+    coreChild.unref();
+    closeSync(coreLogFd);
+    console.log(`Web terminal started (port ${port})`);
+  }
 }
 
 function daemonStop() {

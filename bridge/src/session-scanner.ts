@@ -41,7 +41,12 @@ function filterAndLimit(sessions: ScannedSession[], limit: number, filterByCwd?:
   let filtered = sessions.filter(s => s.preview !== '(empty)');
   if (filterByCwd) {
     const normalizedFilter = filterByCwd.replace(/\/+$/, '');
-    filtered = filtered.filter(s => s.cwd.replace(/\/+$/, '') === normalizedFilter);
+    // Match current directory AND all subdirectories (prefix match)
+    filtered = filtered.filter(s => {
+      const normalizedCwd = s.cwd.replace(/\/+$/, '');
+      // Exact match or subdirectory (cwd starts with filter + /)
+      return normalizedCwd === normalizedFilter || normalizedCwd.startsWith(normalizedFilter + '/');
+    });
   }
   return filtered.slice(0, limit);
 }

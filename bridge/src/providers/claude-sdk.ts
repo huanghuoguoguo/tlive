@@ -335,8 +335,9 @@ export class ClaudeSDKProvider implements LLMProvider {
               return;
             }
 
-            // If result was already received, this is just transport teardown noise
-            if (state.hasReceivedResult && message.includes('process exited with code')) {
+            // If result was already received, skip sending additional error event
+            // (the result event already includes the error information)
+            if (state.hasReceivedResult) {
               controller.close();
               return;
             }

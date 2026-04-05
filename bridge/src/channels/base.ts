@@ -21,18 +21,28 @@ export abstract class BaseChannelAdapter {
   async removeReaction(_chatId: string, _messageId: string): Promise<void> {}
 }
 
-const factories = new Map<ChannelType, () => BaseChannelAdapter>();
+// Use globalThis to share the registry across module instances (for dynamic imports)
+const GLOBAL_KEY = '__tlive_adapter_registry__';
+
+type AdapterRegistry = Map<ChannelType, () => BaseChannelAdapter>;
+
+function getRegistry(): AdapterRegistry {
+  if (!(globalThis as any)[GLOBAL_KEY]) {
+    (globalThis as any)[GLOBAL_KEY] = new Map<ChannelType, () => BaseChannelAdapter>();
+  }
+  return (globalThis as any)[GLOBAL_KEY];
+}
 
 export function registerAdapterFactory(type: ChannelType, factory: () => BaseChannelAdapter): void {
-  factories.set(type, factory);
+  getRegistry().set(type, factory);
 }
 
 export function createAdapter(type: ChannelType): BaseChannelAdapter {
-  const factory = factories.get(type);
+  const factory = getRegistry().get(type);
   if (!factory) throw new Error(`Unknown channel type: ${type}`);
   return factory();
 }
 
 export function getRegisteredTypes(): ChannelType[] {
-  return Array.from(factories.keys());
+  return Array.from(getRegistry().keys());
 }

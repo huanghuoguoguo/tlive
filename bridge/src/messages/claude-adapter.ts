@@ -257,29 +257,23 @@ export class ClaudeAdapter {
       const errors = Array.isArray(msg.errors) ? msg.errors as string[] : [];
       const isInterrupt = errors.some(e => typeof e === 'string' && e.includes('result_type=user'));
 
-      // Emit query_result with usage data so cost tracking works
-      if (usage) {
-        const ev: CanonicalEvent = {
-          kind: 'query_result',
-          sessionId: msg.session_id as string,
-          isError: true,
-          usage: {
-            inputTokens: usage.input_tokens ?? 0,
-            outputTokens: usage.output_tokens ?? 0,
-            ...(msg.total_cost_usd != null ? { costUsd: msg.total_cost_usd as number } : {}),
-          },
-          ...(denials && denials.length > 0 ? { permissionDenials: denials } : {}),
-        };
-        events.push(ev);
-      }
-
-      // For interrupts, emit a clean message instead of raw SDK diagnostics
-      if (isInterrupt) {
-        events.push({ kind: 'error', message: 'Interrupted' } as CanonicalEvent);
-      } else {
-        const errorMsg = errors.length > 0 ? errors.join('; ') : 'Unknown error';
-        events.push({ kind: 'error', message: errorMsg } as CanonicalEvent);
-      }
+      // For errors, emit a single error event with usage data included
+      // This prevents double flush (query_result + error both triggering renderer)
+      const errorMsg = isInterrupt ? 'Interrupted' : (errors.length > 0 ? errors.join('; ') : 'Unknown error');
+      const ev: CanonicalEvent = {
+        kind: 'query_result',
+        sessionId: msg.session_id as string,
+        isError: true,
+        usage: {
+          inputTokens: usage?.input_tokens ?? 0,
+          outputTokens: usage?.output_tokens ?? 0,
+          ...(msg.total_cost_usd != null ? { costUsd: msg.total_cost_usd as number } : {}),
+        },
+        error: errorMsg, // Include error message in query_result
+        ...(denials && denials.length > 0 ? { permissionDenials: denials } : {}),
+      };
+      events.push(ev);
+      // Don't emit separate 'error' event - query_result with isError=true handles it
     }
   }
 
