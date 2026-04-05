@@ -4,11 +4,6 @@ export function truncate(s: string, max: number, suffix = '...'): string {
   return s.slice(0, max - suffix.length) + suffix;
 }
 
-/** Truncate with ellipsis at end (standard pattern) */
-export function truncateEnd(s: string, max: number): string {
-  return truncate(s, max, '...');
-}
-
 /** Truncate preserving start and end (for file paths etc.) */
 export function truncateMiddle(s: string, max: number, separator = '...'): string {
   if (s.length <= max) return s;

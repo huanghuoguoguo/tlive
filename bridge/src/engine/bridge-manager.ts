@@ -18,12 +18,13 @@ import type { FeishuStreamingSession } from '../channels/feishu-streaming.js';
 import { CostTracker } from './cost-tracker.js';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
-import { homedir, networkInterfaces } from 'node:os';
+import { homedir, networkInterfaces, tmpdir } from 'node:os';
 import { getTliveRuntimeDir, shortPath } from '../utils/path.js';
 import { safeParseObject } from '../utils/json.js';
 import { generateSessionId } from '../utils/id.js';
 import { truncate } from '../utils/string.js';
-import { CHANNEL_TYPES, PLATFORM_LIMITS, PLATFORM_REACTIONS, type ChannelType } from '../utils/constants.js';
+import { CHANNEL_TYPES, PLATFORM_LIMITS, PLATFORM_REACTIONS, type ChannelType, CALLBACK_PREFIXES } from '../utils/constants.js';
+import { parseAskqCallback, parseAskqToggleCallback, parseAskqSubmitCallback, parseAskqSkipCallback, parseHookCallback, parseAskqSubmitSdkCallback, parseCallback } from '../utils/callback.js';
 
 /** Bridge commands handled synchronously (don't block adapter loop) */
 const QUICK_COMMANDS = new Set(['/new', '/status', '/verbose', '/hooks', '/sessions', '/session', '/help', '/perm', '/effort', '/stop', '/approve', '/pairings', '/settings', '/model', '/bash', '/cd', '/pwd']);
@@ -72,6 +73,7 @@ export class BridgeManager {
   private delivery = new DeliveryLayer();
   private coreUrl: string;
   private token: string;
+  private port: number;
   private coreAvailable = false;
   private state = new SessionStateManager();
   private permissions: PermissionCoordinator;
@@ -99,6 +101,7 @@ export class BridgeManager {
     const broker = new PermissionBroker(gateway, localUrl);
     this.coreUrl = config.coreUrl;
     this.token = config.token;
+    this.port = config.port || 8080;
     this.permissions = new PermissionCoordinator(gateway, broker, this.coreUrl, this.token);
     // Load persisted chatIds (so hook routing works without needing a message first)
     this.chatIdFile = join(getTliveRuntimeDir(), 'chat-ids.json');
@@ -265,8 +268,7 @@ export class BridgeManager {
 
     let terminalUrl: string | undefined;
     if (this.coreAvailable && hook.tlive_session_id) {
-      const config = loadConfig();
-      terminalUrl = `http://${getLocalIP()}:${config.port || 8080}/terminal.html?id=${hook.tlive_session_id}&token=${this.token}`;
+      terminalUrl = `http://${getLocalIP()}:${this.port}/terminal.html?id=${hook.tlive_session_id}&token=${this.token}`;
     }
 
     const formatted = formatNotification({ type, title, summary, terminalUrl }, adapter.channelType as any);
@@ -542,9 +544,6 @@ export class BridgeManager {
           // If images attached, save as temp files and include paths in the text
           let inputText = msg.text || '';
           if (msg.attachments?.length) {
-            const { writeFileSync, mkdirSync } = await import('node:fs');
-            const { join } = await import('node:path');
-            const { tmpdir } = await import('node:os');
             const imgDir = join(tmpdir(), 'tlive-images');
             mkdirSync(imgDir, { recursive: true });
             for (const att of msg.attachments) {
@@ -588,25 +587,19 @@ export class BridgeManager {
 
       // AskUserQuestion answer callbacks (askq:{hookId}:{optionIndex}:{sessionId})
       // NOTE: check toggle/submit/skip BEFORE this — they also start with "askq"
-      if (msg.callbackData.startsWith('askq:') && !msg.callbackData.startsWith('askq_')) {
-        const parts = msg.callbackData.split(':');
-        const hookId = parts[1];
-        const optionIndex = parseInt(parts[2], 10);
-        const sessionId = parts[3] || '';
+      const askqParsed = parseAskqCallback(msg.callbackData);
+      if (askqParsed) {
         await this.permissions.resolveAskQuestion(
-          hookId, optionIndex, sessionId,
+          askqParsed.hookId, askqParsed.optionIndex, askqParsed.sessionId,
           msg.messageId, adapter, msg.chatId, this.coreAvailable,
         );
         return true;
       }
 
       // AskUserQuestion multi-select toggle (askq_toggle:{hookId}:{idx}:{sessionId})
-      if (msg.callbackData.startsWith('askq_toggle:')) {
-        const parts = msg.callbackData.split(':');
-        const hookId = parts[1];
-        const optionIndex = parseInt(parts[2], 10);
-        const sessionId = parts[3] || '';
-        const selected = this.permissions.toggleMultiSelectOption(hookId, optionIndex);
+      const askqToggleParsed = parseAskqToggleCallback(msg.callbackData);
+      if (askqToggleParsed) {
+        const selected = this.permissions.toggleMultiSelectOption(askqToggleParsed.hookId, askqToggleParsed.optionIndex);
         if (selected === null) return true;
 
         // Re-render the card with updated checkboxes
@@ -624,32 +617,29 @@ export class BridgeManager {
       }
 
       // AskUserQuestion multi-select submit (askq_submit:{hookId}:{sessionId})
-      if (msg.callbackData.startsWith('askq_submit:')) {
-        const parts = msg.callbackData.split(':');
-        const hookId = parts[1];
-        const sessionId = parts[2] || '';
+      const askqSubmitParsed = parseAskqSubmitCallback(msg.callbackData);
+      if (askqSubmitParsed) {
         await this.permissions.resolveMultiSelect(
-          hookId, sessionId,
+          askqSubmitParsed.hookId, askqSubmitParsed.sessionId,
           msg.messageId, adapter, msg.chatId, this.coreAvailable,
         );
         return true;
       }
 
       // AskUserQuestion skip callback — resolve with allow + empty answers (askq_skip:{hookId}:{sessionId})
-      if (msg.callbackData.startsWith('askq_skip:')) {
-        const parts = msg.callbackData.split(':');
-        const hookId = parts[1];
-        const sessionId = parts[2] || '';
+      const askqSkipParsed = parseAskqSkipCallback(msg.callbackData);
+      if (askqSkipParsed) {
         await this.permissions.resolveAskQuestionSkip(
-          hookId, sessionId,
+          askqSkipParsed.hookId, askqSkipParsed.sessionId,
           msg.messageId, adapter, msg.chatId, this.coreAvailable,
         );
         return true;
       }
 
       // SDK AskUserQuestion multi-select submit (askq_submit_sdk:{permId})
-      if (msg.callbackData.startsWith('askq_submit_sdk:')) {
-        const permId = msg.callbackData.split(':')[1];
+      const askqSubmitSdkParsed = parseAskqSubmitSdkCallback(msg.callbackData);
+      if (askqSubmitSdkParsed) {
+        const permId = askqSubmitSdkParsed.permId;
         const selected = this.permissions.getToggledSelections(permId);
         if (selected.size === 0) {
           await adapter.send({ chatId: msg.chatId, text: '⚠️ No options selected' });
@@ -691,25 +681,22 @@ export class BridgeManager {
       }
 
       // Hook permission callbacks (hook:allow:ID:sessionId, hook:allow_always:ID:sessionId, hook:deny:ID:sessionId)
-      if (msg.callbackData.startsWith('hook:')) {
-        const parts = msg.callbackData.split(':');
-        const decision = parts[1]; // allow, allow_always, or deny
-        const hookId = parts[2];
-        const sessionId = parts[3] || '';
-        await this.permissions.resolveHookCallback(hookId, decision, sessionId, msg.messageId, adapter, msg.chatId, this.coreAvailable);
+      const hookParsed = parseHookCallback(msg.callbackData);
+      if (hookParsed) {
+        await this.permissions.resolveHookCallback(hookParsed.hookId, hookParsed.decision, hookParsed.sessionId, msg.messageId, adapter, msg.chatId, this.coreAvailable);
         return true;
       }
 
       // Graduated permission callbacks — resolve gateway, no message edit
       // (renderer.onPermissionResolved() handles the visual transition)
-      if (msg.callbackData.startsWith('perm:allow_edits:')) {
-        const permId = msg.callbackData.split(':').slice(2).join(':');
+      if (msg.callbackData.startsWith(CALLBACK_PREFIXES.PERM_ALLOW_EDITS)) {
+        const permId = msg.callbackData.slice(CALLBACK_PREFIXES.PERM_ALLOW_EDITS.length);
         this.permissions.getGateway().resolve(permId, 'allow');
         return true;
       }
 
-      if (msg.callbackData.startsWith('perm:allow_tool:')) {
-        const parts = msg.callbackData.split(':');
+      if (msg.callbackData.startsWith(CALLBACK_PREFIXES.PERM_ALLOW_TOOL)) {
+        const parts = parseCallback(msg.callbackData);
         const permId = parts[2];
         const toolName = parts.slice(3).join(':');
         this.permissions.getGateway().resolve(permId, 'allow');
@@ -718,8 +705,8 @@ export class BridgeManager {
         return true;
       }
 
-      if (msg.callbackData.startsWith('perm:allow_bash:')) {
-        const parts = msg.callbackData.split(':');
+      if (msg.callbackData.startsWith(CALLBACK_PREFIXES.PERM_ALLOW_BASH)) {
+        const parts = parseCallback(msg.callbackData);
         const permId = parts[2];
         const prefix = parts.slice(3).join(':');
         this.permissions.getGateway().resolve(permId, 'allow');

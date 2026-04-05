@@ -112,8 +112,10 @@ export class MessageRenderer {
         if (this.currentTool) {
           this.currentTool.elapsed++;
         }
-        // Update display every 3 seconds (balance between feedback and API calls)
-        this.scheduleFlush();
+        // Only schedule flush every 3 seconds to reduce API calls
+        if (this.elapsedSeconds % 3 === 0) {
+          this.scheduleFlush();
+        }
       }, 1000);
     }
 
@@ -276,11 +278,7 @@ export class MessageRenderer {
     }
 
     if (this.totalTools > 0) {
-      const parts: string[] = [];
-      for (const [name, count] of this.toolCounts) {
-        parts.push(`${getToolIcon(name)} ${name} ×${count}`);
-      }
-      const toolSummary = parts.join(' · ');
+      const toolSummary = this.renderToolSummaryParts();
       const elapsed = `${this.elapsedSeconds}s`;
       lines.push(`⏳ ${toolSummary} (${this.totalTools} tools · ${elapsed})`);
 
@@ -294,12 +292,16 @@ export class MessageRenderer {
     return this.applyPlatformLimit(redactSensitiveContent(lines.join('\n')));
   }
 
-  private renderToolSummary(): string {
+  private renderToolSummaryParts(): string {
     const parts: string[] = [];
     for (const [name, count] of this.toolCounts) {
       parts.push(`${getToolIcon(name)} ${name} ×${count}`);
     }
-    return `${parts.join(' · ')} (${this.totalTools} total)`;
+    return parts.join(' · ');
+  }
+
+  private renderToolSummary(): string {
+    return `${this.renderToolSummaryParts()} (${this.totalTools} total)`;
   }
 
   private renderDone(): string {
