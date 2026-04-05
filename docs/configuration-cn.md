@@ -11,9 +11,6 @@ TL_PORT=8080
 # 访问令牌（自动生成）
 TL_TOKEN=auto-generated
 
-# 公网访问地址（用于内网穿透）
-TL_PUBLIC_URL=https://your-domain.com
-
 # 启用的 IM 平台
 TL_ENABLED_CHANNELS=telegram,discord
 ```

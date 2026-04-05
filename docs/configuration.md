@@ -11,9 +11,6 @@ TL_PORT=8080
 # Access token (auto-generated)
 TL_TOKEN=auto-generated
 
-# Public URL (for tunneling)
-TL_PUBLIC_URL=https://your-domain.com
-
 # Enabled IM platforms
 TL_ENABLED_CHANNELS=telegram,discord
 ```

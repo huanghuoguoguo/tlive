@@ -527,10 +527,17 @@ switch (command) {
     const current = getVersion();
     console.log(`Current version: ${current}`);
 
-    // Check latest version first
+    // Check latest version from GitHub
     let latest;
     try {
-      latest = execSync('npm view tlive version', { encoding: 'utf-8', timeout: 10000 }).trim();
+      const resp = await fetch('https://api.github.com/repos/huanghuoguoguo/tlive/releases/latest', {
+        headers: { 'Accept': 'application/vnd.github.v3+json' },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        latest = data.tag_name?.replace(/^v/, '') || data.name?.replace(/^v/, '');
+      }
     } catch (e) {
       console.error('Failed to check latest version. Are you online?');
       process.exit(1);
@@ -542,26 +549,70 @@ switch (command) {
     }
 
     console.log(`Latest version: ${latest}`);
-    console.log('\nUpdating...');
+    console.log('\nUpgrading from GitHub...');
+
+    // Check if installed via git clone
+    const gitDir = join(PACKAGE_ROOT, '.git');
+    const isGitInstall = existsSync(gitDir);
 
     try {
-      execSync('npm install -g tlive@latest', { stdio: 'inherit' });
-      console.log(`\n✅ Updated to ${latest}.`);
+      if (isGitInstall) {
+        // Git install: pull and rebuild
+        console.log('Pulling latest changes...');
+        execSync('git fetch origin', { stdio: 'inherit', cwd: PACKAGE_ROOT });
+        execSync('git reset --hard origin/main', { stdio: 'inherit', cwd: PACKAGE_ROOT });
+        execSync('git pull origin main', { stdio: 'inherit', cwd: PACKAGE_ROOT });
 
-      // Show changelog hint
+        console.log('Rebuilding bridge...');
+        execSync('npm run build', { stdio: 'inherit', cwd: PACKAGE_ROOT });
+      } else {
+        // Non-git install: clone fresh
+        const backupDir = join(homedir(), '.tlive-backup-' + Date.now());
+        const tempDir = join(homedir(), 'tlive-new-' + Date.now());
+
+        console.log('Downloading latest version...');
+        execSync(`git clone --depth 1 https://github.com/huanghuoguoguo/tlive.git "${tempDir}"`, { stdio: 'inherit' });
+
+        // Backup config
+        if (existsSync(TLIVE_HOME)) {
+          console.log('Backing up config...');
+          execSync(isWindows ? `xcopy "${TLIVE_HOME}" "${backupDir}" /E /I /Q` : `cp -r "${TLIVE_HOME}" "${backupDir}"`, { stdio: 'inherit' });
+        }
+
+        // Build new version
+        console.log('Building...');
+        execSync('npm install', { stdio: 'inherit', cwd: tempDir });
+        execSync('npm run build', { stdio: 'inherit', cwd: tempDir });
+
+        // Copy config back
+        if (existsSync(backupDir)) {
+          const configSrc = join(backupDir, 'config.env');
+          if (existsSync(configSrc)) {
+            mkdirSync(TLIVE_HOME, { recursive: true });
+            copyFileSync(configSrc, CONFIG_FILE);
+          }
+        }
+
+        console.log(`\nNew version installed at: ${tempDir}`);
+        console.log('Please update your PATH or alias to point to the new directory.');
+        if (existsSync(backupDir)) {
+          console.log(`Config backed up at: ${backupDir}`);
+        }
+      }
+
+      console.log(`\n✅ Upgraded to ${latest}.`);
       console.log('\nChangelog: https://github.com/huanghuoguoguo/tlive/releases');
 
       // Restart bridge if running
       if (getBridgePid()) {
         console.log('\nRestarting bridge...');
         daemonStop();
-        // Small delay to ensure port is released
         setTimeout(() => {
           daemonStart();
         }, 1000);
       }
     } catch (err) {
-      console.error(`Update failed: ${err.message || err}`);
+      console.error(`Upgrade failed: ${err.message || err}`);
       process.exit(1);
     }
     break;
