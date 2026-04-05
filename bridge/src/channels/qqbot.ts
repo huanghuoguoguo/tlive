@@ -676,9 +676,32 @@ export class QQBotAdapter extends BaseChannelAdapter {
   }
 
   async editMessage(chatId: string, messageId: string, message: OutboundMessage): Promise<void> {
-    // QQ Bot doesn't support message editing directly
-    // We would need to delete and resend, but that's not ideal
-    console.warn('[qqbot] Message editing not supported');
+    const text = message.text ?? '';
+    const isProgressUpdate = text.includes('⏳') && !text.includes('───────────────');
+    const hasButtons = message.buttons?.length;
+    const isCompletion = text.includes('───────────────') || text.startsWith('❌') || text.startsWith('✅');
+
+    if (hasButtons) {
+      // Permission request → must send new message for user interaction
+      console.log('[qqbot] Permission request: sending new message with buttons');
+      await this.send(message);
+    } else if (isCompletion) {
+      // Final result or error → must send
+      console.log('[qqbot] Final result: sending new message');
+      await this.send(message);
+    } else if (message.buttons?.length === 0) {
+      // Buttons cleared → permission resolved
+      console.log('[qqbot] Permission resolved: sending status update');
+      await this.send({ chatId: message.chatId, text: message.text });
+    } else if (isProgressUpdate) {
+      // Progress updates → ignore to avoid spam
+      // User already sees the first message; will get final result when complete
+      console.warn('[qqbot] Progress update ignored (no edit support)');
+    } else {
+      // Other content updates → send to ensure user sees it
+      console.log('[qqbot] Content update: sending new message');
+      await this.send(message);
+    }
   }
 
   async sendTyping(chatId: string): Promise<void> {
