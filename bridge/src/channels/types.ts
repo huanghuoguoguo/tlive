@@ -18,6 +18,8 @@ export interface FileAttachment {
   name: string;
   mimeType: string;
   base64Data: string;
+  /** URL to fetch the file content (used when base64Data is empty) */
+  url?: string;
 }
 
 export interface OutboundMessage {

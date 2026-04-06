@@ -407,25 +407,26 @@ export class QQBotAdapter extends BaseChannelAdapter {
     // Track chat type
     this.chatTypeMap.set(event.author.user_openid, 'c2c');
 
-    const attachments: FileAttachment[] = [];
-    for (const att of event.attachments ?? []) {
-      if (att.content_type.startsWith('image/')) {
-        attachments.push({
-          type: 'image',
-          name: att.filename ?? 'image',
-          mimeType: att.content_type,
-          base64Data: '', // Will be fetched later if needed
-        });
-      }
-    }
-
-    this.messageQueue.push({
-      channelType: 'qqbot',
-      chatId: event.author.user_openid, // Use openid as chatId for C2C
-      userId: event.author.user_openid,
-      text: event.content,
-      messageId: event.id,
-      attachments: attachments.length > 0 ? attachments : undefined,
+    // Process attachments asynchronously
+    this.processAttachments(event.attachments ?? []).then(attachments => {
+      this.messageQueue.push({
+        channelType: 'qqbot',
+        chatId: event.author.user_openid, // Use openid as chatId for C2C
+        userId: event.author.user_openid,
+        text: event.content,
+        messageId: event.id,
+        attachments: attachments.length > 0 ? attachments : undefined,
+      });
+    }).catch(err => {
+      console.error(`[qqbot] Failed to process attachments: ${err}`);
+      // Still push the message without attachments
+      this.messageQueue.push({
+        channelType: 'qqbot',
+        chatId: event.author.user_openid,
+        userId: event.author.user_openid,
+        text: event.content,
+        messageId: event.id,
+      });
     });
   }
 
@@ -441,25 +442,25 @@ export class QQBotAdapter extends BaseChannelAdapter {
       content = content.replace(`<@${this.config.appId}>`, '').trim();
     }
 
-    const attachments: FileAttachment[] = [];
-    for (const att of event.attachments ?? []) {
-      if (att.content_type.startsWith('image/')) {
-        attachments.push({
-          type: 'image',
-          name: att.filename ?? 'image',
-          mimeType: att.content_type,
-          base64Data: '',
-        });
-      }
-    }
-
-    this.messageQueue.push({
-      channelType: 'qqbot',
-      chatId: event.group_openid, // Use group_openid as chatId
-      userId: event.author.member_openid,
-      text: content,
-      messageId: event.id,
-      attachments: attachments.length > 0 ? attachments : undefined,
+    // Process attachments asynchronously
+    this.processAttachments(event.attachments ?? []).then(attachments => {
+      this.messageQueue.push({
+        channelType: 'qqbot',
+        chatId: event.group_openid, // Use group_openid as chatId
+        userId: event.author.member_openid,
+        text: content,
+        messageId: event.id,
+        attachments: attachments.length > 0 ? attachments : undefined,
+      });
+    }).catch(err => {
+      console.error(`[qqbot] Failed to process attachments: ${err}`);
+      this.messageQueue.push({
+        channelType: 'qqbot',
+        chatId: event.group_openid,
+        userId: event.author.member_openid,
+        text: content,
+        messageId: event.id,
+      });
     });
   }
 
@@ -497,6 +498,45 @@ export class QQBotAdapter extends BaseChannelAdapter {
       text: event.content,
       messageId: event.id,
     });
+  }
+
+  /** Download and process attachments from QQBot */
+  private async processAttachments(attachments: Array<{ content_type: string; url: string; filename?: string }>): Promise<FileAttachment[]> {
+    const result: FileAttachment[] = [];
+    const MAX_SIZE = 10_000_000; // 10MB limit
+
+    for (const att of attachments) {
+      try {
+        // Download attachment
+        const resp = await fetch(att.url);
+        if (!resp.ok) {
+          console.warn(`[qqbot] Failed to download attachment: ${resp.status}`);
+          continue;
+        }
+
+        const buffer = Buffer.from(await resp.arrayBuffer());
+        if (buffer.length > MAX_SIZE) {
+          console.warn(`[qqbot] Attachment too large: ${buffer.length} bytes`);
+          continue;
+        }
+
+        const mimeType = att.content_type || 'application/octet-stream';
+        const isImage = mimeType.startsWith('image/');
+
+        result.push({
+          type: isImage ? 'image' : 'file',
+          name: att.filename ?? (isImage ? 'image' : 'file'),
+          mimeType,
+          base64Data: buffer.toString('base64'),
+        });
+
+        console.log(`[qqbot] Downloaded attachment: ${att.filename ?? 'unnamed'} (${buffer.length} bytes)`);
+      } catch (err) {
+        console.error(`[qqbot] Error downloading attachment: ${err}`);
+      }
+    }
+
+    return result;
   }
 
   private scheduleReconnect(customDelay?: number): void {

@@ -8,7 +8,7 @@ description: |
   Trigger phrases: "tlive", "IM bridge", "消息桥接", "手机交互", "启动桥接",
   "连接飞书", "连接Telegram", "连接QQ", "诊断", "查看日志", "配置".
   Do NOT use for: building bots, webhook integrations, or general coding tasks.
-argument-hint: "setup | stop | status | logs [N] | reconfigure | doctor"
+argument-hint: "setup | start | stop | restart | status | logs [N] | reconfigure | doctor"
 allowed-tools:
   - Bash
   - Read
@@ -34,6 +34,7 @@ User data: `~/.tlive/`
 | (no args), `start`, `启动`, `启动桥接` | start |
 | `setup`, `configure`, `配置`, `帮我连接 Telegram` | setup |
 | `stop`, `停止`, `关闭` | stop |
+| `restart`, `重启` | restart |
 | `status`, `状态`, `运行状态` | status |
 | `logs`, `logs 200`, `查看日志` | logs |
 | `reconfigure`, `修改配置`, `换个 bot`, `改 token` | reconfigure |
@@ -112,6 +113,16 @@ Enter numbers (e.g., 1,3):"
 
 ```
 tlive stop
+```
+
+### `restart`
+
+```
+1. Check config.env → if missing, auto-start setup
+2. Stop Bridge: tlive stop
+3. Start Bridge: tlive start
+4. Wait 2s, verify alive: tlive status
+5. Report channels + web terminal status
 ```
 
 ### `status`
