@@ -115,7 +115,7 @@ interface TokenCache {
 export class QQBotAdapter extends BaseChannelAdapter {
   readonly channelType = 'qqbot' as const;
   private config: QQBotConfig;
-  private messageQueue: InboundMessage[] = [];
+  private messageQueue: Array<InboundMessage | Promise<InboundMessage>> = [];
   private ws: WebSocket | null = null;
   private tokenCache: TokenCache | null = null;
   private tokenFetchPromise: Promise<string> | null = null; // Prevent race conditions
@@ -407,27 +407,16 @@ export class QQBotAdapter extends BaseChannelAdapter {
     // Track chat type
     this.chatTypeMap.set(event.author.user_openid, 'c2c');
 
-    // Process attachments asynchronously
-    this.processAttachments(event.attachments ?? []).then(attachments => {
-      this.messageQueue.push({
-        channelType: 'qqbot',
-        chatId: event.author.user_openid, // Use openid as chatId for C2C
-        userId: event.author.user_openid,
-        text: event.content,
-        messageId: event.id,
-        attachments: attachments.length > 0 ? attachments : undefined,
-      });
-    }).catch(err => {
-      console.error(`[qqbot] Failed to process attachments: ${err}`);
-      // Still push the message without attachments
-      this.messageQueue.push({
+    this.enqueueMessageWithAttachments(
+      {
         channelType: 'qqbot',
         chatId: event.author.user_openid,
         userId: event.author.user_openid,
         text: event.content,
         messageId: event.id,
-      });
-    });
+      },
+      event.attachments,
+    );
   }
 
   private handleGroupMessage(event: GroupMessageEvent): void {
@@ -442,26 +431,16 @@ export class QQBotAdapter extends BaseChannelAdapter {
       content = content.replace(`<@${this.config.appId}>`, '').trim();
     }
 
-    // Process attachments asynchronously
-    this.processAttachments(event.attachments ?? []).then(attachments => {
-      this.messageQueue.push({
-        channelType: 'qqbot',
-        chatId: event.group_openid, // Use group_openid as chatId
-        userId: event.author.member_openid,
-        text: content,
-        messageId: event.id,
-        attachments: attachments.length > 0 ? attachments : undefined,
-      });
-    }).catch(err => {
-      console.error(`[qqbot] Failed to process attachments: ${err}`);
-      this.messageQueue.push({
+    this.enqueueMessageWithAttachments(
+      {
         channelType: 'qqbot',
         chatId: event.group_openid,
         userId: event.author.member_openid,
         text: content,
         messageId: event.id,
-      });
-    });
+      },
+      event.attachments,
+    );
   }
 
   private handleGuildMessage(event: GuildMessageEvent): void {
@@ -476,13 +455,16 @@ export class QQBotAdapter extends BaseChannelAdapter {
       content = content.replace(`<@${this.config.appId}>`, '').trim();
     }
 
-    this.messageQueue.push({
-      channelType: 'qqbot',
-      chatId: event.channel_id,
-      userId: event.author.id,
-      text: content,
-      messageId: event.id,
-    });
+    this.enqueueMessageWithAttachments(
+      {
+        channelType: 'qqbot',
+        chatId: event.channel_id,
+        userId: event.author.id,
+        text: content,
+        messageId: event.id,
+      },
+      event.attachments,
+    );
   }
 
   private handleDirectMessage(event: GuildMessageEvent): void {
@@ -491,13 +473,40 @@ export class QQBotAdapter extends BaseChannelAdapter {
     // Track chat type
     this.chatTypeMap.set(event.guild_id, 'dm');
 
-    this.messageQueue.push({
-      channelType: 'qqbot',
-      chatId: event.guild_id, // guild_id for DM
-      userId: event.author.id,
-      text: event.content,
-      messageId: event.id,
-    });
+    this.enqueueMessageWithAttachments(
+      {
+        channelType: 'qqbot',
+        chatId: event.guild_id,
+        userId: event.author.id,
+        text: event.content,
+        messageId: event.id,
+      },
+      event.attachments,
+    );
+  }
+
+  private enqueueMessageWithAttachments(
+    base: InboundMessage,
+    rawAttachments?: Array<{ content_type: string; url: string; filename?: string }>,
+  ): void {
+    const attachments = rawAttachments ?? [];
+    if (attachments.length === 0) {
+      this.messageQueue.push(base);
+      return;
+    }
+
+    // Preserve arrival order by enqueueing immediately and resolving attachments in-place.
+    this.messageQueue.push(
+      this.processAttachments(attachments)
+        .then(processed => ({
+          ...base,
+          attachments: processed.length > 0 ? processed : undefined,
+        }))
+        .catch(err => {
+          console.error(`[qqbot] Failed to process attachments: ${err}`);
+          return base;
+        }),
+    );
   }
 
   /** Download and process attachments from QQBot */
@@ -585,7 +594,9 @@ export class QQBotAdapter extends BaseChannelAdapter {
   }
 
   async consumeOne(): Promise<InboundMessage | null> {
-    return this.messageQueue.shift() ?? null;
+    const next = this.messageQueue.shift();
+    if (!next) return null;
+    return await next;
   }
 
   async send(message: OutboundMessage): Promise<SendResult> {
