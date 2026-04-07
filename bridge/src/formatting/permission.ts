@@ -1,6 +1,7 @@
 import type { ChannelType, OutboundMessage } from '../channels/types.js';
 import type { PermissionCardData } from './types.js';
 import { escapeHtml } from './escape.js';
+import { truncate } from '../utils/string.js';
 
 interface PermissionMessage {
   text?: string;
@@ -9,10 +10,6 @@ interface PermissionMessage {
   buttons: OutboundMessage['buttons'];
   /** Feishu card header (caller passes to buildFeishuCard) */
   feishuHeader?: { template: string; title: string };
-}
-
-function truncateInput(input: string, max = 300): string {
-  return input.length > max ? input.slice(0, max - 3) + '...' : input;
 }
 
 function makeButtons(permissionId: string): NonNullable<OutboundMessage['buttons']> {
@@ -28,7 +25,7 @@ function makeButtons(permissionId: string): NonNullable<OutboundMessage['buttons
 }
 
 export function formatPermissionCard(data: PermissionCardData, channelType: ChannelType): PermissionMessage {
-  const input = truncateInput(data.toolInput);
+  const input = truncate(data.toolInput, 300);
   const expires = data.expiresInMinutes ?? 5;
   const buttons = makeButtons(data.permissionId);
 

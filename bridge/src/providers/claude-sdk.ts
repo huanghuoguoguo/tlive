@@ -4,7 +4,7 @@
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, writeFileSync, mkdirSync, unlinkSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, writeFileSync, mkdirSync, unlinkSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir, homedir } from 'node:os';
 import { query } from '@anthropic-ai/claude-agent-sdk';
@@ -24,6 +24,32 @@ function classifyAuthError(text: string): 'cli' | 'api' | false {
   if (CLI_AUTH_PATTERNS.some(re => re.test(text))) return 'cli';
   if (API_AUTH_PATTERNS.some(re => re.test(text))) return 'api';
   return false;
+}
+
+// ── Temp image directory cleanup ──
+
+let lastImageDirCleanup = 0;
+const IMAGE_DIR_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
+function cleanupImageDir(): void {
+  const now = Date.now();
+  if (now - lastImageDirCleanup < IMAGE_DIR_CLEANUP_INTERVAL) return;
+  lastImageDirCleanup = now;
+
+  try {
+    const imgDir = join(tmpdir(), 'tlive-images');
+    if (!existsSync(imgDir)) return;
+    const maxAge = 60 * 60 * 1000; // 1 hour
+    for (const file of readdirSync(imgDir)) {
+      const filePath = join(imgDir, file);
+      try {
+        const stat = statSync(filePath);
+        if (now - stat.mtimeMs > maxAge) {
+          unlinkSync(filePath);
+        }
+      } catch { /* ignore */ }
+    }
+  } catch { /* ignore cleanup errors */ }
 }
 
 // ── Environment isolation ──
@@ -348,27 +374,12 @@ export class ClaudeSDKProvider implements LLMProvider {
             controller.enqueue({ kind: 'error', message } as CanonicalEvent);
             controller.close();
           } finally {
-            // Clean up temp image files
+            // Clean up this query's temp image files
             for (const path of imagePaths) {
               try { unlinkSync(path); } catch { /* ignore */ }
             }
-            // Periodically clean up old files in tlive-images dir (files older than 1 hour)
-            try {
-              const imgDir = join(tmpdir(), 'tlive-images');
-              if (existsSync(imgDir)) {
-                const now = Date.now();
-                const maxAge = 60 * 60 * 1000; // 1 hour
-                for (const file of readdirSync(imgDir)) {
-                  const filePath = join(imgDir, file);
-                  try {
-                    const stat = existsSync(filePath) && require('fs').statSync(filePath);
-                    if (stat && now - stat.mtimeMs > maxAge) {
-                      unlinkSync(filePath);
-                    }
-                  } catch { /* ignore */ }
-                }
-              }
-            } catch { /* ignore cleanup errors */ }
+            // Periodically clean up old files in tlive-images dir
+            cleanupImageDir();
           }
         })();
       },

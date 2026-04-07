@@ -198,25 +198,24 @@ export class BridgeManager {
       this.runAdapterLoop(adapter);
     }
     this.permissions.startPruning();
-    // Periodic cleanup of SDK question data (5 minute TTL)
+    // Periodic cleanup of SDK question data (5 minute TTL) and stale attachments
+    // Use 5-minute interval to avoid iterating all entries every minute
     this.sdkQuestionCleanupTimer = setInterval(() => {
       const now = Date.now();
       const maxAge = 5 * 60 * 1000;
-      for (const [id, data] of this.sdkQuestionData) {
-        // Check if the permission is still pending; if not, clean up
+      for (const [id] of this.sdkQuestionData) {
         if (!this.permissions.getGateway().isPending(id)) {
           this.sdkQuestionData.delete(id);
           this.sdkQuestionAnswers.delete(id);
           this.sdkQuestionTextAnswers.delete(id);
         }
       }
-      // Also clean up stale pending attachments (older than 5 minutes)
       for (const [key, entry] of this.pendingAttachments) {
         if (now - entry.timestamp > maxAge) {
           this.pendingAttachments.delete(key);
         }
       }
-    }, 60_000);
+    }, 5 * 60 * 1000);
   }
 
   async stop(): Promise<void> {

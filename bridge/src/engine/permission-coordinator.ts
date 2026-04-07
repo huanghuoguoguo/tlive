@@ -104,10 +104,6 @@ export class PermissionCoordinator {
   /** Track a hook message for reply routing */
   trackHookMessage(messageId: string, sessionId: string): void {
     this.hookMessages.set(messageId, { sessionId: sessionId || '', timestamp: Date.now() });
-    // Prune entries older than 24h
-    for (const [id, entry] of this.hookMessages) {
-      if (Date.now() - entry.timestamp > 24 * 60 * 60 * 1000) this.hookMessages.delete(id);
-    }
   }
 
   /** Check if a message is a tracked hook message */
@@ -126,9 +122,6 @@ export class PermissionCoordinator {
   trackPermissionMessage(messageId: string, permissionId: string, sessionId: string, channelType: string): void {
     this.permissionMessages.set(messageId, { permissionId, sessionId, timestamp: Date.now() });
     this.latestPermission.set(channelType, { permissionId, sessionId, messageId });
-    for (const [id, entry] of this.permissionMessages) {
-      if (Date.now() - entry.timestamp > 24 * 60 * 60 * 1000) this.permissionMessages.delete(id);
-    }
   }
 
   /** Get the latest pending AskUserQuestion for a channel type */
@@ -195,7 +188,7 @@ export class PermissionCoordinator {
   /** Store original permission card text for later card update */
   storeHookPermissionText(hookId: string, text: string): void {
     this.hookPermissionTexts.set(hookId, { text, ts: Date.now() });
-    this.pruneStaleEntries();
+    // Cleanup handled by periodic timer via startPruning()
   }
 
   /** Start periodic cleanup of stale entries (call from BridgeManager.start) */
@@ -226,6 +219,14 @@ export class PermissionCoordinator {
         this.hookQuestionData.delete(id);
         this.toggledSelections.delete(id);
       }
+    }
+    // Also clean up hookMessages and permissionMessages (24h cutoff)
+    const cutoff24h = Date.now() - 24 * 60 * 60 * 1000;
+    for (const [id, entry] of this.hookMessages) {
+      if (entry.timestamp < cutoff24h) this.hookMessages.delete(id);
+    }
+    for (const [id, entry] of this.permissionMessages) {
+      if (entry.timestamp < cutoff24h) this.permissionMessages.delete(id);
     }
   }
 

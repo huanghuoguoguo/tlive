@@ -101,6 +101,36 @@ function getHookTarget(channelType: string, config: ReturnType<typeof loadConfig
   return { chatId: manager.getLastChatId(channelType), receiveIdType: undefined };
 }
 
+/** Hint text for AskUserQuestion multi-select */
+function askqMultiSelectHint(channelType: string): string {
+  const hints: Record<string, string> = {
+    [CHANNEL_TYPES.FEISHU]: '\n\n💬 点击选项切换选中，然后按 Submit 确认',
+    [CHANNEL_TYPES.TELEGRAM]: '\n\n💬 Tap options to toggle, then Submit',
+    [CHANNEL_TYPES.DISCORD]: '\n\n💬 Tap options to toggle, then Submit',
+  };
+  return hints[channelType] || '';
+}
+
+/** Hint text for AskUserQuestion single-select */
+function askqSingleSelectHint(channelType: string): string {
+  const hints: Record<string, string> = {
+    [CHANNEL_TYPES.FEISHU]: '\n\n💬 回复数字选择，或直接输入内容',
+    [CHANNEL_TYPES.TELEGRAM]: '\n\n💬 Reply with number to select, or type your answer',
+    [CHANNEL_TYPES.DISCORD]: '\n\n💬 Reply with number to select, or type your answer',
+  };
+  return hints[channelType] || '';
+}
+
+/** Hint text for permission approval */
+function permApprovalHint(channelType: string): string {
+  const hints: Record<string, string> = {
+    [CHANNEL_TYPES.FEISHU]: '\n\n💬 或回复 **allow** / **deny**',
+    [CHANNEL_TYPES.TELEGRAM]: '\n\n💬 Or reply <b>allow</b> / <b>deny</b>',
+    [CHANNEL_TYPES.DISCORD]: '\n\n💬 Or reply `allow` / `deny`',
+  };
+  return hints[channelType] || '';
+}
+
 // Whether Go Core daemon is reachable (for web terminal links in IM)
 let coreAvailable = false;
 let coreClient: CoreClientImpl | null = null;
@@ -114,6 +144,23 @@ const sentPermissionIds = new Map<string, number>();
 const sentNotificationIds = new Map<string, number>();
 // Cache session cwd — a session's cwd never changes after creation
 const sessionCwdCache = new Map<string, string>();
+
+/** Prefetch all session CWDs at startup (avoid per-poll fetching of entire session list) */
+async function prefetchSessionCwds(): Promise<void> {
+  try {
+    const resp = await fetch(`${cachedConfig!.coreUrl}/api/sessions`, {
+      headers: { Authorization: `Bearer ${cachedConfig!.token}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (resp.ok) {
+      const sessions = await resp.json() as Array<{ id: string; cwd?: string }>;
+      for (const s of sessions) {
+        if (s.cwd) sessionCwdCache.set(s.id, s.cwd);
+      }
+      console.log(`[bridge] Prefetched ${sessionCwdCache.size} session CWDs`);
+    }
+  } catch { /* non-fatal */ }
+}
 
 /** Cleanup stale entries from tracking maps (called periodically) */
 function cleanupStaleEntries(): void {
@@ -179,6 +226,8 @@ async function main() {
     await coreClient.connect();
     coreAvailable = true;
     logger.info(`Go Core detected at ${config.coreUrl}`);
+    // Prefetch all session cwds at startup (session cwd never changes)
+    prefetchSessionCwds().catch(() => {});
   } catch {
     coreAvailable = false;
     coreClient = null;
@@ -360,28 +409,17 @@ async function main() {
               if (!target.chatId) continue;
 
               try {
-                const hints: Record<string, string> = isMulti
-                  ? {
-                      feishu: '\n\n💬 点击选项切换选中，然后按 Submit 确认',
-                      telegram: '\n\n💬 Tap options to toggle, then Submit',
-                      discord: '\n\n💬 Tap options to toggle, then Submit',
-                    }
-                  : {
-                      feishu: '\n\n💬 回复数字选择，或直接输入内容',
-                      telegram: '\n\n💬 Reply with number to select, or type your answer',
-                      discord: '\n\n💬 Reply with number to select, or type your answer',
-                    };
-                const hint = hints[adapter.channelType] || '';
+                const hint = isMulti ? askqMultiSelectHint(adapter.channelType) : askqSingleSelectHint(adapter.channelType);
                 const contextHeader = contextSuffix ? `❓ Terminal${contextSuffix}\n\n` : '';
                 const outMsg: import('./channels/types.js').OutboundMessage = {
                   chatId: target.chatId,
                   receiveIdType: target.receiveIdType,
-                  text: adapter.channelType === 'feishu' ? questionText + hint : contextHeader + questionText + hint,
+                  text: adapter.channelType === CHANNEL_TYPES.FEISHU ? questionText + hint : contextHeader + questionText + hint,
                   buttons,
-                  feishuHeader: adapter.channelType === 'feishu' ? { template: 'blue', title: `❓ Terminal${contextSuffix}` } : undefined,
+                  feishuHeader: adapter.channelType === CHANNEL_TYPES.FEISHU ? { template: 'blue', title: `❓ Terminal${contextSuffix}` } : undefined,
                 };
-                if (adapter.channelType === 'telegram') {
-                  outMsg.html = `<b>❓ Terminal${contextSuffix}</b>\n\n` + questionText.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') + (hints.telegram || '');
+                if (adapter.channelType === CHANNEL_TYPES.TELEGRAM) {
+                  outMsg.html = `<b>❓ Terminal${contextSuffix}</b>\n\n` + questionText.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') + hint;
                   outMsg.text = undefined;
                 }
                 const sendResult = await adapter.send(outMsg);
@@ -416,24 +454,16 @@ async function main() {
           if (!target.chatId) continue;
 
           try {
-            // Add text-based approval hint for all platforms
-            const hints: Record<string, string> = {
-              feishu: '\n\n💬 或回复 **allow** / **deny**',
-              telegram: '\n\n💬 Or reply <b>allow</b> / <b>deny</b>',
-              discord: '\n\n💬 Or reply `allow` / `deny`',
-            };
-            const hint = hints[adapter.channelType] || '';
+            const hint = permApprovalHint(adapter.channelType);
             const permContextHeader = contextSuffix ? `🔐 Terminal${contextSuffix}\n\n` : '';
             const outMsg: import('./channels/types.js').OutboundMessage = {
               chatId: target.chatId,
               receiveIdType: target.receiveIdType,
-              text: adapter.channelType === 'feishu' ? text + hint : permContextHeader + text + hint,
-              html: adapter.channelType === 'telegram' ? undefined : undefined,
+              text: adapter.channelType === CHANNEL_TYPES.FEISHU ? text + hint : permContextHeader + text + hint,
               buttons,
-              feishuHeader: adapter.channelType === 'feishu' ? { template: 'orange', title: `🔐 Terminal${contextSuffix}` } : undefined,
+              feishuHeader: adapter.channelType === CHANNEL_TYPES.FEISHU ? { template: 'orange', title: `🔐 Terminal${contextSuffix}` } : undefined,
             };
-            // Telegram: use HTML with the hint
-            if (adapter.channelType === 'telegram') {
+            if (adapter.channelType === CHANNEL_TYPES.TELEGRAM) {
               outMsg.html = `<b>🔐 Terminal${contextSuffix}</b>\n\n` + text + hint;
               outMsg.text = undefined;
             }

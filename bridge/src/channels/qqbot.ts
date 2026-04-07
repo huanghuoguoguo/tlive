@@ -128,7 +128,12 @@ export class QQBotAdapter extends BaseChannelAdapter {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Track message type per chatId: 'c2c' | 'group' | 'channel' | 'dm'
+  // Cleanup: cap at MAX_SIZE, prune PRUNE_COUNT oldest entries
+  private static CHAT_TYPE_MAP_MAX_SIZE = 500;
+  private static CHAT_TYPE_MAP_PRUNE_COUNT = 100;
+  private static CHAT_TYPE_MAP_CLEANUP_INTERVAL = 5 * 60 * 1000;
   private chatTypeMap = new Map<string, 'c2c' | 'group' | 'channel' | 'dm'>();
+  private chatTypeMapCleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   // Reconnect configuration
   private static RECONNECT_DELAYS = [1000, 2000, 5000, 10000, 30000, 60000];
@@ -160,6 +165,7 @@ export class QQBotAdapter extends BaseChannelAdapter {
             appId: this.config.appId,
             clientSecret: this.config.clientSecret,
           }),
+          signal: AbortSignal.timeout(10000),
         });
 
         if (!response.ok) {
@@ -255,6 +261,18 @@ export class QQBotAdapter extends BaseChannelAdapter {
         console.log('[qqbot] WebSocket connected');
         this.isConnecting = false;
         this.reconnectAttempts = 0;
+        // Start periodic cleanup of chatTypeMap
+        if (this.chatTypeMapCleanupTimer) clearInterval(this.chatTypeMapCleanupTimer);
+        this.chatTypeMapCleanupTimer = setInterval(() => {
+          if (this.chatTypeMap.size > QQBotAdapter.CHAT_TYPE_MAP_MAX_SIZE) {
+            // Prune oldest entries using direct iteration (no array allocation)
+            let count = 0;
+            for (const key of this.chatTypeMap.keys()) {
+              if (count++ >= QQBotAdapter.CHAT_TYPE_MAP_PRUNE_COUNT) break;
+              this.chatTypeMap.delete(key);
+            }
+          }
+        }, QQBotAdapter.CHAT_TYPE_MAP_CLEANUP_INTERVAL);
       });
 
       this.ws.on('message', (data) => {
@@ -589,7 +607,11 @@ export class QQBotAdapter extends BaseChannelAdapter {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    this.chatTypeMap.clear(); // Prevent memory leak
+    if (this.chatTypeMapCleanupTimer) {
+      clearInterval(this.chatTypeMapCleanupTimer);
+      this.chatTypeMapCleanupTimer = null;
+    }
+    this.chatTypeMap.clear();
     this.cleanup();
   }
 

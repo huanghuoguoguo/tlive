@@ -3,6 +3,7 @@ import type { NotificationData } from './types.js';
 import { markdownToTelegram } from '../markdown/telegram.js';
 import { downgradeHeadings } from '../markdown/feishu.js';
 import { escapeHtml } from './escape.js';
+import { truncate } from '../utils/string.js';
 
 interface NotificationMessage {
   text?: string;
@@ -32,12 +33,8 @@ const EMOJI_MAP: Record<NotificationData['type'], string> = {
   generic: '📢',
 };
 
-function truncateSummary(s: string, max = 3000): string {
-  return s.length > max ? s.slice(0, max - 3) + '...' : s;
-}
-
 export function formatNotification(data: NotificationData, channelType: ChannelType): NotificationMessage {
-  const summary = data.summary ? truncateSummary(data.summary) : undefined;
+  const summary = data.summary ? truncate(data.summary, 3000) : undefined;
   const emoji = EMOJI_MAP[data.type];
 
   switch (channelType) {

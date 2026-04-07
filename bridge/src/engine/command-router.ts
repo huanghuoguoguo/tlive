@@ -16,14 +16,9 @@ import { promisify } from 'node:util';
 import { scanClaudeSessions } from '../session-scanner.js';
 import { truncate } from '../utils/string.js';
 import { generateSessionId } from '../utils/id.js';
+import { shortPath } from '../utils/path.js';
 
 const execAsync = promisify(exec);
-
-/** Shorten path by replacing home directory with ~ */
-function shortPath(path: string): string {
-  const home = homedir();
-  return path.startsWith(home) ? path.replace(home, '~') : path;
-}
 
 /** Format file size in human-readable format */
 function formatSize(bytes: number): string {
