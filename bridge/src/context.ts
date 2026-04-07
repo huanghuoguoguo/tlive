@@ -1,6 +1,9 @@
 import type { ClaudeSDKProvider } from './providers/claude-sdk.js';
 import type { JsonFileStore } from './store/json-file.js';
 import type { CoreClientImpl } from './core-client.js';
+import type { ProviderCapabilities, LiveSession } from './providers/base.js';
+
+export type { ProviderCapabilities, LiveSession };
 
 export interface BridgeContext {
   store: JsonFileStore;

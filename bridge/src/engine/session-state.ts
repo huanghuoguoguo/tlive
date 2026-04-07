@@ -1,4 +1,5 @@
 import type { SessionMode } from '../messages/types.js';
+import type { EffortLevel } from '../utils/types.js';
 
 export type VerboseLevel = 0 | 1;
 
@@ -46,11 +47,11 @@ export class SessionStateManager {
     this.modes.set(key, current);
   }
 
-  getEffort(channelType: string, chatId: string): 'low' | 'medium' | 'high' | 'max' | undefined {
+  getEffort(channelType: string, chatId: string): EffortLevel | undefined {
     return this.modes.get(this.stateKey(channelType, chatId))?.effort;
   }
 
-  setEffort(channelType: string, chatId: string, level: 'low' | 'medium' | 'high' | 'max'): void {
+  setEffort(channelType: string, chatId: string, level: EffortLevel): void {
     const key = this.stateKey(channelType, chatId);
     const current = this.modes.get(key) || this.defaultMode();
     current.effort = level;

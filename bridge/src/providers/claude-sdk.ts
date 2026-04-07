@@ -11,9 +11,14 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { ClaudeAdapter } from '../messages/claude-adapter.js';
 import type { CanonicalEvent } from '../messages/schema.js';
-import type { LLMProvider, StreamChatParams, StreamChatResult, QueryControls } from './base.js';
+import type { LLMProvider, StreamChatParams, StreamChatResult, QueryControls, ProviderCapabilities, LiveSession, EffortLevel } from './base.js';
 import type { PendingPermissions } from '../permissions/gateway.js';
 import type { ClaudeSettingSource } from '../config.js';
+import { ClaudeLiveSession } from './claude-live-session.js';
+import { buildSubprocessEnv, preparePromptWithImages, SAFE_PERMISSIONS, PermissionTimeoutCallback } from './claude-shared.js';
+
+// Re-export for backward compatibility
+export type { PermissionTimeoutCallback } from './claude-shared.js';
 
 // ── Auth error classification ──
 
@@ -50,20 +55,6 @@ function cleanupImageDir(): void {
       } catch { /* ignore */ }
     }
   } catch { /* ignore cleanup errors */ }
-}
-
-// ── Environment isolation ──
-
-const ENV_ALWAYS_STRIP = ['CLAUDECODE'];
-
-function buildSubprocessEnv(): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) {
-    if (v === undefined) continue;
-    if (ENV_ALWAYS_STRIP.some(prefix => k.startsWith(prefix))) continue;
-    out[k] = v;
-  }
-  return out;
 }
 
 // ── CLI discovery and version check ──
@@ -120,8 +111,6 @@ interface StreamState {
   lastAssistantText: string;
 }
 
-export type PermissionTimeoutCallback = (toolName: string, toolUseId: string) => void;
-
 export class ClaudeSDKProvider implements LLMProvider {
   private pendingPerms: PendingPermissions;
   private cliPath: string | undefined;
@@ -159,6 +148,30 @@ export class ClaudeSDKProvider implements LLMProvider {
     this.settingSources = [...sources];
     const label = sources.length > 0 ? sources.join(', ') : 'none (isolation mode)';
     console.log(`[claude-sdk] Settings sources changed: ${label}`);
+  }
+
+  capabilities(): ProviderCapabilities {
+    return {
+      slashCommands: true,
+      askUserQuestion: true,
+      liveSession: true,
+      todoTracking: true,
+      costInUsd: true,
+      skills: true,
+      sessionResume: true,
+    };
+  }
+
+  createSession(params: { workingDirectory: string; sessionId?: string; effort?: EffortLevel; model?: string }): LiveSession {
+    return new ClaudeLiveSession({
+      workingDirectory: params.workingDirectory,
+      sessionId: params.sessionId,
+      cliPath: this.cliPath,
+      settingSources: this.settingSources,
+      pendingPerms: this.pendingPerms,
+      effort: params.effort,
+      model: params.model,
+    });
   }
 
   streamChat(params: StreamChatParams): StreamChatResult {

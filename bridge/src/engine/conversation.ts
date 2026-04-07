@@ -1,7 +1,8 @@
 import { getBridgeContext } from '../context.js';
 import type { CanonicalEvent } from '../messages/schema.js';
-import type { FileAttachment, PermissionRequestHandler, QueryControls } from '../providers/base.js';
+import type { FileAttachment, PermissionRequestHandler, QueryControls, StreamChatResult, EffortLevel } from '../providers/base.js';
 import type { AskUserQuestionHandler } from '../messages/types.js';
+import type { TodoStatus } from '../utils/types.js';
 
 const TEXT_MIME_PREFIXES = ['text/', 'application/json', 'application/xml', 'application/javascript', 'application/typescript', 'application/x-yaml', 'application/toml'];
 
@@ -37,7 +38,7 @@ interface ProcessMessageParams {
   onToolStart?: (event: { id: string; name: string; input: Record<string, unknown> }) => void;
   onToolResult?: (event: { toolUseId: string; content: string; isError: boolean }) => void;
   /** Called when query completes — returns Promise to allow async flush of final message */
-  onQueryResult?: (event: { sessionId: string; isError: boolean; usage: { inputTokens: number; outputTokens: number; costUsd?: number }; permissionDenials?: Array<{ toolName: string; toolUseId: string }> }) => void | Promise<void>;
+  onQueryResult?: (event: { sessionId: string; isError: boolean; usage: { inputTokens: number; outputTokens: number; costUsd?: number; modelUsage?: Record<string, { inputTokens: number; outputTokens: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number; costUSD?: number }> }; permissionDenials?: Array<{ toolName: string; toolUseId: string }> }) => void | Promise<void>;
   /** Called when SDK returns a sessionId (for resume) — caller should persist it */
   onSdkSessionId?: (id: string) => void | Promise<void>;
   /** Called on error — returns Promise to allow async flush */
@@ -48,15 +49,18 @@ interface ProcessMessageParams {
   onPromptSuggestion?: (suggestion: string) => void;
   onToolProgress?: (data: { toolName: string; elapsed: number }) => void;
   onRateLimit?: (data: { status: string; utilization?: number; resetsAt?: number }) => void;
+  onTodoUpdate?: (todos: Array<{ content: string; status: TodoStatus }>) => void;
   /** Receives query controls (interrupt, stopTask) when available */
   onControls?: (controls: QueryControls) => void;
   /** SDK-level permission handler — forwarded to streamChat */
   sdkPermissionHandler?: PermissionRequestHandler;
   /** SDK-level AskUserQuestion handler — forwarded to streamChat */
   sdkAskQuestionHandler?: AskUserQuestionHandler;
-  effort?: 'low' | 'medium' | 'high' | 'max';
+  effort?: EffortLevel;
   /** Override model for this query */
   model?: string;
+  /** Pre-built stream from LiveSession.startTurn() — skips llm.streamChat() */
+  streamResult?: StreamChatResult;
 }
 
 interface ProcessMessageResult {
@@ -79,8 +83,8 @@ export class ConversationEngine {
       const imageAttachments = params.attachments?.filter(a => a.type === 'image');
       const prompt = buildPromptWithAttachments(params.text, params.attachments);
 
-      // 3. Stream LLM response
-      const result = llm.streamChat({
+      // 3. Stream LLM response — use pre-built stream from LiveSession or call streamChat
+      const result = params.streamResult ?? llm.streamChat({
         prompt,
         workingDirectory: params.workingDirectory,
         model: params.model,
@@ -145,6 +149,9 @@ export class ConversationEngine {
             break;
           case 'rate_limit':
             params.onRateLimit?.(value);
+            break;
+          case 'todo_update':
+            params.onTodoUpdate?.(value.todos);
             break;
           case 'error':
             if (params.onError) {

@@ -14,6 +14,7 @@ import { getToolCommand } from './tool-registry.js';
 import { SessionStateManager } from './session-state.js';
 import { PermissionCoordinator } from './permission-coordinator.js';
 import { CommandRouter } from './command-router.js';
+import { SDKEngine } from './sdk-engine.js';
 import type { FeishuStreamingSession } from '../channels/feishu-streaming.js';
 import { CostTracker } from './cost-tracker.js';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -77,20 +78,20 @@ export class BridgeManager {
   private coreAvailable = false;
   private state = new SessionStateManager();
   private permissions: PermissionCoordinator;
-  /** Active query controls per chat — for /stop command */
-  private activeControls = new Map<string, import('../providers/base.js').QueryControls>();
+  /** SDK Engine for LiveSession management */
+  private sdkEngine: SDKEngine;
   private lastChatId = new Map<string, string>();
   /** Pending image attachments waiting for a text message to merge with (key: channelType:chatId) */
   private pendingAttachments = new Map<string, { attachments: import('../channels/types.js').FileAttachment[]; timestamp: number }>();
   /** Debounce timer for chatId persistence */
   private chatIdPersistTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Pushback buffer for message coalescing */
+  private coalescePushback = new Map<string, InboundMessage>();
+  /** Telegram message length limit — only coalesce if text is near this boundary */
+  private static TG_MSG_LIMIT = 4096;
 
   private commands: CommandRouter;
   private chatIdFile: string;
-  /** SDK AskUserQuestion: store question data and selected option index */
-  private sdkQuestionData = new Map<string, { questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }>; chatId: string }>();
-  private sdkQuestionAnswers = new Map<string, number>();
-  private sdkQuestionTextAnswers = new Map<string, string>();
   /** Cleanup timer for SDK question data */
   private sdkQuestionCleanupTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -103,6 +104,7 @@ export class BridgeManager {
     this.token = config.token;
     this.port = config.port || 8080;
     this.permissions = new PermissionCoordinator(gateway, broker, this.coreUrl, this.token);
+    this.sdkEngine = new SDKEngine(this.state, this.router, this.permissions);
     // Load persisted chatIds (so hook routing works without needing a message first)
     this.chatIdFile = join(getTliveRuntimeDir(), 'chat-ids.json');
     try {
@@ -116,8 +118,9 @@ export class BridgeManager {
       () => this.adapters,
       this.router,
       () => this.coreAvailable,
-      this.activeControls,
+      this.sdkEngine.getActiveControls(),
       this.permissions,
+      (channelType, chatId) => this.sdkEngine.closeSession(channelType, chatId),
     );
   }
 
@@ -177,7 +180,8 @@ export class BridgeManager {
   /** Find a pending SDK AskUserQuestion for numeric text reply */
   private findPendingSdkQuestion(_channelType: string, chatId: string): { permId: string } | null {
     // Find the most recent pending SDK askq permission scoped to this chat
-    for (const [permId, data] of this.sdkQuestionData) {
+    const { sdkQuestionData } = this.sdkEngine.getQuestionState();
+    for (const [permId, data] of sdkQuestionData) {
       if (data.chatId === chatId && this.permissions.getGateway().isPending(permId)) {
         return { permId };
       }
@@ -198,16 +202,18 @@ export class BridgeManager {
       this.runAdapterLoop(adapter);
     }
     this.permissions.startPruning();
+    this.sdkEngine.startSessionPruning();
     // Periodic cleanup of SDK question data (5 minute TTL) and stale attachments
     // Use 5-minute interval to avoid iterating all entries every minute
     this.sdkQuestionCleanupTimer = setInterval(() => {
       const now = Date.now();
       const maxAge = 5 * 60 * 1000;
-      for (const [id] of this.sdkQuestionData) {
+      const { sdkQuestionData, sdkQuestionAnswers, sdkQuestionTextAnswers } = this.sdkEngine.getQuestionState();
+      for (const [id] of sdkQuestionData) {
         if (!this.permissions.getGateway().isPending(id)) {
-          this.sdkQuestionData.delete(id);
-          this.sdkQuestionAnswers.delete(id);
-          this.sdkQuestionTextAnswers.delete(id);
+          sdkQuestionData.delete(id);
+          sdkQuestionAnswers.delete(id);
+          sdkQuestionTextAnswers.delete(id);
         }
       }
       for (const [key, entry] of this.pendingAttachments) {
@@ -225,6 +231,7 @@ export class BridgeManager {
       this.sdkQuestionCleanupTimer = null;
     }
     this.permissions.stopPruning();
+    this.sdkEngine.stopSessionPruning();
     this.permissions.getGateway().denyAll();
     for (const adapter of this.adapters.values()) {
       await adapter.stop();
@@ -286,9 +293,59 @@ export class BridgeManager {
     this.permissions.trackHookMessage(result.messageId, hook.tlive_session_id || '');
   }
 
+  /** Wait briefly for follow-up messages from the same user, merge text if they arrive quickly.
+   *  Handles Telegram splitting long messages at 4096 chars. */
+  private async coalesceMessages(adapter: BaseChannelAdapter, first: InboundMessage): Promise<InboundMessage> {
+    if (!first.text || first.callbackData) return first;
+
+    // Only wait for follow-up parts if message is near Telegram's 4096 char limit
+    if (first.text.length < BridgeManager.TG_MSG_LIMIT - 200) return first;
+
+    // Wait up to 500ms for follow-up parts
+    const parts: string[] = [first.text];
+    const deadline = Date.now() + 500;
+
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 100));
+      const next = await adapter.consumeOne();
+      if (!next) continue;
+
+      // Only merge if same user, same chat, text-only (no callback/command), arrives quickly
+      if (next.userId === first.userId && next.chatId === first.chatId
+          && next.text && !next.callbackData && !next.text.startsWith('/')) {
+        parts.push(next.text);
+        console.log(`[${adapter.channelType}] Coalesced message part (${next.text.length} chars)`);
+      } else {
+        // Different message — put it back for next iteration
+        this.coalescePushback.set(adapter.channelType, next);
+        break;
+      }
+    }
+
+    if (parts.length === 1) return first;
+    console.log(`[${adapter.channelType}] Merged ${parts.length} message parts (${parts.reduce((s, p) => s + p.length, 0)} chars total)`);
+    return { ...first, text: parts.join('\n') };
+  }
+
+  /** Process queued messages iteratively after current turn completes */
+  private async drainQueue(adapter: BaseChannelAdapter, channelType: string, chatId: string): Promise<void> {
+    let next: InboundMessage | undefined;
+    while ((next = this.sdkEngine.dequeueMessage(channelType, chatId))) {
+      console.log(`[${adapter.channelType}] Processing queued message`);
+      try {
+        await this.handleInboundMessage(adapter, next);
+      } catch (err) {
+        console.error(`[${adapter.channelType}] Error processing queued message:`, err);
+        break;
+      }
+    }
+  }
+
   private async runAdapterLoop(adapter: BaseChannelAdapter): Promise<void> {
     while (this.running) {
-      const msg = await adapter.consumeOne();
+      // Check pushback from coalescing first
+      let msg = this.coalescePushback.get(adapter.channelType) ?? await adapter.consumeOne();
+      this.coalescePushback.delete(adapter.channelType);
       if (!msg) { await new Promise(r => setTimeout(r, 100)); continue; }
       console.log(`[${adapter.channelType}] Message from ${msg.userId}: ${msg.text || '(callback)'}`);
       // Callbacks, commands, and permission text are fast — await them.
@@ -307,14 +364,29 @@ export class BridgeManager {
           console.error(`[${adapter.channelType}] Error handling message:`, err);
         }
       } else {
-        // Guard: if this chat is already processing a message, tell the user
-        const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
+        // Coalesce rapid-fire messages (e.g. Telegram splits long text at 4096 chars)
+        const coalesced = await this.coalesceMessages(adapter, msg);
+
+        // Guard: if this chat is already processing a message
+        const chatKey = this.state.stateKey(coalesced.channelType, coalesced.chatId);
         if (this.state.isProcessing(chatKey)) {
-          await adapter.send({ chatId: msg.chatId, text: '⏳ Previous message still processing, please wait...' }).catch(() => {});
+          // Check if we can steer the active session
+          if (coalesced.text && this.sdkEngine.canSteer(coalesced.channelType, coalesced.chatId, coalesced.replyToMessageId)) {
+            this.sdkEngine.steer(coalesced.channelType, coalesced.chatId, coalesced.text);
+            await adapter.send({ chatId: coalesced.chatId, text: '💬 Message sent to active session' }).catch(() => {});
+          } else if (coalesced.text) {
+            const queued = this.sdkEngine.queueMessage(coalesced.channelType, coalesced.chatId, coalesced);
+            if (queued) {
+              await adapter.send({ chatId: coalesced.chatId, text: '📥 Queued — will process after current task' }).catch(() => {});
+            } else {
+              await adapter.send({ chatId: coalesced.chatId, text: '⚠️ Queue full — please wait for current tasks to finish' }).catch(() => {});
+            }
+          }
           continue;
         }
         this.state.setProcessing(chatKey, true);
-        this.handleInboundMessage(adapter, msg)
+        this.handleInboundMessage(adapter, coalesced)
+          .then(() => this.drainQueue(adapter, coalesced.channelType, coalesced.chatId))
           .catch(err => console.error(`[${adapter.channelType}] Error handling message:`, err))
           .finally(() => this.state.setProcessing(chatKey, false));
       }
@@ -443,9 +515,10 @@ export class BridgeManager {
           const idx = parseInt(numMatch[1], 10) - 1;
           if (idx >= 0) {
             // Validate against actual options count to avoid "Selected: ?" for out-of-range numbers
+            const { sdkQuestionData } = this.sdkEngine.getQuestionState();
             const qData = pendingHookQ
               ? this.permissions.getQuestionData(pendingHookQ.hookId)
-              : pendingSdkQ ? this.sdkQuestionData.get(pendingSdkQ.permId) : null;
+              : pendingSdkQ ? sdkQuestionData.get(pendingSdkQ.permId) : null;
             const optionsCount = qData?.questions?.[0]?.options?.length ?? 0;
             if (idx < optionsCount) validOptionIndex = idx;
           }
@@ -461,7 +534,8 @@ export class BridgeManager {
             return true;
           }
           if (pendingSdkQ) {
-            this.sdkQuestionAnswers.set(pendingSdkQ.permId, validOptionIndex);
+            const { sdkQuestionAnswers } = this.sdkEngine.getQuestionState();
+            sdkQuestionAnswers.set(pendingSdkQ.permId, validOptionIndex);
             this.permissions.getGateway().resolve(pendingSdkQ.permId, 'allow');
             return true;
           }
@@ -475,7 +549,8 @@ export class BridgeManager {
             return true;
           }
           if (pendingSdkQ) {
-            this.sdkQuestionTextAnswers.set(pendingSdkQ.permId, trimmed);
+            const { sdkQuestionTextAnswers } = this.sdkEngine.getQuestionState();
+            sdkQuestionTextAnswers.set(pendingSdkQ.permId, trimmed);
             this.permissions.getGateway().resolve(pendingSdkQ.permId, 'allow');
             return true;
           }
@@ -644,12 +719,13 @@ export class BridgeManager {
           await adapter.send({ chatId: msg.chatId, text: '⚠️ No options selected' });
           return true;
         }
-        const qData = this.sdkQuestionData.get(permId);
+        const { sdkQuestionData, sdkQuestionTextAnswers } = this.sdkEngine.getQuestionState();
+        const qData = sdkQuestionData.get(permId);
         if (qData) {
           const q = qData.questions[0];
           const selectedLabels = [...selected].sort((a, b) => a - b).map(i => q.options[i]?.label).filter(Boolean);
           const answerText = selectedLabels.join(',');
-          this.sdkQuestionTextAnswers.set(permId, answerText);
+          sdkQuestionTextAnswers.set(permId, answerText);
           // Edit card to show selection
           adapter.editMessage(msg.chatId, msg.messageId, {
             chatId: msg.chatId,
@@ -721,13 +797,14 @@ export class BridgeManager {
         if (askqIdx >= 0) {
           const permId = parts.slice(2, askqIdx).join(':');
           const optionIndex = parseInt(parts[askqIdx + 1], 10);
-          const qData = this.sdkQuestionData.get(permId);
+          const { sdkQuestionData, sdkQuestionAnswers } = this.sdkEngine.getQuestionState();
+          const qData = sdkQuestionData.get(permId);
           const selected = qData?.questions?.[0]?.options?.[optionIndex];
           if (!selected) {
             // Invalid option index (stale button or tampered data) — ignore
             return true;
           }
-          this.sdkQuestionAnswers.set(permId, optionIndex);
+          sdkQuestionAnswers.set(permId, optionIndex);
           this.permissions.getGateway().resolve(permId, 'allow');
           adapter.editMessage(msg.chatId, msg.messageId, {
             chatId: msg.chatId,
@@ -1014,7 +1091,8 @@ export class BridgeManager {
           ];
 
       // Store question data for answer resolution (also needed for toggle state)
-      this.sdkQuestionData.set(permId, { questions, chatId: msg.chatId });
+      const { sdkQuestionData } = this.sdkEngine.getQuestionState();
+      sdkQuestionData.set(permId, { questions, chatId: msg.chatId });
       // Store in permission coordinator for toggle tracking (reuse hookQuestionData)
       if (isMulti) {
         this.permissions.storeQuestionData(permId, questions);
@@ -1024,13 +1102,13 @@ export class BridgeManager {
       // replies before waitFor is called, causing isPending() to return false
       const abortCleanup = () => {
         this.permissions.getGateway().resolve(permId, 'deny', 'Cancelled');
-        this.sdkQuestionData.delete(permId);
+        sdkQuestionData.delete(permId);
       };
       if (signal?.aborted) { abortCleanup(); throw new Error('Cancelled'); }
       signal?.addEventListener('abort', abortCleanup, { once: true });
       const waitPromise = this.permissions.getGateway().waitFor(permId, {
         timeoutMs: 5 * 60 * 1000,
-        onTimeout: () => { this.sdkQuestionData.delete(permId); },
+        onTimeout: () => { sdkQuestionData.delete(permId); },
       });
 
       // Send question card AFTER gateway entry exists — user replies are now safe
@@ -1053,7 +1131,7 @@ export class BridgeManager {
       signal?.removeEventListener('abort', abortCleanup);
 
       if (result.behavior === 'deny') {
-        this.sdkQuestionData.delete(permId);
+        sdkQuestionData.delete(permId);
         // Throw so provider returns { behavior: 'deny' } — Claude stops asking
         adapter.editMessage(msg.chatId, sendResult.messageId, {
           chatId: msg.chatId,
@@ -1068,9 +1146,10 @@ export class BridgeManager {
       askQuestionApproved = true;
 
       // Check for free text answer first, then option index
-      const textAnswer = this.sdkQuestionTextAnswers.get(permId);
-      this.sdkQuestionTextAnswers.delete(permId);
-      this.sdkQuestionData.delete(permId);
+      const { sdkQuestionTextAnswers, sdkQuestionAnswers } = this.sdkEngine.getQuestionState();
+      const textAnswer = sdkQuestionTextAnswers.get(permId);
+      sdkQuestionTextAnswers.delete(permId);
+      sdkQuestionData.delete(permId);
 
       if (textAnswer !== undefined) {
         // Free text reply
@@ -1084,8 +1163,8 @@ export class BridgeManager {
       }
 
       // Option index reply (button callback already edited the message — skip redundant edit)
-      const optionIndex = this.sdkQuestionAnswers.get(permId);
-      this.sdkQuestionAnswers.delete(permId);
+      const optionIndex = sdkQuestionAnswers.get(permId);
+      sdkQuestionAnswers.delete(permId);
       const selected = optionIndex !== undefined ? q.options[optionIndex] : undefined;
       const answerLabel = selected?.label ?? '';
 
@@ -1114,7 +1193,7 @@ export class BridgeManager {
         model: this.state.getModel(msg.channelType, msg.chatId),
         onControls: (ctrl) => {
           const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
-          this.activeControls.set(chatKey, ctrl);
+          this.sdkEngine.setControlsForChat(chatKey, ctrl);
         },
         onSdkSessionId: async (id) => {
           binding.sdkSessionId = id;
@@ -1182,7 +1261,7 @@ export class BridgeManager {
     } finally {
       clearInterval(typingInterval);
       renderer.dispose();
-      this.activeControls.delete(this.state.stateKey(msg.channelType, msg.chatId));
+      this.sdkEngine.setControlsForChat(this.state.stateKey(msg.channelType, msg.chatId), undefined);
       // Close Feishu streaming card (no-op: streaming disabled)
       // if (feishuSession) { feishuSession.close().catch(() => {}); }
     }

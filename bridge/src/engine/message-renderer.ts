@@ -3,6 +3,7 @@ import { getToolIcon } from './tool-registry.js';
 import { homedir } from 'node:os';
 import { truncate } from '../utils/string.js';
 import { shortPath } from '../utils/path.js';
+import type { TodoStatus } from '../utils/types.js';
 
 export interface MessageRendererOptions {
   platformLimit: number;
@@ -54,6 +55,8 @@ export class MessageRenderer {
   private permissionQueue: PermissionState[] = [];
   /** Currently executing tool for detailed progress */
   private currentTool: CurrentTool | null = null;
+  /** Todo items for progress display */
+  private todoItems: Array<{ content: string; status: TodoStatus }> = [];
 
   private _messageId?: string;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -130,6 +133,11 @@ export class MessageRenderer {
       this.currentTool.elapsed = Math.floor(data.elapsed / 1000);
       // Don't force flush - let the 5-second interval handle it
     }
+  }
+
+  onTodoUpdate(todos: Array<{ content: string; status: TodoStatus }>): void {
+    this.todoItems = todos;
+    this.scheduleFlush();
   }
 
   /** Format tool input for brief display */
@@ -266,7 +274,7 @@ export class MessageRenderer {
   }
 
   private renderExecuting(): string {
-    if (this.totalTools === 0 && !this.responseText) {
+    if (this.totalTools === 0 && !this.responseText && this.todoItems.length === 0) {
       return '⏳ Starting...';
     }
     const lines: string[] = [];
@@ -274,6 +282,12 @@ export class MessageRenderer {
     // Show response text above status line if available
     if (this.responseText.trim()) {
       lines.push(this.responseText.trim());
+      lines.push('');
+    }
+
+    // Show todo progress
+    if (this.todoItems.length > 0) {
+      lines.push(this.renderTodoProgress());
       lines.push('');
     }
 
@@ -304,6 +318,17 @@ export class MessageRenderer {
     return `${this.renderToolSummaryParts()} (${this.totalTools} total)`;
   }
 
+  private renderTodoProgress(): string {
+    if (this.todoItems.length === 0) return '';
+    const done = this.todoItems.filter(t => t.status === 'completed').length;
+    const header = `📋 Progress (${done}/${this.todoItems.length})`;
+    const lines = this.todoItems.map(t => {
+      const icon = t.status === 'completed' ? '✅' : t.status === 'in_progress' ? '🔧' : '⬜';
+      return `${icon} ${t.content}`;
+    });
+    return `${header}\n${lines.join('\n')}`;
+  }
+
   private renderDone(): string {
     const lines: string[] = [];
 
@@ -314,6 +339,10 @@ export class MessageRenderer {
       }
       lines.push('⚠️ Stopped');
       lines.push(SEPARATOR);
+      if (this.todoItems.length > 0) {
+        lines.push(this.renderTodoProgress());
+        lines.push('');
+      }
       if (this.totalTools > 0) {
         lines.push(this.renderToolSummary());
       }
@@ -328,6 +357,10 @@ export class MessageRenderer {
       // Ensure text ends cleanly before separator (strip trailing whitespace but keep content)
       lines.push(this.responseText.trimEnd());
       lines.push(SEPARATOR);
+    }
+    if (this.todoItems.length > 0) {
+      lines.push(this.renderTodoProgress());
+      lines.push('');
     }
     if (this.totalTools > 0) {
       lines.push(this.renderToolSummary());

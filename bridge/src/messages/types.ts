@@ -1,3 +1,5 @@
+import type { EffortLevel } from '../utils/types.js';
+
 /** File attachment for LLM vision/file input */
 export interface FileAttachment {
   type: 'image' | 'file';
@@ -35,7 +37,7 @@ export interface QueryControls {
 export interface SessionMode {
   permissionMode: 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
   model?: string;
-  effort?: 'low' | 'medium' | 'high' | 'max';
+  effort?: EffortLevel;
   systemPrompt?: string;
   allowedTools?: string[];
   disallowedTools?: string[];
