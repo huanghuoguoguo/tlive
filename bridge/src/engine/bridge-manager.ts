@@ -25,6 +25,7 @@ import { truncate } from '../utils/string.js';
 import { CHANNEL_TYPES, PLATFORM_LIMITS, PLATFORM_REACTIONS, type ChannelType } from '../utils/constants.js';
 import { handleCallbackMessage } from './callback-dispatcher.js';
 import { IngressCoordinator } from './ingress-coordinator.js';
+import { MessageLoopCoordinator } from './message-loop-coordinator.js';
 
 /** Bridge commands handled synchronously (don't block adapter loop) */
 const QUICK_COMMANDS = new Set(['/new', '/status', '/verbose', '/hooks', '/sessions', '/session', '/help', '/perm', '/effort', '/stop', '/approve', '/pairings', '/settings', '/model', '/bash', '/cd', '/pwd']);
@@ -82,6 +83,7 @@ export class BridgeManager {
   /** SDK Engine for LiveSession management */
   private sdkEngine: SDKEngine;
   private ingress = new IngressCoordinator();
+  private loop: MessageLoopCoordinator;
 
   private commands: CommandRouter;
   /** Cleanup timer for SDK question data */
@@ -106,6 +108,13 @@ export class BridgeManager {
       this.permissions,
       (channelType, chatId) => this.sdkEngine.closeSession(channelType, chatId),
     );
+    this.loop = new MessageLoopCoordinator({
+      state: this.state,
+      sdkEngine: this.sdkEngine,
+      permissions: this.permissions,
+      quickCommands: QUICK_COMMANDS,
+      hasPendingSdkQuestion: (channelType, chatId) => this.findPendingSdkQuestion(channelType, chatId) !== null,
+    });
   }
 
   /** Expose coreAvailable flag for main.ts polling loop */
@@ -258,67 +267,27 @@ export class BridgeManager {
     this.permissions.trackHookMessage(result.messageId, hook.tlive_session_id || '');
   }
 
-  /** Process queued messages iteratively after current turn completes */
-  private async drainQueue(adapter: BaseChannelAdapter, channelType: string, chatId: string): Promise<void> {
-    let next = this.sdkEngine.dequeueMessage(channelType, chatId);
-    while (next) {
-      console.log(`[${adapter.channelType}] Processing queued message`);
-      try {
-        await this.handleInboundMessage(adapter, next);
-      } catch (err) {
-        console.error(`[${adapter.channelType}] Error processing queued message:`, err);
-        break;
-      }
-      next = this.sdkEngine.dequeueMessage(channelType, chatId);
-    }
-  }
-
   private async runAdapterLoop(adapter: BaseChannelAdapter): Promise<void> {
     while (this.running) {
       const msg = await this.ingress.getNextMessage(adapter);
       if (!msg) { await new Promise(r => setTimeout(r, 100)); continue; }
       console.log(`[${adapter.channelType}] Message from ${msg.userId}: ${msg.text || '(callback)'}`);
-      // Callbacks, commands, and permission text are fast — await them.
-      // Regular messages (Claude queries) are fire-and-forget so they don't
-      // block the loop while waiting for LLM responses or permission approvals.
-      const hasPendingQuestion = this.permissions.getLatestPendingQuestion(adapter.channelType) !== null
-        || this.findPendingSdkQuestion(adapter.channelType, msg.chatId) !== null;
-      const isQuickMessage = !!msg.callbackData
-        || (msg.text && QUICK_COMMANDS.has(msg.text.split(' ')[0].toLowerCase()))
-        || this.permissions.parsePermissionText(msg.text || '') !== null
-        || hasPendingQuestion;
-      if (isQuickMessage) {
+      if (this.loop.isQuickMessage(adapter, msg)) {
         try {
           await this.handleInboundMessage(adapter, msg);
         } catch (err) {
           console.error(`[${adapter.channelType}] Error handling message:`, err);
         }
       } else {
-        // Coalesce rapid-fire messages (e.g. Telegram splits long text at 4096 chars)
-        const coalesced = await this.ingress.coalesceMessages(adapter, msg);
-
-        // Guard: if this chat is already processing a message
-        const chatKey = this.state.stateKey(coalesced.channelType, coalesced.chatId);
-        if (this.state.isProcessing(chatKey)) {
-          // Check if we can steer the active session
-          if (coalesced.text && this.sdkEngine.canSteer(coalesced.channelType, coalesced.chatId, coalesced.replyToMessageId)) {
-            this.sdkEngine.steer(coalesced.channelType, coalesced.chatId, coalesced.text);
-            await adapter.send({ chatId: coalesced.chatId, text: '💬 Message sent to active session' }).catch(() => {});
-          } else if (coalesced.text) {
-            const queued = this.sdkEngine.queueMessage(coalesced.channelType, coalesced.chatId, coalesced);
-            if (queued) {
-              await adapter.send({ chatId: coalesced.chatId, text: '📥 Queued — will process after current task' }).catch(() => {});
-            } else {
-              await adapter.send({ chatId: coalesced.chatId, text: '⚠️ Queue full — please wait for current tasks to finish' }).catch(() => {});
-            }
-          }
-          continue;
-        }
-        this.state.setProcessing(chatKey, true);
-        this.handleInboundMessage(adapter, coalesced)
-          .then(() => this.drainQueue(adapter, coalesced.channelType, coalesced.chatId))
-          .catch(err => console.error(`[${adapter.channelType}] Error handling message:`, err))
-          .finally(() => this.state.setProcessing(chatKey, false));
+        await this.loop.dispatchSlowMessage({
+          adapter,
+          msg,
+          coalesceMessage: (dispatchAdapter, dispatchMsg) => this.ingress.coalesceMessages(dispatchAdapter, dispatchMsg),
+          handleMessage: (dispatchAdapter, dispatchMsg) => this.handleInboundMessage(dispatchAdapter, dispatchMsg),
+          onError: (err) => {
+            console.error(`[${adapter.channelType}] Error handling message:`, err);
+          },
+        });
       }
     }
   }
