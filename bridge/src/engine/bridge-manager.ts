@@ -16,16 +16,15 @@ import { PermissionCoordinator } from './permission-coordinator.js';
 import { CommandRouter } from './command-router.js';
 import { SDKEngine } from './sdk-engine.js';
 import { CostTracker } from './cost-tracker.js';
-import { writeFileSync, mkdirSync } from 'node:fs';
-import { join, basename } from 'node:path';
-import { networkInterfaces, tmpdir } from 'node:os';
-import { safeParseObject } from '../utils/json.js';
+import { basename } from 'node:path';
+import { networkInterfaces } from 'node:os';
 import { generateSessionId } from '../utils/id.js';
 import { truncate } from '../utils/string.js';
 import { CHANNEL_TYPES, PLATFORM_LIMITS, PLATFORM_REACTIONS, type ChannelType } from '../utils/constants.js';
 import { handleCallbackMessage } from './callback-dispatcher.js';
 import { IngressCoordinator } from './ingress-coordinator.js';
 import { MessageLoopCoordinator } from './message-loop-coordinator.js';
+import { TextDispatcher } from './text-dispatcher.js';
 
 /** Bridge commands handled synchronously (don't block adapter loop) */
 const QUICK_COMMANDS = new Set(['/new', '/status', '/verbose', '/hooks', '/sessions', '/session', '/help', '/perm', '/effort', '/stop', '/approve', '/pairings', '/settings', '/model', '/bash', '/cd', '/pwd']);
@@ -84,6 +83,7 @@ export class BridgeManager {
   private sdkEngine: SDKEngine;
   private ingress = new IngressCoordinator();
   private loop: MessageLoopCoordinator;
+  private text: TextDispatcher;
 
   private commands: CommandRouter;
   /** Cleanup timer for SDK question data */
@@ -113,7 +113,15 @@ export class BridgeManager {
       sdkEngine: this.sdkEngine,
       permissions: this.permissions,
       quickCommands: QUICK_COMMANDS,
-      hasPendingSdkQuestion: (channelType, chatId) => this.findPendingSdkQuestion(channelType, chatId) !== null,
+      hasPendingSdkQuestion: (channelType, chatId) => this.text.hasPendingSdkQuestion(channelType, chatId),
+    });
+    this.text = new TextDispatcher({
+      permissions: this.permissions,
+      sdkEngine: this.sdkEngine,
+      state: this.state,
+      coreUrl: this.coreUrl,
+      token: this.token,
+      isCoreAvailable: () => this.coreAvailable,
     });
   }
 
@@ -154,18 +162,6 @@ export class BridgeManager {
   /** Delegate: store AskUserQuestion data */
   storeQuestionData(hookId: string, questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }>, contextSuffix?: string): void {
     this.permissions.storeQuestionData(hookId, questions, contextSuffix);
-  }
-
-  /** Find a pending SDK AskUserQuestion for numeric text reply */
-  private findPendingSdkQuestion(_channelType: string, chatId: string): { permId: string } | null {
-    // Find the most recent pending SDK askq permission scoped to this chat
-    const { sdkQuestionData } = this.sdkEngine.getQuestionState();
-    for (const [permId, data] of sdkQuestionData) {
-      if (data.chatId === chatId && this.permissions.getGateway().isPending(permId)) {
-        return { permId };
-      }
-    }
-    return null;
   }
 
   registerAdapter(adapter: BaseChannelAdapter): void {
@@ -328,186 +324,7 @@ export class BridgeManager {
       return true;
     }
 
-    // Text-based permission resolution (all platforms — fallback when buttons expire)
-    if (msg.text) {
-      const decision = this.permissions.parsePermissionText(msg.text);
-      if (decision) {
-        // 1. Try SDK permission gateway — scoped to THIS chat only
-        const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
-        if (this.permissions.tryResolveByText(chatKey, decision)) {
-          // Brief reaction instead of a full card — avoids flooding
-          const emoji = decision === 'deny' ? 'NO' : decision === 'allow_always' ? 'DONE' : 'OK';
-          adapter.addReaction(msg.chatId, msg.messageId, emoji).catch(() => {});
-          return true;
-        }
-
-        // 2. Try hook permission (via Go Core)
-        if (this.permissions.pendingPermissionCount() > 1 && !msg.replyToMessageId) {
-          const hint = adapter.channelType === 'feishu'
-            ? '⚠️ 多个权限待审批，请引用回复具体的权限消息'
-            : '⚠️ Multiple permissions pending — reply to the specific permission message';
-          await adapter.send({ chatId: msg.chatId, text: hint });
-          return true;
-        }
-        const permEntry = this.permissions.findHookPermission(msg.replyToMessageId, adapter.channelType);
-        if (permEntry && this.coreAvailable) {
-          try {
-            await this.permissions.resolveHookPermission(permEntry.permissionId, decision, adapter.channelType, this.coreAvailable);
-            const label = decision === 'deny' ? '❌ Denied' : decision === 'allow_always' ? '📌 Always allowed' : '✅ Allowed';
-            await adapter.send({ chatId: msg.chatId, text: label });
-          } catch (err) {
-            await adapter.send({ chatId: msg.chatId, text: `❌ Failed to resolve: ${err}` });
-          }
-          return true;
-        }
-      }
-    }
-
-    // Text reply to pending AskUserQuestion — numeric (select option) or free text (direct input)
-    if (msg.text) {
-      const trimmed = msg.text.trim();
-      // Check for any pending AskUserQuestion (hook or SDK mode)
-      const pendingHookQ = this.permissions.getLatestPendingQuestion(adapter.channelType);
-      const pendingSdkQ = this.findPendingSdkQuestion(adapter.channelType, msg.chatId);
-
-      if (pendingHookQ || pendingSdkQ) {
-        // Check if input is a valid in-range numeric option selection
-        let validOptionIndex = -1;
-        const numMatch = trimmed.match(/^(\d+)$/);
-        if (numMatch) {
-          const idx = parseInt(numMatch[1], 10) - 1;
-          if (idx >= 0) {
-            // Validate against actual options count to avoid "Selected: ?" for out-of-range numbers
-            const { sdkQuestionData } = this.sdkEngine.getQuestionState();
-            const qData = pendingHookQ
-              ? this.permissions.getQuestionData(pendingHookQ.hookId)
-              : pendingSdkQ ? sdkQuestionData.get(pendingSdkQ.permId) : null;
-            const optionsCount = qData?.questions?.[0]?.options?.length ?? 0;
-            if (idx < optionsCount) validOptionIndex = idx;
-          }
-        }
-
-        if (validOptionIndex >= 0) {
-          // Numeric reply — select option by validated index
-          if (pendingHookQ) {
-            await this.permissions.resolveAskQuestion(
-              pendingHookQ.hookId, validOptionIndex, pendingHookQ.sessionId,
-              pendingHookQ.messageId, adapter, msg.chatId, this.coreAvailable,
-            );
-            return true;
-          }
-          if (pendingSdkQ) {
-            const { sdkQuestionAnswers } = this.sdkEngine.getQuestionState();
-            sdkQuestionAnswers.set(pendingSdkQ.permId, validOptionIndex);
-            this.permissions.getGateway().resolve(pendingSdkQ.permId, 'allow');
-            return true;
-          }
-        } else {
-          // Free text reply (including out-of-range numbers) — use text as direct answer
-          if (pendingHookQ) {
-            await this.permissions.resolveAskQuestionWithText(
-              pendingHookQ.hookId, trimmed, pendingHookQ.sessionId,
-              pendingHookQ.messageId, adapter, msg.chatId, this.coreAvailable,
-            );
-            return true;
-          }
-          if (pendingSdkQ) {
-            const { sdkQuestionTextAnswers } = this.sdkEngine.getQuestionState();
-            sdkQuestionTextAnswers.set(pendingSdkQ.permId, trimmed);
-            this.permissions.getGateway().resolve(pendingSdkQ.permId, 'allow');
-            return true;
-          }
-        }
-      }
-    }
-
-    // Reply routing: quote-reply to a hook message → send to PTY stdin
-    if ((msg.text || msg.attachments?.length) && msg.replyToMessageId && this.permissions.isHookMessage(msg.replyToMessageId)) {
-      // Before forwarding to PTY, check Core for a pending AskUserQuestion that
-      // the bridge hasn't polled yet (race condition: hook creates perm, bridge
-      // polls every 2s, user replies before the next poll cycle).
-      if (msg.text && this.coreAvailable) {
-        try {
-          const pendingResp = await fetch(`${this.coreUrl}/api/hooks/pending`, {
-            headers: { Authorization: `Bearer ${this.token}` },
-            signal: AbortSignal.timeout(2000),
-          });
-          if (pendingResp.ok) {
-            const pending = await pendingResp.json() as Array<{ id: string; tool_name: string; input: unknown; session_id?: string }>;
-            const askq = pending.find((p: { tool_name: string }) => p.tool_name === 'AskUserQuestion');
-            if (askq) {
-              // There's a pending AskUserQuestion — handle text as question answer
-              const inputData = safeParseObject(askq.input as Record<string, unknown>);
-              const questions = (inputData?.questions ?? []) as Array<{
-                question: string; header: string;
-                options: Array<{ label: string; description?: string }>; multiSelect: boolean;
-              }>;
-              if (questions.length > 0) {
-                const q = questions[0];
-                const trimmed = msg.text.trim();
-                // Store question data if not already stored
-                if (!this.permissions.getQuestionData(askq.id)) {
-                  this.permissions.storeQuestionData(askq.id, questions);
-                  this.permissions.trackPermissionMessage(msg.replyToMessageId, askq.id, askq.session_id || '', adapter.channelType);
-                }
-                // Numeric → option selection; else → free text
-                const numMatch = trimmed.match(/^(\d+)$/);
-                const idx = numMatch ? parseInt(numMatch[1], 10) - 1 : -1;
-                if (idx >= 0 && idx < q.options.length) {
-                  await this.permissions.resolveAskQuestion(
-                    askq.id, idx, askq.session_id || '',
-                    msg.replyToMessageId, adapter, msg.chatId, this.coreAvailable,
-                  );
-                } else {
-                  await this.permissions.resolveAskQuestionWithText(
-                    askq.id, trimmed, askq.session_id || '',
-                    msg.replyToMessageId, adapter, msg.chatId, this.coreAvailable,
-                  );
-                }
-                return true;
-              }
-            }
-          }
-        } catch { /* non-fatal: fall through to normal PTY routing */ }
-      }
-
-      const entry = this.permissions.getHookMessage(msg.replyToMessageId);
-      if (!entry) {
-        await adapter.send({ chatId: msg.chatId, text: '⚠️ Hook message expired or not found' });
-        return true;
-      }
-      if (entry.sessionId && this.coreAvailable) {
-        try {
-          // If images attached, save as temp files and include paths in the text
-          let inputText = msg.text || '';
-          if (msg.attachments?.length) {
-            const imgDir = join(tmpdir(), 'tlive-images');
-            mkdirSync(imgDir, { recursive: true });
-            for (const att of msg.attachments) {
-              if (att.type === 'image') {
-                const ext = att.mimeType === 'image/png' ? '.png' : '.jpg';
-                const filePath = join(imgDir, `img-${Date.now()}${ext}`);
-                writeFileSync(filePath, Buffer.from(att.base64Data, 'base64'));
-                inputText = inputText ? `${inputText}\n${filePath}` : filePath;
-              }
-            }
-          }
-          await fetch(`${this.coreUrl}/api/sessions/${entry.sessionId}/input`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${this.token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ text: inputText + '\r' }),
-            signal: AbortSignal.timeout(5000),
-          });
-          await adapter.send({ chatId: msg.chatId, text: '✓ Sent to local session' });
-        } catch (err) {
-          await adapter.send({ chatId: msg.chatId, text: `❌ Failed to send: ${err}` });
-        }
-      } else {
-        await adapter.send({ chatId: msg.chatId, text: '⚠️ Local session not available (no session ID)' });
-      }
+    if (await this.text.handle(adapter, msg)) {
       return true;
     }
 

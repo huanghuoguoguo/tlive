@@ -270,14 +270,23 @@
 `BridgeManager` 当前承担了过多职责，包括但不限于：
 
 - adapter 注册与生命周期管理
-- 消息消费主循环
 - hook 通知分发
-- 权限请求路由
 - SDK session 状态协调
-- chatId 持久化
-- 附件合并与消息合并
+- 文本前置解析与 reply routing
 - 清理定时器管理
 - 平台特例处理
+
+不过，这一问题已经开始被逐步拆解。当前已从 `BridgeManager` 中抽出的模块包括：
+
+- `session-state.ts`
+- `permission-coordinator.ts`
+- `command-presenter.ts`
+- `callback-dispatcher.ts`
+- `ingress-coordinator.ts`
+- `message-loop-coordinator.ts`
+- `text-dispatcher.ts`
+
+这说明当前问题已经从“所有职责都堆在一个类里”，收敛为“主编排类仍偏大，但边界正在变清晰”。
 
 这类模块在早期迭代阶段很常见，但继续扩展后会带来几个问题：
 
@@ -368,14 +377,13 @@
 
 不足是：
 
-- 没有看到 ESLint / Prettier / Biome / EditorConfig
-- 没有统一 `lint` 脚本
-- 代码风格约束更多依赖作者自觉
-- 一些核心文件已经明显偏大
+- 虽然已经补了 `Biome`、`.editorconfig` 和统一的 `lint/check` 脚本，但分层约束还没有完全制度化
+- 代码风格约束已经初步工程化，但模块边界仍主要依赖维护者判断
+- 一些核心文件虽然在持续拆分，但主编排链仍然偏长
 
 判断：
 
-- 这不是“代码乱”，而是“规范体系还没有完全工程化”
+- 这不再是“缺少基础工具链”，而是“工程化基础已经补上，但架构约束还需要继续收口”
 
 ## 是否符合当前需求
 
@@ -445,12 +453,18 @@
 
 建议拆分方向：
 
-- MessageLoop / IngressCoordinator
+- `IngressCoordinator` / `MessageLoopCoordinator`
+- `TextDispatcher`
 - HookDispatcher / PermissionDispatcher
-- AttachmentBuffer / ChatStatePersistence
-- SessionOrchestrator
+- SessionOrchestrator / QueryPipeline
 
-目标不是一次性大重构，而是先把“会继续长胖的职责”抽出去。
+其中前 3 项已经部分落地，下一步更值得继续拆的是：
+
+- hook 通知和本地 session 输入路由
+- Claude 查询执行链与 renderer 生命周期
+- 更显式的依赖注入边界
+
+目标不是一次性大重构，而是持续把“会继续长胖的职责”抽出去。
 
 ### 优先级 2：把平台展示逻辑从 CommandRouter 中抽离
 
@@ -483,14 +497,17 @@
 
 ### 优先级 4：补齐 lint / formatting 约束
 
-建议最小落地：
+这一项已经完成最小落地：
 
-- 增加 `lint` 脚本
-- 选择 ESLint 或 Biome 作为统一规则来源
-- 为 TypeScript 文件建立基础规则
-- 为仓库补 `.editorconfig`
+- 已增加 `lint` / `check` 脚本
+- 已使用 `Biome` 作为统一规则来源
+- 已补仓库级 `.editorconfig`
 
-这是投入小、长期收益高的一项工作。
+后续更值得做的是：
+
+- 在 CI 中持续约束这些检查
+- 为大文件拆分建立更明确的演进规则
+- 继续减少“靠人工记忆维持”的边界
 
 ## 推荐策略
 
@@ -501,7 +518,7 @@
 1. 先完成面向用户的入口文档和 setup 路径优化
 2. 在不改行为的前提下，逐步拆瘦 `BridgeManager`
 3. 把命令响应的展示层平台分支收口
-4. 补齐工程规范工具链
+4. 在工具链已补齐的基础上，继续把编排链条拆成更清晰的 coordinator
 
 换句话说：
 
