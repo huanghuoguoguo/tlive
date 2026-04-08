@@ -3,6 +3,7 @@ import { getToolIcon } from './tool-registry.js';
 import { truncate } from '../utils/string.js';
 import { shortPath } from '../utils/path.js';
 import type { TodoStatus } from '../utils/types.js';
+import type { VerboseLevel } from './session-state.js';
 
 export interface MessageRendererOptions {
   platformLimit: number;
@@ -13,10 +14,13 @@ export interface MessageRendererOptions {
   model?: string;
   /** Session ID for footer display (last 4 chars shown) */
   sessionId?: string;
+  /** 0 = quiet, 1 = show executing status cards */
+  verboseLevel?: VerboseLevel;
   flushCallback: (
     content: string,
     isEdit: boolean,
     buttons?: Array<{ label: string; callbackData: string; style: string }>,
+    state?: MessageRendererState,
   ) => Promise<string | undefined>;
   /** Called when permission waits >60s without response */
   onPermissionTimeout?: (toolName: string, input: string, buttons: Array<{ label: string; callbackData: string; style: string }>) => void;
@@ -42,6 +46,24 @@ interface CurrentTool {
   name: string;
   input: string;  // Brief description of what's being done
   elapsed: number; // Seconds
+}
+
+export interface MessageRendererState {
+  phase: 'starting' | 'executing' | 'waiting_permission' | 'completed' | 'failed';
+  renderedText: string;
+  responseText: string;
+  elapsedSeconds: number;
+  totalTools: number;
+  toolSummary: string;
+  footerLine?: string;
+  errorMessage?: string;
+  currentTool: CurrentTool | null;
+  todoItems: Array<{ content: string; status: TodoStatus }>;
+  permission?: {
+    toolName: string;
+    input: string;
+    queueLength: number;
+  };
 }
 
 export class MessageRenderer {
@@ -71,6 +93,7 @@ export class MessageRenderer {
   private cwd?: string;
   private model?: string;
   private sessionId?: string;
+  private verboseLevel: VerboseLevel;
   /** Last rendered content - for change detection */
   private lastRenderedContent = '';
   /** Force next flush regardless of content change */
@@ -92,6 +115,7 @@ export class MessageRenderer {
     this.cwd = options.cwd;
     this.model = options.model;
     this.sessionId = options.sessionId;
+    this.verboseLevel = options.verboseLevel ?? 1;
   }
 
   onToolStart(name: string, input?: Record<string, unknown>): void {
@@ -278,6 +302,37 @@ export class MessageRenderer {
     return this.renderExecuting();
   }
 
+  private getStateSnapshot(content: string): MessageRendererState {
+    const currentPermission = this.permissionQueue[0];
+    return {
+      phase: this.permissionQueue.length > 0
+        ? 'waiting_permission'
+        : this.completed
+          ? 'completed'
+          : this.errorMessage
+            ? 'failed'
+            : this.totalTools === 0 && !this.responseText && this.todoItems.length === 0
+              ? 'starting'
+              : 'executing',
+      renderedText: content,
+      responseText: this.responseText,
+      elapsedSeconds: this.elapsedSeconds,
+      totalTools: this.totalTools,
+      toolSummary: this.renderToolSummary(),
+      footerLine: this.footerLine,
+      errorMessage: this.errorMessage,
+      currentTool: this.currentTool,
+      todoItems: [...this.todoItems],
+      permission: currentPermission
+        ? {
+            toolName: currentPermission.toolName,
+            input: currentPermission.input,
+            queueLength: this.permissionQueue.length,
+          }
+        : undefined,
+    };
+  }
+
   private renderExecuting(): string {
     if (this.totalTools === 0 && !this.responseText && this.todoItems.length === 0) {
       return '⏳ Starting...';
@@ -428,8 +483,17 @@ export class MessageRenderer {
     }
   }
 
+  private shouldSkipFlush(state: MessageRendererState): boolean {
+    if (this.verboseLevel !== 0) return false;
+    return state.phase === 'starting' || state.phase === 'executing';
+  }
+
   private async doFlush(content: string): Promise<void> {
     if (!content) return;
+    const state = this.getStateSnapshot(content);
+    if (this.shouldSkipFlush(state)) {
+      return;
+    }
 
     const now = Date.now();
 
@@ -468,7 +532,7 @@ export class MessageRenderer {
       const flushButtons = this.permissionQueue[0]?.buttons;
       let result: string | undefined;
       try {
-        result = await this.flushCallback(content, isEdit, flushButtons);
+        result = await this.flushCallback(content, isEdit, flushButtons, state);
       } catch (err: any) {
         // Retry once for transient network errors
         const code = err?.code ?? '';
@@ -476,7 +540,7 @@ export class MessageRenderer {
         if (retryable) {
           await new Promise(r => setTimeout(r, 1000));
           try {
-            result = await this.flushCallback(content, isEdit, flushButtons);
+            result = await this.flushCallback(content, isEdit, flushButtons, state);
           } catch {
             // give up after one retry
             console.error('[renderer] Failed to flush after retry:', err);

@@ -4,7 +4,7 @@ import type { InboundMessage, OutboundMessage, SendResult, FileAttachment } from
 import { loadConfig } from '../config.js';
 import { classifyError } from './errors.js';
 import { markdownToFeishu, downgradeHeadings } from '../markdown/feishu.js';
-import { buildFeishuCard } from '../formatting/feishu-card.js';
+import { buildFeishuCard, buildFeishuButtonElements } from '../formatting/feishu-card.js';
 import { FeishuStreamingSession } from './feishu-streaming.js';
 import type { Readable } from 'node:stream';
 
@@ -89,6 +89,14 @@ interface FeishuConfig {
   webhookPort: number;
   allowedUsers: string[];
 }
+
+const FEISHU_MENU_EVENT_TO_COMMAND: Record<string, string> = {
+  tlive_home: '/home',
+  tlive_recent_sessions: '/sessions --all',
+  tlive_status: '/status',
+  tlive_stop: '/stop',
+  tlive_help: '/help',
+};
 
 export class FeishuAdapter extends BaseChannelAdapter {
   readonly channelType = 'feishu' as const;
@@ -221,14 +229,18 @@ export class FeishuAdapter extends BaseChannelAdapter {
     eventDispatcher.register({
       'card.action.trigger': async (data: unknown) => {
         console.log('[feishu] card.action.trigger received:', JSON.stringify(data).slice(0, 300));
-        const event = data as { operator?: { user_id?: string; open_id?: string }; action?: { value?: Record<string, string> }; context?: { chat_id?: string; open_message_id?: string } };
+        const event = data as {
+          operator?: { user_id?: string; open_id?: string };
+          action?: { value?: Record<string, string> };
+          context?: { chat_id?: string; open_chat_id?: string; open_message_id?: string };
+        };
         const action = event?.action?.value?.action;
         if (!action) {
           console.warn('[feishu] card.action.trigger: no action value found');
           return {};
         }
         const userId = event?.operator?.user_id || event?.operator?.open_id || '';
-        const chatId = event?.context?.chat_id || '';
+        const chatId = event?.context?.chat_id || event?.context?.open_chat_id || '';
         const messageId = event?.context?.open_message_id || '';
         this.messageQueue.push({
           channelType: 'feishu',
@@ -237,6 +249,34 @@ export class FeishuAdapter extends BaseChannelAdapter {
           text: '',
           callbackData: action,
           messageId,
+        });
+        return {};
+      },
+    } as any);
+
+    eventDispatcher.register({
+      'application.bot.menu_v6': async (data: unknown) => {
+        const event = data as {
+          event_key?: string;
+          operator?: {
+            operator_id?: {
+              user_id?: string;
+              open_id?: string;
+            };
+          };
+        };
+        const command = event?.event_key ? FEISHU_MENU_EVENT_TO_COMMAND[event.event_key] : undefined;
+        if (!command) {
+          console.warn('[feishu] application.bot.menu_v6: unknown event key', event?.event_key);
+          return {};
+        }
+        const userId = event?.operator?.operator_id?.user_id || event?.operator?.operator_id?.open_id || '';
+        this.messageQueue.push({
+          channelType: 'feishu',
+          chatId: '',
+          userId,
+          text: command,
+          messageId: `menu:${event?.event_key ?? 'unknown'}:${Date.now()}`,
         });
         return {};
       },
@@ -267,41 +307,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
     const elements: FeishuCardElement[] = [
       { tag: 'markdown', content: downgradeHeadings(text) },
     ];
-
-    if (buttons?.length) {
-      // Group buttons by row; each group becomes a column_set
-      const hasRows = buttons.some(b => b.row !== undefined);
-      const makeBtn = (btn: NonNullable<OutboundMessage['buttons']>[0]) => ({
-        tag: 'column' as const,
-        width: 'auto' as const,
-        vertical_align: 'top' as const,
-        elements: [{
-          tag: 'button' as const,
-          text: { tag: 'plain_text' as const, content: btn.label },
-          type: btn.style === 'danger' ? 'danger' as const : btn.style === 'primary' ? 'primary_filled' as const : 'default' as const,
-          behaviors: [{ type: 'callback' as const, value: { action: btn.callbackData } }],
-        }],
-      });
-      if (hasRows) {
-        const rowMap = new Map<number, typeof buttons>();
-        for (const b of buttons) {
-          const r = b.row ?? Number.MAX_SAFE_INTEGER;
-          if (!rowMap.has(r)) rowMap.set(r, []);
-          rowMap.get(r)!.push(b);
-        }
-        for (const [, rowBtns] of [...rowMap.entries()].sort(([a], [b]) => a - b)) {
-          elements.push({
-            tag: 'column_set', flex_mode: 'flow',
-            columns: rowBtns.map(makeBtn),
-          } as any);
-        }
-      } else {
-        elements.push({
-          tag: 'column_set', flex_mode: 'flow',
-          columns: buttons.map(makeBtn),
-        } as any);
-      }
-    }
+    elements.push(...buildFeishuButtonElements(buttons));
 
     return buildFeishuCard({
       header: header as any,
@@ -394,7 +400,13 @@ export class FeishuAdapter extends BaseChannelAdapter {
       const idType = message.receiveIdType || 'chat_id';
       // If feishuElements provided, build card directly from structured elements
       const cardContent = message.feishuElements
-        ? buildFeishuCard({ header: message.feishuHeader as any, elements: message.feishuElements as any })
+        ? buildFeishuCard({
+            header: message.feishuHeader as any,
+            elements: [
+              ...(message.feishuElements as any),
+              ...buildFeishuButtonElements(message.feishuButtons ?? message.buttons),
+            ],
+          })
         : this.buildCard(raw, message.buttons, message.feishuHeader);
       const data: Record<string, unknown> = {
         receive_id: message.chatId,
@@ -446,6 +458,21 @@ export class FeishuAdapter extends BaseChannelAdapter {
       : markdownToFeishu(message.html ?? '');
 
     try {
+      if (message.feishuElements) {
+        await this.client.im.message.patch({
+          path: { message_id: messageId },
+          data: {
+            content: buildFeishuCard({
+              header: message.feishuHeader as any,
+              elements: [
+                ...(message.feishuElements as any),
+                ...buildFeishuButtonElements(message.feishuButtons ?? message.buttons),
+              ],
+            }),
+          },
+        });
+        return;
+      }
       await this.client.im.message.patch({
         path: { message_id: messageId },
         data: {

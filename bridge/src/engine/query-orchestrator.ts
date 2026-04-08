@@ -3,6 +3,7 @@ import type { InboundMessage, OutboundMessage } from '../channels/types.js';
 import { markdownToTelegram } from '../markdown/index.js';
 import { downgradeHeadings } from '../markdown/feishu.js';
 import { MessageRenderer } from './message-renderer.js';
+import { buildFeishuQuestionCard, buildFeishuTaskCard } from '../formatting/feishu-experience.js';
 import { getToolCommand } from './tool-registry.js';
 import { CostTracker } from './cost-tracker.js';
 import { chunkByParagraph } from '../delivery/delivery.js';
@@ -46,6 +47,7 @@ export class QueryOrchestrator {
     }
 
     const binding = await this.options.router.resolve(msg.channelType, msg.chatId);
+    const verboseLevel = this.options.state.getVerboseLevel(msg.channelType, msg.chatId);
 
     let threadId = msg.threadId;
     if (!threadId && adapter.channelType === CHANNEL_TYPES.DISCORD) {
@@ -75,6 +77,7 @@ export class QueryOrchestrator {
       cwd: binding.cwd || this.options.defaultWorkdir,
       model: this.options.state.getModel(msg.channelType, msg.chatId),
       sessionId: binding.sdkSessionId,
+      verboseLevel,
       onPermissionTimeout: async (toolName, input, buttons) => {
         permissionReminderTool = toolName;
         permissionReminderInput = input;
@@ -92,7 +95,7 @@ export class QueryOrchestrator {
           // Non-fatal.
         }
       },
-      flushCallback: async (content, isEdit, buttons) => {
+      flushCallback: async (content, isEdit, buttons, state) => {
         if (feishuSession && !buttons?.length) {
           if (!isEdit) {
             try {
@@ -113,11 +116,48 @@ export class QueryOrchestrator {
           outMsg = { chatId: msg.chatId, html: markdownToTelegram(content), threadId };
         } else if (adapter.channelType === CHANNEL_TYPES.DISCORD) {
           outMsg = { chatId: msg.chatId, text: content, threadId };
+        } else if (adapter.channelType === CHANNEL_TYPES.FEISHU && state) {
+          const actionButtons = buttons?.length
+            ? buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
+            : state.phase === 'completed'
+              ? [
+                  { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'primary' as const, row: 0 },
+                  { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default' as const, row: 0 },
+                  { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default' as const, row: 1 },
+                ]
+              : state.phase === 'failed'
+                ? [
+                    { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'primary' as const, row: 0 },
+                    { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default' as const, row: 0 },
+                    { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default' as const, row: 1 },
+                  ]
+                : [
+                    { label: '⏹ 停止执行', callbackData: 'cmd:stop', style: 'danger' as const, row: 0 },
+                    { label: '📡 当前状态', callbackData: 'cmd:status', style: 'default' as const, row: 0 },
+                    { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default' as const, row: 1 },
+                  ];
+          const card = buildFeishuTaskCard({
+            phase: state.phase,
+            renderedText: content,
+            taskSummary: msg.text || '继续当前任务',
+            elapsedSeconds: state.elapsedSeconds,
+            totalTools: state.totalTools,
+            toolSummary: state.toolSummary,
+            footerLine: state.footerLine,
+            currentTool: state.currentTool,
+            permission: state.permission,
+            todoItems: state.todoItems,
+          }, actionButtons);
+          outMsg = {
+            chatId: msg.chatId,
+            feishuHeader: card.header,
+            feishuElements: card.elements as unknown as Array<Record<string, unknown>>,
+          };
         } else {
           outMsg = { chatId: msg.chatId, text: content };
         }
 
-        if (buttons?.length) {
+        if (buttons?.length && adapter.channelType !== CHANNEL_TYPES.FEISHU) {
           outMsg.buttons = buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }));
         }
 
@@ -293,6 +333,17 @@ export class QueryOrchestrator {
         buttons,
         feishuHeader: msg.channelType === CHANNEL_TYPES.FEISHU ? { template: 'blue', title: '❓ Question' } : undefined,
       };
+      if (msg.channelType === CHANNEL_TYPES.FEISHU) {
+        const card = buildFeishuQuestionCard({
+          title: '❓ 等待回答',
+          question: q.question,
+          optionsText: optionsList,
+          hint: isMulti ? '点击选项切换勾选，然后点 Submit；也可以直接回复文字。' : '可直接点选，也可以直接回复文字。',
+          buttons: buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default', row: button.row })),
+        });
+        outMsg.feishuHeader = card.header;
+        outMsg.feishuElements = card.elements as unknown as Array<Record<string, unknown>>;
+      }
       const sendResult = await adapter.send(outMsg);
       this.options.permissions.trackPermissionMessage(sendResult.messageId, permId, binding.sessionId, msg.channelType);
 
@@ -393,6 +444,9 @@ export class QueryOrchestrator {
             renderer.onTextDelta(`\n⚠️ Rate limit: ${Math.round(data.utilization * 100)}% used\n`);
           }
         },
+        onTodoUpdate: (todos) => {
+          renderer.onTodoUpdate(todos);
+        },
         onQueryResult: async (event) => {
           if (event.permissionDenials?.length) {
             console.warn(`[bridge] Permission denials: ${event.permissionDenials.map(denial => denial.toolName).join(', ')}`);
@@ -406,6 +460,7 @@ export class QueryOrchestrator {
           await renderer.onComplete();
         },
         onPromptSuggestion: (suggestion) => {
+          if (verboseLevel === 0) return;
           const targetChatId = threadId && adapter.channelType === CHANNEL_TYPES.DISCORD ? threadId : msg.chatId;
           const truncated = truncate(suggestion, 60);
           adapter.send({

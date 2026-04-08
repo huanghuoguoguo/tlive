@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.2](https://github.com/huanghuoguoguo/tlive/compare/v0.9.1...v0.9.2) (2026-04-08)
+
+### Features
+
+* **bridge:** redesign Feishu IM workspace with home/status/help/session cards
+* **bridge:** add clickable session continue/detail flows and transcript previews
+* **bridge:** support Feishu bot menu event routing and richer task cards
+
+### Bug Fixes
+
+* **bridge:** fix Feishu callback fallback routing when chat id is missing
+* **bridge:** make `/verbose 0|1` behavior align with quiet vs terminal-card modes
+
 ## [0.8.0](https://github.com/huanghuoguoguo/tlive/compare/v0.7.1...v0.8.0) (2026-04-04)
 
 

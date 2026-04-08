@@ -16,12 +16,13 @@ describe('MessageRenderer', () => {
     vi.useRealTimers();
   });
 
-  function createRenderer(platformLimit = 4096, throttleMs = 300, cwd?: string, model?: string) {
+  function createRenderer(platformLimit = 4096, throttleMs = 300, cwd?: string, model?: string, verboseLevel: 0 | 1 = 1) {
     return new MessageRenderer({
       platformLimit,
       throttleMs,
       cwd,
       model,
+      verboseLevel,
       flushCallback: flushCallback as any,
     });
   }
@@ -131,6 +132,15 @@ describe('MessageRenderer', () => {
       expect(content).toBe('⏳ Starting...');
       r.dispose();
     });
+
+    it('quiet mode suppresses executing flushes', async () => {
+      const r = createRenderer(4096, 300, undefined, undefined, 0);
+      r.onToolStart('Bash');
+      r.onTextDelta('working');
+      await advance(1300);
+      expect(flushCallback).not.toHaveBeenCalled();
+      r.dispose();
+    });
   });
 
   // ─── Permission phase ────────────────────────────
@@ -145,6 +155,17 @@ describe('MessageRenderer', () => {
       expect(content).toContain('🔐');
       expect(content).toContain('Bash');
       expect(content).toContain('npm test -- schema.test.ts');
+      r.dispose();
+    });
+
+    it('quiet mode still flushes permission requests', async () => {
+      const r = createRenderer(4096, 300, undefined, undefined, 0);
+      r.onToolStart('Bash');
+      r.onPermissionNeeded('Bash', 'npm test -- schema.test.ts', 'perm-1', defaultButtons);
+      await advance(300);
+      expect(flushCallback).toHaveBeenCalledTimes(1);
+      const content = flushCallback.mock.calls[0][0] as string;
+      expect(content).toContain('🔐');
       r.dispose();
     });
 
@@ -391,6 +412,19 @@ describe('MessageRenderer', () => {
       expect(content).toContain('───────────────');
       r.dispose();
     });
+
+    it('quiet mode still sends the final completion message', async () => {
+      const r = createRenderer(4096, 300, '/home/user/workspace', 'glm-5', 0);
+      r.onToolStart('Bash');
+      r.onTextDelta('Here is the result.');
+      r.onComplete();
+      await advance(0);
+      expect(flushCallback).toHaveBeenCalledTimes(1);
+      const content = flushCallback.mock.calls[0][0] as string;
+      expect(content).toContain('Here is the result.');
+      expect(content).toContain('───────────────');
+      r.dispose();
+    });
   });
 
   // ─── Flush mechanics ─────────────────────────────
@@ -400,7 +434,10 @@ describe('MessageRenderer', () => {
       const r = createRenderer();
       r.onToolStart('Bash');
       await advance(300); // Initial flush (forceFlush=true)
-      expect(flushCallback).toHaveBeenCalledWith(expect.any(String), false, undefined);
+      expect(flushCallback).toHaveBeenCalledWith(expect.any(String), false, undefined, expect.objectContaining({
+        phase: 'executing',
+        totalTools: 1,
+      }));
       expect(r.messageId).toBe('msg-1');
 
       // Trigger another flush via new tool (forceFlush bypasses rate limit)

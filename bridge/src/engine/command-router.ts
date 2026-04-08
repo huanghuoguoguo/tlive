@@ -10,7 +10,7 @@ import type { BridgeStore } from '../store/interface.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { scanClaudeSessions } from '../session-scanner.js';
+import { readSessionTranscriptPreview, scanClaudeSessions } from '../session-scanner.js';
 import { generateSessionId } from '../utils/id.js';
 import { shortPath } from '../utils/path.js';
 import {
@@ -22,6 +22,8 @@ import {
   presentEffortChanged,
   presentEffortStatus,
   presentHelp,
+  presentHelpCli,
+  presentHome,
   presentHooksChanged,
   presentHooksStatus,
   presentModelChanged,
@@ -34,6 +36,7 @@ import {
   presentPermissionModeChanged,
   presentPermissionModeStatus,
   presentSessionNotFound,
+  presentSessionDetail,
   presentSessions,
   presentSessionSwitched,
   presentSessionUsage,
@@ -52,6 +55,10 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
+
+function formatSessionDate(mtime: number): string {
+  return new Date(mtime).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 export class CommandRouter {
@@ -97,6 +104,24 @@ export class CommandRouter {
 
         const cwdLabel = binding?.cwd ? ` in ${shortPath(binding.cwd)}` : '';
         await adapter.send(presentNewSession(msg.chatId, adapter.channelType, cwdLabel));
+        if (adapter.channelType === 'feishu') {
+          await adapter.send(presentHome(msg.chatId, adapter.channelType, {
+            cwd: shortPath(binding?.cwd || this.defaultWorkdir),
+            hasActiveTask: false,
+          }));
+        }
+        return true;
+      }
+      case '/home': {
+        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+        const currentCwd = binding?.cwd || this.defaultWorkdir;
+        const recentSession = scanClaudeSessions(1, currentCwd)[0];
+        const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
+        await adapter.send(presentHome(msg.chatId, adapter.channelType, {
+          cwd: shortPath(currentCwd),
+          hasActiveTask: this.activeControls.has(chatKey),
+          recentSummary: recentSession?.preview,
+        }));
         return true;
       }
       case '/verbose': {
@@ -172,19 +197,28 @@ export class CommandRouter {
         }
 
         const lines: string[] = [];
+        const buttons = adapter.channelType === 'feishu' ? [] as NonNullable<ReturnType<typeof presentSessions>['buttons']> : undefined;
         for (let i = 0; i < sessions.length; i++) {
           const s = sessions[i];
           const isCurrent = currentSdkId === s.sdkSessionId;
           const marker = isCurrent ? ' ◀' : '';
-          const date = new Date(s.mtime).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+          const date = formatSessionDate(s.mtime);
           const cwdShort = shortPath(s.cwd);
           const sizeStr = formatSize(s.size);
           lines.push(`${i + 1}. ${date} · ${cwdShort} · ${sizeStr} · ${s.preview}${marker}`);
+          if (buttons && i < 5) {
+            buttons.push(
+              { label: `▶️ 继续 #${i + 1}`, callbackData: `cmd:session ${i + 1}`, style: 'primary', row: i },
+              { label: `ℹ️ 详情 #${i + 1}`, callbackData: `cmd:sessioninfo ${i + 1}`, style: 'default', row: i },
+            );
+          }
         }
 
         const filterHint = showAll ? ' (all projects)' : ` (${shortPath(currentCwd)})`;
-        const footer = '\nUse /session <n> to switch';
-        await adapter.send(presentSessions(msg.chatId, adapter.channelType, filterHint, lines, footer));
+        const footer = adapter.channelType === 'feishu'
+          ? '\n可直接点击“继续”或“详情”，也可以手输 /session <n>。'
+          : '\nUse /session <n> to switch';
+        await adapter.send(presentSessions(msg.chatId, adapter.channelType, filterHint, lines, footer, buttons));
         return true;
       }
       case '/session': {
@@ -214,6 +248,37 @@ export class CommandRouter {
         this.state.clearLastActive(msg.channelType, msg.chatId);
 
         await adapter.send(presentSessionSwitched(msg.chatId, idx, shortPath(target.cwd), target.preview));
+        return true;
+      }
+      case '/sessioninfo': {
+        const idx = parseInt(parts[1], 10);
+        if (Number.isNaN(idx) || idx < 1) {
+          await adapter.send(presentSessionUsage(msg.chatId));
+          return true;
+        }
+
+        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+        const currentCwd = binding?.cwd || this.defaultWorkdir;
+        const showAll = parts[2]?.toLowerCase() === '--all' || parts[1]?.toLowerCase() === '--all';
+        const sessions = scanClaudeSessions(10, showAll ? undefined : currentCwd);
+        if (idx > sessions.length) {
+          await adapter.send(presentSessionNotFound(msg.chatId, idx));
+          return true;
+        }
+
+        const target = sessions[idx - 1];
+        const transcript = readSessionTranscriptPreview(target, 4).map(item => ({
+          role: item.role,
+          text: item.text,
+        }));
+        await adapter.send(presentSessionDetail(msg.chatId, adapter.channelType, {
+          index: idx,
+          cwd: shortPath(target.cwd),
+          preview: target.preview,
+          date: formatSessionDate(target.mtime),
+          size: formatSize(target.size),
+          transcript,
+        }));
         return true;
       }
       case '/cd': {
@@ -307,6 +372,10 @@ export class CommandRouter {
       }
       case '/help': {
         await adapter.send(presentHelp(msg.chatId, adapter.channelType));
+        return true;
+      }
+      case '/help-cli': {
+        await adapter.send(presentHelpCli(msg.chatId, adapter.channelType));
         return true;
       }
       case '/approve': {

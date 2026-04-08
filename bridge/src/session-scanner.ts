@@ -6,10 +6,17 @@ import { truncate } from './utils/string.js';
 export interface ScannedSession {
   sdkSessionId: string;   // .jsonl filename (UUID)
   projectDir: string;     // encoded dir name, e.g. "-home-yhh-myproject"
+  filePath: string;       // absolute path to session jsonl
   cwd: string;            // from last user message's cwd field
   mtime: number;          // file mtime (ms)
   size: number;           // file size in bytes
   preview: string;        // last user message content, truncated to 40 chars
+}
+
+export interface SessionTranscriptMessage {
+  role: 'user' | 'assistant';
+  text: string;
+  timestamp?: string;
 }
 
 // Cache for session scans (5 second TTL)
@@ -65,7 +72,7 @@ function doScan(): ScannedSession[] {
   }
 
   // Collect all .jsonl files with mtime
-  const candidates: Array<{ path: string; projectDir: string; sessionId: string; mtime: number; size: number }> = [];
+  const candidates: Array<{ path: string; filePath: string; projectDir: string; sessionId: string; mtime: number; size: number }> = [];
 
   for (const dir of projectDirs) {
     const dirPath = join(projectsDir, dir);
@@ -82,6 +89,7 @@ function doScan(): ScannedSession[] {
       try {
         const st = statSync(filePath);
         candidates.push({
+          filePath,
           path: filePath,
           projectDir: dir,
           sessionId: file.replace('.jsonl', ''),
@@ -161,7 +169,84 @@ function parseSessionHeader(
     // File unreadable — use defaults
   }
 
-  return { sdkSessionId: sessionId, projectDir, cwd, mtime, size, preview };
+  return { sdkSessionId: sessionId, projectDir, filePath, cwd, mtime, size, preview };
+}
+
+export function readSessionTranscriptPreview(
+  session: ScannedSession,
+  maxMessages = 4,
+): SessionTranscriptMessage[] {
+  try {
+    const READ_SIZE = 96 * 1024;
+    const st = statSync(session.filePath);
+    const fd = openSync(session.filePath, 'r');
+    try {
+      const fileSize = st.size;
+      const offset = fileSize > READ_SIZE ? fileSize - READ_SIZE : 0;
+      const readLen = fileSize > READ_SIZE ? READ_SIZE : fileSize;
+      const buf = Buffer.alloc(readLen);
+      const bytesRead = readSync(fd, buf, 0, readLen, offset);
+      const tail = buf.toString('utf-8', 0, bytesRead);
+      const messages: SessionTranscriptMessage[] = [];
+
+      for (const rawLine of tail.split('\n').reverse()) {
+        const line = rawLine.trim();
+        if (!line) continue;
+        try {
+          const obj = JSON.parse(line);
+          const message = extractTranscriptMessage(obj);
+          if (!message) continue;
+          messages.push(message);
+          if (messages.length >= maxMessages) break;
+        } catch {
+          continue;
+        }
+      }
+
+      return messages.reverse();
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return [];
+  }
+}
+
+function extractTranscriptMessage(obj: any): SessionTranscriptMessage | null {
+  if (obj?.type === 'user') {
+    const text = normalizeUserContent(obj?.message?.content);
+    if (!text) return null;
+    return { role: 'user', text, timestamp: obj?.timestamp };
+  }
+
+  if (obj?.type === 'assistant') {
+    const text = normalizeAssistantContent(obj?.message?.content);
+    if (!text) return null;
+    return { role: 'assistant', text, timestamp: obj?.timestamp };
+  }
+
+  return null;
+}
+
+function normalizeUserContent(content: unknown): string {
+  if (typeof content === 'string') {
+    if (content.startsWith('<local-command') || content.startsWith('<command-name') || content.startsWith('<command-message')) {
+      return '';
+    }
+    return truncate(content.trim().replace(/\s+/g, ' '), 160);
+  }
+
+  return '';
+}
+
+function normalizeAssistantContent(content: unknown): string {
+  if (!Array.isArray(content)) return '';
+  const textBlocks = content
+    .filter(block => block && typeof block === 'object' && block.type === 'text' && typeof block.text === 'string')
+    .map(block => block.text.trim().replace(/\s+/g, ' '))
+    .filter(Boolean);
+  if (!textBlocks.length) return '';
+  return truncate(textBlocks.join('\n'), 180);
 }
 
 /** Decode project directory name back to path: "-home-yhh-myproject" → "/home/yhh/myproject" */

@@ -319,5 +319,29 @@ describe('FeishuAdapter', () => {
 
       await adapter.stop();
     });
+
+    it('maps application bot menu events to commands', async () => {
+      await adapter.start();
+
+      const handler = eventHandlers.get('application.bot.menu_v6');
+      expect(handler).toBeTypeOf('function');
+
+      const result = await handler?.({
+        event_key: 'tlive_home',
+        operator: { operator_id: { user_id: 'user_1' } },
+      });
+
+      expect(result).toEqual({});
+
+      const msg = await adapter.consumeOne();
+      expect(msg).toMatchObject({
+        channelType: 'feishu',
+        chatId: '',
+        userId: 'user_1',
+        text: '/home',
+      });
+
+      await adapter.stop();
+    });
   });
 });

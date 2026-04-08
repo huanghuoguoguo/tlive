@@ -8,6 +8,7 @@ interface PermissionMessage {
   html?: string;
   embed?: OutboundMessage['embed'];
   buttons: OutboundMessage['buttons'];
+  feishuElements?: OutboundMessage['feishuElements'];
   /** Feishu card header (caller passes to buildFeishuCard) */
   feishuHeader?: { template: string; title: string };
 }
@@ -77,6 +78,11 @@ export function formatPermissionCard(data: PermissionCardData, channelType: Chan
       parts.push('', '💬 回复 **allow** / **deny** 审批');
       return {
         text: parts.join('\n'),
+        feishuElements: [
+          { tag: 'markdown', content: `**待审批动作**\n${data.toolName}\n\n\`\`\`\n${input}\n\`\`\`\n\n⏱ ${expires} 分钟内处理` },
+          ...(data.terminalUrl ? [{ tag: 'markdown', content: `🔗 [Open Terminal](${data.terminalUrl})` }] : []),
+          { tag: 'markdown', content: '💬 也可以直接回复 **allow** / **deny**。' },
+        ],
         feishuHeader: { template: 'orange', title: '\uD83D\uDD10 Permission Required' },
         buttons,
       };

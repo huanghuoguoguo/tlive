@@ -1,4 +1,5 @@
 import type { ChannelType, OutboundMessage } from '../channels/types.js';
+import { buildFeishuHomeCard } from '../formatting/feishu-experience.js';
 const COLORS = {
   blue: 0x3399FF,
   green: 0x00CC66,
@@ -72,6 +73,7 @@ export function presentSessions(
   filterHint: string,
   lines: string[],
   footer: string,
+  buttons?: OutboundMessage['buttons'],
 ): OutboundMessage {
   const body = lines.join('\n');
   if (channelType === 'telegram') {
@@ -93,6 +95,7 @@ export function presentSessions(
   return withChatId(chatId, {
     text: `${body}${footer}`,
     feishuHeader: { template: 'blue', title: `📋 Sessions${filterHint}` },
+    buttons,
   });
 }
 
@@ -157,38 +160,132 @@ export function presentHelp(chatId: string, channelType: ChannelType): OutboundM
 
   return withChatId(chatId, {
     text: [
-      '/new — New conversation',
-      '/sessions — List sessions in current directory',
-      '/sessions --all — List all sessions',
-      '/session <n> — Switch to session #n',
-      '/cd <path> — Change directory',
-      '/pwd — Show current directory',
-      '/verbose 0|1 — Detail level',
-      '  0 = quiet · 1 = terminal card',
-      '/perm on|off — Tool permission prompts',
-      '/effort low|high|max — Thinking depth',
-      '/model <name> — Switch model',
-      '/settings user|full|isolated — Claude settings scope',
-      '/stop — Interrupt current execution',
-      '/hooks pause|resume — Toggle IM approval',
-      '/status — Bridge status',
-      '/help — This message',
+      '常用操作：',
+      '/home — 返回工作台',
+      '/sessions — 查看当前目录会话',
+      '/sessions --all — 查看全部会话',
+      '/cd <path> — 切换目录',
+      '/pwd — 查看当前目录',
+      '/stop — 停止当前执行',
+      '/status — 查看桥接状态',
       '',
-      '💬 回复 **allow** / **deny** 审批权限',
+      '💬 权限审批时也可以直接回复 **allow** / **deny**',
     ].join('\n'),
-    feishuHeader: { template: 'indigo', title: '❓ TLive Commands' },
+    feishuHeader: { template: 'indigo', title: '❓ 常用帮助' },
     buttons: [
-      { label: '📋 Sessions', callbackData: 'cmd:sessions', style: 'primary' },
-      { label: '📂 cd', callbackData: 'cmd:cd', style: 'primary' },
-      { label: '🆕 New', callbackData: 'cmd:new', style: 'primary' },
-      { label: '📍 PWD', callbackData: 'cmd:pwd', style: 'primary' },
+      { label: '🏠 工作台', callbackData: 'cmd:home', style: 'primary' },
+      { label: '📋 会话列表', callbackData: 'cmd:sessions', style: 'primary' },
+      { label: '📍 当前目录', callbackData: 'cmd:pwd', style: 'default' },
+      { label: '📚 完整命令', callbackData: 'cmd:help-cli', style: 'default' },
+    ],
+  });
+}
+
+export function presentHelpCli(chatId: string, channelType: ChannelType): OutboundMessage {
+  if (channelType !== 'feishu') {
+    return presentHelp(chatId, channelType);
+  }
+
+  return withChatId(chatId, {
+    text: [
+      '/home — 返回工作台',
+      '/new — 新会话（重置当前飞书侧绑定）',
+      '/sessions — 列出当前目录会话',
+      '/sessions --all — 列出全部会话',
+      '/session <n> — 切到第 n 个会话',
+      '/sessioninfo <n> — 查看第 n 个会话详情',
+      '/cd <path> — 切目录',
+      '/pwd — 看当前目录',
+      '/verbose 0|1 — 详细程度',
+      '/perm on|off — 权限审批开关',
+      '/effort low|high|max — 推理强度',
+      '/model <name> — 切模型',
+      '/settings user|full|isolated — Claude 配置范围',
+      '/hooks pause|resume — Hook 审批开关',
+      '/stop — 中断当前执行',
+      '/status — 查看桥接状态',
+      '/help — 常用帮助',
+    ].join('\n'),
+    feishuHeader: { template: 'blue', title: '📚 完整命令' },
+    buttons: [
+      { label: '🏠 工作台', callbackData: 'cmd:home', style: 'primary' },
+      { label: '❓ 常用帮助', callbackData: 'cmd:help', style: 'default' },
+    ],
+  });
+}
+
+export function presentHome(
+  chatId: string,
+  channelType: ChannelType,
+  data: { cwd: string; hasActiveTask: boolean; recentSummary?: string },
+): OutboundMessage {
+  if (channelType !== 'feishu') {
+    return presentHelp(chatId, channelType);
+  }
+
+  const buttons = [
+    { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'primary' as const, row: 0 },
+    { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default' as const, row: 0 },
+    { label: '📡 当前状态', callbackData: 'cmd:status', style: 'default' as const, row: 1 },
+    { label: '📋 会话列表', callbackData: 'cmd:sessions', style: 'default' as const, row: 1 },
+    ...(data.hasActiveTask ? [{ label: '⏹ 停止执行', callbackData: 'cmd:stop', style: 'danger' as const, row: 2 }] : []),
+    { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default' as const, row: 2 },
+  ];
+
+  const card = buildFeishuHomeCard({
+    cwd: data.cwd,
+    hasActiveTask: data.hasActiveTask,
+    recentSummary: data.recentSummary,
+    buttons,
+  });
+
+  return withChatId(chatId, {
+    text: `当前目录：${data.cwd}`,
+    feishuHeader: card.header,
+    feishuElements: card.elements as unknown as Array<Record<string, unknown>>,
+  });
+}
+
+export function presentSessionDetail(
+  chatId: string,
+  channelType: ChannelType,
+  detail: { index: number; cwd: string; preview: string; date: string; size: string; transcript?: Array<{ role: 'user' | 'assistant'; text: string }> },
+): OutboundMessage {
+  if (channelType !== 'feishu') {
+    return withChatId(chatId, {
+      text: `${detail.index}. ${detail.date}\n${detail.cwd}\n${detail.size}\n${detail.preview}`,
+    });
+  }
+
+  return withChatId(chatId, {
+    text: [
+      `**会话 #${detail.index}**`,
+      `时间：${detail.date}`,
+      `目录：${detail.cwd}`,
+      `大小：${detail.size}`,
+      `摘要：${detail.preview}`,
+      ...(detail.transcript?.length
+        ? [
+            '',
+            '**最近对话摘录**',
+            ...detail.transcript.map(item => `${item.role === 'user' ? '你' : '助手'}：${item.text}`),
+          ]
+        : []),
+    ].join('\n'),
+    feishuHeader: { template: 'blue', title: `🗂️ 会话 #${detail.index}` },
+    buttons: [
+      { label: '▶️ 继续这个会话', callbackData: `cmd:session ${detail.index}`, style: 'primary' },
+      { label: '📋 返回列表', callbackData: 'cmd:sessions', style: 'default' },
     ],
   });
 }
 
 export function presentVerbose(chatId: string, channelType: ChannelType, level: 0 | 1): OutboundMessage {
   const labels = ['🤫 quiet', '📝 terminal card'];
-  const text = `Verbose: ${labels[level]}`;
+  const detail = level === 0
+    ? '只在等待权限、等待回答、完成、失败时发消息'
+    : '执行中会持续展示状态卡和进度摘要';
+  const text = `Verbose: ${labels[level]}\n${detail}`;
 
   if (channelType === 'discord') {
     return withChatId(chatId, {
@@ -200,7 +297,7 @@ export function presentVerbose(chatId: string, channelType: ChannelType, level: 
 }
 
 export function presentVerboseUsage(chatId: string, channelType: ChannelType): OutboundMessage {
-  const text = 'Usage: `/verbose 0|1`\n0=quiet, 1=terminal card';
+  const text = 'Usage: `/verbose 0|1`\n0=quiet，只在关键节点发消息\n1=terminal card，显示执行中状态卡';
 
   if (channelType === 'discord') {
     return withChatId(chatId, {

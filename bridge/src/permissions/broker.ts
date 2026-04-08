@@ -45,6 +45,7 @@ export class PermissionBroker {
         embed: formatted.embed,
         buttons: formatted.buttons,
         feishuHeader: formatted.feishuHeader,
+        feishuElements: formatted.feishuElements,
       });
     }
   }

@@ -21,7 +21,7 @@ import type { BridgeStore } from '../store/interface.js';
 import type { LLMProvider } from '../providers/base.js';
 
 /** Bridge commands handled synchronously (don't block adapter loop) */
-const QUICK_COMMANDS = new Set(['/new', '/status', '/verbose', '/hooks', '/sessions', '/session', '/help', '/perm', '/effort', '/stop', '/approve', '/pairings', '/settings', '/model', '/cd', '/pwd']);
+const QUICK_COMMANDS = new Set(['/new', '/home', '/status', '/verbose', '/hooks', '/sessions', '/session', '/sessioninfo', '/help', '/help-cli', '/perm', '/effort', '/stop', '/approve', '/pairings', '/settings', '/model', '/cd', '/pwd']);
 
 interface BridgeManagerDeps {
   store: BridgeStore;
@@ -254,6 +254,14 @@ export class BridgeManager {
   }
 
   async handleInboundMessage(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
+    if (msg.callbackData && !msg.chatId) {
+      const fallbackChatId = this.ingress.getLastChatId(adapter.channelType);
+      if (fallbackChatId) {
+        console.warn(`[${adapter.channelType}] Callback missing chatId, fallback to last active chat ${fallbackChatId}`);
+        msg = { ...msg, chatId: fallbackChatId };
+      }
+    }
+
     // Auth check — with pairing mode for Telegram
     if (!adapter.isAuthorized(msg.userId, msg.chatId)) {
       // Telegram pairing mode: generate code for unknown user (DM only)
