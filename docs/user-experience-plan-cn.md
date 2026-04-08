@@ -282,6 +282,7 @@
 - `permission-coordinator.ts`
 - `command-presenter.ts`
 - `callback-dispatcher.ts`
+- `hook-notification-dispatcher.ts`
 - `ingress-coordinator.ts`
 - `message-loop-coordinator.ts`
 - `text-dispatcher.ts`
