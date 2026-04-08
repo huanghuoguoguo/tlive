@@ -285,6 +285,7 @@
 - `ingress-coordinator.ts`
 - `message-loop-coordinator.ts`
 - `text-dispatcher.ts`
+- `query-orchestrator.ts`
 
 这说明当前问题已经从“所有职责都堆在一个类里”，收敛为“主编排类仍偏大，但边界正在变清晰”。
 
@@ -458,7 +459,7 @@
 - HookDispatcher / PermissionDispatcher
 - SessionOrchestrator / QueryPipeline
 
-其中前 3 项已经部分落地，下一步更值得继续拆的是：
+其中前 3 项和 query 执行器已经部分落地，下一步更值得继续拆的是：
 
 - hook 通知和本地 session 输入路由
 - Claude 查询执行链与 renderer 生命周期
