@@ -1,13 +1,13 @@
-import type { ClaudeSDKProvider } from './providers/claude-sdk.js';
-import type { JsonFileStore } from './store/json-file.js';
+import type { LLMProvider } from './providers/base.js';
+import type { BridgeStore } from './store/interface.js';
 import type { CoreClientImpl } from './core-client.js';
 import type { ProviderCapabilities, LiveSession } from './providers/base.js';
 
 export type { ProviderCapabilities, LiveSession };
 
 export interface BridgeContext {
-  store: JsonFileStore;
-  llm: ClaudeSDKProvider;
+  store: BridgeStore;
+  llm: LLMProvider;
   core: CoreClientImpl | null;
   defaultWorkdir: string;
 }

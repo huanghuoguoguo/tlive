@@ -344,6 +344,12 @@
 - 对当前单进程场景仍可接受
 - 但从长期可维护性看，不是理想状态
 
+补充说明：
+
+- 这一问题已经开始局部收缩
+- `ChannelRouter`、`ConversationEngine`、`QueryOrchestrator` 已开始改为显式注入依赖
+- 但 `CommandRouter` 等模块仍在使用 `getBridgeContext()`，所以这一项还没有完成
+
 ### 4. 存储和锁模型适合当前需求，但不是通用解
 
 `JsonFileStore` 当前采用：

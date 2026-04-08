@@ -50,7 +50,7 @@ describe('ConversationEngine', () => {
       core: null,
     });
 
-    engine = new ConversationEngine();
+    engine = new ConversationEngine(mockStore as any, mockLLM as any);
   });
 
   it('processes message and returns full response', async () => {
@@ -114,7 +114,7 @@ describe('ConversationEngine', () => {
       })
     };
     initBridgeContext({ defaultWorkdir: '/tmp', store: mockStore as any, llm: errorLLM as any, core: null });
-    engine = new ConversationEngine();
+    engine = new ConversationEngine(mockStore as any, errorLLM as any);
 
     await engine.processMessage({ sdkSessionId: 's1', workingDirectory: '/tmp', text: 'hi' });
     expect(mockStore.releaseLock).toHaveBeenCalled();

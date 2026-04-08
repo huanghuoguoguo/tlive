@@ -1,6 +1,5 @@
 import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage, OutboundMessage } from '../channels/types.js';
-import { getBridgeContext } from '../context.js';
 import { markdownToTelegram } from '../markdown/index.js';
 import { downgradeHeadings } from '../markdown/feishu.js';
 import { MessageRenderer } from './message-renderer.js';
@@ -15,6 +14,7 @@ import type { SDKEngine } from './sdk-engine.js';
 import { CHANNEL_TYPES, PLATFORM_LIMITS, PLATFORM_REACTIONS, type ChannelType } from '../utils/constants.js';
 import { generateSessionId } from '../utils/id.js';
 import { truncate } from '../utils/string.js';
+import type { BridgeStore } from '../store/interface.js';
 
 interface QueryOrchestratorOptions {
   engine: ConversationEngine;
@@ -22,6 +22,8 @@ interface QueryOrchestratorOptions {
   state: SessionStateManager;
   permissions: PermissionCoordinator;
   sdkEngine: SDKEngine;
+  store: BridgeStore;
+  defaultWorkdir: string;
   port: number;
   token: string;
   isCoreAvailable: () => boolean;
@@ -44,7 +46,6 @@ export class QueryOrchestrator {
     }
 
     const binding = await this.options.router.resolve(msg.channelType, msg.chatId);
-    const { store, defaultWorkdir } = getBridgeContext();
 
     let threadId = msg.threadId;
     if (!threadId && adapter.channelType === CHANNEL_TYPES.DISCORD) {
@@ -71,7 +72,7 @@ export class QueryOrchestrator {
     const renderer = new MessageRenderer({
       platformLimit: PLATFORM_LIMITS[adapter.channelType as ChannelType] ?? 4096,
       throttleMs: 300,
-      cwd: binding.cwd || defaultWorkdir,
+      cwd: binding.cwd || this.options.defaultWorkdir,
       model: this.options.state.getModel(msg.channelType, msg.chatId),
       sessionId: binding.sdkSessionId,
       onPermissionTimeout: async (toolName, input, buttons) => {
@@ -346,7 +347,7 @@ export class QueryOrchestrator {
     try {
       await this.options.engine.processMessage({
         sdkSessionId: binding.sdkSessionId,
-        workingDirectory: binding.cwd || defaultWorkdir,
+        workingDirectory: binding.cwd || this.options.defaultWorkdir,
         text: msg.text,
         attachments: msg.attachments,
         sdkPermissionHandler,
@@ -359,7 +360,7 @@ export class QueryOrchestrator {
         },
         onSdkSessionId: async (id) => {
           binding.sdkSessionId = id;
-          await store.saveBinding(binding);
+          await this.options.store.saveBinding(binding);
         },
         onTextDelta: (delta) => renderer.onTextDelta(delta),
         onToolStart: (event) => {

@@ -1,12 +1,12 @@
-import { getBridgeContext } from '../context.js';
+import type { BridgeStore } from '../store/interface.js';
 import type { ChannelBinding } from '../store/interface.js';
 import { generateSessionId } from '../utils/id.js';
 
 export class ChannelRouter {
-  async resolve(channelType: string, chatId: string): Promise<ChannelBinding> {
-    const { store } = getBridgeContext();
+  constructor(private store: BridgeStore) {}
 
-    let binding = await store.getBinding(channelType, chatId);
+  async resolve(channelType: string, chatId: string): Promise<ChannelBinding> {
+    let binding = await this.store.getBinding(channelType, chatId);
     if (binding) return binding;
 
     // Auto-create binding for first message
@@ -16,12 +16,11 @@ export class ChannelRouter {
       sessionId: generateSessionId(),
       createdAt: new Date().toISOString(),
     };
-    await store.saveBinding(binding);
+    await this.store.saveBinding(binding);
     return binding;
   }
 
   async rebind(channelType: string, chatId: string, sessionId: string, opts?: { sdkSessionId?: string; cwd?: string }): Promise<ChannelBinding> {
-    const { store } = getBridgeContext();
     const binding: ChannelBinding = {
       channelType,
       chatId,
@@ -30,7 +29,7 @@ export class ChannelRouter {
       cwd: opts?.cwd,
       createdAt: new Date().toISOString(),
     };
-    await store.saveBinding(binding);
+    await this.store.saveBinding(binding);
     return binding;
   }
 }

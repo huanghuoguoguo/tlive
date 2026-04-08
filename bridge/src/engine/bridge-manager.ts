@@ -1,5 +1,6 @@
 import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';
+import { getBridgeContext } from '../context.js';
 import { ChannelRouter } from './router.js';
 import { PermissionBroker } from '../permissions/broker.js';
 import { PendingPermissions } from '../permissions/gateway.js';
@@ -50,8 +51,8 @@ function getLocalIP(): string {
 export class BridgeManager {
   private adapters = new Map<string, BaseChannelAdapter>();
   private running = false;
-  private engine = new ConversationEngine();
-  private router = new ChannelRouter();
+  private engine: ConversationEngine;
+  private router: ChannelRouter;
   private coreUrl: string;
   private token: string;
   private port: number;
@@ -72,13 +73,16 @@ export class BridgeManager {
 
   constructor() {
     const config = loadConfig();
+    const { store, llm, defaultWorkdir } = getBridgeContext();
     const localUrl = `http://${getLocalIP()}:${config.port || 8080}`;
     const gateway = new PendingPermissions();
     const broker = new PermissionBroker(gateway, localUrl);
     this.coreUrl = config.coreUrl;
     this.token = config.token;
     this.port = config.port || 8080;
+    this.router = new ChannelRouter(store);
     this.permissions = new PermissionCoordinator(gateway, broker, this.coreUrl, this.token);
+    this.engine = new ConversationEngine(store, llm);
     this.sdkEngine = new SDKEngine(this.state, this.router, this.permissions);
     this.commands = new CommandRouter(
       this.state,
@@ -110,6 +114,8 @@ export class BridgeManager {
       state: this.state,
       permissions: this.permissions,
       sdkEngine: this.sdkEngine,
+      store,
+      defaultWorkdir,
       port: this.port,
       token: this.token,
       isCoreAvailable: () => this.coreAvailable,

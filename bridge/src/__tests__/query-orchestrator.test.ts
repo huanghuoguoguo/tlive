@@ -21,21 +21,23 @@ describe('QueryOrchestrator', () => {
     sessionId: 'session-1',
     createdAt: '2026-01-01T00:00:00Z',
   };
+  let mockStore: any;
 
   beforeEach(() => {
+    mockStore = {
+      acquireLock: vi.fn().mockResolvedValue(true),
+      renewLock: vi.fn().mockResolvedValue(true),
+      releaseLock: vi.fn().mockResolvedValue(undefined),
+      getBinding: vi.fn().mockResolvedValue(binding),
+      saveBinding: vi.fn().mockResolvedValue(undefined),
+      deleteBinding: vi.fn(),
+      listBindings: vi.fn(),
+      isDuplicate: vi.fn().mockResolvedValue(false),
+      markProcessed: vi.fn(),
+    };
     initBridgeContext({
       defaultWorkdir: '/tmp/project',
-      store: {
-        acquireLock: vi.fn().mockResolvedValue(true),
-        renewLock: vi.fn().mockResolvedValue(true),
-        releaseLock: vi.fn().mockResolvedValue(undefined),
-        getBinding: vi.fn().mockResolvedValue(binding),
-        saveBinding: vi.fn().mockResolvedValue(undefined),
-        deleteBinding: vi.fn(),
-        listBindings: vi.fn(),
-        isDuplicate: vi.fn().mockResolvedValue(false),
-        markProcessed: vi.fn(),
-      } as any,
+      store: mockStore,
       llm: {} as any,
       core: null,
     });
@@ -86,6 +88,8 @@ describe('QueryOrchestrator', () => {
       state,
       permissions,
       sdkEngine,
+      store: mockStore,
+      defaultWorkdir: '/tmp/project',
       port: 8080,
       token: 'token',
       isCoreAvailable: () => true,
@@ -99,8 +103,7 @@ describe('QueryOrchestrator', () => {
       messageId: 'msg-1',
     });
 
-    const { store } = await import('../context.js').then((mod) => mod.getBridgeContext());
-    expect(store.saveBinding).toHaveBeenCalledWith(expect.objectContaining({ sdkSessionId: 'sdk-2' }));
+    expect(mockStore.saveBinding).toHaveBeenCalledWith(expect.objectContaining({ sdkSessionId: 'sdk-2' }));
     expect(adapter.sendTyping).toHaveBeenCalledWith('chat-1');
     expect(adapter.addReaction).toHaveBeenCalledWith('chat-1', 'msg-1', expect.any(String));
     expect(adapter.send).toHaveBeenCalledWith(expect.objectContaining({ html: expect.stringContaining('hello') }));

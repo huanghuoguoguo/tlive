@@ -1,5 +1,5 @@
-import { getBridgeContext } from '../context.js';
-import type { FileAttachment, PermissionRequestHandler, QueryControls, StreamChatResult, EffortLevel } from '../providers/base.js';
+import type { BridgeStore } from '../store/interface.js';
+import type { FileAttachment, LLMProvider, PermissionRequestHandler, QueryControls, StreamChatResult, EffortLevel } from '../providers/base.js';
 import type { AskUserQuestionHandler } from '../messages/types.js';
 import type { TodoStatus } from '../utils/types.js';
 
@@ -69,14 +69,18 @@ interface ProcessMessageResult {
 }
 
 export class ConversationEngine {
+  constructor(
+    private store: BridgeStore,
+    private llm: LLMProvider,
+  ) {}
+
   async processMessage(params: ProcessMessageParams): Promise<ProcessMessageResult> {
-    const { store, llm } = getBridgeContext();
     const lockKey = `session:${params.sdkSessionId || `new-${Date.now()}`}`;
     let fullText = '';
     let usage: { inputTokens: number; outputTokens: number; costUsd?: number } | undefined;
 
     // 1. Acquire lock
-    await store.acquireLock(lockKey, 600_000);
+    await this.store.acquireLock(lockKey, 600_000);
 
     try {
       // 2. Build prompt with file content injected
@@ -84,7 +88,7 @@ export class ConversationEngine {
       const prompt = buildPromptWithAttachments(params.text, params.attachments);
 
       // 3. Stream LLM response — use pre-built stream from LiveSession or call streamChat
-      const result = params.streamResult ?? llm.streamChat({
+      const result = params.streamResult ?? this.llm.streamChat({
         prompt,
         workingDirectory: params.workingDirectory,
         model: params.model,
@@ -165,7 +169,7 @@ export class ConversationEngine {
       }
     } finally {
       // 5. Release lock
-      await store.releaseLock(lockKey);
+      await this.store.releaseLock(lockKey);
     }
 
     return { text: fullText, usage };
