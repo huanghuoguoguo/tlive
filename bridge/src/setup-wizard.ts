@@ -62,6 +62,41 @@ function maskSecret(value: string): string {
   return value.slice(0, 4) + '****' + value.slice(-4);
 }
 
+function printNextSteps(platforms: string[]): void {
+  console.log('\nNext steps:');
+  console.log('  tlive install skills    Install Claude Code skill + hooks');
+  console.log('  tlive start             Start services');
+
+  if (platforms.includes('feishu')) {
+    console.log('\nFeishu first-run checklist:');
+    console.log('  1. Finish app publish + admin approval in Feishu');
+    console.log('  2. Run /tlive or tlive start');
+    console.log('  3. Send the bot a private message in Feishu');
+    console.log('  4. Confirm you receive replies, progress updates, and approval cards');
+  }
+
+  if (platforms.includes('telegram')) {
+    console.log('\nTelegram first-run checklist:');
+    console.log('  1. Start a chat with your bot');
+    console.log('  2. Run /tlive or tlive start');
+    console.log('  3. Send a real task and confirm the reply reaches Telegram');
+  }
+
+  if (platforms.includes('discord')) {
+    console.log('\nDiscord first-run checklist:');
+    console.log('  1. Invite the bot to your target server/channel');
+    console.log('  2. Run /tlive or tlive start');
+    console.log('  3. Send a real task and confirm the reply reaches Discord');
+  }
+
+  if (platforms.includes('qqbot')) {
+    console.log('\nQQ Bot first-run checklist:');
+    console.log('  1. Confirm the bot is available in your target chat');
+    console.log('  2. Run /tlive or tlive start');
+    console.log('  3. Send a real task and confirm the reply reaches QQ');
+  }
+}
+
 export async function runSetupWizard(): Promise<void> {
   if (isClaudeCodeEnvironment()) {
     console.error('Setup wizard should be run via /tlive setup in Claude Code.');
@@ -154,9 +189,7 @@ export async function runSetupWizard(): Promise<void> {
   console.log(`   Token: ${maskSecret(config.TL_TOKEN)}`);
   console.log(`   Port: ${config.TL_PORT}`);
   console.log(`   Channels: ${config.TL_ENABLED_CHANNELS}`);
-  console.log(`\nNext steps:`);
-  console.log(`  tlive install skills    Install Claude Code skill + hooks`);
-  console.log(`  tlive start             Start services`);
+  printNextSteps(platforms);
 }
 
 // Run if executed directly
