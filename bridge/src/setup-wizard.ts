@@ -26,17 +26,22 @@ async function ask(question: string, defaultValue = ''): Promise<string> {
   });
 }
 
-async function askChoice(question: string, choices: string[], current?: string[]): Promise<string[]> {
+type Choice = {
+  label: string;
+  value: string;
+};
+
+async function askChoice(question: string, choices: Choice[], current?: string[]): Promise<string[]> {
   console.log(question);
   choices.forEach((c, i) => {
-    const marker = current?.includes(c.toLowerCase()) ? ' (current)' : '';
-    console.log(`  ${i + 1}. ${c}${marker}`);
+    const marker = current?.includes(c.value) ? ' (current)' : '';
+    console.log(`  ${i + 1}. ${c.label}${marker}`);
   });
   const hint = current?.length ? ` [${current.join(',')}]` : '';
   const answer = await ask(`Enter numbers, comma-separated${hint}`);
   if (!answer && current?.length) return current;
   const indices = answer.split(',').map(s => parseInt(s.trim(), 10) - 1);
-  return indices.filter(i => i >= 0 && i < choices.length).map(i => choices[i].toLowerCase());
+  return indices.filter(i => i >= 0 && i < choices.length).map(i => choices[i].value);
 }
 
 function loadExistingConfig(): Record<string, string> {
@@ -93,8 +98,13 @@ export async function runSetupWizard(): Promise<void> {
   // Choose platforms
   const currentChannels = (config.TL_ENABLED_CHANNELS || '').split(',').filter(Boolean);
   const platforms = await askChoice(
-    '\nWhich IM platforms do you want to enable?',
-    ['Telegram', 'Discord', 'Feishu', 'QQBot'],
+    '\nWhich IM platforms do you want to enable?\nRecommended for most personal users in Chinese environments: Feishu.',
+    [
+      { label: 'Feishu (recommended for personal users)', value: 'feishu' },
+      { label: 'Telegram', value: 'telegram' },
+      { label: 'Discord', value: 'discord' },
+      { label: 'QQBot', value: 'qqbot' },
+    ],
     currentChannels,
   );
   config.TL_ENABLED_CHANNELS = platforms.join(',');

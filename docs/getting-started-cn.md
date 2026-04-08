@@ -2,11 +2,13 @@
 
 本指南将带你从零开始配置 tlive。完成后，你可以在手机上监控终端会话、通过 IM 与 Claude Code 对话，以及远程审批权限请求。
 
+如果你是中文环境下的个人用户，默认推荐直接选择飞书。你不需要先比较所有平台，再决定怎么开始。
+
 ## 前置条件
 
 - **Node.js 18+** 和 npm
-- 以下 IM 平台至少其一：**Telegram**、**Discord** 或**飞书**（IM Bridge 和 Hook 审批功能需要）
-- 已安装 **Claude Code** 或 **Codex**（IM Bridge 和 Hook 审批功能需要）
+- 以下 IM 平台至少其一：**飞书**、**Telegram** 或 **Discord**（IM Bridge 和 Hook 审批功能需要）
+- 已安装 **Claude Code**（IM Bridge 和 Hook 审批功能需要）
 - **Web Terminal（网页终端）** 功能可独立使用，不需要 IM 平台
 
 ## 安装
@@ -25,19 +27,21 @@ tlive --help
 
 ## 选择 IM 平台
 
-你可以同时启用多个平台。以下是各平台的快速对比：
+你可以同时启用多个平台，但首次配置时不建议把选择压力留给自己。
 
-| 平台 | 适合场景 | 配置耗时 |
-|------|---------|---------|
-| **Telegram** | 个人开发者首选，通过 @BotFather 两分钟就能创建机器人 | 约 2 分钟 |
-| **Discord** | 团队已经在用 Discord 的场景，需要你有服务器管理权限 | 约 5 分钟 |
-| **飞书** | 国内团队首选，配置步骤稍多（需要管理员审批） | 约 15 分钟 |
+默认建议如下：
+
+| 平台 | 推荐级别 | 适合场景 |
+|------|-----------|---------|
+| **飞书** | 默认推荐 | 中文个人用户最顺手；使用长连接，不需要公网 IP 或自建 webhook |
+| **Telegram** | 备选 | 你已经长期使用 Telegram，希望最快创建机器人 |
+| **Discord** | 备选 | 团队已经在用 Discord，且你有服务器管理权限 |
 
 各平台详细配置指南：
 
+- [飞书配置](setup-feishu-cn.md)
 - [Telegram 配置](setup-telegram-cn.md)
 - [Discord 配置](setup-discord-cn.md)
-- [飞书配置](setup-feishu-cn.md)
 
 ## 配置
 
@@ -51,7 +55,7 @@ tlive --help
 /tlive setup
 ```
 
-AI 会一步步引导你完成配置——解释每个参数的含义、帮你创建机器人 token，并验证配置是否正确。
+AI 会一步步引导你完成配置。对中文个人用户，默认就按飞书这条路径走即可。
 
 ### 方案 B：命令行引导
 
@@ -69,11 +73,11 @@ tlive setup
 
 ```env
 # 启用的平台（逗号分隔）
-TL_ENABLED_CHANNELS=telegram
+TL_ENABLED_CHANNELS=feishu
 
-# Telegram 示例
-TL_TG_BOT_TOKEN=7823456789:AAF-xxxxx
-TL_TG_CHAT_ID=123456789
+# Feishu 示例
+TL_FS_APP_ID=cli_xxxxxxxxxxxxxxxx
+TL_FS_APP_SECRET=your-app-secret
 
 # Web 终端端口和访问令牌
 TL_PORT=8080
@@ -100,7 +104,41 @@ tlive install skills
 
 ## 试一试
 
-### 功能一：Web 终端
+### 功能一：IM Bridge
+
+在 Claude Code 中启动 Bridge：
+
+```
+/tlive
+```
+
+如果你按默认路径选择了飞书，现在就去飞书里给机器人发一条私聊消息，例如：
+
+```
+帮我看一下当前仓库里有哪些未提交改动
+```
+
+Claude Code 会接收消息、处理任务，并将响应实时回传到你的手机上。
+
+使用 `/verbose 0|1` 控制消息的详细程度：
+- `0` — 仅显示最终结果
+- `1` — 终端卡片，显示工具调用 + 结果（默认）
+
+看到以下结果就说明你已经跑通了：
+
+- 机器人能正常回复你的消息
+- Claude Code 的执行进度会持续回传
+- 需要权限时，你会收到审批卡片
+
+其他常用命令：`/perm on|off`（权限提示）、`/effort low|high|max`（思考深度）、`/stop`（中断执行）。
+
+### 功能二：Hook 审批
+
+这个功能不需要额外操作——正常使用 Claude Code 就行。当 Claude 需要权限执行某个工具（比如运行 bash 命令）时，你的手机会收到一条通知，带有**允许**和**拒绝**按钮。点击即可响应，Claude 继续工作。
+
+超时未响应时默认操作是**拒绝**，安全第一。
+
+### 功能三：Web 终端
 
 用 `tlive` 包装任意命令，即可获得网页终端：
 
@@ -115,28 +153,6 @@ tlive claude --model opus
 ```
 
 你会得到一个本地 URL 和一个局域网 URL。在手机上打开局域网 URL 就能远程监控会话。
-
-### 功能二：IM Bridge
-
-在 Claude Code 中启动 Bridge：
-
-```
-/tlive
-```
-
-然后在手机上打开你的 IM 应用，给机器人发一条消息。Claude Code 会接收消息、处理任务，并将响应实时回传到你的手机上——包括工具调用和进度更新。
-
-使用 `/verbose 0|1` 控制消息的详细程度：
-- `0` — 仅显示最终结果
-- `1` — 终端卡片，显示工具调用 + 结果（默认）
-
-其他常用命令：`/runtime claude|codex`（切换引擎）、`/perm on|off`（权限提示）、`/effort low|high|max`（思考深度）、`/stop`（中断执行）。
-
-### 功能三：Hook 审批
-
-这个功能不需要额外操作——正常使用 Claude Code 就行。当 Claude 需要权限执行某个工具（比如运行 bash 命令）时，你的手机会收到一条通知，带有**允许**和**拒绝**按钮。点击即可响应，Claude 继续工作。
-
-超时未响应时默认操作是**拒绝**，安全第一。
 
 ## 故障排除
 
@@ -166,3 +182,4 @@ tlive logs 50
 - **手机访问 Web 终端：** 扫描二维码或使用启动会话时打印的局域网 URL
 - **多会话支持：** 同时运行多个 `tlive <cmd>`，所有会话集中在一个面板中
 - 阅读完整的 [中文文档](../README_CN.md) 了解所有命令和架构详情
+- 如果你刚才走的是默认路径，下一步建议直接看 [飞书配置指南](setup-feishu-cn.md) 做精细化配置
