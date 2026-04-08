@@ -2,11 +2,11 @@ import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';
 import type { SessionStateManager } from './session-state.js';
 import type { ChannelRouter } from './router.js';
-import type { QueryControls } from '../providers/base.js';
+import type { LLMProvider, QueryControls } from '../providers/base.js';
 import type { VerboseLevel } from './session-state.js';
-import { getBridgeContext } from '../context.js';
 import { ClaudeSDKProvider } from '../providers/claude-sdk.js';
 import type { ClaudeSettingSource } from '../config.js';
+import type { BridgeStore } from '../store/interface.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -65,7 +65,10 @@ export class CommandRouter {
     private state: SessionStateManager,
     private getAdapters: () => Map<string, BaseChannelAdapter>,
     private router: ChannelRouter,
-    _coreAvailable: () => boolean,
+    private isCoreAvailable: () => boolean,
+    private store: BridgeStore,
+    private defaultWorkdir: string,
+    private llm: LLMProvider,
     private activeControls: Map<string, QueryControls>,
     private permissions: { clearSessionWhitelist(): void },
     private onNewSession?: (channelType: string, chatId: string) => void,
@@ -77,8 +80,7 @@ export class CommandRouter {
 
     switch (cmd) {
       case '/status': {
-        const ctx = getBridgeContext();
-        const healthy = ctx.core?.isHealthy() ?? false;
+        const healthy = this.isCoreAvailable();
         const coreStatus = healthy ? '🟢 connected' : '🔴 disconnected';
         const channelList = Array.from(this.getAdapters().keys()).join(', ') || 'none';
         await adapter.send(presentStatus(msg.chatId, adapter.channelType, coreStatus, channelList));
@@ -88,8 +90,7 @@ export class CommandRouter {
         // Close any active LiveSession(s) for this chat before creating new session
         this.onNewSession?.(msg.channelType, msg.chatId);
         // Just clear session, keep current cwd
-        const { store } = getBridgeContext();
-        const binding = await store.getBinding(msg.channelType, msg.chatId);
+        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
 
         const newSessionId = generateSessionId();
         await this.router.rebind(msg.channelType, msg.chatId, newSessionId, {
@@ -163,9 +164,8 @@ export class CommandRouter {
         return true;
       }
       case '/sessions': {
-        const { store, defaultWorkdir } = getBridgeContext();
-        const binding = await store.getBinding(msg.channelType, msg.chatId);
-        const currentCwd = binding?.cwd || defaultWorkdir;
+        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+        const currentCwd = binding?.cwd || this.defaultWorkdir;
         const showAll = parts[1]?.toLowerCase() === '--all' || parts[1]?.toLowerCase() === '-a';
 
         const sessions = scanClaudeSessions(10, showAll ? undefined : currentCwd);
@@ -200,9 +200,8 @@ export class CommandRouter {
           return true;
         }
 
-        const { store, defaultWorkdir } = getBridgeContext();
-        const binding = await store.getBinding(msg.channelType, msg.chatId);
-        const currentCwd = binding?.cwd || defaultWorkdir;
+        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+        const currentCwd = binding?.cwd || this.defaultWorkdir;
         const sessions = scanClaudeSessions(10, currentCwd);
 
         if (idx > sessions.length) {
@@ -230,9 +229,8 @@ export class CommandRouter {
           return true;
         }
 
-        const { store, defaultWorkdir } = getBridgeContext();
-        const binding = await store.getBinding(msg.channelType, msg.chatId);
-        const cwd = binding?.cwd || defaultWorkdir;
+        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+        const cwd = binding?.cwd || this.defaultWorkdir;
 
         try {
           const { stdout, stderr } = await execAsync(cmdText, {
@@ -253,12 +251,11 @@ export class CommandRouter {
       }
       case '/cd': {
         const path = parts.slice(1).join(' ').trim();
-        const { store, defaultWorkdir } = getBridgeContext();
 
         if (!path) {
           // Show current directory
-          const binding = await store.getBinding(msg.channelType, msg.chatId);
-          const current = binding?.cwd || defaultWorkdir;
+          const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+          const current = binding?.cwd || this.defaultWorkdir;
           await adapter.send(presentDirectory(msg.chatId, shortPath(current), true));
           return true;
         }
@@ -267,8 +264,8 @@ export class CommandRouter {
         const expandedPath = path.startsWith('~') ? join(homedir(), path.slice(1)) : path;
 
         // Resolve relative paths
-        const binding = await store.getBinding(msg.channelType, msg.chatId);
-        const baseCwd = binding?.cwd || defaultWorkdir;
+        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+        const baseCwd = binding?.cwd || this.defaultWorkdir;
         const resolvedPath = expandedPath.startsWith('/') ? expandedPath : join(baseCwd, expandedPath);
 
         if (!existsSync(resolvedPath)) {
@@ -279,7 +276,7 @@ export class CommandRouter {
         // Update binding
         if (binding) {
           binding.cwd = resolvedPath;
-          await store.saveBinding(binding);
+          await this.store.saveBinding(binding);
         } else {
           await this.router.rebind(msg.channelType, msg.chatId, generateSessionId(), { cwd: resolvedPath });
         }
@@ -288,9 +285,8 @@ export class CommandRouter {
         return true;
       }
       case '/pwd': {
-        const { store, defaultWorkdir } = getBridgeContext();
-        const binding = await store.getBinding(msg.channelType, msg.chatId);
-        const current = binding?.cwd || defaultWorkdir;
+        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+        const current = binding?.cwd || this.defaultWorkdir;
         await adapter.send(presentDirectory(msg.chatId, shortPath(current)));
         return true;
       }
@@ -311,10 +307,9 @@ export class CommandRouter {
         return true;
       }
       case '/settings': {
-        const llm = getBridgeContext().llm;
         const arg = parts[1]?.toLowerCase();
 
-        if (!(llm instanceof ClaudeSDKProvider)) {
+        if (!(this.llm instanceof ClaudeSDKProvider)) {
           await adapter.send(presentSettingsUnavailable(msg.chatId));
           return true;
         }
@@ -326,7 +321,7 @@ export class CommandRouter {
         };
 
         if (arg && arg in PRESETS) {
-          llm.setSettingSources(PRESETS[arg]);
+          this.llm.setSettingSources(PRESETS[arg]);
           const labels: Record<string, string> = {
             user: '👤 user — auth & model only',
             full: '📦 full — auth, CLAUDE.md, MCP, skills',
@@ -334,7 +329,7 @@ export class CommandRouter {
           };
           await adapter.send(presentSettingsChanged(msg.chatId, labels[arg]));
         } else {
-          const current = llm.getSettingSources();
+          const current = this.llm.getSettingSources();
           const preset = current.length === 0 ? 'isolated'
             : current.length === 1 && current[0] === 'user' ? 'user'
             : current.includes('project') ? 'full'

@@ -347,8 +347,9 @@
 补充说明：
 
 - 这一问题已经开始局部收缩
-- `ChannelRouter`、`ConversationEngine`、`QueryOrchestrator` 已开始改为显式注入依赖
-- 但 `CommandRouter` 等模块仍在使用 `getBridgeContext()`，所以这一项还没有完成
+- `ChannelRouter`、`ConversationEngine`、`QueryOrchestrator`、`CommandRouter` 已开始改为显式注入依赖
+- 当前核心消息链路里，`getBridgeContext()` 基本只剩入口装配层在使用
+- 但仓库整体还没有完全去掉 global context，所以这一项仍然没有完成
 
 ### 4. 存储和锁模型适合当前需求，但不是通用解
 
