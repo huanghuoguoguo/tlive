@@ -20,7 +20,6 @@ import type {
   LiveSession, StreamChatResult, QueryControls, TurnParams,
   PermissionRequestHandler, AskUserQuestionHandler, EffortLevel,
 } from './base.js';
-import type { PendingPermissions } from '../permissions/gateway.js';
 import type { ClaudeSettingSource } from '../config.js';
 import type { PermissionTimeoutCallback } from './claude-shared.js';
 import { buildSubprocessEnv, preparePromptWithImages, SAFE_PERMISSIONS } from './claude-shared.js';
@@ -30,7 +29,6 @@ export interface ClaudeLiveSessionOptions {
   sessionId?: string;
   cliPath?: string;
   settingSources: ClaudeSettingSource[];
-  pendingPerms: PendingPermissions;
   onPermissionTimeout?: PermissionTimeoutCallback;
   effort?: EffortLevel;
   model?: string;

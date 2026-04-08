@@ -12,7 +12,6 @@ import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { ClaudeAdapter } from '../messages/claude-adapter.js';
 import type { CanonicalEvent } from '../messages/schema.js';
 import type { LLMProvider, StreamChatParams, StreamChatResult, QueryControls, ProviderCapabilities, LiveSession, EffortLevel } from './base.js';
-import type { PendingPermissions } from '../permissions/gateway.js';
 import type { ClaudeSettingSource } from '../config.js';
 import { ClaudeLiveSession } from './claude-live-session.js';
 import { buildSubprocessEnv, type PermissionTimeoutCallback } from './claude-shared.js';
@@ -112,15 +111,13 @@ interface StreamState {
 }
 
 export class ClaudeSDKProvider implements LLMProvider {
-  private pendingPerms: PendingPermissions;
   private cliPath: string | undefined;
   private settingSources: ClaudeSettingSource[];
 
   /** Called when a permission request times out — set by main.ts to send IM notifications */
   onPermissionTimeout?: PermissionTimeoutCallback;
 
-  constructor(pendingPerms: PendingPermissions, settingSources?: ClaudeSettingSource[]) {
-    this.pendingPerms = pendingPerms;
+  constructor(settingSources?: ClaudeSettingSource[]) {
     this.settingSources = settingSources?.length ? [...settingSources] : ['user'];
 
     // Preflight check
@@ -168,7 +165,6 @@ export class ClaudeSDKProvider implements LLMProvider {
       sessionId: params.sessionId,
       cliPath: this.cliPath,
       settingSources: this.settingSources,
-      pendingPerms: this.pendingPerms,
       effort: params.effort,
       model: params.model,
     });

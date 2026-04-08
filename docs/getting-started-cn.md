@@ -6,7 +6,7 @@
 
 ## 前置条件
 
-- **Node.js 18+** 和 npm
+- **Node.js 20+** 和 npm
 - 以下 IM 平台至少其一：**飞书**、**Telegram** 或 **Discord**（IM Bridge 和 Hook 审批功能需要）
 - 已安装 **Claude Code**（IM Bridge 和 Hook 审批功能需要）
 - **Web Terminal（网页终端）** 功能可独立使用，不需要 IM 平台
@@ -14,7 +14,7 @@
 ## 安装
 
 ```bash
-npm install -g tlive
+curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash
 ```
 
 验证安装：
@@ -23,7 +23,7 @@ npm install -g tlive
 tlive --help
 ```
 
-**安装过程说明：** npm 会自动下载适合你系统的 Go Core 二进制文件（macOS/Linux，arm64/amd64），并将 hook 脚本复制到 `~/.tlive/bin/`。如果安装时遇到 Go Core 相关错误，请重新运行 `npm install -g tlive`。
+**安装过程说明：** 这个 fork 没有发布到 npm。上面的安装脚本会从 GitHub Release 下载当前版本；如果安装时遇到二进制下载问题，请重新运行同一条 `curl ... | bash` 命令，或按仓库 README 的源码构建方式安装。
 
 ## 选择 IM 平台
 
@@ -176,7 +176,7 @@ tlive logs 50
 
 **常见问题：**
 
-- **"Go Core not found"** — 二进制文件下载不完整，重新运行 `npm install -g tlive` 即可。
+- **"Go Core not found"** — 二进制文件下载不完整，重新运行安装脚本：`curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash`
 - **"Bridge not starting"** — 检查 `~/.tlive/config.env` 是否存在且凭证有效。运行 `tlive doctor` 查看详情。
 - **"No IM messages"** — 确认 bot token 正确，且机器人已加入正确的对话。参考上方各平台的配置指南进行排查。
 - **Hook 没有触发** — 确保已运行 `tlive install skills`。用 `tlive hooks` 查看当前 hook 状态。

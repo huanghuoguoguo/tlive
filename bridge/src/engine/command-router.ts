@@ -10,17 +10,13 @@ import type { BridgeStore } from '../store/interface.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { exec } from 'node:child_process';
-import { promisify } from 'node:util';
 import { scanClaudeSessions } from '../session-scanner.js';
-import { truncate } from '../utils/string.js';
 import { generateSessionId } from '../utils/id.js';
 import { shortPath } from '../utils/path.js';
 import {
   presentApproveFailure,
   presentApproveSuccess,
   presentApproveUsage,
-  presentBashOutput,
   presentDirectory,
   presentDirectoryNotFound,
   presentEffortChanged,
@@ -50,8 +46,6 @@ import {
   presentVerboseUsage,
 } from './command-presenter.js';
 import { areHooksPaused, pauseHooks, resumeHooks } from './hooks-state.js';
-
-const execAsync = promisify(exec);
 
 /** Format file size in human-readable format */
 function formatSize(bytes: number): string {
@@ -220,33 +214,6 @@ export class CommandRouter {
         this.state.clearLastActive(msg.channelType, msg.chatId);
 
         await adapter.send(presentSessionSwitched(msg.chatId, idx, shortPath(target.cwd), target.preview));
-        return true;
-      }
-      case '/bash': {
-        const cmdText = msg.text.slice('/bash '.length).trim();
-        if (!cmdText) {
-          await adapter.send({ chatId: msg.chatId, text: 'Usage: /bash <command>' });
-          return true;
-        }
-
-        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-        const cwd = binding?.cwd || this.defaultWorkdir;
-
-        try {
-          const { stdout, stderr } = await execAsync(cmdText, {
-            cwd,
-            timeout: 30_000,
-            maxBuffer: 4 * 1024 * 1024,
-          });
-
-          const output = (stdout + (stderr ? '\n⚠️ stderr:\n' + stderr : '')).trim();
-          const truncated = truncate(output, 3000);
-          await adapter.send(presentBashOutput(msg.chatId, adapter.channelType, truncated));
-        } catch (err: any) {
-          const errMsg = err.stderr || err.message || String(err);
-          const truncated = truncate(errMsg, 1000);
-          await adapter.send({ chatId: msg.chatId, text: `❌ ${truncated}` });
-        }
         return true;
       }
       case '/cd': {

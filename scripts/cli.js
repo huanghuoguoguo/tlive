@@ -316,7 +316,7 @@ async function runDoctor() {
     console.log(config.TL_DC_BOT_TOKEN ? '  Discord:  configured' : '  Discord:  not configured');
     console.log(config.TL_FS_APP_ID ? '  Feishu:   configured' : '  Feishu:   not configured');
   } else {
-    console.log("  config.env: NOT FOUND (run 'npx tlive setup')");
+    console.log("  config.env: NOT FOUND (run 'tlive setup')");
   }
 
   console.log('');
@@ -371,7 +371,7 @@ async function runDoctor() {
 function runCore(coreArgs) {
   if (!existsSync(CORE_BIN)) {
     console.error(`Go Core not found at ${CORE_BIN}`);
-    console.error('Run: npm run setup:core');
+    console.error('Install from GitHub Release or build this fork from source first.');
     process.exit(1);
   }
   ensureBridgeRunning();
@@ -464,7 +464,7 @@ switch (command) {
       const r = spawnSync(process.execPath, [setupEntry], { stdio: 'inherit' });
       if (r.status) process.exit(r.status);
     } else {
-      console.error('Setup wizard not found. Try reinstalling: npm install -g tlive');
+      console.error('Setup wizard not found. Reinstall from GitHub Release or rebuild this fork from source.');
     }
     break;
   }
@@ -534,12 +534,19 @@ switch (command) {
     console.log(`node           ${process.version}`);
     // Check for updates
     try {
-      const latest = execSync('npm view tlive version', { encoding: 'utf-8', timeout: 5000 }).trim();
-      if (latest !== ver) {
-        console.log(`\nUpdate available: ${ver} → ${latest}`);
-        console.log('Run: tlive update');
-      } else {
-        console.log('\nUp to date.');
+      const resp = await fetch('https://api.github.com/repos/huanghuoguoguo/tlive/releases/latest', {
+        headers: { 'Accept': 'application/vnd.github.v3+json' },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const latest = data.tag_name?.replace(/^v/, '') || data.name?.replace(/^v/, '');
+        if (latest && latest !== ver) {
+          console.log(`\nUpdate available: ${ver} → ${latest}`);
+          console.log('Run: tlive update');
+        } else {
+          console.log('\nUp to date.');
+        }
       }
     } catch {}
     break;
@@ -648,7 +655,7 @@ switch (command) {
       const skillSrc = join(PACKAGE_ROOT, 'SKILL.md');
 
       if (!existsSync(skillSrc)) {
-        console.error('SKILL.md not found. Try reinstalling: npm install -g tlive');
+        console.error('SKILL.md not found. Reinstall from GitHub Release or rebuild this fork from source.');
         process.exit(1);
       }
 

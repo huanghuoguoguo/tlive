@@ -4,15 +4,15 @@ This guide takes you from zero to a working tlive setup. By the end, you'll be a
 
 ## Prerequisites
 
-- **Node.js 18+** and npm
+- **Node.js 20+** and npm
 - One of: **Telegram**, **Discord**, or **Feishu** account (for IM Bridge and Hook Approval)
-- **Claude Code** or **Codex** installed (required for IM Bridge and Hook Approval features)
+- **Claude Code** installed (required for IM Bridge and Hook Approval features)
 - The **Web Terminal** feature works standalone — no IM platform needed
 
 ## Install
 
 ```bash
-npm install -g tlive
+curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash
 ```
 
 Verify the installation:
@@ -21,7 +21,7 @@ Verify the installation:
 tlive --help
 ```
 
-**What happens during install:** npm downloads the tlive Go Core binary for your platform (macOS/Linux, arm64/amd64) and copies hook scripts to `~/.tlive/bin/`. If you see errors about the Go Core binary, re-run `npm install -g tlive`.
+**What happens during install:** this fork is not published to npm. The installer above downloads the current release from GitHub. If the binary download fails, re-run the same `curl ... | bash` command, or install from source using the repository README.
 
 ## Choose Your IM Platform
 
@@ -130,7 +130,7 @@ Use `/verbose 0|1` to control how much detail you see:
 - `0` — final answer only
 - `1` — terminal card with tool calls + results (default)
 
-Other useful commands: `/runtime claude|codex` (switch provider), `/perm on|off` (permissions), `/effort low|high|max` (thinking depth), `/stop` (interrupt).
+Other useful commands: `/perm on|off` (permissions), `/effort low|high|max` (thinking depth), `/stop` (interrupt).
 
 ### Feature 3: Hook Approval
 
@@ -154,7 +154,7 @@ tlive logs 50
 
 **Common issues:**
 
-- **"Go Core not found"** — The binary didn't download correctly. Re-run `npm install -g tlive`.
+- **"Go Core not found"** — The binary didn't download correctly. Re-run: `curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash`
 - **"Bridge not starting"** — Check that `~/.tlive/config.env` exists and has valid credentials. Run `tlive doctor` for details.
 - **"No IM messages"** — Verify your bot token is correct and the bot has been added to the right chat. See the platform-specific troubleshooting in the setup guides above.
 - **Hook not firing** — Make sure you ran `tlive install skills`. Check `tlive hooks` for current hook status.

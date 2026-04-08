@@ -4,7 +4,7 @@ import { getBridgeContext } from '../context.js';
 import { ChannelRouter } from './router.js';
 import { PermissionBroker } from '../permissions/broker.js';
 import { PendingPermissions } from '../permissions/gateway.js';
-import { loadConfig } from '../config.js';
+import { loadConfig, type Config } from '../config.js';
 import { SessionStateManager } from './session-state.js';
 import { PermissionCoordinator } from './permission-coordinator.js';
 import { CommandRouter } from './command-router.js';
@@ -17,9 +17,18 @@ import { TextDispatcher } from './text-dispatcher.js';
 import { QueryOrchestrator } from './query-orchestrator.js';
 import { ConversationEngine } from './conversation.js';
 import { HookNotificationDispatcher, type HookNotificationData } from './hook-notification-dispatcher.js';
+import type { BridgeStore } from '../store/interface.js';
+import type { LLMProvider } from '../providers/base.js';
 
 /** Bridge commands handled synchronously (don't block adapter loop) */
-const QUICK_COMMANDS = new Set(['/new', '/status', '/verbose', '/hooks', '/sessions', '/session', '/help', '/perm', '/effort', '/stop', '/approve', '/pairings', '/settings', '/model', '/bash', '/cd', '/pwd']);
+const QUICK_COMMANDS = new Set(['/new', '/status', '/verbose', '/hooks', '/sessions', '/session', '/help', '/perm', '/effort', '/stop', '/approve', '/pairings', '/settings', '/model', '/cd', '/pwd']);
+
+interface BridgeManagerDeps {
+  store: BridgeStore;
+  llm: LLMProvider;
+  defaultWorkdir: string;
+  config?: Config;
+}
 
 function isPrivateIPv4(ip: string): boolean {
   const parts = ip.split('.').map(Number);
@@ -71,9 +80,10 @@ export class BridgeManager {
   /** Cleanup timer for SDK question data */
   private sdkQuestionCleanupTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor() {
-    const config = loadConfig();
-    const { store, llm, defaultWorkdir } = getBridgeContext();
+  constructor(deps?: BridgeManagerDeps) {
+    const config = deps?.config ?? loadConfig();
+    const context = deps ?? getBridgeContext();
+    const { store, llm, defaultWorkdir } = context;
     const localUrl = `http://${getLocalIP()}:${config.port || 8080}`;
     const gateway = new PendingPermissions();
     const broker = new PermissionBroker(gateway, localUrl);
@@ -83,7 +93,7 @@ export class BridgeManager {
     this.router = new ChannelRouter(store);
     this.permissions = new PermissionCoordinator(gateway, broker, this.coreUrl, this.token);
     this.engine = new ConversationEngine(store, llm);
-    this.sdkEngine = new SDKEngine(this.state, this.router, this.permissions);
+    this.sdkEngine = new SDKEngine(this.state, this.router);
     this.commands = new CommandRouter(
       this.state,
       () => this.adapters,

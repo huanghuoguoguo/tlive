@@ -3,7 +3,6 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';
-import { safeParseObject } from '../utils/json.js';
 import type { PermissionCoordinator } from './permission-coordinator.js';
 import type { SDKEngine } from './sdk-engine.js';
 import type { SessionStateManager } from './session-state.js';
@@ -184,13 +183,6 @@ export class TextDispatcher {
   }
 
   private async handleHookReply(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
-    if (msg.text && this.options.isCoreAvailable()) {
-      const handledQuestionRace = await this.handleHookQuestionRace(adapter, msg);
-      if (handledQuestionRace) {
-        return true;
-      }
-    }
-
     const entry = this.options.permissions.getHookMessage(msg.replyToMessageId!);
     if (!entry) {
       await adapter.send({ chatId: msg.chatId, text: '⚠️ Hook message expired or not found' });
@@ -222,80 +214,6 @@ export class TextDispatcher {
     }
 
     return true;
-  }
-
-  private async handleHookQuestionRace(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
-    try {
-      const pendingResp = await fetch(`${this.options.coreUrl}/api/hooks/pending`, {
-        headers: { Authorization: `Bearer ${this.options.token}` },
-        signal: AbortSignal.timeout(2000),
-      });
-      if (!pendingResp.ok) {
-        return false;
-      }
-
-      const pending = await pendingResp.json() as Array<{ id: string; tool_name: string; input: unknown; session_id?: string }>;
-      const askQuestion = pending.find(entry => entry.tool_name === 'AskUserQuestion');
-      if (!askQuestion) {
-        return false;
-      }
-
-      const inputData = safeParseObject(askQuestion.input as Record<string, unknown>);
-      const questions = (inputData?.questions ?? []) as Array<{
-        question: string;
-        header: string;
-        options: Array<{ label: string; description?: string }>;
-        multiSelect: boolean;
-      }>;
-      if (questions.length === 0) {
-        return false;
-      }
-
-      if (!this.options.permissions.getQuestionData(askQuestion.id)) {
-        this.options.permissions.storeQuestionData(askQuestion.id, questions);
-        this.options.permissions.trackPermissionMessage(msg.replyToMessageId!, askQuestion.id, askQuestion.session_id || '', adapter.channelType);
-      }
-
-      const trimmed = msg.text.trim();
-      const optionIndex = this.getOptionIndexFromQuestion(trimmed, questions[0].options.length);
-      if (optionIndex !== null) {
-        await this.options.permissions.resolveAskQuestion(
-          askQuestion.id,
-          optionIndex,
-          askQuestion.session_id || '',
-          msg.replyToMessageId!,
-          adapter,
-          msg.chatId,
-          this.options.isCoreAvailable(),
-        );
-      } else {
-        await this.options.permissions.resolveAskQuestionWithText(
-          askQuestion.id,
-          trimmed,
-          askQuestion.session_id || '',
-          msg.replyToMessageId!,
-          adapter,
-          msg.chatId,
-          this.options.isCoreAvailable(),
-        );
-      }
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  private getOptionIndexFromQuestion(trimmed: string, optionsCount: number): number | null {
-    const numericMatch = trimmed.match(/^(\d+)$/);
-    if (!numericMatch) {
-      return null;
-    }
-
-    const index = parseInt(numericMatch[1], 10) - 1;
-    if (index < 0 || index >= optionsCount) {
-      return null;
-    }
-    return index;
   }
 
   private appendAttachmentPaths(text: string, attachments: NonNullable<InboundMessage['attachments']>): string {

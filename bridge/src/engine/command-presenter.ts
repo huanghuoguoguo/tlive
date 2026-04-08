@@ -1,6 +1,4 @@
 import type { ChannelType, OutboundMessage } from '../channels/types.js';
-import { escapeHtml } from '../formatting/escape.js';
-
 const COLORS = {
   blue: 0x3399FF,
   green: 0x00CC66,
@@ -98,18 +96,6 @@ export function presentSessions(
   });
 }
 
-export function presentBashOutput(chatId: string, channelType: ChannelType, output: string): OutboundMessage {
-  if (channelType === 'telegram') {
-    return withChatId(chatId, {
-      html: `<pre>${escapeHtml(output || '(no output)')}</pre>`,
-    });
-  }
-
-  return withChatId(chatId, {
-    text: '```\n' + (output || '(no output)') + '\n```',
-  });
-}
-
 export function presentHelp(chatId: string, channelType: ChannelType): OutboundMessage {
   if (channelType === 'telegram') {
     return withChatId(chatId, {
@@ -122,7 +108,6 @@ export function presentHelp(chatId: string, channelType: ChannelType): OutboundM
         '<code>/session &lt;n&gt;</code> — Switch to session #n',
         '<code>/cd &lt;path&gt;</code> — Change directory',
         '<code>/pwd</code> — Show current directory',
-        '<code>/bash &lt;cmd&gt;</code> — Execute shell command',
         '<code>/verbose 0|1</code> — Detail level',
         '  0 = quiet · 1 = terminal card',
         '<code>/perm on|off</code> — Tool permission prompts',
@@ -153,7 +138,6 @@ export function presentHelp(chatId: string, channelType: ChannelType): OutboundM
           '`/session <n>` — Switch to session #n',
           '`/cd <path>` — Change directory',
           '`/pwd` — Show current directory',
-          '`/bash <cmd>` — Execute shell command',
           '`/verbose 0|1` — Detail level',
           '> 0 = quiet · 1 = terminal card',
           '`/perm on|off` — Tool permission prompts',
@@ -179,7 +163,6 @@ export function presentHelp(chatId: string, channelType: ChannelType): OutboundM
       '/session <n> — Switch to session #n',
       '/cd <path> — Change directory',
       '/pwd — Show current directory',
-      '/bash <cmd> — Execute shell command',
       '/verbose 0|1 — Detail level',
       '  0 = quiet · 1 = terminal card',
       '/perm on|off — Tool permission prompts',

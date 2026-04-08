@@ -14,7 +14,7 @@
 - **Removed Codex support** — Claude-only, simplified codebase
 - **Enhanced session scanner** — Efficient tail reading (32KB) with 5s cache
 - **Fixed O(n) binding lookup** — Direct session ID indexing
-- **Added `/bash`, `/cd`, `/pwd` commands** — More shell control
+- **Added `/cd`, `/pwd` commands** — Per-chat directory control
 - **Improved daemon mode** — Auto-start on demand, no manual activation needed
 
 ## Install
@@ -114,7 +114,6 @@ Claude executes and returns results. Key commands:
 | `/verbose 0\|1` | Detail level (0=concise, 1=show tool calls) |
 | `/perm on\|off` | Toggle permission prompts |
 | `/cd <path>` | Change working directory |
-| `/bash <cmd>` | Execute shell command |
 | `/help` | Show all commands |
 
 ## Settings

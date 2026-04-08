@@ -56,7 +56,7 @@ if [ -f "$TERMLIVE_HOME/config.env" ]; then
   [ -n "${TL_DC_BOT_TOKEN:-}" ] && echo "  Discord:  configured" || echo "  Discord:  not configured"
   [ -n "${TL_FS_APP_ID:-}" ] && echo "  Feishu:   configured" || echo "  Feishu:   not configured"
 else
-  echo "  config.env: NOT FOUND (run 'npx tlive setup')"
+  echo "  config.env: NOT FOUND (run 'tlive setup')"
 fi
 
 echo ""
