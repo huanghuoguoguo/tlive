@@ -1,5 +1,4 @@
 import { getBridgeContext } from '../context.js';
-import type { CanonicalEvent } from '../messages/schema.js';
 import type { FileAttachment, PermissionRequestHandler, QueryControls, StreamChatResult, EffortLevel } from '../providers/base.js';
 import type { AskUserQuestionHandler } from '../messages/types.js';
 import type { TodoStatus } from '../utils/types.js';
@@ -49,6 +48,7 @@ interface ProcessMessageParams {
   onPromptSuggestion?: (suggestion: string) => void;
   onToolProgress?: (data: { toolName: string; elapsed: number }) => void;
   onRateLimit?: (data: { status: string; utilization?: number; resetsAt?: number }) => void;
+  onStatus?: (data: { sessionId: string; model: string }) => void;
   onTodoUpdate?: (todos: Array<{ content: string; status: TodoStatus }>) => void;
   /** Receives query controls (interrupt, stopTask) when available */
   onControls?: (controls: QueryControls) => void;
@@ -149,6 +149,9 @@ export class ConversationEngine {
             break;
           case 'rate_limit':
             params.onRateLimit?.(value);
+            break;
+          case 'status':
+            params.onStatus?.(value);
             break;
           case 'todo_update':
             params.onTodoUpdate?.(value.todos);

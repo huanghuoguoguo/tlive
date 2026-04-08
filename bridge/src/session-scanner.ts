@@ -89,7 +89,6 @@ function doScan(): ScannedSession[] {
           size: st.size,
         });
       } catch {
-        continue;
       }
     }
   }
@@ -147,7 +146,6 @@ function parseSessionHeader(
           break; // Found last user message, stop
         }
       } catch {
-        continue;
       }
     }
 

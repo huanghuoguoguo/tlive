@@ -4,7 +4,7 @@
 
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import type { FileAttachment } from './base.js';
 
 // ── Environment isolation ──

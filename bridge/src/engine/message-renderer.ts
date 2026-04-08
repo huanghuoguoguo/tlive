@@ -1,6 +1,5 @@
 import { redactSensitiveContent } from './content-filter.js';
 import { getToolIcon } from './tool-registry.js';
-import { homedir } from 'node:os';
 import { truncate } from '../utils/string.js';
 import { shortPath } from '../utils/path.js';
 import type { TodoStatus } from '../utils/types.js';
@@ -18,7 +17,7 @@ export interface MessageRendererOptions {
     content: string,
     isEdit: boolean,
     buttons?: Array<{ label: string; callbackData: string; style: string }>,
-  ) => Promise<string | void>;
+  ) => Promise<string | undefined>;
   /** Called when permission waits >60s without response */
   onPermissionTimeout?: (toolName: string, input: string, buttons: Array<{ label: string; callbackData: string; style: string }>) => void;
 }
@@ -159,7 +158,7 @@ export class MessageRenderer {
         return truncate(String(input.url || ''), 50);
       case 'Agent':
         return truncate(String(input.description || input.prompt || ''), 50);
-      default:
+      default: {
         // Show first meaningful field
         const keys = ['file_path', 'path', 'command', 'url', 'pattern', 'query'];
         for (const key of keys) {
@@ -168,6 +167,7 @@ export class MessageRenderer {
           }
         }
         return '';
+      }
     }
   }
 
@@ -222,6 +222,11 @@ export class MessageRenderer {
   onTextDelta(text: string): void {
     this.responseText += text;
     this.scheduleFlush();
+  }
+
+  setModel(model: string | undefined): void {
+    if (this.model === model) return;
+    this.model = model;
   }
 
   onComplete(): Promise<void> {
@@ -297,7 +302,7 @@ export class MessageRenderer {
       lines.push(`⏳ ${toolSummary} (${this.totalTools} tools · ${elapsed})`);
 
       // Show current tool detail if available
-      if (this.currentTool && this.currentTool.input) {
+      if (this.currentTool?.input) {
         const currentElapsed = this.currentTool.elapsed > 0 ? ` (${this.currentTool.elapsed}s)` : '';
         lines.push(`   └─ ${this.currentTool.name}: ${this.currentTool.input}${currentElapsed}`);
       }
@@ -461,7 +466,7 @@ export class MessageRenderer {
     try {
       const isEdit = !!this._messageId;
       const flushButtons = this.permissionQueue[0]?.buttons;
-      let result: string | void = undefined;
+      let result: string | undefined;
       try {
         result = await this.flushCallback(content, isEdit, flushButtons);
       } catch (err: any) {

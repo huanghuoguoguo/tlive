@@ -99,6 +99,14 @@ const rateLimitSchema = z.object({
   resetsAt: z.number().optional(),
 }).passthrough();
 
+const todoUpdateSchema = z.object({
+  kind: z.literal('todo_update'),
+  todos: z.array(z.object({
+    content: z.string(),
+    status: z.enum(['pending', 'in_progress', 'completed']),
+  }).passthrough()),
+}).passthrough();
+
 export const canonicalEventSchema = z.discriminatedUnion('kind', [
   textDeltaSchema,
   thinkingDeltaSchema,
@@ -113,6 +121,7 @@ export const canonicalEventSchema = z.discriminatedUnion('kind', [
   statusSchema,
   promptSuggestionSchema,
   rateLimitSchema,
+  todoUpdateSchema,
 ]);
 
 export type CanonicalEvent = z.infer<typeof canonicalEventSchema>;

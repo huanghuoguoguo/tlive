@@ -311,7 +311,7 @@ export class QQBotAdapter extends BaseChannelAdapter {
     if (s) this.lastSeq = s;
 
     switch (op) {
-      case 10: // Hello
+      case 10: { // Hello
         console.log('[qqbot] Hello received');
         // Send identify or resume
         if (this.sessionId && this.lastSeq !== null) {
@@ -345,6 +345,7 @@ export class QQBotAdapter extends BaseChannelAdapter {
           }
         }, interval);
         break;
+      }
 
       case 0: // Dispatch
         this.handleDispatch(t, d);
@@ -748,7 +749,7 @@ export class QQBotAdapter extends BaseChannelAdapter {
     return { content: { rows } };
   }
 
-  async editMessage(chatId: string, messageId: string, message: OutboundMessage): Promise<void> {
+  async editMessage(_chatId: string, _messageId: string, message: OutboundMessage): Promise<void> {
     const text = message.text ?? '';
     const isProgressUpdate = text.includes('⏳') && !text.includes('───────────────');
     const hasButtons = message.buttons?.length;
@@ -803,7 +804,7 @@ export class QQBotAdapter extends BaseChannelAdapter {
     return null;
   }
 
-  isAuthorized(userId: string, chatId: string): boolean {
+  isAuthorized(userId: string, _chatId: string): boolean {
     if (this.config.allowedUsers.length === 0) return true;
     return this.config.allowedUsers.includes(userId);
   }

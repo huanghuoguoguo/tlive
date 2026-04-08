@@ -1,4 +1,4 @@
-import { PendingPermissions } from './gateway.js';
+import type { PendingPermissions } from './gateway.js';
 import type { BaseChannelAdapter } from '../channels/base.js';
 
 export class PermissionBroker {

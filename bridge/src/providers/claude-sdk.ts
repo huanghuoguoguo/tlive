@@ -4,9 +4,9 @@
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, writeFileSync, mkdirSync, unlinkSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, writeFileSync, mkdirSync, unlinkSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { tmpdir, homedir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { ClaudeAdapter } from '../messages/claude-adapter.js';
@@ -15,7 +15,7 @@ import type { LLMProvider, StreamChatParams, StreamChatResult, QueryControls, Pr
 import type { PendingPermissions } from '../permissions/gateway.js';
 import type { ClaudeSettingSource } from '../config.js';
 import { ClaudeLiveSession } from './claude-live-session.js';
-import { buildSubprocessEnv, preparePromptWithImages, SAFE_PERMISSIONS, PermissionTimeoutCallback } from './claude-shared.js';
+import { buildSubprocessEnv, type PermissionTimeoutCallback } from './claude-shared.js';
 
 // Re-export for backward compatibility
 export type { PermissionTimeoutCallback } from './claude-shared.js';
@@ -94,7 +94,7 @@ function checkCliVersion(cliPath: string): { ok: boolean; version?: string; erro
     const cmd = cliPath.endsWith('.js') ? `node "${cliPath}" --version` : `"${cliPath}" --version`;
     const version = execSync(cmd, { encoding: 'utf-8', timeout: 10000 }).trim();
     const match = version.match(/(\d+)\.\d+/);
-    if (!match || parseInt(match[1]) < 2) {
+    if (!match || Number.parseInt(match[1], 10) < 2) {
       return { ok: false, version, error: `Claude CLI ${version} too old (need >= 2.x)` };
     }
     return { ok: true, version };
@@ -175,9 +175,7 @@ export class ClaudeSDKProvider implements LLMProvider {
   }
 
   streamChat(params: StreamChatParams): StreamChatResult {
-    const pendingPerms = this.pendingPerms;
     const cliPath = this.cliPath;
-    const onPermissionTimeout = this.onPermissionTimeout;
     const settingSources = this.settingSources;
 
     // Query controls exposed for interrupt/stopTask
@@ -194,7 +192,7 @@ export class ClaudeSDKProvider implements LLMProvider {
 
           let stderrBuf = '';
             // Track temp image files for cleanup
-            let imagePaths: string[] = [];
+            const imagePaths: string[] = [];
 
           try {
             // Save image attachments to temp files so Claude Code can read them
@@ -401,4 +399,3 @@ export class ClaudeSDKProvider implements LLMProvider {
     return { stream, controls };
   }
 }
-

@@ -1,5 +1,6 @@
 // Strip ANSI escape sequences (terminal color codes, cursor movement, etc.)
-const ANSI_PATTERN = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
+// biome-ignore lint/complexity/useRegexLiterals: literal form triggers a control-character warning here
+const ANSI_PATTERN = new RegExp('\\u001B(?:[@-Z\\\\-_]|\\[[0-?]*[ -/]*[@-~])', 'g');
 
 export function stripAnsi(text: string): string {
   return text.replace(ANSI_PATTERN, '');

@@ -5,7 +5,6 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
-  ChannelType as DChannelType,
   type TextChannel,
   type ThreadChannel,
   type Message,
@@ -106,7 +105,7 @@ export class DiscordAdapter extends BaseChannelAdapter {
       // Check permissions in allowed channels
       for (const channelId of this.config.allowedChannels) {
         this.client!.channels.fetch(channelId).then(ch => {
-          if (!ch || !ch.isTextBased()) {
+          if (!ch?.isTextBased()) {
             console.warn(`[discord] ⚠ Channel ${channelId} not found or not a text channel`);
             return;
           }
@@ -272,7 +271,7 @@ export class DiscordAdapter extends BaseChannelAdapter {
     // Use threadId if available, otherwise chatId
     const targetId = message.threadId ?? chatId;
     const channel = await this.client.channels.fetch(targetId) as TextChannel;
-    if (!channel || !channel.messages) return;
+    if (!channel?.messages) return;
 
     const existing = await channel.messages.fetch(messageId);
     if (!existing) return;

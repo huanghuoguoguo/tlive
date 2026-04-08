@@ -51,7 +51,8 @@ describe('QQBotAdapter', () => {
 
     expect(secondResolved).toBe(false);
 
-    resolveFirstFetch?.(
+    expect(resolveFirstFetch).toBeTypeOf('function');
+    resolveFirstFetch!(
       new Response(new Uint8Array([1, 2, 3]), {
         status: 200,
         headers: { 'Content-Type': 'image/png' },

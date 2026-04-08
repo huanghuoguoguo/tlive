@@ -1,5 +1,3 @@
-import type { ChannelType } from '../channels/types.js';
-
 /** Permission card input data */
 export interface PermissionCardData {
   toolName: string;

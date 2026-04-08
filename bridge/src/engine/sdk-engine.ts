@@ -9,17 +9,12 @@
 
 import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage, OutboundMessage } from '../channels/types.js';
-import type { LLMProvider, QueryControls, LiveSession } from '../providers/base.js';
+import type { QueryControls, LiveSession } from '../providers/base.js';
 import type { PermissionCoordinator } from './permission-coordinator.js';
 import type { SessionStateManager } from './session-state.js';
 import type { ChannelRouter } from './router.js';
-import { ConversationEngine } from './conversation.js';
-import { CostTracker } from './cost-tracker.js';
-import { getBridgeContext } from '../context.js';
 import { truncate } from '../utils/string.js';
 import { generateId } from '../utils/id.js';
-import { CHANNEL_TYPES, type ChannelType } from '../utils/constants.js';
-import type { EffortLevel } from '../utils/types.js';
 
 /** Shared SDK question state — owned by SDKEngine, read/written by CallbackRouter */
 export interface SdkQuestionState {
@@ -32,7 +27,6 @@ export interface SdkQuestionState {
 interface ManagedSession {
   session: LiveSession;
   workdir: string;
-  costTracker: CostTracker;
   lastActiveAt: number;
 }
 
@@ -43,7 +37,6 @@ interface ManagedSession {
  * Provider-agnostic — works with both Claude SDK (LiveSession) and fallback streamChat.
  */
 export class SDKEngine {
-  private engine = new ConversationEngine();
   private activeControls = new Map<string, QueryControls>();
 
   /** Session registry: sessionKey → ManagedSession */
@@ -66,7 +59,7 @@ export class SDKEngine {
 
   constructor(
     private state: SessionStateManager,
-    private router: ChannelRouter,
+    _router: ChannelRouter,
     private permissions: PermissionCoordinator,
   ) {}
 
@@ -101,37 +94,6 @@ export class SDKEngine {
   /** Build session key: channelType:chatId:workdir */
   private sessionKey(channelType: string, chatId: string, workdir: string): string {
     return `${channelType}:${chatId}:${workdir}`;
-  }
-
-  /** Get or create a LiveSession for this chat+workdir */
-  private getOrCreateSession(
-    channelType: string, chatId: string, workdir: string,
-    sdkSessionId: string | undefined, provider: LLMProvider,
-    opts?: { effort?: EffortLevel; model?: string },
-  ): ManagedSession | null {
-    const key = this.sessionKey(channelType, chatId, workdir);
-    const existing = this.registry.get(key);
-    if (existing?.session.isAlive) return existing;
-
-    // Clean up dead session
-    if (existing) this.registry.delete(key);
-
-    // Only create if provider supports live sessions
-    if (!provider.capabilities().liveSession || !provider.createSession) return null;
-
-    try {
-      const session = provider.createSession({ workingDirectory: workdir, sessionId: sdkSessionId, effort: opts?.effort, model: opts?.model });
-      const managed: ManagedSession = { session, workdir, costTracker: new CostTracker(), lastActiveAt: Date.now() };
-      this.registry.set(key, managed);
-      // Track active session for this chat (O(1) steer/canSteer lookup)
-      const chatKey = `${channelType}:${chatId}`;
-      this.activeSessionByChat.set(chatKey, key);
-      console.log(`[tlive:engine] Created LiveSession for ${key}`);
-      return managed;
-    } catch (err) {
-      console.error(`[tlive:engine] Failed to create LiveSession for ${key}:`, err);
-      return null; // Fall back to per-message streamChat
-    }
   }
 
   /** Close a session (on /new, session expiry, workdir change) */

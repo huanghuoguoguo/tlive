@@ -118,7 +118,7 @@ export function chunkMarkdown(text: string, limit: number, maxLines?: number): s
       let remaining = chunk;
       // Detect if this chunk is inside a code block (starts with ``` fence)
       const startsWithFence = /^```/.test(remaining);
-      let insideFence = startsWithFence;
+      const insideFence = startsWithFence;
 
       while (remaining.length > limit) {
         let slice = remaining.slice(0, limit);
@@ -187,7 +187,7 @@ export class DeliveryLayer {
         // Don't retry non-retryable errors
         if (err instanceof BridgeError && !err.retryable) throw err;
         if (attempt < maxRetries - 1) {
-          const baseDelay = Math.min(1000 * Math.pow(2, attempt), 10_000);
+          const baseDelay = Math.min(1000 * 2 ** attempt, 10_000);
           // Add jitter (±25%) to avoid thundering herd
           const jitter = baseDelay * (0.75 + Math.random() * 0.5);
           const delay = (err instanceof RateLimitError && err.retryAfterMs > 0)

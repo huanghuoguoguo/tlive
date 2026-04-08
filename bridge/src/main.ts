@@ -9,7 +9,6 @@ import { BridgeManager, type HookNotificationData } from './engine/bridge-manage
 import { createAdapter, loadAdapters } from './channels/index.js';
 import type { ChannelType } from './channels/types.js';
 import { join, basename } from 'node:path';
-import { homedir } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { shortPath, truncate, getTliveHome, getTliveRuntimeDir } from './utils/index.js';
 import { safeParseObject } from './utils/json.js';
@@ -32,8 +31,12 @@ function formatPermissionCard(toolName: string, input: unknown): string {
       const oldStr = String(data.old_string || '');
       const newStr = String(data.new_string || '');
       const diffLines: string[] = [];
-      oldStr.split('\n').forEach(l => diffLines.push(`- ${l}`));
-      newStr.split('\n').forEach(l => diffLines.push(`+ ${l}`));
+      for (const line of oldStr.split('\n')) {
+        diffLines.push(`- ${line}`);
+      }
+      for (const line of newStr.split('\n')) {
+        diffLines.push(`+ ${line}`);
+      }
       const diff = truncate(diffLines.join('\n'), 500);
       parts.push(`\n📝 Edit: \`${file}\`\n\`\`\`diff\n${diff}\n\`\`\``);
       break;

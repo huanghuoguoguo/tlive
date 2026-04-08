@@ -1,10 +1,10 @@
-import { BaseChannelAdapter, createAdapter } from '../channels/base.js';
+import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage, OutboundMessage } from '../channels/types.js';
 import { ConversationEngine } from './conversation.js';
 import { ChannelRouter } from './router.js';
 import { PermissionBroker } from '../permissions/broker.js';
 import { PendingPermissions } from '../permissions/gateway.js';
-import { DeliveryLayer, chunkByParagraph } from '../delivery/delivery.js';
+import { chunkByParagraph } from '../delivery/delivery.js';
 import { getBridgeContext } from '../context.js';
 import { loadConfig } from '../config.js';
 import { markdownToTelegram } from '../markdown/index.js';
@@ -15,17 +15,16 @@ import { SessionStateManager } from './session-state.js';
 import { PermissionCoordinator } from './permission-coordinator.js';
 import { CommandRouter } from './command-router.js';
 import { SDKEngine } from './sdk-engine.js';
-import type { FeishuStreamingSession } from '../channels/feishu-streaming.js';
 import { CostTracker } from './cost-tracker.js';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
-import { homedir, networkInterfaces, tmpdir } from 'node:os';
-import { getTliveRuntimeDir, shortPath } from '../utils/path.js';
+import { networkInterfaces, tmpdir } from 'node:os';
+import { getTliveRuntimeDir } from '../utils/path.js';
 import { safeParseObject } from '../utils/json.js';
 import { generateSessionId } from '../utils/id.js';
 import { truncate } from '../utils/string.js';
-import { CHANNEL_TYPES, PLATFORM_LIMITS, PLATFORM_REACTIONS, type ChannelType, CALLBACK_PREFIXES } from '../utils/constants.js';
-import { parseAskqCallback, parseAskqToggleCallback, parseAskqSubmitCallback, parseAskqSkipCallback, parseHookCallback, parseAskqSubmitSdkCallback, parseCallback } from '../utils/callback.js';
+import { CHANNEL_TYPES, PLATFORM_LIMITS, PLATFORM_REACTIONS, type ChannelType } from '../utils/constants.js';
+import { handleCallbackMessage } from './callback-dispatcher.js';
 
 /** Bridge commands handled synchronously (don't block adapter loop) */
 const QUICK_COMMANDS = new Set(['/new', '/status', '/verbose', '/hooks', '/sessions', '/session', '/help', '/perm', '/effort', '/stop', '/approve', '/pairings', '/settings', '/model', '/bash', '/cd', '/pwd']);
@@ -33,7 +32,6 @@ const QUICK_COMMANDS = new Set(['/new', '/status', '/verbose', '/hooks', '/sessi
 function isPrivateIPv4(ip: string): boolean {
   const parts = ip.split('.').map(Number);
   if (parts.length !== 4) return false;
-  const num = (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3];
   if (parts[0] === 10) return true;
   if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
   if (parts[0] === 192 && parts[1] === 168) return true;
@@ -42,14 +40,18 @@ function isPrivateIPv4(ip: string): boolean {
 
 /** Detect LAN IP address, matching Go Core's getLocalIP() logic */
 function getLocalIP(): string {
-  // Prefer iterating interfaces for a private IPv4 address
-  const ifaces = networkInterfaces();
-  for (const name of Object.keys(ifaces)) {
-    for (const info of ifaces[name] || []) {
-      if (info.family === 'IPv4' && !info.internal && isPrivateIPv4(info.address)) {
-        return info.address;
+  try {
+    // Prefer iterating interfaces for a private IPv4 address
+    const ifaces = networkInterfaces();
+    for (const name of Object.keys(ifaces)) {
+      for (const info of ifaces[name] || []) {
+        if (info.family === 'IPv4' && !info.internal && isPrivateIPv4(info.address)) {
+          return info.address;
+        }
       }
     }
+  } catch {
+    // Some test/container environments can fail interface inspection.
   }
   return 'localhost';
 }
@@ -71,7 +73,6 @@ export class BridgeManager {
   private running = false;
   private engine = new ConversationEngine();
   private router = new ChannelRouter();
-  private delivery = new DeliveryLayer();
   private coreUrl: string;
   private token: string;
   private port: number;
@@ -329,8 +330,8 @@ export class BridgeManager {
 
   /** Process queued messages iteratively after current turn completes */
   private async drainQueue(adapter: BaseChannelAdapter, channelType: string, chatId: string): Promise<void> {
-    let next: InboundMessage | undefined;
-    while ((next = this.sdkEngine.dequeueMessage(channelType, chatId))) {
+    let next = this.sdkEngine.dequeueMessage(channelType, chatId);
+    while (next) {
       console.log(`[${adapter.channelType}] Processing queued message`);
       try {
         await this.handleInboundMessage(adapter, next);
@@ -338,13 +339,14 @@ export class BridgeManager {
         console.error(`[${adapter.channelType}] Error processing queued message:`, err);
         break;
       }
+      next = this.sdkEngine.dequeueMessage(channelType, chatId);
     }
   }
 
   private async runAdapterLoop(adapter: BaseChannelAdapter): Promise<void> {
     while (this.running) {
       // Check pushback from coalescing first
-      let msg = this.coalescePushback.get(adapter.channelType) ?? await adapter.consumeOne();
+      const msg = this.coalescePushback.get(adapter.channelType) ?? await adapter.consumeOne();
       this.coalescePushback.delete(adapter.channelType);
       if (!msg) { await new Promise(r => setTimeout(r, 100)); continue; }
       console.log(`[${adapter.channelType}] Message from ${msg.userId}: ${msg.text || '(callback)'}`);
@@ -650,194 +652,12 @@ export class BridgeManager {
 
     // Callback data
     if (msg.callbackData) {
-      // Prompt suggestion callback — re-inject as a normal user message
-      if (msg.callbackData.startsWith('suggest:')) {
-        const suggestion = msg.callbackData.slice('suggest:'.length);
-        // Re-process as a regular text message
-        msg.text = suggestion;
-        msg.callbackData = undefined;
-        return this.handleInboundMessage(adapter, msg);
-      }
-
-      // AskUserQuestion answer callbacks (askq:{hookId}:{optionIndex}:{sessionId})
-      // NOTE: check toggle/submit/skip BEFORE this — they also start with "askq"
-      const askqParsed = parseAskqCallback(msg.callbackData);
-      if (askqParsed) {
-        await this.permissions.resolveAskQuestion(
-          askqParsed.hookId, askqParsed.optionIndex, askqParsed.sessionId,
-          msg.messageId, adapter, msg.chatId, this.coreAvailable,
-        );
-        return true;
-      }
-
-      // AskUserQuestion multi-select toggle (askq_toggle:{hookId}:{idx}:{sessionId})
-      const askqToggleParsed = parseAskqToggleCallback(msg.callbackData);
-      if (askqToggleParsed) {
-        const selected = this.permissions.toggleMultiSelectOption(askqToggleParsed.hookId, askqToggleParsed.optionIndex);
-        if (selected === null) return true;
-
-        // Re-render the card with updated checkboxes
-        const card = this.permissions.buildMultiSelectCard(hookId, sessionId, selected, adapter.channelType);
-        if (card) {
-          await adapter.editMessage(msg.chatId, msg.messageId, {
-            chatId: msg.chatId,
-            text: card.text,
-            html: card.html,
-            buttons: card.buttons,
-            feishuHeader: adapter.channelType === 'feishu' ? { template: 'blue', title: '❓ Terminal' } : undefined,
-          });
-        }
-        return true;
-      }
-
-      // AskUserQuestion multi-select submit (askq_submit:{hookId}:{sessionId})
-      const askqSubmitParsed = parseAskqSubmitCallback(msg.callbackData);
-      if (askqSubmitParsed) {
-        await this.permissions.resolveMultiSelect(
-          askqSubmitParsed.hookId, askqSubmitParsed.sessionId,
-          msg.messageId, adapter, msg.chatId, this.coreAvailable,
-        );
-        return true;
-      }
-
-      // AskUserQuestion skip callback — resolve with allow + empty answers (askq_skip:{hookId}:{sessionId})
-      const askqSkipParsed = parseAskqSkipCallback(msg.callbackData);
-      if (askqSkipParsed) {
-        await this.permissions.resolveAskQuestionSkip(
-          askqSkipParsed.hookId, askqSkipParsed.sessionId,
-          msg.messageId, adapter, msg.chatId, this.coreAvailable,
-        );
-        return true;
-      }
-
-      // SDK AskUserQuestion multi-select submit (askq_submit_sdk:{permId})
-      const askqSubmitSdkParsed = parseAskqSubmitSdkCallback(msg.callbackData);
-      if (askqSubmitSdkParsed) {
-        const permId = askqSubmitSdkParsed.permId;
-        const selected = this.permissions.getToggledSelections(permId);
-        if (selected.size === 0) {
-          await adapter.send({ chatId: msg.chatId, text: '⚠️ No options selected' });
-          return true;
-        }
-        const { sdkQuestionData, sdkQuestionTextAnswers } = this.sdkEngine.getQuestionState();
-        const qData = sdkQuestionData.get(permId);
-        if (qData) {
-          const q = qData.questions[0];
-          const selectedLabels = [...selected].sort((a, b) => a - b).map(i => q.options[i]?.label).filter(Boolean);
-          const answerText = selectedLabels.join(',');
-          sdkQuestionTextAnswers.set(permId, answerText);
-          // Edit card to show selection
-          adapter.editMessage(msg.chatId, msg.messageId, {
-            chatId: msg.chatId,
-            text: `✅ Selected: ${selectedLabels.join(', ')}`,
-            buttons: [],
-            feishuHeader: msg.channelType === 'feishu' ? { template: 'green', title: '✅ Answered' } : undefined,
-          }).catch(() => {});
-        }
-        this.permissions.cleanupQuestion(permId);
-        this.permissions.getGateway().resolve(permId, 'allow');
-        return true;
-      }
-
-      // Command shortcuts from help menu buttons
-      if (msg.callbackData.startsWith('cmd:')) {
-        const cmd = msg.callbackData.slice(4);
-        // Inject as a text message
-        const cmdMsg: InboundMessage = {
-          channelType: msg.channelType,
-          chatId: msg.chatId,
-          text: '/' + cmd,
-          userId: msg.userId,
-          messageId: msg.messageId,
-        };
-        // Process through normal command flow
-        await this.handleInboundMessage(adapter, cmdMsg);
-        return true;
-      }
-
-      // Hook permission callbacks (hook:allow:ID:sessionId, hook:allow_always:ID:sessionId, hook:deny:ID:sessionId)
-      const hookParsed = parseHookCallback(msg.callbackData);
-      if (hookParsed) {
-        await this.permissions.resolveHookCallback(hookParsed.hookId, hookParsed.decision, hookParsed.sessionId, msg.messageId, adapter, msg.chatId, this.coreAvailable);
-        return true;
-      }
-
-      // Graduated permission callbacks — resolve gateway, no message edit
-      // (renderer.onPermissionResolved() handles the visual transition)
-      if (msg.callbackData.startsWith(CALLBACK_PREFIXES.PERM_ALLOW_EDITS)) {
-        const permId = msg.callbackData.slice(CALLBACK_PREFIXES.PERM_ALLOW_EDITS.length);
-        this.permissions.getGateway().resolve(permId, 'allow');
-        return true;
-      }
-
-      if (msg.callbackData.startsWith(CALLBACK_PREFIXES.PERM_ALLOW_TOOL)) {
-        const parts = parseCallback(msg.callbackData);
-        const permId = parts[2];
-        const toolName = parts.slice(3).join(':');
-        this.permissions.getGateway().resolve(permId, 'allow');
-        this.permissions.addAllowedTool(toolName);
-        console.log(`[bridge] Added ${toolName} to session whitelist`);
-        return true;
-      }
-
-      if (msg.callbackData.startsWith(CALLBACK_PREFIXES.PERM_ALLOW_BASH)) {
-        const parts = parseCallback(msg.callbackData);
-        const permId = parts[2];
-        const prefix = parts.slice(3).join(':');
-        this.permissions.getGateway().resolve(permId, 'allow');
-        this.permissions.addAllowedBashPrefix(prefix);
-        console.log(`[bridge] Added Bash(${prefix} *) to session whitelist`);
-        return true;
-      }
-
-      // SDK AskUserQuestion answer callbacks (perm:allow:permId:askq:optionIndex)
-      if (msg.callbackData.includes(':askq:')) {
-        const parts = msg.callbackData.split(':');
-        const askqIdx = parts.indexOf('askq');
-        if (askqIdx >= 0) {
-          const permId = parts.slice(2, askqIdx).join(':');
-          const optionIndex = parseInt(parts[askqIdx + 1], 10);
-          const { sdkQuestionData, sdkQuestionAnswers } = this.sdkEngine.getQuestionState();
-          const qData = sdkQuestionData.get(permId);
-          const selected = qData?.questions?.[0]?.options?.[optionIndex];
-          if (!selected) {
-            // Invalid option index (stale button or tampered data) — ignore
-            return true;
-          }
-          sdkQuestionAnswers.set(permId, optionIndex);
-          this.permissions.getGateway().resolve(permId, 'allow');
-          adapter.editMessage(msg.chatId, msg.messageId, {
-            chatId: msg.chatId,
-            text: `✅ Selected: ${selected.label}`,
-            buttons: [],
-            feishuHeader: { template: 'green', title: `✅ ${selected.label}` },
-          }).catch(() => {});
-          return true;
-        }
-      }
-
-      // SDK AskUserQuestion skip (perm:allow:permId:askq_skip) — resolve with deny so handler returns empty answers
-      if (msg.callbackData.includes(':askq_skip')) {
-        const parts = msg.callbackData.split(':');
-        const skipIdx = parts.indexOf('askq_skip');
-        if (skipIdx >= 0) {
-          const permId = parts.slice(2, skipIdx).join(':');
-          this.permissions.getGateway().resolve(permId, 'deny', 'Skipped');
-          adapter.editMessage(msg.chatId, msg.messageId, {
-            chatId: msg.chatId,
-            text: '⏭ Skipped',
-            buttons: [],
-            feishuHeader: { template: 'grey', title: '⏭ Skipped' },
-          }).catch(() => {});
-          return true;
-        }
-      }
-
-      // Regular permission broker callbacks (perm:allow:ID, perm:deny:ID)
-      console.log(`[bridge] Perm callback: ${msg.callbackData}, gateway pending: ${this.permissions.getGateway().pendingCount()}`);
-      this.permissions.handleBrokerCallback(msg.callbackData);
-      // No message edit — renderer.onPermissionResolved() morphs back to status line
-      return true;
+      return handleCallbackMessage(adapter, msg, {
+        permissions: this.permissions,
+        sdkEngine: this.sdkEngine,
+        isCoreAvailable: () => this.coreAvailable,
+        replayMessage: (replayAdapter, replayMsg) => this.handleInboundMessage(replayAdapter, replayMsg),
+      });
     }
 
     // Bridge commands — only intercept known commands, pass others to Claude Code
@@ -893,6 +713,7 @@ export class BridgeManager {
       platformLimit: PLATFORM_LIMITS[adapter.channelType as ChannelType] ?? 4096,
       throttleMs: 300,
       cwd: binding.cwd || defaultWorkdir,
+      model: this.state.getModel(msg.channelType, msg.chatId),
       sessionId: binding.sdkSessionId,
       onPermissionTimeout: async (toolName, input, buttons) => {
         permissionReminderTool = toolName;
@@ -977,8 +798,6 @@ export class BridgeManager {
       },
     });
 
-    let completedStats: import('./cost-tracker.js').UsageStats | undefined;
-
     // When an AskUserQuestion is approved, auto-allow the next permission request
     // to avoid redundant confirmation (e.g. "delete this?" → yes → Bash permission)
     let askQuestionApproved = false;
@@ -986,7 +805,7 @@ export class BridgeManager {
     // Build SDK-level permission handler based on /perm mode
     const permMode = this.state.getPermMode(msg.channelType, msg.chatId);
     const sdkPermissionHandler = permMode === 'on'
-      ? async (toolName: string, toolInput: Record<string, unknown>, promptSentence: string, signal?: AbortSignal) => {
+      ? async (toolName: string, toolInput: Record<string, unknown>, _promptSentence: string, signal?: AbortSignal) => {
           // Check dynamic whitelist — auto-allow if previously approved
           if (this.permissions.isToolAllowed(toolName, toolInput)) {
             console.log(`[bridge] Auto-allowed ${toolName} via session whitelist`);
@@ -1182,7 +1001,7 @@ export class BridgeManager {
     };
 
     try {
-      const result = await this.engine.processMessage({
+      await this.engine.processMessage({
         sdkSessionId: binding.sdkSessionId,
         workingDirectory: binding.cwd || defaultWorkdir,
         text: msg.text,
@@ -1221,6 +1040,9 @@ export class BridgeManager {
         onToolProgress: (data) => {
           renderer.onToolProgress(data);
         },
+        onStatus: (data) => {
+          renderer.setModel(data.model);
+        },
         onRateLimit: (data) => {
           if (data.status === 'rejected') {
             renderer.onTextDelta('\n⚠️ Rate limited. Retrying...\n');
@@ -1233,7 +1055,7 @@ export class BridgeManager {
             console.warn(`[bridge] Permission denials: ${event.permissionDenials.map(d => d.toolName).join(', ')}`);
           }
           const usage = { input_tokens: event.usage.inputTokens, output_tokens: event.usage.outputTokens, cost_usd: event.usage.costUsd };
-          completedStats = costTracker.finish(usage);
+            costTracker.finish(usage);
           // Wait for final message to be sent
           await renderer.onComplete();
         },

@@ -1,5 +1,5 @@
-import { PendingPermissions } from '../permissions/gateway.js';
-import { PermissionBroker } from '../permissions/broker.js';
+import type { PendingPermissions } from '../permissions/gateway.js';
+import type { PermissionBroker } from '../permissions/broker.js';
 import { truncate } from '../utils/string.js';
 
 /**

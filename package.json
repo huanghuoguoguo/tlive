@@ -32,6 +32,10 @@
     "preuninstall": "node scripts/preuninstall.js",
     "prepublishOnly": "cd bridge && npm install && npm run build && npm test",
     "build": "cd bridge && npm run build",
+    "typecheck": "cd bridge && npm run typecheck",
+    "lint": "cd bridge && npm run lint",
+    "format": "cd bridge && npm run format",
+    "check": "cd bridge && npm run check",
     "test": "cd bridge && npm test",
     "test:go": "cd core && go test ./... -v -timeout 30s"
   },

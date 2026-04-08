@@ -6,7 +6,7 @@ import { classifyError } from './errors.js';
 import { markdownToFeishu, downgradeHeadings } from '../markdown/feishu.js';
 import { buildFeishuCard } from '../formatting/feishu-card.js';
 import { FeishuStreamingSession } from './feishu-streaming.js';
-import { Readable } from 'node:stream';
+import type { Readable } from 'node:stream';
 
 /**
  * Read a Feishu SDK response into a Buffer.
@@ -223,7 +223,10 @@ export class FeishuAdapter extends BaseChannelAdapter {
         console.log('[feishu] card.action.trigger received:', JSON.stringify(data).slice(0, 300));
         const event = data as { operator?: { user_id?: string; open_id?: string }; action?: { value?: Record<string, string> }; context?: { chat_id?: string; open_message_id?: string } };
         const action = event?.action?.value?.action;
-        if (!action) { console.warn('[feishu] card.action.trigger: no action value found'); return; }
+        if (!action) {
+          console.warn('[feishu] card.action.trigger: no action value found');
+          return {};
+        }
         const userId = event?.operator?.user_id || event?.operator?.open_id || '';
         const chatId = event?.context?.chat_id || '';
         const messageId = event?.context?.open_message_id || '';
@@ -235,6 +238,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
           callbackData: action,
           messageId,
         });
+        return {};
       },
     } as any);
 

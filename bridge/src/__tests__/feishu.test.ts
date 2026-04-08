@@ -293,5 +293,31 @@ describe('FeishuAdapter', () => {
 
       await adapter.stop();
     });
+
+    it('returns an empty object for card callbacks and enqueues callback data', async () => {
+      await adapter.start();
+
+      const handler = eventHandlers.get('card.action.trigger');
+      expect(handler).toBeTypeOf('function');
+
+      const result = await handler?.({
+        operator: { user_id: 'user_1' },
+        action: { value: { action: 'perm:allow:123' } },
+        context: { chat_id: 'chat_1', open_message_id: 'om_123' },
+      });
+
+      expect(result).toEqual({});
+
+      const msg = await adapter.consumeOne();
+      expect(msg).toMatchObject({
+        channelType: 'feishu',
+        chatId: 'chat_1',
+        userId: 'user_1',
+        callbackData: 'perm:allow:123',
+        messageId: 'om_123',
+      });
+
+      await adapter.stop();
+    });
   });
 });

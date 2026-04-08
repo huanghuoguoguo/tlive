@@ -6,6 +6,10 @@
   "scripts": {
     "build": "node esbuild.config.js",
     "dev": "node esbuild.config.js --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint src esbuild.config.js",
+    "format": "biome format --write src esbuild.config.js",
+    "check": "npm run typecheck && npm run lint && npm test",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -13,6 +17,7 @@
     "node": ">=20.0.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.10",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^25.5.0",
     "@types/ws": "^8.5.10",

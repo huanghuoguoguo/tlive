@@ -62,7 +62,7 @@ export interface Config {
 }
 
 function parseList(value: string | undefined): string[] {
-  if (!value || !value.trim()) return [];
+  if (!value?.trim()) return [];
   return value.split(',').map(s => s.trim()).filter(Boolean);
 }
 

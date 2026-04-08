@@ -62,7 +62,7 @@ export class ClaudeLiveSession implements LiveSession {
   get isTurnActive(): boolean { return this._isTurnActive; }
 
   private initQuery(): void {
-    const { workingDirectory, sessionId, cliPath, settingSources, pendingPerms, effort, model } = this.options;
+    const { workingDirectory, sessionId, cliPath, settingSources, effort, model } = this.options;
     const self = this;
 
     // AsyncGenerator that feeds user messages to the query

@@ -11,14 +11,16 @@ function tableToMonospace(tableHtml: string): string {
   const cellRegex = /<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>/gi;
 
   const rows: string[][] = [];
-  let rowMatch: RegExpExecArray | null;
-  while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
+  let rowMatch = rowRegex.exec(tableHtml);
+  while (rowMatch !== null) {
     const cells: string[] = [];
-    let cellMatch: RegExpExecArray | null;
-    while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
+    let cellMatch = cellRegex.exec(rowMatch[1]);
+    while (cellMatch !== null) {
       cells.push(cellMatch[1].replace(/<[^>]+>/g, '').trim());
+      cellMatch = cellRegex.exec(rowMatch[1]);
     }
     if (cells.length > 0) rows.push(cells);
+    rowMatch = rowRegex.exec(tableHtml);
   }
 
   if (rows.length === 0) return '';
@@ -52,9 +54,9 @@ function processLists(html: string): string {
 
   // Tokenize list-related tags
   const tagRegex = /<(\/?)(?:ul|ol|li)(?:\s[^>]*)?>/gi;
-  let match: RegExpExecArray | null;
+  let match = tagRegex.exec(html);
 
-  while ((match = tagRegex.exec(html)) !== null) {
+  while (match !== null) {
     // Add text before this tag
     const textBefore = html.slice(pos, match.index);
     if (textBefore.trim()) {
@@ -85,6 +87,8 @@ function processLists(html: string): string {
     } else if (isClosing && tag === '</li>') {
       result.push('\n');
     }
+
+    match = tagRegex.exec(html);
   }
 
   // Add remaining text after last tag

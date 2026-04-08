@@ -314,6 +314,18 @@ describe('MessageRenderer', () => {
       r.dispose();
     });
 
+    it('uses the latest model before completion when status updates arrive later', async () => {
+      const r = createRenderer(4096, 300, '/home/user/workspace');
+      r.onToolStart('Bash');
+      r.setModel('claude-sonnet-4-6');
+      r.onComplete();
+      await advance(0);
+      const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
+      expect(content).toContain('[claude-sonnet-4-6]');
+      expect(content).toContain('workspace');
+      r.dispose();
+    });
+
     it('omits separator when response is empty', async () => {
       const r = createRenderer();
       r.onToolStart('Bash');

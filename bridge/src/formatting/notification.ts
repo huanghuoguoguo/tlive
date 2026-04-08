@@ -2,7 +2,6 @@ import type { ChannelType, OutboundMessage } from '../channels/types.js';
 import type { NotificationData } from './types.js';
 import { markdownToTelegram } from '../markdown/telegram.js';
 import { downgradeHeadings } from '../markdown/feishu.js';
-import { escapeHtml } from './escape.js';
 import { truncate } from '../utils/string.js';
 
 interface NotificationMessage {

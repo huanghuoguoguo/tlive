@@ -78,7 +78,9 @@ export async function runSetupWizard(): Promise<void> {
     if (mode === '3') { console.log('Cancelled.'); return; }
     if (mode === '2') {
       // Clear existing, start fresh
-      Object.keys(existing).forEach(k => delete existing[k]);
+      for (const key of Object.keys(existing)) {
+        delete existing[key];
+      }
     }
   }
 
