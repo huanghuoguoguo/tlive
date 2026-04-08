@@ -16,15 +16,15 @@ import { PermissionCoordinator } from './permission-coordinator.js';
 import { CommandRouter } from './command-router.js';
 import { SDKEngine } from './sdk-engine.js';
 import { CostTracker } from './cost-tracker.js';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { networkInterfaces, tmpdir } from 'node:os';
-import { getTliveRuntimeDir } from '../utils/path.js';
 import { safeParseObject } from '../utils/json.js';
 import { generateSessionId } from '../utils/id.js';
 import { truncate } from '../utils/string.js';
 import { CHANNEL_TYPES, PLATFORM_LIMITS, PLATFORM_REACTIONS, type ChannelType } from '../utils/constants.js';
 import { handleCallbackMessage } from './callback-dispatcher.js';
+import { IngressCoordinator } from './ingress-coordinator.js';
 
 /** Bridge commands handled synchronously (don't block adapter loop) */
 const QUICK_COMMANDS = new Set(['/new', '/status', '/verbose', '/hooks', '/sessions', '/session', '/help', '/perm', '/effort', '/stop', '/approve', '/pairings', '/settings', '/model', '/bash', '/cd', '/pwd']);
@@ -81,18 +81,9 @@ export class BridgeManager {
   private permissions: PermissionCoordinator;
   /** SDK Engine for LiveSession management */
   private sdkEngine: SDKEngine;
-  private lastChatId = new Map<string, string>();
-  /** Pending image attachments waiting for a text message to merge with (key: channelType:chatId) */
-  private pendingAttachments = new Map<string, { attachments: import('../channels/types.js').FileAttachment[]; timestamp: number }>();
-  /** Debounce timer for chatId persistence */
-  private chatIdPersistTimer: ReturnType<typeof setTimeout> | null = null;
-  /** Pushback buffer for message coalescing */
-  private coalescePushback = new Map<string, InboundMessage>();
-  /** Telegram message length limit — only coalesce if text is near this boundary */
-  private static TG_MSG_LIMIT = 4096;
+  private ingress = new IngressCoordinator();
 
   private commands: CommandRouter;
-  private chatIdFile: string;
   /** Cleanup timer for SDK question data */
   private sdkQuestionCleanupTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -106,14 +97,6 @@ export class BridgeManager {
     this.port = config.port || 8080;
     this.permissions = new PermissionCoordinator(gateway, broker, this.coreUrl, this.token);
     this.sdkEngine = new SDKEngine(this.state, this.router, this.permissions);
-    // Load persisted chatIds (so hook routing works without needing a message first)
-    this.chatIdFile = join(getTliveRuntimeDir(), 'chat-ids.json');
-    try {
-      const data = JSON.parse(readFileSync(this.chatIdFile, 'utf-8'));
-      for (const [k, v] of Object.entries(data)) {
-        if (typeof v === 'string') this.lastChatId.set(k, v);
-      }
-    } catch { /* no saved chat IDs yet */ }
     this.commands = new CommandRouter(
       this.state,
       () => this.adapters,
@@ -123,20 +106,6 @@ export class BridgeManager {
       this.permissions,
       (channelType, chatId) => this.sdkEngine.closeSession(channelType, chatId),
     );
-  }
-
-  /** Persist chatIds to file (debounced to avoid blocking message loop) */
-  private persistChatIds(): void {
-    if (this.chatIdPersistTimer) {
-      clearTimeout(this.chatIdPersistTimer);
-    }
-    this.chatIdPersistTimer = setTimeout(() => {
-      try {
-        mkdirSync(getTliveRuntimeDir(), { recursive: true });
-        writeFileSync(this.chatIdFile, JSON.stringify(Object.fromEntries(this.lastChatId)));
-      } catch { /* non-fatal */ }
-      this.chatIdPersistTimer = null;
-    }, 1000); // 1 second debounce
   }
 
   /** Expose coreAvailable flag for main.ts polling loop */
@@ -155,7 +124,7 @@ export class BridgeManager {
 
   /** Get the last active chatId for a given channel type (for hook routing) */
   getLastChatId(channelType: string): string {
-    return this.lastChatId.get(channelType) ?? '';
+    return this.ingress.getLastChatId(channelType);
   }
 
   /** Delegate: track a hook message for reply routing */
@@ -207,8 +176,6 @@ export class BridgeManager {
     // Periodic cleanup of SDK question data (5 minute TTL) and stale attachments
     // Use 5-minute interval to avoid iterating all entries every minute
     this.sdkQuestionCleanupTimer = setInterval(() => {
-      const now = Date.now();
-      const maxAge = 5 * 60 * 1000;
       const { sdkQuestionData, sdkQuestionAnswers, sdkQuestionTextAnswers } = this.sdkEngine.getQuestionState();
       for (const [id] of sdkQuestionData) {
         if (!this.permissions.getGateway().isPending(id)) {
@@ -217,16 +184,13 @@ export class BridgeManager {
           sdkQuestionTextAnswers.delete(id);
         }
       }
-      for (const [key, entry] of this.pendingAttachments) {
-        if (now - entry.timestamp > maxAge) {
-          this.pendingAttachments.delete(key);
-        }
-      }
+      this.ingress.pruneStaleState();
     }, 5 * 60 * 1000);
   }
 
   async stop(): Promise<void> {
     this.running = false;
+    this.ingress.dispose();
     if (this.sdkQuestionCleanupTimer) {
       clearInterval(this.sdkQuestionCleanupTimer);
       this.sdkQuestionCleanupTimer = null;
@@ -294,40 +258,6 @@ export class BridgeManager {
     this.permissions.trackHookMessage(result.messageId, hook.tlive_session_id || '');
   }
 
-  /** Wait briefly for follow-up messages from the same user, merge text if they arrive quickly.
-   *  Handles Telegram splitting long messages at 4096 chars. */
-  private async coalesceMessages(adapter: BaseChannelAdapter, first: InboundMessage): Promise<InboundMessage> {
-    if (!first.text || first.callbackData) return first;
-
-    // Only wait for follow-up parts if message is near Telegram's 4096 char limit
-    if (first.text.length < BridgeManager.TG_MSG_LIMIT - 200) return first;
-
-    // Wait up to 500ms for follow-up parts
-    const parts: string[] = [first.text];
-    const deadline = Date.now() + 500;
-
-    while (Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 100));
-      const next = await adapter.consumeOne();
-      if (!next) continue;
-
-      // Only merge if same user, same chat, text-only (no callback/command), arrives quickly
-      if (next.userId === first.userId && next.chatId === first.chatId
-          && next.text && !next.callbackData && !next.text.startsWith('/')) {
-        parts.push(next.text);
-        console.log(`[${adapter.channelType}] Coalesced message part (${next.text.length} chars)`);
-      } else {
-        // Different message — put it back for next iteration
-        this.coalescePushback.set(adapter.channelType, next);
-        break;
-      }
-    }
-
-    if (parts.length === 1) return first;
-    console.log(`[${adapter.channelType}] Merged ${parts.length} message parts (${parts.reduce((s, p) => s + p.length, 0)} chars total)`);
-    return { ...first, text: parts.join('\n') };
-  }
-
   /** Process queued messages iteratively after current turn completes */
   private async drainQueue(adapter: BaseChannelAdapter, channelType: string, chatId: string): Promise<void> {
     let next = this.sdkEngine.dequeueMessage(channelType, chatId);
@@ -345,9 +275,7 @@ export class BridgeManager {
 
   private async runAdapterLoop(adapter: BaseChannelAdapter): Promise<void> {
     while (this.running) {
-      // Check pushback from coalescing first
-      const msg = this.coalescePushback.get(adapter.channelType) ?? await adapter.consumeOne();
-      this.coalescePushback.delete(adapter.channelType);
+      const msg = await this.ingress.getNextMessage(adapter);
       if (!msg) { await new Promise(r => setTimeout(r, 100)); continue; }
       console.log(`[${adapter.channelType}] Message from ${msg.userId}: ${msg.text || '(callback)'}`);
       // Callbacks, commands, and permission text are fast — await them.
@@ -367,7 +295,7 @@ export class BridgeManager {
         }
       } else {
         // Coalesce rapid-fire messages (e.g. Telegram splits long text at 4096 chars)
-        const coalesced = await this.coalesceMessages(adapter, msg);
+        const coalesced = await this.ingress.coalesceMessages(adapter, msg);
 
         // Guard: if this chat is already processing a message
         const chatKey = this.state.stateKey(coalesced.channelType, coalesced.chatId);
@@ -422,49 +350,13 @@ export class BridgeManager {
 
     // Track last active chatId per channel type (used for hook notification routing)
     if (msg.chatId) {
-      this.lastChatId.set(adapter.channelType, msg.chatId);
-      // Persist debounced (non-blocking)
-      this.persistChatIds();
+      this.ingress.recordChat(adapter.channelType, msg.chatId);
     }
 
-    // Image buffering: cache image-only messages, merge into next text message
-    const attachKey = `${msg.channelType}:${msg.chatId}`;
-    if (msg.attachments?.length && !msg.text && !msg.callbackData) {
-      // Image-only message: buffer attachments and wait for text
-      // Limit: max 5 attachments, max 10MB total
-      const MAX_ATTACHMENTS = 5;
-      const MAX_TOTAL_BYTES = 10 * 1024 * 1024;
-      let attachments = msg.attachments.slice(0, MAX_ATTACHMENTS);
-      const totalBytes = attachments.reduce((sum, a) => sum + a.base64Data.length, 0);
-      if (totalBytes > MAX_TOTAL_BYTES) {
-        // Keep only attachments that fit within budget
-        let budget = MAX_TOTAL_BYTES;
-        attachments = attachments.filter(a => {
-          if (a.base64Data.length <= budget) {
-            budget -= a.base64Data.length;
-            return true;
-          }
-          return false;
-        });
-        console.warn(`[${msg.channelType}] Attachment buffer exceeded 10MB limit, kept ${attachments.length}`);
-      }
-      if (attachments.length > 0) {
-        this.pendingAttachments.set(attachKey, {
-          attachments,
-          timestamp: Date.now(),
-        });
-        console.log(`[${msg.channelType}] Buffered ${attachments.length} attachment(s), waiting for text`);
-      }
+    const attachmentResult = this.ingress.prepareAttachments(msg);
+    msg = attachmentResult.message;
+    if (attachmentResult.handled) {
       return true;
-    }
-    // Merge pending attachments into current text message
-    if (msg.text && !msg.callbackData) {
-      const pending = this.pendingAttachments.get(attachKey);
-      if (pending && Date.now() - pending.timestamp < 60_000) {
-        msg.attachments = [...(msg.attachments || []), ...pending.attachments];
-        console.log(`[${msg.channelType}] Merged ${pending.attachments.length} buffered attachment(s) with text`);
-      }
-      this.pendingAttachments.delete(attachKey);
     }
 
     // Text-based permission resolution (all platforms — fallback when buttons expire)
