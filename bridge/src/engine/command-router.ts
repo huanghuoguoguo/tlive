@@ -47,6 +47,10 @@ import {
   presentStopResult,
   presentVerbose,
   presentVerboseUsage,
+  presentVersionCheck,
+  presentUpgradeResult,
+  presentUpgradeCommand,
+  presentRestartResult,
 } from './command-presenter.js';
 import { areHooksPaused, pauseHooks, resumeHooks } from './hooks-state.js';
 
@@ -410,6 +414,68 @@ export class CommandRouter {
         } else {
           await adapter.send(presentPairingUnavailable(msg.chatId));
         }
+        return true;
+      }
+      case '/upgrade': {
+        const subCmd = parts[1]?.toLowerCase();
+
+        // Handle sub-commands
+        if (subCmd === 'confirm') {
+          // Perform upgrade
+          const { execSync } = await import('node:child_process');
+          try {
+            // Download and run installer
+            const cmd = 'curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash';
+            execSync(cmd, { stdio: 'inherit', timeout: 120_000 });
+            const { getCurrentVersion } = await import('./version-checker.js');
+            await adapter.send(presentUpgradeResult(msg.chatId, adapter.channelType, {
+              success: true,
+              version: getCurrentVersion(),
+            }));
+          } catch (err: any) {
+            await adapter.send(presentUpgradeResult(msg.chatId, adapter.channelType, {
+              success: false,
+              error: err?.message || 'Upgrade failed',
+            }));
+          }
+          return true;
+        }
+
+        if (subCmd === 'cmd' || subCmd === 'command') {
+          await adapter.send(presentUpgradeCommand(msg.chatId, adapter.channelType));
+          return true;
+        }
+
+        if (subCmd === 'notes') {
+          // Show release notes link
+          await adapter.send({
+            chatId: msg.chatId,
+            text: '📋 查看更新内容：\nhttps://github.com/huanghuoguoguo/tlive/releases',
+            feishuHeader: adapter.channelType === 'feishu' ? { template: 'blue', title: '📋 更新内容' } : undefined,
+          });
+          return true;
+        }
+
+        // Check for updates
+        const { checkForUpdates } = await import('./version-checker.js');
+        const info = await checkForUpdates();
+        if (info) {
+          await adapter.send(presentVersionCheck(msg.chatId, adapter.channelType, info));
+        } else {
+          await adapter.send({
+            chatId: msg.chatId,
+            text: '⚠️ 无法检查更新，请稍后重试',
+            feishuHeader: adapter.channelType === 'feishu' ? { template: 'yellow', title: '⚠️ 检查失败' } : undefined,
+          });
+        }
+        return true;
+      }
+      case '/restart': {
+        await adapter.send(presentRestartResult(msg.chatId, adapter.channelType));
+        // Delay restart to allow message to be sent
+        setTimeout(() => {
+          process.exit(0); // Exit cleanly, external process manager should restart
+        }, 1000);
         return true;
       }
       default:

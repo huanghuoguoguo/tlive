@@ -8,6 +8,7 @@ import { BridgeManager } from './engine/bridge-manager.js';
 import { CoreHookBridge } from './engine/core-hook-bridge.js';
 import { createAdapter, loadAdapters } from './channels/index.js';
 import type { ChannelType } from './channels/types.js';
+import { checkForUpdates, getCurrentVersion } from './engine/version-checker.js';
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { getTliveHome, getTliveRuntimeDir } from './utils/index.js';
@@ -150,10 +151,35 @@ async function main() {
     logger.info(`Web terminal available at ${config.coreUrl}`);
   }
 
+  // Version check: startup + every 6 hours
+  const checkAndNotifyUpdate = async () => {
+    try {
+      const info = await checkForUpdates();
+      if (info?.hasUpdate) {
+        logger.info(`New version available: v${info.latest} (current: v${info.current})`);
+        const dateStr = info.publishedAt
+          ? new Date(info.publishedAt).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+          : '';
+        const text = `🔄 **发现新版本**\nv${info.current} → v${info.latest}${dateStr ? `\n发布时间：${dateStr}` : ''}\n\n发送 /upgrade 升级`;
+        await hookBridge.broadcastText(text).catch(() => {});
+      }
+    } catch (err) {
+      logger.warn(`Version check failed: ${err}`);
+    }
+  };
+
+  // Check on startup (after 30s delay to let things settle)
+  setTimeout(checkAndNotifyUpdate, 30_000);
+  // Check every 6 hours
+  const versionCheckInterval = setInterval(checkAndNotifyUpdate, 6 * 60 * 60 * 1000);
+
+  logger.info(`TLive Bridge v${getCurrentVersion()} started`);
+
   // Graceful shutdown
   const shutdown = async (reason = 'signal') => {
     logger.info('Shutting down...');
     clearInterval(coreStatusInterval);
+    clearInterval(versionCheckInterval);
     hookBridge.stop();
     clearInterval(keepAliveInterval);
     writeStatusFile({

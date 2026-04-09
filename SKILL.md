@@ -186,6 +186,9 @@ In IM (from phone):
   /verbose 0|1               Detail level (quiet/terminal card)
   /hooks pause|resume        Toggle hook approval
   /status                    Check status
+  /upgrade                   Check for updates
+  /upgrade confirm           Upgrade to latest version
+  /restart                   Restart bridge service
   /help                      Show all commands
 
 Settings hot-reload: Changes apply to new conversations. No restart needed.

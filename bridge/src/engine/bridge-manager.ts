@@ -21,7 +21,7 @@ import type { BridgeStore } from '../store/interface.js';
 import type { LLMProvider } from '../providers/base.js';
 
 /** Bridge commands handled synchronously (don't block adapter loop) */
-const QUICK_COMMANDS = new Set(['/new', '/home', '/status', '/verbose', '/hooks', '/sessions', '/session', '/sessioninfo', '/help', '/help-cli', '/perm', '/effort', '/stop', '/approve', '/pairings', '/settings', '/model', '/cd', '/pwd']);
+const QUICK_COMMANDS = new Set(['/new', '/home', '/status', '/verbose', '/hooks', '/sessions', '/session', '/sessioninfo', '/help', '/help-cli', '/perm', '/effort', '/stop', '/approve', '/pairings', '/settings', '/model', '/cd', '/pwd', '/upgrade', '/restart']);
 
 interface BridgeManagerDeps {
   store: BridgeStore;

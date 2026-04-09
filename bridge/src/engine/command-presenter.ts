@@ -480,3 +480,114 @@ export function presentPairings(chatId: string, lines: string[]): OutboundMessag
     html: `<b>🔐 Pending Pairings</b>\n\n${lines.join('\n')}\n\nUse /approve <code> to approve.`,
   });
 }
+
+export function presentVersionCheck(
+  chatId: string,
+  channelType: ChannelType,
+  info: { current: string; latest: string; hasUpdate: boolean; publishedAt?: string },
+): OutboundMessage {
+  const dateStr = info.publishedAt
+    ? new Date(info.publishedAt).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+    : '';
+
+  if (channelType === 'feishu') {
+    return withChatId(chatId, {
+      text: info.hasUpdate
+        ? `**发现新版本**\n当前：v${info.current}\n最新：v${info.latest}${dateStr ? `\n发布时间：${dateStr}` : ''}\n\n点击下方按钮升级`
+        : `**已是最新版本**\n当前版本：v${info.current}`,
+      feishuHeader: { template: info.hasUpdate ? 'green' : 'blue', title: '🔄 版本检查' },
+      buttons: info.hasUpdate
+        ? [
+            { label: '⬆️ 立即升级', callbackData: 'cmd:upgrade confirm', style: 'primary' as const },
+            { label: '📋 查看更新', callbackData: 'cmd:upgrade notes', style: 'default' as const },
+          ]
+        : [
+            { label: '🔄 再次检查', callbackData: 'cmd:upgrade', style: 'default' as const },
+          ],
+    });
+  }
+
+  if (channelType === 'discord') {
+    return withChatId(chatId, {
+      embed: {
+        title: '🔄 Version Check',
+        color: info.hasUpdate ? COLORS.green : COLORS.blue,
+        description: info.hasUpdate
+          ? `**New version available!**\nCurrent: v${info.current}\nLatest: v${info.latest}${dateStr ? `\nReleased: ${dateStr}` : ''}`
+          : `**Up to date**\nCurrent version: v${info.current}`,
+      },
+      buttons: info.hasUpdate
+        ? [
+            { label: '⬆️ Upgrade Now', callbackData: 'cmd:upgrade confirm', style: 'primary' as const },
+          ]
+        : undefined,
+    });
+  }
+
+  // Telegram
+  return withChatId(chatId, {
+    html: info.hasUpdate
+      ? `🔄 <b>New version available!</b>\n\nCurrent: <code>v${info.current}</code>\nLatest: <code>v${info.latest}</code>${dateStr ? `\nReleased: ${dateStr}` : ''}\n\nRun <code>/upgrade confirm</code> to upgrade.`
+      : `✅ <b>Up to date</b>\n\nCurrent version: <code>v${info.current}</code>`,
+  });
+}
+
+export function presentUpgradeResult(
+  chatId: string,
+  channelType: ChannelType,
+  result: { success: boolean; version?: string; error?: string },
+): OutboundMessage {
+  if (result.success) {
+    if (channelType === 'feishu') {
+      return withChatId(chatId, {
+        text: `**升级成功**\n版本：v${result.version}\n\n请运行 /tlive restart 或手动重启服务以生效`,
+        feishuHeader: { template: 'green', title: '⬆️ 升级完成' },
+        buttons: [
+          { label: '🔄 重启服务', callbackData: 'cmd:restart', style: 'primary' as const },
+        ],
+      });
+    }
+    return withChatId(chatId, {
+      text: `⬆️ Upgrade complete: v${result.version}\n\nRestart tlive to apply changes.`,
+    });
+  }
+
+  if (channelType === 'feishu') {
+    return withChatId(chatId, {
+      text: `**升级失败**\n${result.error || '未知错误'}\n\n可以手动执行安装脚本`,
+      feishuHeader: { template: 'red', title: '❌ 升级失败' },
+      buttons: [
+        { label: '📋 查看命令', callbackData: 'cmd:upgrade cmd', style: 'default' as const },
+      ],
+    });
+  }
+  return withChatId(chatId, {
+    text: `❌ Upgrade failed: ${result.error || 'Unknown error'}`,
+  });
+}
+
+export function presentUpgradeCommand(chatId: string, channelType: ChannelType): OutboundMessage {
+  const cmd = 'curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash';
+
+  if (channelType === 'feishu') {
+    return withChatId(chatId, {
+      text: `**手动升级命令**\n\`\`\`bash\n${cmd}\n\`\`\``,
+      feishuHeader: { template: 'blue', title: '📋 升级命令' },
+    });
+  }
+  return withChatId(chatId, {
+    text: `Manual upgrade:\n\`\`\`\n${cmd}\n\`\`\``,
+  });
+}
+
+export function presentRestartResult(chatId: string, channelType: ChannelType): OutboundMessage {
+  if (channelType === 'feishu') {
+    return withChatId(chatId, {
+      text: '🔄 正在重启服务...\n\n服务将在几秒后重新连接',
+      feishuHeader: { template: 'blue', title: '🔄 重启中' },
+    });
+  }
+  return withChatId(chatId, {
+    text: '🔄 Restarting... The service will reconnect in a few seconds.',
+  });
+}
