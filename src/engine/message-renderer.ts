@@ -103,6 +103,10 @@ export class MessageRenderer {
   private toolIdToLogIndex = new Map<string, number>();
 
   private _messageId?: string;
+  /** Saved messageId before permission request - restored after permission resolved */
+  private _savedMessageId?: string;
+  /** MessageId of the permission request message (for editing if queue has more) */
+  private _permissionMessageId?: string;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private elapsedTimer: ReturnType<typeof setInterval> | null = null;
   private permissionTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
@@ -268,7 +272,15 @@ export class MessageRenderer {
     this.clearProgressTimeout();
     // Only start timeout for the first permission (the one being displayed)
     if (this.permissionQueue.length === 1) {
+      // Save current messageId and clear it to force new message for permission request
+      if (this._messageId && !this._savedMessageId) {
+        this._savedMessageId = this._messageId;
+        this._messageId = undefined;
+      }
       this.startPermissionTimeout();
+    } else if (this.permissionQueue.length > 1 && this._permissionMessageId) {
+      // More permissions pending after first - edit the permission message
+      this._messageId = this._permissionMessageId;
     }
     this.scheduleFlush();
   }
@@ -285,9 +297,21 @@ export class MessageRenderer {
     // Restart timeout for next permission in queue
     this.clearPermissionTimeout();
     if (this.permissionQueue.length > 0) {
+      // More permissions pending - use permission message id to edit
+      if (this._permissionMessageId) {
+        this._messageId = this._permissionMessageId;
+      } else {
+        this._messageId = undefined;
+      }
       this.startPermissionTimeout();
     } else {
-      // No more permissions - restart progress timeout
+      // No more permissions - restore saved messageId for execution progress
+      if (this._savedMessageId) {
+        this._messageId = this._savedMessageId;
+        this._savedMessageId = undefined;
+      }
+      this._permissionMessageId = undefined;
+      // Restart progress timeout
       this.startProgressTimeout();
     }
     this.scheduleFlush();
@@ -650,6 +674,10 @@ export class MessageRenderer {
         }
       }
       if (!isEdit && typeof result === 'string') {
+        // If we're in permission phase with saved messageId, this is a permission message
+        if (this._savedMessageId) {
+          this._permissionMessageId = result;
+        }
         this._messageId = result;
       }
     } finally {
