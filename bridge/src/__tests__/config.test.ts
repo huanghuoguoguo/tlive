@@ -18,7 +18,6 @@ describe('loadConfig', () => {
   it('uses defaults when no env vars set', () => {
     const config = loadConfig();
     expect(config.port).toBe(8080);
-    expect(config.coreUrl).toBe('http://localhost:8080');
   });
 
   it('loads from env vars', () => {
@@ -27,7 +26,6 @@ describe('loadConfig', () => {
     const config = loadConfig();
     expect(config.port).toBe(9090);
     expect(config.token).toBe('test-token');
-    expect(config.coreUrl).toBe('http://localhost:9090');
   });
 
   it('parses enabled channels', () => {
@@ -66,11 +64,5 @@ describe('loadConfig', () => {
     expect(config.feishu.appId).toBe('fs-id');
     expect(config.feishu.appSecret).toBe('fs-secret');
     expect(config.feishu.allowedUsers).toEqual(['fsu1']);
-  });
-
-  it('overrides core URL with TL_CORE_URL', () => {
-    process.env.TL_CORE_URL = 'http://core:9999';
-    const config = loadConfig();
-    expect(config.coreUrl).toBe('http://core:9999');
   });
 });

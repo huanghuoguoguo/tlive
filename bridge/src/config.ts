@@ -15,7 +15,6 @@ export interface Config {
   enabledChannels: string[];
   defaultWorkdir: string;
   defaultModel: string;
-  coreUrl: string;
   /** Claude Code settings sources to load (default: ['user']) */
   claudeSettingSources: ClaudeSettingSource[];
   /** Global proxy URL (e.g., http://127.0.0.1:7890, socks5://127.0.0.1:1080) */
@@ -122,7 +121,6 @@ export function loadConfig(): Config {
     proxy: globalProxy,
     defaultWorkdir: get('TL_DEFAULT_WORKDIR', process.cwd()),
     defaultModel: get('TL_DEFAULT_MODEL'),
-    coreUrl: get('TL_CORE_URL', `http://localhost:${port}`),
     telegram: {
       botToken: get('TL_TG_BOT_TOKEN'),
       chatId: get('TL_TG_CHAT_ID'),

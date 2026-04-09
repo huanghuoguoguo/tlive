@@ -159,6 +159,44 @@ export class BridgeManager {
     return this.ingress.getLastChatId(channelType);
   }
 
+  /** Broadcast text message to all active IM channels */
+  async broadcastText(text: string): Promise<void> {
+    for (const adapter of this.getAdapters()) {
+      const chatId = this.getBroadcastTarget(adapter.channelType);
+      if (!chatId) continue;
+      await adapter.send({
+        chatId,
+        receiveIdType: this.getBroadcastReceiveIdType(adapter.channelType),
+        text,
+      });
+    }
+  }
+
+  /** Get target chatId for broadcast messages */
+  private getBroadcastTarget(channelType: string): string {
+    if (channelType === 'telegram') {
+      return this.config.telegram.chatId;
+    }
+    if (channelType === 'discord') {
+      return this.config.discord.allowedChannels[0] || '';
+    }
+    if (channelType === 'feishu') {
+      const userId = this.config.feishu.allowedUsers[0];
+      return userId || this.getLastChatId(channelType);
+    }
+    return this.getLastChatId(channelType);
+  }
+
+  /** Get receiveIdType for broadcast messages */
+  private getBroadcastReceiveIdType(channelType: string): string | undefined {
+    if (channelType === 'feishu') {
+      const userId = this.config.feishu.allowedUsers[0];
+      if (userId?.startsWith('ou_')) return 'open_id';
+      if (userId) return 'user_id';
+    }
+    return undefined;
+  }
+
   /** Delegate: track a hook message for reply routing */
   trackHookMessage(messageId: string, sessionId: string): void {
     this.permissions.trackHookMessage(messageId, sessionId);

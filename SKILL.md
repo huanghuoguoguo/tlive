@@ -55,10 +55,9 @@ Before any command except `setup`, check `~/.tlive/config.env`:
 
 ```
 1. Check config.env → if missing, auto-start setup
-2. Check Bridge PID → if running, show status instead
-3. Start Bridge: tlive start
-4. Wait 2s, verify alive: tlive status
-5. Report channels + web terminal status
+2. Start Bridge: tlive start
+3. Wait 2s, verify alive: tlive status
+4. Report enabled channels
 ```
 
 ### `setup`
@@ -86,7 +85,6 @@ Enter numbers (e.g., 1,3):"
 
 **Step 3 — General settings:**
 - Port (default 8080)
-- Public URL (optional, for web links in IM messages)
 - Auto-generate TL_TOKEN (32-char hex)
 
 **Step 4 — Write config and validate:**
@@ -122,7 +120,7 @@ tlive stop
 2. Stop Bridge: tlive stop
 3. Start Bridge: tlive start
 4. Wait 2s, verify alive: tlive status
-5. Report channels + web terminal status
+5. Report enabled channels
 ```
 
 ### `status`
@@ -160,13 +158,12 @@ In Claude Code (/tlive):
   /tlive setup         Configure IM platforms (AI-guided)
   /tlive reconfigure   Modify specific config fields
   /tlive stop          Stop Bridge
-  /tlive status        Show Bridge + Web Terminal status
+  /tlive status        Show Bridge status
   /tlive logs [N]      Show last N log lines
   /tlive doctor        Diagnose issues + suggest fixes
 
 In terminal (tlive):
-  tlive <cmd>          Wrap command with web terminal (optional)
-  tlive start          Start Core daemon (for web terminal)
+  tlive start          Start Bridge daemon
   tlive stop           Stop daemon
   tlive status         Check status
 
@@ -198,7 +195,5 @@ Settings hot-reload: Changes apply to new conversations. No restart needed.
 
 - Always mask secrets in output (show only last 4 characters)
 - Always check for config.env before starting — without it the daemon crashes and leaves a stale PID file
-- Bridge and Go Core web terminal are independent — Bridge works without Go Core
-- Go Core is optional, only for web terminal feature (`tlive <cmd>`)
-- Config at `~/.tlive/config.env` — shared by both Bridge and Go Core
+- Config at `~/.tlive/config.env`
 - Settings hot-reload: config changes apply to new conversations, no restart needed

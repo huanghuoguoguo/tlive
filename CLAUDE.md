@@ -22,7 +22,6 @@ tlive/
 │   │   ├── providers/# AI 提供商集成
 │   │   └── main.ts   # 入口
 │   └── package.json
-├── core/             # Go Web 终端服务（可选）
 ├── docs/             # 用户文档
 ├── SKILL.md          # /tlive skill 定义
 └── config.env.example
@@ -31,7 +30,6 @@ tlive/
 ## 开发规则
 
 ### 架构
-- Bridge (TypeScript) 和 Core (Go) 独立运行，通过 HTTP API 通信
 - Bridge 使用 Claude Agent SDK 与 Claude Code 交互
 - IM 适配器按需动态加载，减少内存占用
 

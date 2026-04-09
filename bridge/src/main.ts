@@ -1,11 +1,9 @@
 import { loadConfig } from './config.js';
 import { initBridgeContext } from './context.js';
-import { CoreClientImpl } from './core-client.js';
 import { Logger } from './logger.js';
 import { JsonFileStore } from './store/json-file.js';
 import { ClaudeSDKProvider } from './providers/claude-sdk.js';
 import { BridgeManager } from './engine/bridge-manager.js';
-import { CoreHookBridge } from './engine/core-hook-bridge.js';
 import { createAdapter, loadAdapters } from './channels/index.js';
 import type { ChannelType } from './channels/types.js';
 import { checkForUpdates, getCurrentVersion } from './engine/version-checker.js';
@@ -13,22 +11,8 @@ import { join } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { getTliveHome, getTliveRuntimeDir } from './utils/index.js';
 
-// Whether Go Core daemon is reachable (for web terminal links in IM)
-let coreAvailable = false;
-let coreClient: CoreClientImpl | null = null;
 // Cached config (loaded once at startup)
 let cachedConfig: ReturnType<typeof loadConfig> | null = null;
-
-export function isCoreAvailable(): boolean {
-  return coreAvailable;
-}
-
-export function getCoreUrl(): string {
-  if (!cachedConfig) {
-    cachedConfig = loadConfig();
-  }
-  return cachedConfig.coreUrl;
-}
 
 function writeStatusFile(data: Record<string, unknown>): void {
   try {
@@ -58,67 +42,22 @@ async function main() {
     pid: process.pid,
     startedAt: new Date().toISOString(),
     channels: config.enabledChannels,
-    version: '0.1.0',
+    version: getCurrentVersion(),
   });
 
   // Initialize components
   const store = new JsonFileStore(join(tliveHome, 'data'));
   const llm = new ClaudeSDKProvider(config.claudeSettingSources);
 
-  // Try connecting to Go Core daemon (optional — Bridge works without it)
-  coreClient = new CoreClientImpl(config.coreUrl, config.token);
-  try {
-    await coreClient.connect();
-    coreAvailable = true;
-    logger.info(`Go Core detected at ${config.coreUrl}`);
-  } catch {
-    coreAvailable = false;
-    coreClient = null;
-    logger.info('Go Core not running — IM-only mode (no web terminal links)');
-  }
-
   // Initialize context
   initBridgeContext({
     store,
     llm,
-    core: coreClient,
     defaultWorkdir: config.defaultWorkdir,
   });
 
   // Start Bridge Manager with enabled IM adapters
   const manager = new BridgeManager({ store, llm, defaultWorkdir: config.defaultWorkdir, config });
-  manager.setCoreAvailable(coreAvailable);
-  const hookBridge = new CoreHookBridge({
-    config,
-    logger,
-    manager,
-    store,
-    isCoreAvailable: () => coreAvailable,
-  });
-  if (coreAvailable) {
-    hookBridge.prefetchSessionCwds().catch(() => {});
-  }
-
-  // Periodically re-check Core availability
-  const coreStatusInterval = setInterval(async () => {
-    try {
-      const resp = await fetch(`${config.coreUrl}/api/status`, {
-        headers: { Authorization: `Bearer ${config.token}` },
-        signal: AbortSignal.timeout(3000),
-      });
-      const newAvailable = resp.ok;
-      // Only update if status changed
-      if (newAvailable !== coreAvailable) {
-        coreAvailable = newAvailable;
-        manager.setCoreAvailable(coreAvailable);
-      }
-    } catch {
-      if (coreAvailable) {
-        coreAvailable = false;
-        manager.setCoreAvailable(false);
-      }
-    }
-  }, 30_000);
 
   // Dynamically load only the adapters we need (reduces memory from ~180MB to ~60MB)
   await loadAdapters(config.enabledChannels);
@@ -134,21 +73,16 @@ async function main() {
   }
 
   await manager.start();
-  hookBridge.start();
   logger.info('Bridge started');
 
   // Wire permission timeout → IM notification
   if (llm instanceof ClaudeSDKProvider) {
     llm.onPermissionTimeout = (toolName: string, _toolUseId: string) => {
       const text = `\u23f0 Permission timed out (5m)\nTool: ${toolName}\nAction: Denied by default`;
-      hookBridge.broadcastText(text).catch((err) => {
+      manager.broadcastText(text).catch((err) => {
         logger.warn(`Failed to send timeout notification: ${err}`);
       });
     };
-  }
-
-  if (coreAvailable) {
-    logger.info(`Web terminal available at ${config.coreUrl}`);
   }
 
   // Version check: startup + every 6 hours
@@ -161,7 +95,7 @@ async function main() {
           ? new Date(info.publishedAt).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
           : '';
         const text = `🔄 **发现新版本**\nv${info.current} → v${info.latest}${dateStr ? `\n发布时间：${dateStr}` : ''}\n\n发送 /upgrade 升级`;
-        await hookBridge.broadcastText(text).catch(() => {});
+        await manager.broadcastText(text).catch(() => {});
       }
     } catch (err) {
       logger.warn(`Version check failed: ${err}`);
@@ -178,9 +112,7 @@ async function main() {
   // Graceful shutdown
   const shutdown = async (reason = 'signal') => {
     logger.info('Shutting down...');
-    clearInterval(coreStatusInterval);
     clearInterval(versionCheckInterval);
-    hookBridge.stop();
     clearInterval(keepAliveInterval);
     writeStatusFile({
       pid: process.pid,
@@ -188,7 +120,6 @@ async function main() {
       exitReason: reason,
     });
     await manager.stop();
-    if (coreClient) await coreClient.disconnect();
     logger.close();
     process.exit(0);
   };

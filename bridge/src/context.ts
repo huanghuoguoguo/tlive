@@ -1,6 +1,5 @@
 import type { LLMProvider } from './providers/base.js';
 import type { BridgeStore } from './store/interface.js';
-import type { CoreClientImpl } from './core-client.js';
 import type { ProviderCapabilities, LiveSession } from './providers/base.js';
 
 export type { ProviderCapabilities, LiveSession };
@@ -8,7 +7,6 @@ export type { ProviderCapabilities, LiveSession };
 export interface BridgeContext {
   store: BridgeStore;
   llm: LLMProvider;
-  core: CoreClientImpl | null;
   defaultWorkdir: string;
 }
 
