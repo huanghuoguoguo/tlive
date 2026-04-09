@@ -55,6 +55,14 @@ interface CurrentTool {
   elapsed: number; // Seconds
 }
 
+/** Tool call log entry for detailed display */
+export interface ToolLogEntry {
+  name: string;
+  input: string;
+  result?: string;
+  isError?: boolean;
+}
+
 export interface MessageRendererState {
   phase: 'starting' | 'executing' | 'waiting_permission' | 'completed' | 'failed';
   renderedText: string;
@@ -66,6 +74,8 @@ export interface MessageRendererState {
   errorMessage?: string;
   currentTool: CurrentTool | null;
   todoItems: Array<{ content: string; status: TodoStatus }>;
+  thinkingText: string;
+  toolLogs: ToolLogEntry[];
   permission?: {
     toolName: string;
     input: string;
@@ -85,6 +95,12 @@ export class MessageRenderer {
   private currentTool: CurrentTool | null = null;
   /** Todo items for progress display */
   private todoItems: Array<{ content: string; status: TodoStatus }> = [];
+  /** Accumulated thinking text */
+  private thinkingText = '';
+  /** Tool call history for detailed display */
+  private toolLogs: ToolLogEntry[] = [];
+  /** Map tool use ID to toolLogs index */
+  private toolIdToLogIndex = new Map<string, number>();
 
   private _messageId?: string;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -133,7 +149,11 @@ export class MessageRenderer {
     this.verboseLevel = options.verboseLevel ?? 1;
   }
 
-  onToolStart(name: string, input?: Record<string, unknown>): void {
+  onThinkingDelta(text: string): void {
+    this.thinkingText += text;
+  }
+
+  onToolStart(name: string, input?: Record<string, unknown>, toolUseId?: string): void {
     if (HIDDEN_TOOLS.has(name)) return;
     const current = this.toolCounts.get(name) ?? 0;
     this.toolCounts.set(name, current + 1);
@@ -145,6 +165,13 @@ export class MessageRenderer {
       input: this.formatToolInput(name, input),
       elapsed: 0,
     };
+
+    // Record tool log entry
+    const logIndex = this.toolLogs.length;
+    this.toolLogs.push({ name, input: this.formatToolInput(name, input) });
+    if (toolUseId) {
+      this.toolIdToLogIndex.set(toolUseId, logIndex);
+    }
 
     // Start elapsed timer on first tool
     if (!this.elapsedTimer) {
@@ -216,6 +243,18 @@ export class MessageRenderer {
   onToolComplete(_toolUseId: string): void {
     // Clear current tool detail when done
     this.currentTool = null;
+  }
+
+  /** Record tool result content for detailed log display */
+  onToolResult(toolUseId: string, content: string, isError: boolean): void {
+    const logIndex = this.toolIdToLogIndex.get(toolUseId);
+    if (logIndex !== undefined && logIndex < this.toolLogs.length) {
+      const preview = isError
+        ? `❌ ${truncate(content, 200)}`
+        : truncate(content, 200);
+      this.toolLogs[logIndex].result = preview;
+      this.toolLogs[logIndex].isError = isError;
+    }
   }
 
   onPermissionNeeded(
@@ -381,6 +420,8 @@ export class MessageRenderer {
       errorMessage: this.errorMessage,
       currentTool: this.currentTool,
       todoItems: [...this.todoItems],
+      thinkingText: this.thinkingText,
+      toolLogs: [...this.toolLogs],
       permission: currentPermission
         ? {
             toolName: currentPermission.toolName,

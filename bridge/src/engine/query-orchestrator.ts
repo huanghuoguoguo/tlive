@@ -139,6 +139,8 @@ export class QueryOrchestrator {
             currentTool: state.currentTool,
             permission: state.permission,
             todoItems: state.todoItems,
+            thinkingText: state.thinkingText,
+            toolLogs: state.toolLogs,
             actionButtons: buttons?.length
               ? buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
               : undefined,
@@ -340,10 +342,12 @@ export class QueryOrchestrator {
           await this.options.store.saveBinding(binding);
         },
         onTextDelta: (delta) => renderer.onTextDelta(delta),
+        onThinkingDelta: (delta) => renderer.onThinkingDelta(delta),
         onToolStart: (event) => {
-          renderer.onToolStart(event.name, event.input);
+          renderer.onToolStart(event.name, event.input, event.id);
         },
         onToolResult: (event) => {
+          renderer.onToolResult(event.toolUseId, event.content, event.isError);
           renderer.onToolComplete(event.toolUseId);
         },
         onAgentStart: (data) => {

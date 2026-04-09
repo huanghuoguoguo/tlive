@@ -100,6 +100,10 @@ export interface ProgressData {
   footerLine?: string;
   totalTools: number;
   toolSummary?: string;
+  /** Accumulated thinking/reasoning text */
+  thinkingText?: string;
+  /** Tool call history with input/result details */
+  toolLogs?: Array<{ name: string; input: string; result?: string; isError?: boolean }>;
   /** Override buttons (e.g., permission-specific). Formatters derive defaults from phase when absent. */
   actionButtons?: Button[];
 }

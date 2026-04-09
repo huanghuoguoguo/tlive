@@ -307,6 +307,32 @@ export class FeishuFormatter extends MessageFormatter {
       elements.push(this.md(`**工作进度** (${done}/${data.todoItems.length})\n${todoLines.join('\n')}`));
     }
 
+    // Add collapsible thinking process panel
+    if (data.thinkingText?.trim()) {
+      elements.push({
+        tag: 'collapsible_panel',
+        expanded: false,
+        header: { title: { tag: 'plain_text', content: '思考过程' } },
+        body: { elements: [{ tag: 'markdown', content: truncate(data.thinkingText.trim(), 1500) }] },
+      });
+    }
+
+    // Add collapsible tool call details panel
+    if (data.toolLogs?.length) {
+      const logLines = data.toolLogs.map(log => {
+        const icon = log.isError ? '❌' : '✅';
+        const status = log.result !== undefined ? icon : '⏳';
+        const resultLine = log.result ? `\n   → ${truncate(log.result, 120)}` : '';
+        return `${status} **${log.name}**: ${truncate(log.input || '(no input)', 100)}${resultLine}`;
+      });
+      elements.push({
+        tag: 'collapsible_panel',
+        expanded: false,
+        header: { title: { tag: 'plain_text', content: `工具调用详情 (${data.toolLogs.length})` } },
+        body: { elements: [{ tag: 'markdown', content: truncate(logLines.join('\n'), 2000) }] },
+      });
+    }
+
     // Add collapsible process summary
     if (data.renderedText.trim()) {
       elements.push({
