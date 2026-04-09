@@ -65,7 +65,7 @@ Before any command except `setup`, check `~/.tlive/config.env`:
 
 Interactive wizard. Collect **one field at a time**, confirm each (mask secrets to last 4 chars).
 
-Before asking for platform credentials, read `~/.tlive/docs/setup-guides.md` internally. Only mention the specific next step the user needs — don't dump the full guide. Show the relevant guide section only if the user asks for help.
+Before asking for platform credentials, read `references/setup-guides.md` internally. Only mention the specific next step the user needs — don't dump the full guide. Show the relevant guide section only if the user asks for help.
 
 **Step 1 — Choose IM platforms:**
 ```
@@ -90,12 +90,12 @@ Enter numbers (e.g., 1,3):"
 - Auto-generate TL_TOKEN (32-char hex)
 
 **Step 4 — Write config and validate:**
-1. Read `~/.tlive/docs/config.env.example` as the template — use its exact variable names (e.g., `TL_TG_*` for Telegram, `TL_DC_*` for Discord, `TL_FS_*` for Feishu, `TL_QQ_*` for QQ Bot). Do NOT invent variable names.
+1. Read `config.env.example` as the template — use its exact variable names (e.g., `TL_TG_*` for Telegram, `TL_DC_*` for Discord, `TL_FS_*` for Feishu, `TL_QQ_*` for QQ Bot). Do NOT invent variable names.
 2. Show a summary table (secrets masked to last 4 chars)
 3. Ask user to confirm before writing
 4. `mkdir -p ~/.tlive/{data,logs,runtime}`
 5. Write `~/.tlive/config.env` using the template's variable names, then `chmod 600`
-6. Validate tokens — read `~/.tlive/docs/token-validation.md` for exact commands per platform
+6. Validate tokens — read `references/token-validation.md` for exact commands per platform
 7. Report results. If validation fails, explain what's wrong.
 8. On success: "Setup complete! I'll start the Bridge now." Then auto-start.
 
@@ -140,13 +140,13 @@ tlive logs [N]
 
 ### `doctor`
 
-Run diagnostics and suggest fixes. For complex issues, read `~/.tlive/docs/troubleshooting.md`.
+Run diagnostics and suggest fixes. For complex issues, read `references/troubleshooting.md`.
 
 ```
 tlive doctor
 ```
 
-Then validate IM tokens if configured — read `~/.tlive/docs/token-validation.md` for commands.
+Then validate IM tokens if configured — read `references/token-validation.md` for commands.
 
 ### `help`
 

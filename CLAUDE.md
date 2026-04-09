@@ -6,6 +6,12 @@ IM 桥接服务 — 在手机上操控 Claude Code。
 
 详见 [SKILL.md](./SKILL.md) — 包含完整的命令解析、配置流程、子命令说明。
 
+## 参考文档
+
+- [setup-guides.md](./references/setup-guides.md) — 各平台详细配置步骤
+- [token-validation.md](./references/token-validation.md) — 凭证验证命令
+- [troubleshooting.md](./references/troubleshooting.md) — 常见问题排查
+
 ## 项目结构
 
 ```
