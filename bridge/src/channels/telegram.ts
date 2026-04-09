@@ -8,6 +8,7 @@ import { loadConfig } from '../config.js';
 import { createNodeAgent, maskProxyUrl } from '../proxy.js';
 import { chunkMarkdown } from '../delivery/delivery.js';
 import { classifyError } from './errors.js';
+import { TelegramFormatter } from '../formatting/telegram-formatter.js';
 
 interface TelegramConfig {
   botToken: string;
@@ -45,6 +46,8 @@ export class TelegramAdapter extends BaseChannelAdapter {
   constructor(config: TelegramConfig) {
     super();
     this.config = config;
+    // Set platform-specific formatter
+    this.formatter = new TelegramFormatter('en');
   }
 
   /** Build Telegram file download URL from file path */

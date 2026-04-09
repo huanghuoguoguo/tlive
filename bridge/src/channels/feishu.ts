@@ -6,6 +6,7 @@ import { classifyError } from './errors.js';
 import { markdownToFeishu, downgradeHeadings } from '../markdown/feishu.js';
 import { buildFeishuCard, buildFeishuButtonElements } from '../formatting/feishu-card.js';
 import { FeishuStreamingSession } from './feishu-streaming.js';
+import { FeishuFormatter } from '../formatting/feishu-formatter.js';
 import type { Readable } from 'node:stream';
 
 /**
@@ -108,6 +109,8 @@ export class FeishuAdapter extends BaseChannelAdapter {
   constructor(config: FeishuConfig) {
     super();
     this.config = config;
+    // Set platform-specific formatter (Chinese locale for Feishu)
+    this.formatter = new FeishuFormatter('zh');
   }
 
   async start(): Promise<void> {

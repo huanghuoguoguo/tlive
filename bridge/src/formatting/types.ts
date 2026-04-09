@@ -34,4 +34,6 @@ export interface FeishuCardElement {
   body?: {
     elements: Array<{ tag: string; content: string }>;
   };
+  /** Allow arbitrary additional properties */
+  [key: string]: unknown;
 }

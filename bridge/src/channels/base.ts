@@ -1,4 +1,6 @@
 import type { ChannelType, InboundMessage, OutboundMessage, SendResult } from './types.js';
+import type { FormattableMessage } from '../formatting/message-types.js';
+import { MessageFormatter } from '../formatting/message-formatter.js';
 
 export abstract class BaseChannelAdapter {
   abstract readonly channelType: ChannelType;
@@ -19,6 +21,57 @@ export abstract class BaseChannelAdapter {
 
   /** Remove all bot reactions from a message. */
   async removeReaction(_chatId: string, _messageId: string): Promise<void> {}
+
+  // --- Formatting support ---
+
+  /** Platform-specific message formatter. Override in subclass. */
+  protected formatter!: MessageFormatter;
+
+  /** Set the formatter for this adapter */
+  setFormatter(formatter: MessageFormatter): void {
+    this.formatter = formatter;
+  }
+
+  /**
+   * Format a semantic message for this platform.
+   * Uses the platform-specific formatter to render the message.
+   */
+  format(msg: FormattableMessage): OutboundMessage {
+    const { type, chatId, data } = msg as any;
+    switch (type) {
+      case 'status':
+        return this.formatter.formatStatus(chatId, data);
+      case 'permission':
+        return this.formatter.formatPermission(chatId, data);
+      case 'question':
+        return this.formatter.formatQuestion(chatId, data);
+      case 'notification':
+        return this.formatter.formatNotification(chatId, data);
+      case 'home':
+        return this.formatter.formatHome(chatId, data);
+      case 'sessions':
+        return this.formatter.formatSessions(chatId, data);
+      case 'sessionDetail':
+        return this.formatter.formatSessionDetail(chatId, data);
+      case 'help':
+        return this.formatter.formatHelp(chatId, data);
+      case 'newSession':
+        return this.formatter.formatNewSession(chatId, data);
+      case 'error':
+        return this.formatter.formatError(chatId, data);
+      case 'progress':
+        return this.formatter.formatProgress(chatId, data);
+      default:
+        throw new Error(`Unknown message type: ${type}`);
+    }
+  }
+
+  /**
+   * Format and send a semantic message in one call.
+   */
+  async sendFormatted(msg: FormattableMessage): Promise<SendResult> {
+    return this.send(this.format(msg));
+  }
 }
 
 // Use globalThis to share the registry across module instances (for dynamic imports)
