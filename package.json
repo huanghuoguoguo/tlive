@@ -33,6 +33,7 @@
     "prepublishOnly": "npm run build && npm test",
     "build": "node esbuild.config.js",
     "dev": "node esbuild.config.js --watch",
+    "start": "npm run build && TL_DEFAULT_WORKDIR=\"$PWD\" TL_RUNTIME=claude node dist/main.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint src esbuild.config.js",
     "format": "biome format --write src esbuild.config.js",
