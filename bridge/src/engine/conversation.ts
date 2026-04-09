@@ -49,6 +49,7 @@ interface ProcessMessageParams {
   onToolProgress?: (data: { toolName: string; elapsed: number }) => void;
   onRateLimit?: (data: { status: string; utilization?: number; resetsAt?: number }) => void;
   onStatus?: (data: { sessionId: string; model: string }) => void;
+  onThinkingDelta?: (delta: string) => void;
   onTodoUpdate?: (todos: Array<{ content: string; status: TodoStatus }>) => void;
   /** Receives query controls (interrupt, stopTask) when available */
   onControls?: (controls: QueryControls) => void;
@@ -116,6 +117,7 @@ export class ConversationEngine {
             params.onTextDelta?.(value.text);
             break;
           case 'thinking_delta':
+            params.onThinkingDelta?.(value.text);
             break;
           case 'tool_start':
             params.onToolStart?.(value);
