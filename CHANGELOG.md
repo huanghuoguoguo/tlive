@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0](https://github.com/huanghuoguoguo/tlive/compare/v0.10.0...v0.11.0) (2026-04-09)
+
+
+### Features
+
+* add project governance setup ([#3](https://github.com/huanghuoguoguo/tlive/issues/3)) ([2f82ff8](https://github.com/huanghuoguoguo/tlive/commit/2f82ff8f330ef33f80eaa7e51c38c81f8211aac5))
+
 ## [0.9.2](https://github.com/huanghuoguoguo/tlive/compare/v0.9.1...v0.9.2) (2026-04-08)
 
 ### Features
