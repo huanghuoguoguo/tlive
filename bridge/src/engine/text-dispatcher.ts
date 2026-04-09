@@ -1,6 +1,3 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';
 import type { PermissionCoordinator } from './permission-coordinator.js';
@@ -77,7 +74,7 @@ export class TextDispatcher {
     }
 
     if (this.options.permissions.pendingPermissionCount() > 1 && !msg.replyToMessageId) {
-      const hint = adapter.channelType === 'feishu'
+      const hint = adapter.getLocale() === 'zh'
         ? '⚠️ 多个权限待审批，请引用回复具体的权限消息'
         : '⚠️ Multiple permissions pending — reply to the specific permission message';
       await adapter.send({ chatId: msg.chatId, text: hint });

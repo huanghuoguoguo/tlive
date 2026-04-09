@@ -91,11 +91,14 @@ async function main() {
       const info = await checkForUpdates();
       if (info?.hasUpdate) {
         logger.info(`New version available: v${info.latest} (current: v${info.current})`);
-        const dateStr = info.publishedAt
-          ? new Date(info.publishedAt).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
-          : '';
-        const text = `🔄 **发现新版本**\nv${info.current} → v${info.latest}${dateStr ? `\n发布时间：${dateStr}` : ''}\n\n发送 /upgrade 升级`;
-        await manager.broadcastText(text).catch(() => {});
+        await manager.broadcastFormatted({
+          type: 'versionUpdate',
+          data: {
+            current: info.current,
+            latest: info.latest,
+            publishedAt: info.publishedAt,
+          },
+        }).catch(() => {});
       }
     } catch (err) {
       logger.warn(`Version check failed: ${err}`);

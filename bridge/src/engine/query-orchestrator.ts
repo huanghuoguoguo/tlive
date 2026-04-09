@@ -1,9 +1,8 @@
 import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage, OutboundMessage } from '../channels/types.js';
-import { markdownToTelegram } from '../markdown/index.js';
+import type { ProgressData } from '../formatting/message-types.js';
 import { downgradeHeadings } from '../markdown/feishu.js';
 import { MessageRenderer } from './message-renderer.js';
-import { buildFeishuQuestionCard, buildFeishuTaskCard } from '../formatting/feishu-experience.js';
 import { getToolCommand } from './tool-registry.js';
 import { CostTracker } from './cost-tracker.js';
 import { chunkByParagraph } from '../delivery/delivery.js';
@@ -75,10 +74,9 @@ export class QueryOrchestrator {
         permissionReminderTool = toolName;
         permissionReminderInput = input;
         const text = `⚠️ Permission pending — ${toolName}: ${permissionReminderInput}`;
-        const outMsg: OutboundMessage = adapter.channelType === CHANNEL_TYPES.TELEGRAM
-          ? { chatId: msg.chatId, html: markdownToTelegram(text) }
-          : { chatId: msg.chatId, text };
-        outMsg.buttons = buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }));
+        const outMsg = adapter.formatContent(msg.chatId, text,
+          buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
+        );
         try {
           const result = await adapter.send(outMsg);
           permissionReminderMsgId = result.messageId;
@@ -87,21 +85,26 @@ export class QueryOrchestrator {
         }
       },
       onProgressTimeout: async (summary) => {
-        // Only send progress reminder for Feishu
-        if (adapter.channelType !== CHANNEL_TYPES.FEISHU) return;
-        const currentToolHint = summary.currentTool
-          ? `\n当前：${summary.currentTool.name} — ${truncate(summary.currentTool.input, 50)}`
-          : '';
-        const text = `⏳ 任务进行中\n${summary.taskSummary}${currentToolHint}\n运行时长：${summary.elapsedSeconds}s`;
+        if (!adapter.supportsRichCards()) return;
+        const progressData: ProgressData = {
+          phase: 'executing',
+          renderedText: '',
+          taskSummary: summary.taskSummary,
+          elapsedSeconds: summary.elapsedSeconds,
+          totalTools: 0,
+          todoItems: [],
+          currentTool: summary.currentTool ? {
+            name: summary.currentTool.name,
+            input: summary.currentTool.input,
+            elapsed: 0,
+          } : null,
+        };
         try {
-          const result = await adapter.send({
+          const result = await adapter.send(adapter.format({
+            type: 'progress',
             chatId: msg.chatId,
-            text,
-            feishuHeader: { template: 'blue', title: '⏳ 进度更新' },
-            buttons: [
-              { label: '⏹ 停止执行', callbackData: 'cmd:stop', style: 'danger' as const },
-            ],
-          });
+            data: progressData,
+          }));
           progressReminderMsgId = result.messageId;
         } catch {
           // Non-fatal.
@@ -124,29 +127,8 @@ export class QueryOrchestrator {
         }
 
         let outMsg: OutboundMessage;
-        if (adapter.channelType === CHANNEL_TYPES.TELEGRAM) {
-          outMsg = { chatId: msg.chatId, html: markdownToTelegram(content) };
-        } else if (adapter.channelType === CHANNEL_TYPES.FEISHU && state) {
-          const actionButtons = buttons?.length
-            ? buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
-            : state.phase === 'completed'
-              ? [
-                  { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'primary' as const, row: 0 },
-                  { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default' as const, row: 0 },
-                  { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default' as const, row: 1 },
-                ]
-              : state.phase === 'failed'
-                ? [
-                    { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'primary' as const, row: 0 },
-                    { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default' as const, row: 0 },
-                    { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default' as const, row: 1 },
-                  ]
-                : [
-                    { label: '⏹ 停止执行', callbackData: 'cmd:stop', style: 'danger' as const, row: 0 },
-                    { label: '📡 当前状态', callbackData: 'cmd:status', style: 'default' as const, row: 0 },
-                    { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default' as const, row: 1 },
-                  ];
-          const card = buildFeishuTaskCard({
+        if (state) {
+          const progressData: ProgressData = {
             phase: state.phase,
             renderedText: content,
             taskSummary: msg.text || '继续当前任务',
@@ -157,18 +139,16 @@ export class QueryOrchestrator {
             currentTool: state.currentTool,
             permission: state.permission,
             todoItems: state.todoItems,
-          }, actionButtons);
-          outMsg = {
-            chatId: msg.chatId,
-            feishuHeader: card.header,
-            feishuElements: card.elements as unknown as Array<Record<string, unknown>>,
+            actionButtons: buttons?.length
+              ? buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
+              : undefined,
           };
+          outMsg = adapter.format({ type: 'progress', chatId: msg.chatId, data: progressData });
         } else {
-          outMsg = { chatId: msg.chatId, text: content };
-        }
-
-        if (buttons?.length && adapter.channelType !== CHANNEL_TYPES.FEISHU) {
-          outMsg.buttons = buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }));
+          const castButtons = buttons?.length
+            ? buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
+            : undefined;
+          outMsg = adapter.formatContent(msg.chatId, content, castButtons);
         }
 
         if (!isEdit) {
@@ -180,15 +160,9 @@ export class QueryOrchestrator {
         const limit = PLATFORM_LIMITS[adapter.channelType as ChannelType] ?? 4096;
         if (content.length > limit) {
           const chunks = chunkByParagraph(content, limit);
-          const firstOutMsg: OutboundMessage = adapter.channelType === CHANNEL_TYPES.TELEGRAM
-            ? { chatId: msg.chatId, html: markdownToTelegram(chunks[0]) }
-            : { chatId: msg.chatId, text: chunks[0] };
-          await adapter.editMessage(msg.chatId, renderer.messageId!, firstOutMsg);
+          await adapter.editMessage(msg.chatId, renderer.messageId!, adapter.formatContent(msg.chatId, chunks[0]));
           for (let i = 1; i < chunks.length; i++) {
-            const overflowMsg: OutboundMessage = adapter.channelType === CHANNEL_TYPES.TELEGRAM
-              ? { chatId: msg.chatId, html: markdownToTelegram(chunks[i]) }
-              : { chatId: msg.chatId, text: chunks[i] };
-            await adapter.send(overflowMsg);
+            await adapter.send(adapter.formatContent(msg.chatId, chunks[i]));
           }
         } else {
           await adapter.editMessage(msg.chatId, renderer.messageId!, outMsg);
@@ -269,32 +243,7 @@ export class QueryOrchestrator {
       const q = questions[0];
       const permId = `askq-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-      const header = q.header ? `📋 **${q.header}**\n\n` : '';
-      const optionsList = q.options
-        .map((opt, i) => `${i + 1}. **${opt.label}**${opt.description ? ` — ${opt.description}` : ''}`)
-        .join('\n');
-      const questionText = `${header}${q.question}\n\n${optionsList}`;
-
       const isMulti = q.multiSelect;
-      const buttons: Array<{ label: string; callbackData: string; style: 'primary' | 'danger'; row?: number }> = isMulti
-        ? [
-            ...q.options.map((opt, idx) => ({
-              label: `☐ ${opt.label}`,
-              callbackData: `askq_toggle:${permId}:${idx}:sdk`,
-              style: 'primary' as const,
-              row: idx,
-            })),
-            { label: '✅ Submit', callbackData: `askq_submit_sdk:${permId}`, style: 'primary' as const, row: q.options.length },
-            { label: '❌ Skip', callbackData: `perm:allow:${permId}:askq_skip`, style: 'danger' as const, row: q.options.length },
-          ]
-        : [
-            ...q.options.map((opt, idx) => ({
-              label: `${idx + 1}. ${opt.label}`,
-              callbackData: `perm:allow:${permId}:askq:${idx}`,
-              style: 'primary' as const,
-            })),
-            { label: '❌ Skip', callbackData: `perm:allow:${permId}:askq_skip`, style: 'danger' as const },
-          ];
 
       const { sdkQuestionData } = this.options.sdkEngine.getQuestionState();
       sdkQuestionData.set(permId, { questions, chatId: msg.chatId });
@@ -318,28 +267,18 @@ export class QueryOrchestrator {
         },
       });
 
-      const hint = isMulti
-        ? (msg.channelType === CHANNEL_TYPES.FEISHU ? '\n\n💬 点击选项切换选中，然后按 Submit 确认' : '\n\n💬 Tap options to toggle, then Submit')
-        : (msg.channelType === CHANNEL_TYPES.FEISHU ? '\n\n💬 回复数字选择，或直接输入内容' : '\n\n💬 Reply with number to select, or type your answer');
-
-      const outMsg: OutboundMessage = {
+      const outMsg = adapter.format({
+        type: 'question',
         chatId: msg.chatId,
-        text: msg.channelType !== CHANNEL_TYPES.TELEGRAM ? questionText + hint : undefined,
-        html: msg.channelType === CHANNEL_TYPES.TELEGRAM ? questionText.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') + hint : undefined,
-        buttons,
-        feishuHeader: msg.channelType === CHANNEL_TYPES.FEISHU ? { template: 'blue', title: '❓ Question' } : undefined,
-      };
-      if (msg.channelType === CHANNEL_TYPES.FEISHU) {
-        const card = buildFeishuQuestionCard({
-          title: '❓ 等待回答',
+        data: {
           question: q.question,
-          optionsText: optionsList,
-          hint: isMulti ? '点击选项切换勾选，然后点 Submit；也可以直接回复文字。' : '可直接点选，也可以直接回复文字。',
-          buttons: buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default', row: button.row })),
-        });
-        outMsg.feishuHeader = card.header;
-        outMsg.feishuElements = card.elements as unknown as Array<Record<string, unknown>>;
-      }
+          header: q.header,
+          options: q.options,
+          multiSelect: isMulti,
+          permId,
+          sessionId: 'sdk',
+        },
+      });
       const sendResult = await adapter.send(outMsg);
       this.options.permissions.trackPermissionMessage(sendResult.messageId, permId, binding.sessionId, msg.channelType);
 
@@ -348,11 +287,8 @@ export class QueryOrchestrator {
 
       if (result.behavior === 'deny') {
         sdkQuestionData.delete(permId);
-        adapter.editMessage(msg.chatId, sendResult.messageId, {
-          chatId: msg.chatId,
-          text: '⏭ Skipped',
-          buttons: [],
-          feishuHeader: msg.channelType === CHANNEL_TYPES.FEISHU ? { template: 'grey', title: '⏭ Skipped' } : undefined,
+        adapter.editCardResolution(msg.chatId, sendResult.messageId, {
+          resolution: 'skipped', label: '⏭ Skipped',
         }).catch(() => {});
         throw new Error('User skipped question');
       }
@@ -365,11 +301,8 @@ export class QueryOrchestrator {
       sdkQuestionData.delete(permId);
 
       if (textAnswer !== undefined) {
-        adapter.editMessage(msg.chatId, sendResult.messageId, {
-          chatId: msg.chatId,
-          text: `✅ Answer: ${truncate(textAnswer, 50)}`,
-          buttons: [],
-          feishuHeader: msg.channelType === CHANNEL_TYPES.FEISHU ? { template: 'green', title: '✅ Answered' } : undefined,
+        adapter.editCardResolution(msg.chatId, sendResult.messageId, {
+          resolution: 'answered', label: `✅ Answer: ${truncate(textAnswer, 50)}`,
         }).catch(() => {});
         return { [q.question]: textAnswer };
       }
@@ -380,11 +313,8 @@ export class QueryOrchestrator {
       const answerLabel = selected?.label ?? '';
 
       if (!selected) {
-        adapter.editMessage(msg.chatId, sendResult.messageId, {
-          chatId: msg.chatId,
-          text: '✅ Answered',
-          buttons: [],
-          feishuHeader: msg.channelType === CHANNEL_TYPES.FEISHU ? { template: 'green', title: '✅ Answered' } : undefined,
+        adapter.editCardResolution(msg.chatId, sendResult.messageId, {
+          resolution: 'answered', label: '✅ Answered',
         }).catch(() => {});
       }
 

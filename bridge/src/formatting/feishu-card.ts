@@ -21,6 +21,7 @@ export function buildFeishuButtonElements(buttons?: Button[]): FeishuCardElement
     elements: [{
       tag: 'button' as const,
       text: { tag: 'plain_text' as const, content: btn.label },
+      size: 'small' as const,
       ...(btn.url
         ? {
             behaviors: [{ type: 'open_url' as const, default_url: btn.url }],

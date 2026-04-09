@@ -6,6 +6,7 @@ import { markdownToQQBot } from '../markdown/qqbot.js';
 import { chunkMarkdown } from '../delivery/delivery.js';
 import { classifyError } from './errors.js';
 import { maskProxyUrl } from '../proxy.js';
+import { QQBotFormatter } from '../formatting/qqbot-formatter.js';
 
 interface QQBotConfig {
   appId: string;
@@ -142,6 +143,8 @@ export class QQBotAdapter extends BaseChannelAdapter {
   constructor(config: QQBotConfig) {
     super();
     this.config = config;
+    // Set platform-specific formatter (Chinese locale for QQBot)
+    this.formatter = new QQBotFormatter('zh');
   }
 
   private async getAccessToken(): Promise<string> {
