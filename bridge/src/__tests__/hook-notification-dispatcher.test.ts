@@ -39,7 +39,7 @@ describe('HookNotificationDispatcher', () => {
       isCoreAvailable: () => false,
       buildTerminalUrl: () => '',
     });
-    const adapter = createAdapter('discord');
+    const adapter = createAdapter('feishu');
 
     await dispatcher.send(adapter, 'chat-1', {
       notification_type: 'idle_prompt',

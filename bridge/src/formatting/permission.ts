@@ -47,25 +47,6 @@ export function formatPermissionCard(data: PermissionCardData, channelType: Chan
       return { html: parts.join('\n'), buttons };
     }
 
-    case 'discord': {
-      const fields: Array<{ name: string; value: string; inline?: boolean }> = [
-        { name: '🔧 Tool', value: `\`${data.toolName}\``, inline: true },
-        { name: '⏱ Expires', value: `${expires} min`, inline: true },
-      ];
-      if (data.terminalUrl) {
-        fields.push({ name: '🔗 Terminal', value: `[Open](${data.terminalUrl})`, inline: true });
-      }
-      return {
-        embed: {
-          title: '🔐 Permission Required',
-          color: 0xFFA500,
-          description: `\`\`\`\n${input}\n\`\`\`\n💬 Or reply \`allow\` / \`deny\``,
-          fields,
-        },
-        buttons,
-      };
-    }
-
     case 'feishu': {
       const parts = [
         `**Tool:** ${data.toolName}`,

@@ -24,26 +24,18 @@ describe('formatPermissionCard', () => {
     expect(msg.buttons![1].callbackData).toBe('perm:deny:perm-123');
   });
 
-  it('discord: returns embed with amber color', () => {
-    const msg = formatPermissionCard(baseData, 'discord');
-    expect(msg.embed).toBeDefined();
-    expect(msg.embed!.title).toContain('Permission Required');
-    expect(msg.embed!.color).toBe(0xFFA500);
-    expect(msg.embed!.description).toContain('npm run build');
-    expect(msg.embed!.description).toContain('allow');
-    expect(msg.embed!.fields).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: '🔧 Tool', value: '`Bash`' }),
-      ])
-    );
-    expect(msg.buttons).toHaveLength(2);
-  });
-
   it('feishu: returns text with card built by caller', () => {
     const msg = formatPermissionCard(baseData, 'feishu');
     expect(msg.text).toContain('**Tool:** Bash');
     expect(msg.text).toContain('npm run build');
     expect(msg.feishuHeader).toEqual({ template: 'orange', title: expect.stringContaining('Permission Required') });
+    expect(msg.buttons).toHaveLength(2);
+  });
+
+  it('qqbot: returns markdown text', () => {
+    const msg = formatPermissionCard(baseData, 'qqbot');
+    expect(msg.text).toContain('Permission Required');
+    expect(msg.text).toContain('Bash');
     expect(msg.buttons).toHaveLength(2);
   });
 
@@ -82,30 +74,21 @@ describe('formatNotification', () => {
     expect((msg as any).buttons).toBeUndefined();
   });
 
-  it('stop: discord returns green embed', () => {
-    const msg = formatNotification(
-      { type: 'stop', title: 'Task Complete', summary: 'Done' },
-      'discord'
-    );
-    expect(msg.embed).toBeDefined();
-    expect(msg.embed!.color).toBe(0x00CC66);
-    expect(msg.embed!.title).toContain('Task Complete');
-  });
-
-  it('idle_prompt: discord returns blue embed', () => {
-    const msg = formatNotification(
-      { type: 'idle_prompt', title: 'Waiting for Input' },
-      'discord'
-    );
-    expect(msg.embed!.color).toBe(0x3399FF);
-  });
-
-  it('feishu: returns card data with header', () => {
+  it('stop: feishu returns card data with header', () => {
     const msg = formatNotification(
       { type: 'stop', title: 'Task Complete', summary: 'Done' },
       'feishu'
     );
     expect(msg.feishuHeader).toEqual({ template: 'green', title: expect.stringContaining('Task Complete') });
+    expect(msg.text).toContain('Done');
+  });
+
+  it('stop: qqbot returns markdown text', () => {
+    const msg = formatNotification(
+      { type: 'stop', title: 'Task Complete', summary: 'Done' },
+      'qqbot'
+    );
+    expect(msg.text).toContain('Task Complete');
     expect(msg.text).toContain('Done');
   });
 

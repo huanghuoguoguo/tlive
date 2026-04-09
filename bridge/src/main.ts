@@ -31,7 +31,7 @@ async function main() {
 
   const logger = new Logger(
     join(tliveHome, 'logs', 'bridge.log'),
-    [config.token, config.telegram.botToken, config.discord.botToken, config.feishu.appSecret].filter(Boolean)
+    [config.token, config.telegram.botToken, config.feishu.appSecret].filter(Boolean)
   );
 
   logger.info('TLive Bridge starting...');

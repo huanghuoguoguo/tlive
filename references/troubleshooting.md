@@ -25,9 +25,10 @@
 1. Verify token is valid: `/tlive doctor`
 2. Check allowed user IDs in config — only listed users can interact
 3. For Telegram: ensure you've sent `/start` to the bot first
-4. For Discord: verify the bot has been invited with message read permissions
+4. For Telegram: ensure you've sent `/start` to the bot first
 5. For Feishu: confirm app is approved and event subscriptions are configured
-6. Check logs for incoming messages: `/tlive logs 200`
+6. For QQ Bot: verify app credentials and whitelist
+7. Check logs for incoming messages: `/tlive logs 200`
 
 ## Hook approval not working
 

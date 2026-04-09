@@ -58,9 +58,14 @@ describe('classifyError', () => {
     expect(classifyError('telegram', err)).toBeInstanceOf(NetworkError);
   });
 
-  it('classifies Discord 50035 as FormatError', () => {
-    const err = { code: 50035, message: 'Invalid Form Body' };
-    expect(classifyError('discord', err)).toBeInstanceOf(FormatError);
+  it('classifies Feishu rate limit error', () => {
+    const err = { code: 99991400, message: 'Rate limited' };
+    expect(classifyError('feishu', err)).toBeInstanceOf(RateLimitError);
+  });
+
+  it('classifies QQ Bot 429 as RateLimitError', () => {
+    const err = { response: { statusCode: 429 }, message: 'Too Many Requests' };
+    expect(classifyError('qqbot', err)).toBeInstanceOf(RateLimitError);
   });
 
   it('wraps unknown errors as PlatformError', () => {

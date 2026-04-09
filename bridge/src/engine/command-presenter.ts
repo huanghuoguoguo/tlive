@@ -1,11 +1,5 @@
 import type { ChannelType, OutboundMessage } from '../channels/types.js';
 import { buildFeishuHomeCard } from '../formatting/feishu-experience.js';
-const COLORS = {
-  blue: 0x3399FF,
-  green: 0x00CC66,
-  gray: 0x888888,
-  indigo: 0x5865F2,
-} as const;
 
 function withChatId(chatId: string, message: Omit<OutboundMessage, 'chatId'>): OutboundMessage {
   return { chatId, ...message };
@@ -24,20 +18,6 @@ export function presentStatus(chatId: string, channelType: ChannelType, coreStat
     });
   }
 
-  if (channelType === 'discord') {
-    return withChatId(chatId, {
-      embed: {
-        title: '📡 TLive Status',
-        color: COLORS.blue,
-        fields: [
-          { name: 'Bridge', value: '🟢 Running', inline: true },
-          { name: 'Core', value: coreStatus, inline: true },
-          { name: 'Channels', value: `\`${channelList}\``, inline: true },
-        ],
-      },
-    });
-  }
-
   return withChatId(chatId, {
     text: `**Bridge:** 🟢 running\n**Core:** ${coreStatus}\n**Channels:** ${channelList}`,
     feishuHeader: { template: 'blue', title: '📡 TLive Status' },
@@ -49,16 +29,6 @@ export function presentNewSession(chatId: string, channelType: ChannelType, cwdL
     return withChatId(chatId, {
       text: `Session cleared${cwdLabel}. Send a message to begin.`,
       feishuHeader: { template: 'green', title: '🆕 New Session' },
-    });
-  }
-
-  if (channelType === 'discord') {
-    return withChatId(chatId, {
-      embed: {
-        title: '🆕 New Session',
-        description: `Session cleared${cwdLabel}. Send a message to begin.`,
-        color: COLORS.green,
-      },
     });
   }
 
@@ -79,16 +49,6 @@ export function presentSessions(
   if (channelType === 'telegram') {
     return withChatId(chatId, {
       html: `<b>📋 Sessions${filterHint}</b>\n\n${body}${footer}`,
-    });
-  }
-
-  if (channelType === 'discord') {
-    return withChatId(chatId, {
-      embed: {
-        title: `📋 Sessions${filterHint}`,
-        color: COLORS.blue,
-        description: body + footer,
-      },
     });
   }
 
@@ -126,35 +86,6 @@ export function presentHelp(chatId: string, channelType: ChannelType): OutboundM
         '',
         '<i>💬 Reply <b>allow</b>/<b>deny</b> to approve permissions</i>',
       ].join('\n'),
-    });
-  }
-
-  if (channelType === 'discord') {
-    return withChatId(chatId, {
-      embed: {
-        title: '❓ TLive Commands',
-        color: COLORS.indigo,
-        description: [
-          '`/new` — New conversation',
-          '`/sessions` — List sessions in current directory',
-          '`/sessions --all` — List all sessions',
-          '`/session <n>` — Switch to session #n',
-          '`/cd <path>` — Change directory',
-          '`/pwd` — Show current directory',
-          '`/verbose 0|1` — Detail level',
-          '> 0 = quiet · 1 = terminal card',
-          '`/perm on|off` — Tool permission prompts',
-          '`/model <name>` — Switch model',
-          '`/settings user|full|isolated` — Claude settings scope',
-          '`/hooks pause|resume` — Toggle IM approval',
-          '`/status` — Bridge status',
-          '`/approve <code>` — Approve pairing request',
-          '`/pairings` — List pending pairings',
-          '`/help` — This message',
-          '',
-          '*💬 Reply `allow`/`deny` to approve permissions*',
-        ].join('\n'),
-      },
     });
   }
 
@@ -287,23 +218,11 @@ export function presentVerbose(chatId: string, channelType: ChannelType, level: 
     : '执行中会持续展示状态卡和进度摘要';
   const text = `Verbose: ${labels[level]}\n${detail}`;
 
-  if (channelType === 'discord') {
-    return withChatId(chatId, {
-      embed: { description: text, color: COLORS.blue },
-    });
-  }
-
   return withChatId(chatId, { text });
 }
 
 export function presentVerboseUsage(chatId: string, channelType: ChannelType): OutboundMessage {
   const text = 'Usage: `/verbose 0|1`\n0=quiet，只在关键节点发消息\n1=terminal card，显示执行中状态卡';
-
-  if (channelType === 'discord') {
-    return withChatId(chatId, {
-      embed: { description: text, color: COLORS.gray },
-    });
-  }
 
   return withChatId(chatId, { text });
 }
@@ -313,23 +232,11 @@ export function presentPermissionModeChanged(chatId: string, channelType: Channe
     ? '🔐 Permission prompts: ON — dangerous tools will ask for confirmation'
     : '⚡ Permission prompts: OFF — all tools auto-allowed';
 
-  if (channelType === 'discord') {
-    return withChatId(chatId, {
-      embed: { description: text, color: mode === 'on' ? 0xFFA500 : COLORS.green },
-    });
-  }
-
   return withChatId(chatId, { text });
 }
 
 export function presentPermissionModeStatus(chatId: string, channelType: ChannelType, current: string): OutboundMessage {
   const text = `🔐 Permission mode: **${current}**\nUsage: \`/perm on|off\`\non = prompt for dangerous tools (default)\noff = auto-allow all`;
-
-  if (channelType === 'discord') {
-    return withChatId(chatId, {
-      embed: { description: text, color: COLORS.gray },
-    });
-  }
 
   return withChatId(chatId, { text });
 }
@@ -505,24 +412,6 @@ export function presentVersionCheck(
         : [
             { label: '🔄 再次检查', callbackData: 'cmd:upgrade', style: 'default' as const },
           ],
-    });
-  }
-
-  if (channelType === 'discord') {
-    return withChatId(chatId, {
-      embed: {
-        title: '🔄 Version Check',
-        color: info.hasUpdate ? COLORS.green : COLORS.blue,
-        description: info.hasUpdate
-          ? `**New version available!**\nCurrent: v${info.current}\nLatest: v${info.latest}${dateStr ? `\nReleased: ${dateStr}` : ''}`
-          : `**Up to date**\nCurrent version: v${info.current}`,
-      },
-      buttons: info.hasUpdate
-        ? [
-            { label: '⬆️ Upgrade Now', callbackData: `cmd:upgrade confirm:${info.latest}`, style: 'primary' as const, row: 0 },
-            { label: '⏭️ Skip Version', callbackData: `cmd:upgrade skip:${info.latest}`, style: 'default' as const, row: 0 },
-          ]
-        : undefined,
     });
   }
 

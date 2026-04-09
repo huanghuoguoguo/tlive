@@ -7,7 +7,7 @@
 ## 前置条件
 
 - **Node.js 20+** 和 npm
-- 以下 IM 平台至少其一：**飞书**、**Telegram** 或 **Discord**（IM Bridge 和 Hook 审批功能需要）
+- 以下 IM 平台至少其一：**飞书**、**Telegram**（IM Bridge 和 Hook 审批功能需要）
 - 已安装 **Claude Code**（IM Bridge 和 Hook 审批功能需要）
 - **Web Terminal（网页终端）** 功能可独立使用，不需要 IM 平台
 
@@ -35,13 +35,11 @@ tlive --help
 |------|-----------|---------|
 | **飞书** | 默认推荐 | 中文个人用户最顺手；使用长连接，不需要公网 IP 或自建 webhook |
 | **Telegram** | 备选 | 你已经长期使用 Telegram，希望最快创建机器人 |
-| **Discord** | 备选 | 团队已经在用 Discord，且你有服务器管理权限 |
 
 各平台详细配置指南：
 
 - [飞书配置](setup-feishu-cn.md)
 - [Telegram 配置](setup-telegram-cn.md)
-- [Discord 配置](setup-discord-cn.md)
 
 ## 配置
 

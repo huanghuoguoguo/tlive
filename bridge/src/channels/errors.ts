@@ -55,12 +55,6 @@ export function classifyError(channel: ChannelType | string, err: unknown): Brid
     if (status >= 500) return new PlatformError(message, status);
   }
 
-  if (channel === 'discord') {
-    if (e?.code === 50035) return new FormatError(message);
-    if (e?.code === 50001 || e?.code === 50013) return new AuthError(message);
-    if (e?.retry_after) return new RateLimitError(message, e.retry_after * 1000);
-  }
-
   if (channel === 'feishu') {
     const code = e?.code;
     if (code === 99991400) return new RateLimitError(message);

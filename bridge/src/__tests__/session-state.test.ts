@@ -11,7 +11,7 @@ describe('SessionStateManager', () => {
   describe('stateKey', () => {
     it('combines channelType and chatId', () => {
       expect(state.stateKey('telegram', '123')).toBe('telegram:123');
-      expect(state.stateKey('discord', 'abc')).toBe('discord:abc');
+      expect(state.stateKey('feishu', 'abc')).toBe('feishu:abc');
     });
   });
 
@@ -35,12 +35,12 @@ describe('SessionStateManager', () => {
 
   describe('permMode', () => {
     it('defaults to on', () => {
-      expect(state.getPermMode('discord', '1')).toBe('on');
+      expect(state.getPermMode('feishu', '1')).toBe('on');
     });
 
     it('set and get', () => {
-      state.setPermMode('discord', '1', 'off');
-      expect(state.getPermMode('discord', '1')).toBe('off');
+      state.setPermMode('feishu', '1', 'off');
+      expect(state.getPermMode('feishu', '1')).toBe('off');
     });
   });
 
@@ -70,18 +70,18 @@ describe('SessionStateManager', () => {
 
   describe('threads', () => {
     it('defaults to undefined', () => {
-      expect(state.getThread('discord', '1')).toBeUndefined();
+      expect(state.getThread('telegram', '1')).toBeUndefined();
     });
 
     it('set and get', () => {
-      state.setThread('discord', '1', 'thread-abc');
-      expect(state.getThread('discord', '1')).toBe('thread-abc');
+      state.setThread('telegram', '1', 'thread-abc');
+      expect(state.getThread('telegram', '1')).toBe('thread-abc');
     });
 
     it('clear removes the thread', () => {
-      state.setThread('discord', '1', 'thread-abc');
-      state.clearThread('discord', '1');
-      expect(state.getThread('discord', '1')).toBeUndefined();
+      state.setThread('telegram', '1', 'thread-abc');
+      state.clearThread('telegram', '1');
+      expect(state.getThread('telegram', '1')).toBeUndefined();
     });
   });
 

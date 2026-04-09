@@ -388,47 +388,48 @@ describe('BridgeManager', () => {
     expect(result).toBe(true);
   });
 
-  it('Discord /status renders as embed', async () => {
-    const adapter = mockAdapter('discord');
+  it('Feishu /status renders with header', async () => {
+    const adapter = mockAdapter('feishu');
     manager.registerAdapter(adapter);
 
     await manager.handleInboundMessage(adapter, {
-      channelType: 'discord', chatId: 'c1', userId: 'u1', text: '/status', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/status', messageId: 'm1',
     });
 
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        embed: expect.objectContaining({ title: expect.stringContaining('TLive Status') }),
+        feishuHeader: expect.objectContaining({ title: expect.stringContaining('TLive Status') }),
       })
     );
   });
 
-  it('Discord /help renders as embed', async () => {
-    const adapter = mockAdapter('discord');
+  it('Feishu /help renders with buttons', async () => {
+    const adapter = mockAdapter('feishu');
     manager.registerAdapter(adapter);
 
     await manager.handleInboundMessage(adapter, {
-      channelType: 'discord', chatId: 'c1', userId: 'u1', text: '/help', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/help', messageId: 'm1',
     });
 
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        embed: expect.objectContaining({ title: expect.stringContaining('TLive Commands') }),
+        feishuHeader: expect.objectContaining({ title: expect.stringContaining('常用帮助') }),
+        buttons: expect.any(Array),
       })
     );
   });
 
-  it('Discord /new renders as embed', async () => {
-    const adapter = mockAdapter('discord');
+  it('Feishu /new renders with header', async () => {
+    const adapter = mockAdapter('feishu');
     manager.registerAdapter(adapter);
 
     await manager.handleInboundMessage(adapter, {
-      channelType: 'discord', chatId: 'c1', userId: 'u1', text: '/new', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/new', messageId: 'm1',
     });
 
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        embed: expect.objectContaining({ title: expect.stringContaining('New Session') }),
+        feishuHeader: expect.objectContaining({ title: expect.stringContaining('New Session') }),
       })
     );
   });

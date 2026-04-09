@@ -177,9 +177,6 @@ export class BridgeManager {
     if (channelType === 'telegram') {
       return this.config.telegram.chatId;
     }
-    if (channelType === 'discord') {
-      return this.config.discord.allowedChannels[0] || '';
-    }
     if (channelType === 'feishu') {
       const userId = this.config.feishu.allowedUsers[0];
       return userId || this.getLastChatId(channelType);

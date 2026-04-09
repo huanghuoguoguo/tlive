@@ -10,7 +10,7 @@ function tempChatIdFile(): string {
   return join(tmpdir(), `tlive-ingress-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`);
 }
 
-function createAdapter(channelType: 'telegram' | 'discord' | 'feishu' | 'qqbot' = 'telegram') {
+function createAdapter(channelType: 'telegram' | 'feishu' | 'qqbot' = 'telegram') {
   const queue: Array<InboundMessage> = [];
   return {
     adapter: {

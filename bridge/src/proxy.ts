@@ -33,7 +33,7 @@ export function createNodeAgent(proxyUrl: string): Agent | undefined {
 }
 
 /**
- * Create an undici Dispatcher-compatible proxy agent (for discord.js).
+ * Create an undici Dispatcher-compatible proxy agent.
  * Supports: http, https only. SOCKS is not supported by undici.
  */
 export function createUndiciAgent(proxyUrl: string): Dispatcher | undefined {
@@ -41,7 +41,7 @@ export function createUndiciAgent(proxyUrl: string): Dispatcher | undefined {
   const protocol = getProtocol(proxyUrl);
 
   if (isSocks(protocol)) {
-    console.warn(`[proxy] SOCKS proxy is not supported for Discord. Use http:// or https:// proxy instead.`);
+    console.warn(`[proxy] SOCKS proxy is not supported for undici-based clients. Use http:// or https:// proxy instead.`);
     return undefined;
   }
   if (protocol === 'http' || protocol === 'https') {

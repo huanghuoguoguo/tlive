@@ -39,7 +39,7 @@ describe('createNodeAgent (for grammy / node-fetch)', () => {
   });
 });
 
-describe('createUndiciAgent (for discord.js)', () => {
+describe('createUndiciAgent (for undici-based clients)', () => {
   it('returns undefined for empty string', () => {
     expect(createUndiciAgent('')).toBeUndefined();
   });

@@ -7,18 +7,11 @@ import { truncate } from '../utils/string.js';
 interface NotificationMessage {
   text?: string;
   html?: string;
-  embed?: OutboundMessage['embed'];
   buttons?: OutboundMessage['buttons'];
   feishuHeader?: { template: string; title: string };
   /** Feishu Card 2.0: structured elements for richer layout */
   feishuElements?: Array<Record<string, unknown>>;
 }
-
-const COLOR_MAP: Record<NotificationData['type'], number> = {
-  stop: 0x00CC66,       // green
-  idle_prompt: 0x3399FF, // blue
-  generic: 0x888888,     // gray
-};
 
 const HEADER_MAP: Record<NotificationData['type'], string> = {
   stop: 'green',
@@ -54,26 +47,6 @@ export function formatNotification(data: NotificationData, channelType: ChannelT
       }
       result.html = markdownToTelegram(mdParts.join('\n'));
       return result;
-    }
-
-    case 'discord': {
-      const fields: Array<{ name: string; value: string; inline?: boolean }> = [];
-      if (data.terminalUrl) {
-        fields.push({ name: '🔗 Terminal', value: `[Open Terminal](${data.terminalUrl})`, inline: true });
-      }
-      return {
-        embed: {
-          title: `${emoji} ${data.title}`,
-          color: COLOR_MAP[data.type],
-          description: summary
-            ? (summary.length > 500
-              ? `\`\`\`\n${summary.slice(0, 497)}...\n\`\`\``
-              : `\`\`\`\n${summary}\n\`\`\``)
-            : undefined,
-          fields: fields.length > 0 ? fields : undefined,
-          footer: new Date().toLocaleString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        },
-      };
     }
 
     case 'feishu': {

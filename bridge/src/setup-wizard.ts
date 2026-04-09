@@ -82,13 +82,6 @@ function printNextSteps(platforms: string[]): void {
     console.log('  3. Send a real task and confirm the reply reaches Telegram');
   }
 
-  if (platforms.includes('discord')) {
-    console.log('\nDiscord first-run checklist:');
-    console.log('  1. Invite the bot to your target server/channel');
-    console.log('  2. Run /tlive or tlive start');
-    console.log('  3. Send a real task and confirm the reply reaches Discord');
-  }
-
   if (platforms.includes('qqbot')) {
     console.log('\nQQ Bot first-run checklist:');
     console.log('  1. Confirm the bot is available in your target chat');
@@ -137,7 +130,6 @@ export async function runSetupWizard(): Promise<void> {
     [
       { label: 'Feishu (recommended for personal users)', value: 'feishu' },
       { label: 'Telegram', value: 'telegram' },
-      { label: 'Discord', value: 'discord' },
       { label: 'QQBot', value: 'qqbot' },
     ],
     currentChannels,
@@ -151,13 +143,6 @@ export async function runSetupWizard(): Promise<void> {
     config.TL_TG_BOT_TOKEN = await ask('Bot Token (from @BotFather)', cur.includes('****') ? config.TL_TG_BOT_TOKEN : '');
     config.TL_TG_CHAT_ID = await ask('Chat ID (blank = any)', config.TL_TG_CHAT_ID || '');
     config.TL_TG_ALLOWED_USERS = await ask('Allowed user IDs (comma-separated, blank = all)', config.TL_TG_ALLOWED_USERS || '');
-  }
-
-  if (platforms.includes('discord')) {
-    console.log('\n--- Discord ---');
-    config.TL_DC_BOT_TOKEN = await ask('Bot Token', config.TL_DC_BOT_TOKEN || '');
-    config.TL_DC_ALLOWED_USERS = await ask('Allowed user IDs (blank = all)', config.TL_DC_ALLOWED_USERS || '');
-    config.TL_DC_ALLOWED_CHANNELS = await ask('Allowed channel IDs (blank = all)', config.TL_DC_ALLOWED_CHANNELS || '');
   }
 
   if (platforms.includes('feishu')) {

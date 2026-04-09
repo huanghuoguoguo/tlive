@@ -1,4 +1,4 @@
-export type ChannelType = 'telegram' | 'discord' | 'feishu' | 'qqbot';
+export type ChannelType = 'telegram' | 'feishu' | 'qqbot';
 
 export interface InboundMessage {
   channelType: ChannelType;
@@ -9,8 +9,6 @@ export interface InboundMessage {
   callbackData?: string;
   messageId: string;
   replyToMessageId?: string;
-  /** Telegram topic thread ID / Discord thread ID */
-  threadId?: string;
 }
 
 export interface FileAttachment {
@@ -28,18 +26,8 @@ export interface OutboundMessage {
   html?: string;
   buttons?: Button[];
   replyToMessageId?: string;
-  /** Telegram topic thread ID / Discord thread ID */
-  threadId?: string;
   /** Feishu: override receive_id_type (default 'chat_id', can be 'open_id' for P2P) */
   receiveIdType?: string;
-  /** Discord embed for rich formatting */
-  embed?: {
-    title?: string;
-    description?: string;
-    color?: number;
-    fields?: Array<{ name: string; value: string; inline?: boolean }>;
-    footer?: string;
-  };
   /** Feishu card header (template color + title) */
   feishuHeader?: {
     template: string;

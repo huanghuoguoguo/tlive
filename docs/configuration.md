@@ -12,7 +12,7 @@ TL_PORT=8080
 TL_TOKEN=auto-generated
 
 # Enabled IM platforms
-TL_ENABLED_CHANNELS=telegram,discord
+TL_ENABLED_CHANNELS=telegram,feishu
 ```
 
 ## Telegram
@@ -32,20 +32,6 @@ TL_TG_ALLOWED_USERS=123456789,987654321
 ```
 
 See [Telegram Setup Guide](setup-telegram.md)
-
-## Discord
-
-```env
-TL_DC_BOT_TOKEN=your-bot-token
-
-# Allowed channels
-TL_DC_ALLOWED_CHANNELS=123456789,987654321
-
-# Allowed users whitelist
-TL_DC_ALLOWED_USERS=111222333
-```
-
-See [Discord Setup Guide](setup-discord.md)
 
 ## Feishu
 
@@ -72,7 +58,7 @@ TL_DEFAULT_WORKDIR=/home/user/projects
 ## Proxy
 
 ```env
-# HTTP proxy (for regions where Telegram/Discord is blocked)
+# HTTP proxy (for regions where Telegram is blocked)
 TL_PROXY=http://127.0.0.1:7890
 ```
 

@@ -3,8 +3,8 @@ import { createAdapter, getRegisteredTypes } from '../channels/index.js';
 
 // Import adapters to trigger self-registration
 import '../channels/telegram.js';
-import '../channels/discord.js';
 import '../channels/feishu.js';
+import '../channels/qqbot.js';
 
 describe('Channel Adapter Registry', () => {
   beforeEach(() => {
@@ -13,8 +13,8 @@ describe('Channel Adapter Registry', () => {
   it('has all three adapters registered', () => {
     const types = getRegisteredTypes();
     expect(types).toContain('telegram');
-    expect(types).toContain('discord');
     expect(types).toContain('feishu');
+    expect(types).toContain('qqbot');
   });
 
   it('creates telegram adapter', () => {

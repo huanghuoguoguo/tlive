@@ -53,8 +53,8 @@ if [ -f "$TERMLIVE_HOME/config.env" ]; then
   source "$TERMLIVE_HOME/config.env" 2>/dev/null
   [ -n "${TL_TOKEN:-}" ] && echo "  TL_TOKEN: set" || echo "  TL_TOKEN: NOT SET"
   [ -n "${TL_TG_BOT_TOKEN:-}" ] && echo "  Telegram: configured" || echo "  Telegram: not configured"
-  [ -n "${TL_DC_BOT_TOKEN:-}" ] && echo "  Discord:  configured" || echo "  Discord:  not configured"
   [ -n "${TL_FS_APP_ID:-}" ] && echo "  Feishu:   configured" || echo "  Feishu:   not configured"
+  [ -n "${TL_QQ_APP_ID:-}" ] && echo "  QQ Bot:   configured" || echo "  QQ Bot:   not configured"
 else
   echo "  config.env: NOT FOUND (run 'tlive setup')"
 fi
