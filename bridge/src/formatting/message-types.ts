@@ -100,6 +100,38 @@ export interface ProgressData {
   footerLine?: string;
   totalTools: number;
   toolSummary?: string;
+  /** Optional action buttons (passed from engine layer) */
+  actionButtons?: Button[];
+}
+
+/** Card resolution state update (after button click) */
+export interface CardResolutionData {
+  resolution: 'approved' | 'denied' | 'skipped' | 'answered' | 'selected';
+  /** Display label (e.g., "✅ Selected: Option A") */
+  label: string;
+  /** Optional context suffix (e.g., " Terminal" for AskUserQuestion) */
+  contextSuffix?: string;
+  /** Updated card text (for permission cards with original text) */
+  originalText?: string;
+  /** Buttons to show on resolved card (usually empty) */
+  buttons?: Button[];
+}
+
+/** Version update notification */
+export interface VersionUpdateData {
+  current: string;
+  latest: string;
+  publishedAt?: string;
+}
+
+/** Multi-select toggle card (for AskUserQuestion) */
+export interface MultiSelectToggleData {
+  question: string;
+  header?: string;
+  options: Array<{ label: string; description?: string }>;
+  selectedIndices: Set<number>;
+  permId: string;
+  sessionId: string;
 }
 
 /** Union type of all formattable messages */
@@ -114,7 +146,10 @@ export type FormattableMessage =
   | { type: 'help'; chatId: string; data: HelpData }
   | { type: 'newSession'; chatId: string; data: NewSessionData }
   | { type: 'error'; chatId: string; data: ErrorData }
-  | { type: 'progress'; chatId: string; data: ProgressData };
+  | { type: 'progress'; chatId: string; data: ProgressData }
+  | { type: 'cardResolution'; chatId: string; data: CardResolutionData }
+  | { type: 'versionUpdate'; chatId: string; data: VersionUpdateData }
+  | { type: 'multiSelectToggle'; chatId: string; data: MultiSelectToggleData };
 
 /** Helper to build buttons consistently */
 export function buildButtons(items: Array<{ label: string; callbackData: string; style?: 'primary' | 'danger' | 'default'; url?: string; row?: number }>): Button[] {

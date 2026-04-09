@@ -10,7 +10,6 @@ import type {
   SessionDetailData,
   HelpData,
   NewSessionData,
-  NotificationData,
   FormattableMessage,
 } from '../formatting/message-types.js';
 

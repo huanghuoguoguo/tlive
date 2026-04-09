@@ -1,6 +1,6 @@
 import type { ChannelType, InboundMessage, OutboundMessage, SendResult } from './types.js';
 import type { FormattableMessage } from '../formatting/message-types.js';
-import { MessageFormatter } from '../formatting/message-formatter.js';
+import type { MessageFormatter } from '../formatting/message-formatter.js';
 
 export abstract class BaseChannelAdapter {
   abstract readonly channelType: ChannelType;
@@ -32,38 +32,23 @@ export abstract class BaseChannelAdapter {
     this.formatter = formatter;
   }
 
+  /** Get the locale for this adapter */
+  getLocale(): 'en' | 'zh' {
+    return (this.formatter as any).locale ?? 'en';
+  }
+
+  /** Check if this platform supports rich card display (buttons, headers, etc.) */
+  supportsRichCards(): boolean {
+    // Access protected method via type assertion
+    return (this.formatter as any).supportsButtons();
+  }
+
   /**
    * Format a semantic message for this platform.
    * Uses the platform-specific formatter to render the message.
    */
   format(msg: FormattableMessage): OutboundMessage {
-    const { type, chatId, data } = msg as any;
-    switch (type) {
-      case 'status':
-        return this.formatter.formatStatus(chatId, data);
-      case 'permission':
-        return this.formatter.formatPermission(chatId, data);
-      case 'question':
-        return this.formatter.formatQuestion(chatId, data);
-      case 'notification':
-        return this.formatter.formatNotification(chatId, data);
-      case 'home':
-        return this.formatter.formatHome(chatId, data);
-      case 'sessions':
-        return this.formatter.formatSessions(chatId, data);
-      case 'sessionDetail':
-        return this.formatter.formatSessionDetail(chatId, data);
-      case 'help':
-        return this.formatter.formatHelp(chatId, data);
-      case 'newSession':
-        return this.formatter.formatNewSession(chatId, data);
-      case 'error':
-        return this.formatter.formatError(chatId, data);
-      case 'progress':
-        return this.formatter.formatProgress(chatId, data);
-      default:
-        throw new Error(`Unknown message type: ${type}`);
-    }
+    return this.formatter.format(msg);
   }
 
   /**

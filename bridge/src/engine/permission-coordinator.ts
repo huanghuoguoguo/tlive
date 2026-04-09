@@ -1,5 +1,6 @@
 import type { PendingPermissions } from '../permissions/gateway.js';
 import type { PermissionBroker } from '../permissions/broker.js';
+import type { BaseChannelAdapter } from '../channels/base.js';
 import { truncate } from '../utils/string.js';
 
 /**
@@ -145,42 +146,6 @@ export class PermissionCoordinator {
     return this.hookQuestionData.get(hookId);
   }
 
-  /** Build multi-select toggle card content for AskUserQuestion.
-   *  Used both for initial render and toggle re-renders. */
-  buildMultiSelectCard(
-    hookId: string,
-    sessionId: string,
-    selected: Set<number>,
-    channelType: string,
-  ): { text: string; html?: string; buttons: Array<{ label: string; callbackData: string; style: 'primary' | 'danger'; row?: number }>; hint: string } | null {
-    const qData = this.hookQuestionData.get(hookId);
-    if (!qData) return null;
-    const q = qData.questions[0];
-    const header = q.header ? `📋 **${q.header}**\n\n` : '';
-    const optionsList = q.options
-      .map((opt, i) => `${selected.has(i) ? '☑' : '☐'} ${i + 1}. **${opt.label}**${opt.description ? ` — ${opt.description}` : ''}`)
-      .join('\n');
-    const text = `${header}${q.question}\n\n${optionsList}`;
-    const isSdkMode = sessionId === 'sdk';
-    const buttons: Array<{ label: string; callbackData: string; style: 'primary' | 'danger'; row?: number }> = q.options.map((opt, idx) => ({
-      label: `${selected.has(idx) ? '☑' : '☐'} ${opt.label}`,
-      callbackData: `askq_toggle:${hookId}:${idx}:${sessionId}`,
-      style: 'primary' as const,
-      row: idx,
-    }));
-    buttons.push(
-      { label: '✅ Submit', callbackData: isSdkMode ? `askq_submit_sdk:${hookId}` : `askq_submit:${hookId}:${sessionId}`, style: 'primary', row: q.options.length },
-      { label: '❌ Skip', callbackData: isSdkMode ? `perm:allow:${hookId}:askq_skip` : `askq_skip:${hookId}:${sessionId}`, style: 'danger', row: q.options.length },
-    );
-    const hint = channelType === 'feishu'
-      ? '\n\n💬 点击选项切换，然后按 Submit 确认'
-      : '\n\n💬 Tap options to toggle, then Submit';
-    const html = channelType === 'telegram'
-      ? text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') + hint
-      : undefined;
-    return { text: text + hint, html, buttons, hint };
-  }
-
   /** Store original permission card text for later card update */
   storeHookPermissionText(hookId: string, text: string): void {
     this.hookPermissionTexts.set(hookId, { text, ts: Date.now() });
@@ -246,7 +211,7 @@ export class PermissionCoordinator {
   }
 
   /** Resolve a hook permission (simplified - Go Core removed) */
-  async resolveHookPermission(permissionId: string, decision: string, channelType: string): Promise<void> {
+  async resolveHookPermission(permissionId: string, _decision: string, _channelType: string): Promise<void> {
     // Deduplicate: skip if already resolved (race between button and text)
     if (this.resolvedHookIds.has(permissionId)) return;
     this.resolvedHookIds.set(permissionId, Date.now());
@@ -267,13 +232,14 @@ export class PermissionCoordinator {
     decision: string,
     sessionId: string,
     messageId: string,
-    adapter: { editMessage: (chatId: string, messageId: string, msg: any) => Promise<any>; send: (msg: any) => Promise<any> },
+    adapter: BaseChannelAdapter,
     chatId: string,
   ): Promise<boolean> {
     // Deduplicate: skip if already resolved
     if (this.resolvedHookIds.has(hookId)) return true;
     this.resolvedHookIds.set(hookId, Date.now());
 
+    const resolution = decision === 'deny' ? 'denied' : 'approved';
     const labels: Record<string, string> = {
       allow: '✅ Allowed',
       allow_always: '📌 Always Allowed',
@@ -284,27 +250,28 @@ export class PermissionCoordinator {
     // AskUserQuestion cards use hookQuestionData, not hookPermissionTexts
     if (this.hookQuestionData.has(hookId)) {
       this.hookQuestionData.delete(hookId);
-      await adapter.editMessage(chatId, messageId, {
+      const outMsg = adapter.format({
+        type: 'cardResolution',
         chatId,
-        text: decision === 'deny' ? '❌ Skipped' : label,
-        buttons: [], // clear buttons
-        feishuHeader: {
-          template: decision === 'deny' ? 'red' : 'green',
-          title: decision === 'deny' ? '❌ Skipped' : label,
+        data: {
+          resolution: decision === 'deny' ? 'denied' : 'approved',
+          label: decision === 'deny' ? '❌ Skipped' : label,
         },
       });
+      await adapter.editMessage(chatId, messageId, outMsg);
     } else {
       const originalText = this.hookPermissionTexts.get(hookId)?.text || '';
       this.hookPermissionTexts.delete(hookId);
-      await adapter.editMessage(chatId, messageId, {
+      const outMsg = adapter.format({
+        type: 'cardResolution',
         chatId,
-        text: originalText + `\n\n${label}`,
-        buttons: [], // clear buttons
-        feishuHeader: {
-          template: decision === 'deny' ? 'red' : 'green',
-          title: label,
+        data: {
+          resolution,
+          label,
+          originalText,
         },
       });
+      await adapter.editMessage(chatId, messageId, outMsg);
     }
     // Track confirmation message for reply routing
     if (sessionId) {
@@ -319,7 +286,7 @@ export class PermissionCoordinator {
     optionIndex: number,
     sessionId: string,
     messageId: string,
-    adapter: { editMessage: (chatId: string, messageId: string, msg: any) => Promise<any>; send: (msg: any) => Promise<any> },
+    adapter: BaseChannelAdapter,
     chatId: string,
   ): Promise<boolean> {
     if (this.resolvedHookIds.has(hookId)) return true;
@@ -341,15 +308,16 @@ export class PermissionCoordinator {
 
     const ctx = questionData.contextSuffix || '';
     this.hookQuestionData.delete(hookId);
-    await adapter.editMessage(chatId, messageId, {
+    const outMsg = adapter.format({
+      type: 'cardResolution',
       chatId,
-      text: `✅ Selected: ${selected.label}`,
-      buttons: [],
-      feishuHeader: {
-        template: 'green',
-        title: `✅ Terminal${ctx}`,
+      data: {
+        resolution: 'selected',
+        label: `✅ Selected: ${selected.label}`,
+        contextSuffix: ctx ? ` Terminal${ctx}` : undefined,
       },
     });
+    await adapter.editMessage(chatId, messageId, outMsg);
     if (sessionId) {
       this.trackHookMessage(messageId, sessionId);
     }
@@ -389,7 +357,7 @@ export class PermissionCoordinator {
     hookId: string,
     sessionId: string,
     messageId: string,
-    adapter: { editMessage: (chatId: string, messageId: string, msg: any) => Promise<any>; send: (msg: any) => Promise<any> },
+    adapter: BaseChannelAdapter,
     chatId: string,
   ): Promise<boolean> {
     if (this.resolvedHookIds.has(hookId)) return true;
@@ -413,12 +381,16 @@ export class PermissionCoordinator {
     const ctx = questionData.contextSuffix || '';
     this.hookQuestionData.delete(hookId);
     this.toggledSelections.delete(hookId);
-    await adapter.editMessage(chatId, messageId, {
+    const outMsg = adapter.format({
+      type: 'cardResolution',
       chatId,
-      text: `✅ Selected: ${selectedLabels.join(', ')}`,
-      buttons: [],
-      feishuHeader: { template: 'green', title: `✅ Terminal${ctx}` },
+      data: {
+        resolution: 'answered',
+        label: `✅ Selected: ${selectedLabels.join(', ')}`,
+        contextSuffix: ctx ? ` Terminal${ctx}` : undefined,
+      },
     });
+    await adapter.editMessage(chatId, messageId, outMsg);
     if (sessionId) {
       this.trackHookMessage(messageId, sessionId);
     }
@@ -431,7 +403,7 @@ export class PermissionCoordinator {
     hookId: string,
     sessionId: string,
     messageId: string,
-    adapter: { editMessage: (chatId: string, messageId: string, msg: any) => Promise<any>; send: (msg: any) => Promise<any> },
+    adapter: BaseChannelAdapter,
     chatId: string,
   ): Promise<boolean> {
     if (this.resolvedHookIds.has(hookId)) return true;
@@ -446,12 +418,16 @@ export class PermissionCoordinator {
 
     const ctx = questionData.contextSuffix || '';
     this.hookQuestionData.delete(hookId);
-    await adapter.editMessage(chatId, messageId, {
+    const outMsg = adapter.format({
+      type: 'cardResolution',
       chatId,
-      text: '⏭ Skipped',
-      buttons: [],
-      feishuHeader: { template: 'grey', title: `⏭ Terminal${ctx}` },
+      data: {
+        resolution: 'skipped',
+        label: '⏭ Skipped',
+        contextSuffix: ctx ? ` Terminal${ctx}` : undefined,
+      },
     });
+    await adapter.editMessage(chatId, messageId, outMsg);
     if (sessionId) {
       this.trackHookMessage(messageId, sessionId);
     }
@@ -464,7 +440,7 @@ export class PermissionCoordinator {
     text: string,
     sessionId: string,
     messageId: string,
-    adapter: { editMessage: (chatId: string, messageId: string, msg: any) => Promise<any>; send: (msg: any) => Promise<any> },
+    adapter: BaseChannelAdapter,
     chatId: string,
   ): Promise<boolean> {
     if (this.resolvedHookIds.has(hookId)) return true;
@@ -479,12 +455,16 @@ export class PermissionCoordinator {
 
     const ctx = questionData.contextSuffix || '';
     this.hookQuestionData.delete(hookId);
-    await adapter.editMessage(chatId, messageId, {
+    const outMsg = adapter.format({
+      type: 'cardResolution',
       chatId,
-      text: `✅ Answer: ${truncate(text, 50)}`,
-      buttons: [],
-      feishuHeader: { template: 'green', title: `✅ Terminal${ctx}` },
+      data: {
+        resolution: 'answered',
+        label: `✅ Answer: ${truncate(text, 50)}`,
+        contextSuffix: ctx ? ` Terminal${ctx}` : undefined,
+      },
     });
+    await adapter.editMessage(chatId, messageId, outMsg);
     if (sessionId) {
       this.trackHookMessage(messageId, sessionId);
     }

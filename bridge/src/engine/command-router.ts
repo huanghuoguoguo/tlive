@@ -120,11 +120,10 @@ export class CommandRouter {
         this.state.clearThread(msg.channelType, msg.chatId);
         this.permissions.clearSessionWhitelist();
 
-        const cwdLabel = binding?.cwd ? ` in ${shortPath(binding.cwd)}` : '';
         await send(adapter, presentNewSession(msg.chatId, { cwd: binding?.cwd }));
 
-        // Send home screen for Feishu
-        if (adapter.channelType === 'feishu') {
+        // Send home screen for platforms with rich card support
+        if (adapter.supportsRichCards()) {
           await send(adapter, presentHome(msg.chatId, {
             cwd: shortPath(binding?.cwd || this.defaultWorkdir),
             hasActiveTask: false,

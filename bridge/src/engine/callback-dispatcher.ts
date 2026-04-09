@@ -57,23 +57,23 @@ export async function handleCallbackMessage(
     );
     if (selected === null) return true;
 
-    const card = deps.permissions.buildMultiSelectCard(
-      askqToggleParsed.hookId,
-      askqToggleParsed.sessionId,
-      selected,
-      adapter.channelType,
-    );
-    if (card) {
-      await adapter.editMessage(msg.chatId, msg.messageId, {
+    // Get question data for semantic formatting
+    const qData = deps.permissions.getQuestionData(askqToggleParsed.hookId);
+    if (qData) {
+      const q = qData.questions[0];
+      const outMsg = adapter.format({
+        type: 'multiSelectToggle',
         chatId: msg.chatId,
-        text: card.text,
-        html: card.html,
-        buttons: card.buttons,
-        feishuHeader:
-          adapter.channelType === 'feishu'
-            ? { template: 'blue', title: '❓ Terminal' }
-            : undefined,
+        data: {
+          question: q.question,
+          header: q.header,
+          options: q.options,
+          selectedIndices: selected,
+          permId: askqToggleParsed.hookId,
+          sessionId: askqToggleParsed.sessionId,
+        },
       });
+      await adapter.editMessage(msg.chatId, msg.messageId, outMsg);
     }
     return true;
   }
@@ -120,17 +120,15 @@ export async function handleCallbackMessage(
         .filter(Boolean);
       const answerText = selectedLabels.join(',');
       sdkQuestionTextAnswers.set(permId, answerText);
-      adapter
-        .editMessage(msg.chatId, msg.messageId, {
-          chatId: msg.chatId,
-          text: `✅ Selected: ${selectedLabels.join(', ')}`,
-          buttons: [],
-          feishuHeader:
-            msg.channelType === 'feishu'
-              ? { template: 'green', title: '✅ Answered' }
-              : undefined,
-        })
-        .catch(() => {});
+      const outMsg = adapter.format({
+        type: 'cardResolution',
+        chatId: msg.chatId,
+        data: {
+          resolution: 'answered',
+          label: `✅ Selected: ${selectedLabels.join(', ')}`,
+        },
+      });
+      adapter.editMessage(msg.chatId, msg.messageId, outMsg).catch(() => {});
     }
     deps.permissions.cleanupQuestion(permId);
     deps.permissions.getGateway().resolve(permId, 'allow');
@@ -203,14 +201,15 @@ export async function handleCallbackMessage(
 
       sdkQuestionAnswers.set(permId, optionIndex);
       deps.permissions.getGateway().resolve(permId, 'allow');
-      adapter
-        .editMessage(msg.chatId, msg.messageId, {
-          chatId: msg.chatId,
-          text: `✅ Selected: ${selected.label}`,
-          buttons: [],
-          feishuHeader: { template: 'green', title: `✅ ${selected.label}` },
-        })
-        .catch(() => {});
+      const outMsg = adapter.format({
+        type: 'cardResolution',
+        chatId: msg.chatId,
+        data: {
+          resolution: 'selected',
+          label: `✅ ${selected.label}`,
+        },
+      });
+      adapter.editMessage(msg.chatId, msg.messageId, outMsg).catch(() => {});
       return true;
     }
   }
@@ -221,14 +220,15 @@ export async function handleCallbackMessage(
     if (skipIdx >= 0) {
       const permId = parts.slice(2, skipIdx).join(':');
       deps.permissions.getGateway().resolve(permId, 'deny', 'Skipped');
-      adapter
-        .editMessage(msg.chatId, msg.messageId, {
-          chatId: msg.chatId,
-          text: '⏭ Skipped',
-          buttons: [],
-          feishuHeader: { template: 'grey', title: '⏭ Skipped' },
-        })
-        .catch(() => {});
+      const outMsg = adapter.format({
+        type: 'cardResolution',
+        chatId: msg.chatId,
+        data: {
+          resolution: 'skipped',
+          label: '⏭ Skipped',
+        },
+      });
+      adapter.editMessage(msg.chatId, msg.messageId, outMsg).catch(() => {});
       return true;
     }
   }

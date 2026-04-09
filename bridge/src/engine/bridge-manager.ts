@@ -1,5 +1,6 @@
 import type { BaseChannelAdapter } from '../channels/base.js';
-import type { InboundMessage } from '../channels/types.js';
+import type { InboundMessage, OutboundMessage } from '../channels/types.js';
+import type { FormattableMessage } from '../formatting/message-types.js';
 import { getBridgeContext } from '../context.js';
 import { ChannelRouter } from './router.js';
 import { PermissionBroker } from '../permissions/broker.js';
@@ -143,15 +144,33 @@ export class BridgeManager {
     return this.ingress.getLastChatId(channelType);
   }
 
-  /** Broadcast text message to all active IM channels */
-  async broadcastText(text: string): Promise<void> {
+  /** Broadcast a message to all active IM channels */
+  async broadcast(msg: Omit<OutboundMessage, 'chatId' | 'receiveIdType'>): Promise<void> {
     for (const adapter of this.getAdapters()) {
       const chatId = this.getBroadcastTarget(adapter.channelType);
       if (!chatId) continue;
       await adapter.send({
         chatId,
         receiveIdType: this.getBroadcastReceiveIdType(adapter.channelType),
-        text,
+        ...msg,
+      });
+    }
+  }
+
+  /** Convenience: broadcast a plain text message */
+  async broadcastText(text: string): Promise<void> {
+    return this.broadcast({ text });
+  }
+
+  /** Broadcast a semantic message to all active IM channels */
+  async broadcastFormatted(msg: Omit<FormattableMessage, 'chatId'>): Promise<void> {
+    for (const adapter of this.getAdapters()) {
+      const chatId = this.getBroadcastTarget(adapter.channelType);
+      if (!chatId) continue;
+      const outMsg = adapter.format({ ...msg, chatId } as FormattableMessage);
+      await adapter.send({
+        ...outMsg,
+        receiveIdType: this.getBroadcastReceiveIdType(adapter.channelType),
       });
     }
   }

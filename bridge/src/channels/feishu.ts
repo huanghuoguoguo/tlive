@@ -253,7 +253,12 @@ export class FeishuAdapter extends BaseChannelAdapter {
           callbackData: action,
           messageId,
         });
-        return {};
+        return {
+          toast: {
+            type: 'success',
+            content: '处理中...',
+          },
+        };
       },
     } as any);
 

@@ -306,7 +306,12 @@ describe('FeishuAdapter', () => {
         context: { chat_id: 'chat_1', open_message_id: 'om_123' },
       });
 
-      expect(result).toEqual({});
+      expect(result).toEqual({
+        toast: {
+          type: 'success',
+          content: '处理中...',
+        },
+      });
 
       const msg = await adapter.consumeOne();
       expect(msg).toMatchObject({

@@ -16,10 +16,12 @@ import type {
   NewSessionData,
   ErrorData,
   ProgressData,
+  CardResolutionData,
+  VersionUpdateData,
+  MultiSelectToggleData,
   FormattableMessage,
 } from './message-types.js';
 import { truncate } from '../utils/string.js';
-import { escapeHtml } from './escape.js';
 
 /** Language preference for messages */
 export type MessageLocale = 'en' | 'zh';
@@ -63,8 +65,14 @@ export abstract class MessageFormatter {
         return this.formatError(chatId, msg.data);
       case 'progress':
         return this.formatProgress(chatId, msg.data);
+      case 'cardResolution':
+        return this.formatCardResolution(chatId, msg.data);
+      case 'versionUpdate':
+        return this.formatVersionUpdate(chatId, msg.data);
+      case 'multiSelectToggle':
+        return this.formatMultiSelectToggle(chatId, msg.data);
       default:
-        throw new Error(`Unknown message type: ${type}`);
+        throw new Error(`Unknown message type: ${(msg as any).type}`);
     }
   }
 
@@ -231,6 +239,41 @@ export abstract class MessageFormatter {
       lines.push(``, `**Current:** ${data.currentTool.name}: ${truncate(data.currentTool.input, 100)}`);
     }
     return this.createMessage(chatId, lines.join('\n'));
+  }
+
+  formatCardResolution(chatId: string, data: CardResolutionData): OutboundMessage {
+    return this.createMessage(chatId, data.label, data.buttons);
+  }
+
+  formatVersionUpdate(chatId: string, data: VersionUpdateData): OutboundMessage {
+    const dateStr = data.publishedAt
+      ? new Date(data.publishedAt).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+      : '';
+    const text = this.locale === 'zh'
+      ? `🔄 **发现新版本**\nv${data.current} → v${data.latest}${dateStr ? `\n发布时间：${dateStr}` : ''}`
+      : `🔄 **Update Available**\nv${data.current} → v${data.latest}${dateStr ? `\nReleased: ${dateStr}` : ''}`;
+    return this.createMessage(chatId, text);
+  }
+
+  formatMultiSelectToggle(chatId: string, data: MultiSelectToggleData): OutboundMessage {
+    const headerLine = data.header ? `📋 **${data.header}**\n\n` : '';
+    const optionsList = data.options
+      .map((opt, i) => `${data.selectedIndices.has(i) ? '☑' : '☐'} ${i + 1}. **${opt.label}**${opt.description ? ` — ${opt.description}` : ''}`)
+      .join('\n');
+    const text = `${headerLine}${data.question}\n\n${optionsList}`;
+    const hint = this.locale === 'zh'
+      ? '\n\n💬 点击选项切换，然后按 Submit 确认'
+      : '\n\n💬 Tap options to toggle, then Submit';
+
+    const buttons = this.buildMultiSelectButtons(data.permId, data.sessionId, data.options);
+    // Update button labels to show selected state
+    buttons.forEach((btn, idx) => {
+      if (idx < data.options.length) {
+        btn.label = `${data.selectedIndices.has(idx) ? '☑' : '☐'} ${data.options[idx].label}`;
+      }
+    });
+
+    return this.createMessage(chatId, text + hint, buttons);
   }
 
   // --- Helper methods ---

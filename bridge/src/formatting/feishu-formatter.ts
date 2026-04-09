@@ -16,6 +16,9 @@ import type {
   ProgressData,
   PermissionData,
   QuestionData,
+  CardResolutionData,
+  VersionUpdateData,
+  MultiSelectToggleData,
 } from './message-types.js';
 import { truncate } from '../utils/string.js';
 import { buildFeishuButtonElements } from './feishu-card.js';
@@ -111,13 +114,11 @@ export class FeishuFormatter extends MessageFormatter {
   }
 
   override formatQuestion(chatId: string, data: QuestionData): OutboundMessage {
-    const { question, header, options, multiSelect, permId, sessionId } = data;
+    const { question, options, multiSelect, permId, sessionId } = data;
 
-    const headerLine = header ? `📋 **${header}**\n\n` : '';
     const optionsList = options
       .map((opt, i) => `${i + 1}. **${opt.label}**${opt.description ? ` — ${opt.description}` : ''}`)
       .join('\n');
-    const content = `${headerLine}${question}\n\n${optionsList}`;
 
     const buttons: Button[] = multiSelect
       ? this.buildMultiSelectButtons(permId, sessionId, options)
@@ -247,7 +248,6 @@ export class FeishuFormatter extends MessageFormatter {
     const buttons: Button[] = [
       { label: '🆕 新会话', callbackData: 'cmd:new', style: 'primary', row: 0 },
       { label: '📋 会话列表', callbackData: 'cmd:sessions', style: 'default', row: 0 },
-      { label: '📊 状态', callbackData: 'cmd:status', style: 'default', row: 1 },
     ];
 
     return this.createCardMessage(chatId,
@@ -317,6 +317,75 @@ export class FeishuFormatter extends MessageFormatter {
       });
     }
 
-    return this.createCardMessage(chatId, headerConfig, elements);
+    return this.createCardMessage(chatId, headerConfig, elements, data.actionButtons);
+  }
+
+  override formatCardResolution(chatId: string, data: CardResolutionData): OutboundMessage {
+    const templateMap: Record<string, string> = {
+      approved: 'green',
+      denied: 'red',
+      skipped: 'grey',
+      answered: 'green',
+      selected: 'green',
+    };
+    const template = templateMap[data.resolution] ?? 'grey';
+    const title = data.contextSuffix ? `${data.label}${data.contextSuffix}` : data.label;
+    const elements: FeishuElement[] = data.originalText
+      ? [this.md(`${data.originalText}\n\n${data.label}`)]
+      : [this.md(data.label)];
+    return this.createCardMessage(chatId, { template, title }, elements, data.buttons);
+  }
+
+  override formatVersionUpdate(chatId: string, data: VersionUpdateData): OutboundMessage {
+    const dateStr = data.publishedAt
+      ? new Date(data.publishedAt).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+      : '';
+    const elements: FeishuElement[] = [
+      this.md(`**当前版本**\nv${data.current}`),
+      this.md(`**最新版本**\nv${data.latest}`),
+    ];
+    if (dateStr) {
+      elements.push(this.md(`**发布时间**\n${dateStr}`));
+    }
+
+    const buttons: Button[] = [
+      { label: '⬆️ 立即升级', callbackData: `cmd:upgrade confirm:${data.latest}`, style: 'primary' },
+      { label: '⏭️ 不再提示', callbackData: `cmd:upgrade skip:${data.latest}`, style: 'default' },
+    ];
+
+    return this.createCardMessage(chatId,
+      { template: 'blue', title: '🔄 发现新版本' },
+      elements,
+      buttons
+    );
+  }
+
+  override formatMultiSelectToggle(chatId: string, data: MultiSelectToggleData): OutboundMessage {
+    const optionsList = data.options
+      .map((opt, i) => `${data.selectedIndices.has(i) ? '☑' : '☐'} ${i + 1}. **${opt.label}**${opt.description ? ` — ${opt.description}` : ''}`)
+      .join('\n');
+
+    const buttons: Button[] = data.options.map((opt, idx) => ({
+      label: `${data.selectedIndices.has(idx) ? '☑' : '☐'} ${opt.label}`,
+      callbackData: `askq_toggle:${data.permId}:${idx}:${data.sessionId}`,
+      style: 'primary' as const,
+      row: idx,
+    }));
+    buttons.push(
+      { label: '✅ Submit', callbackData: `askq_submit:${data.permId}:${data.sessionId}`, style: 'primary', row: data.options.length },
+      { label: '❌ Skip', callbackData: `askq_skip:${data.permId}:${data.sessionId}`, style: 'danger', row: data.options.length }
+    );
+
+    const elements: FeishuElement[] = [
+      this.md(`**问题**\n${data.question}`),
+      this.md(`**选项**\n${optionsList}`),
+      this.md('**说明**\n点击选项切换勾选，然后点 Submit；也可以直接回复文字。'),
+    ];
+
+    return this.createCardMessage(chatId,
+      { template: 'blue', title: '❓ 等待回答' },
+      elements,
+      buttons
+    );
   }
 }
