@@ -279,12 +279,9 @@ export class FeishuFormatter extends MessageFormatter {
 
     if (isDone) {
       // Completed/failed: show response text directly, minimal chrome
+      // Note: footerLine is already included in renderedText by MessageRenderer.renderDone()
       if (data.renderedText.trim()) {
         elements.push(this.md(downgradeHeadings(truncate(data.renderedText, 3000))));
-      }
-      // Footer line (model | cwd)
-      if (data.footerLine) {
-        elements.push(this.md(`<font color='grey'>${data.footerLine}</font>`));
       }
     } else {
       // In-progress: show status info

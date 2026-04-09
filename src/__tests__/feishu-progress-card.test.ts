@@ -34,9 +34,10 @@ describe('FeishuFormatter.formatProgress', () => {
 
   describe('completed phase — clean layout', () => {
     it('shows response text directly without task/phase/duration fields', () => {
+      // In real flow, MessageRenderer.renderDone() includes footerLine in renderedText
       const msg = formatter.formatProgress('chat1', createProgressData({
         phase: 'completed',
-        renderedText: 'Hello! How can I help?',
+        renderedText: 'Hello! How can I help?\n───────────────\n[claude-sonnet] │ ~/workspace',
         footerLine: '[claude-sonnet] │ ~/workspace',
       }));
 
@@ -46,7 +47,7 @@ describe('FeishuFormatter.formatProgress', () => {
 
       // Should contain the response text
       expect(allText).toContain('Hello! How can I help?');
-      // Should contain footer
+      // Should contain footer (now in renderedText, not added separately)
       expect(allText).toContain('~/workspace');
       // Should NOT contain verbose status fields
       expect(allText).not.toContain('**任务**');
