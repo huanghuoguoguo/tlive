@@ -53,14 +53,13 @@ curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.s
 - 确认已向 Bot 发送过消息
 - 确认 Chat ID 正确（私聊为用户 ID，群组为群 ID）
 
-**Discord:**
-- 确认 Bot 已加入服务器
-- 确认 Bot 有发送消息权限
-- 确认频道 ID 正确
-
 **飞书:**
 - 确认应用已发布
 - 确认有消息接收权限
+- 检查白名单配置
+
+**QQ Bot:**
+- 确认应用凭证正确
 - 检查白名单配置
 
 ### Hook 不生效

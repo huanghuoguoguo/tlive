@@ -3,20 +3,23 @@ import { presentHelp, presentHelpCli, presentNewSession, presentSessions, presen
 
 describe('command presenter', () => {
   it('renders /status for telegram as HTML', () => {
-    const msg = presentStatus('chat-1', 'telegram', '🟢 connected', 'telegram, discord');
+    const msg = presentStatus('chat-1', 'telegram', '🟢 connected', 'telegram, feishu');
     expect(msg.chatId).toBe('chat-1');
     expect(msg.html).toContain('TLive Status');
-    expect(msg.html).toContain('telegram, discord');
+    expect(msg.html).toContain('telegram, feishu');
   });
 
-  it('renders /new for discord as embed', () => {
-    const msg = presentNewSession('chat-1', 'discord', ' in ~/workspace');
-    expect(msg.embed).toEqual(
-      expect.objectContaining({
-        title: expect.stringContaining('New Session'),
-        description: expect.stringContaining('~/workspace'),
-      })
-    );
+  it('renders /status for feishu with header', () => {
+    const msg = presentStatus('chat-1', 'feishu', '🟢 connected', 'feishu');
+    expect(msg.chatId).toBe('chat-1');
+    expect(msg.feishuHeader).toEqual({ template: 'blue', title: '📡 TLive Status' });
+    expect(msg.text).toContain('🟢 running');
+  });
+
+  it('renders /new for feishu with header', () => {
+    const msg = presentNewSession('chat-1', 'feishu', ' in ~/workspace');
+    expect(msg.feishuHeader).toEqual({ template: 'green', title: '🆕 New Session' });
+    expect(msg.text).toContain('~/workspace');
   });
 
   it('renders /sessions for feishu with header', () => {

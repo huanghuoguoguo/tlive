@@ -16,8 +16,7 @@ describe('HookNotificationDispatcher', () => {
     } as any;
     const dispatcher = new HookNotificationDispatcher({
       permissions,
-      isCoreAvailable: () => true,
-      buildTerminalUrl: (sessionId) => `http://localhost:8080/terminal.html?id=${sessionId}&token=t`,
+      buildTerminalUrl: (sessionId) => `http://localhost:8080/terminal.html?id=${sessionId}`,
     });
     const adapter = createAdapter();
 
@@ -36,10 +35,9 @@ describe('HookNotificationDispatcher', () => {
   it('formats idle prompt notifications with the message text', async () => {
     const dispatcher = new HookNotificationDispatcher({
       permissions: { trackHookMessage: vi.fn() } as any,
-      isCoreAvailable: () => false,
       buildTerminalUrl: () => '',
     });
-    const adapter = createAdapter('discord');
+    const adapter = createAdapter('feishu');
 
     await dispatcher.send(adapter, 'chat-1', {
       notification_type: 'idle_prompt',

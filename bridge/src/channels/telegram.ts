@@ -267,10 +267,6 @@ export class TelegramAdapter extends BaseChannelAdapter {
   async send(message: OutboundMessage): Promise<SendResult> {
     const api = this.api;
 
-    // General topic (thread_id=1): Telegram rejects message_thread_id=1
-    const threadId = (message.threadId && message.threadId !== '1')
-      ? parseInt(message.threadId, 10) : undefined;
-
     // Media sending
     if (message.media) {
       try {
@@ -291,13 +287,11 @@ export class TelegramAdapter extends BaseChannelAdapter {
           const result = await api.sendPhoto(message.chatId, source, {
             caption: message.html ?? message.text,
             parse_mode: message.html ? 'HTML' : undefined,
-            message_thread_id: threadId,
           });
           return { messageId: String(result.message_id), success: true };
         } else {
           const result = await api.sendDocument(message.chatId, source, {
             caption: message.text,
-            message_thread_id: threadId,
           });
           return { messageId: String(result.message_id), success: true };
         }
@@ -314,7 +308,6 @@ export class TelegramAdapter extends BaseChannelAdapter {
       for (let i = 0; i < chunks.length; i++) {
         const opts: Record<string, unknown> = {
           parse_mode: message.html ? 'HTML' : undefined,
-          message_thread_id: threadId,
         };
 
         if (this.config.disableLinkPreview) {

@@ -45,7 +45,6 @@ describe('BridgeManager', () => {
           controls: undefined,
         }),
       } as any,
-      core: { isHealthy: () => true } as any,
     });
     manager = new BridgeManager();
   });
@@ -251,31 +250,21 @@ describe('BridgeManager', () => {
   });
 
   describe('hook reply routing', () => {
-    it('routes quote-reply to hook message via session input API', async () => {
+    it('shows warning for hook replies (feature removed with Go Core)', async () => {
       const adapter = mockAdapter();
       manager.registerAdapter(adapter);
 
-      // Simulate a tracked hook message and mark core as available
+      // Simulate a tracked hook message
       manager.trackHookMessage('hook-msg-1', 'session-abc');
-      (manager as any).coreAvailable = true;
-
-      const originalFetch = global.fetch;
-      global.fetch = vi.fn().mockResolvedValue({ ok: true }) as any;
 
       await manager.handleInboundMessage(adapter, {
         channelType: 'telegram', chatId: 'c1', userId: 'u1',
         text: 'A', messageId: 'm1', replyToMessageId: 'hook-msg-1',
       });
 
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/sessions/session-abc/input'),
-        expect.objectContaining({ method: 'POST' })
-      );
       expect(adapter.send).toHaveBeenCalledWith(
-        expect.objectContaining({ text: '✓ Sent to local session' })
+        expect.objectContaining({ text: '⚠️ Hook reply feature no longer available' })
       );
-
-      global.fetch = originalFetch;
     });
 
     it('ignores quote-reply to non-hook message', async () => {
@@ -388,47 +377,48 @@ describe('BridgeManager', () => {
     expect(result).toBe(true);
   });
 
-  it('Discord /status renders as embed', async () => {
-    const adapter = mockAdapter('discord');
+  it('Feishu /status renders with header', async () => {
+    const adapter = mockAdapter('feishu');
     manager.registerAdapter(adapter);
 
     await manager.handleInboundMessage(adapter, {
-      channelType: 'discord', chatId: 'c1', userId: 'u1', text: '/status', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/status', messageId: 'm1',
     });
 
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        embed: expect.objectContaining({ title: expect.stringContaining('TLive Status') }),
+        feishuHeader: expect.objectContaining({ title: expect.stringContaining('TLive Status') }),
       })
     );
   });
 
-  it('Discord /help renders as embed', async () => {
-    const adapter = mockAdapter('discord');
+  it('Feishu /help renders with buttons', async () => {
+    const adapter = mockAdapter('feishu');
     manager.registerAdapter(adapter);
 
     await manager.handleInboundMessage(adapter, {
-      channelType: 'discord', chatId: 'c1', userId: 'u1', text: '/help', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/help', messageId: 'm1',
     });
 
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        embed: expect.objectContaining({ title: expect.stringContaining('TLive Commands') }),
+        feishuHeader: expect.objectContaining({ title: expect.stringContaining('常用帮助') }),
+        buttons: expect.any(Array),
       })
     );
   });
 
-  it('Discord /new renders as embed', async () => {
-    const adapter = mockAdapter('discord');
+  it('Feishu /new renders with header', async () => {
+    const adapter = mockAdapter('feishu');
     manager.registerAdapter(adapter);
 
     await manager.handleInboundMessage(adapter, {
-      channelType: 'discord', chatId: 'c1', userId: 'u1', text: '/new', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/new', messageId: 'm1',
     });
 
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        embed: expect.objectContaining({ title: expect.stringContaining('New Session') }),
+        feishuHeader: expect.objectContaining({ title: expect.stringContaining('New Session') }),
       })
     );
   });

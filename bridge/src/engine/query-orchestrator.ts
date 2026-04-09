@@ -26,8 +26,6 @@ interface QueryOrchestratorOptions {
   store: BridgeStore;
   defaultWorkdir: string;
   port: number;
-  token: string;
-  isCoreAvailable: () => boolean;
 }
 
 /**
@@ -49,17 +47,11 @@ export class QueryOrchestrator {
     const binding = await this.options.router.resolve(msg.channelType, msg.chatId);
     const verboseLevel = this.options.state.getVerboseLevel(msg.channelType, msg.chatId);
 
-    let threadId = msg.threadId;
-    if (!threadId && adapter.channelType === CHANNEL_TYPES.DISCORD) {
-      threadId = this.options.state.getThread(msg.channelType, msg.chatId);
-    }
-
     const reactionChatId = msg.chatId;
-    const typingTarget = threadId && adapter.channelType === CHANNEL_TYPES.DISCORD ? threadId : msg.chatId;
     const typingInterval = setInterval(() => {
-      adapter.sendTyping(typingTarget).catch(() => {});
+      adapter.sendTyping(msg.chatId).catch(() => {});
     }, 4000);
-    adapter.sendTyping(typingTarget).catch(() => {});
+    adapter.sendTyping(msg.chatId).catch(() => {});
 
     const costTracker = new CostTracker();
     costTracker.start();
@@ -83,12 +75,10 @@ export class QueryOrchestrator {
         permissionReminderTool = toolName;
         permissionReminderInput = input;
         const text = `⚠️ Permission pending — ${toolName}: ${permissionReminderInput}`;
-        const targetChatId = threadId && adapter.channelType === CHANNEL_TYPES.DISCORD ? threadId : msg.chatId;
         const outMsg: OutboundMessage = adapter.channelType === CHANNEL_TYPES.TELEGRAM
-          ? { chatId: targetChatId, html: markdownToTelegram(text) }
-          : { chatId: targetChatId, text };
+          ? { chatId: msg.chatId, html: markdownToTelegram(text) }
+          : { chatId: msg.chatId, text };
         outMsg.buttons = buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }));
-        if (threadId) outMsg.threadId = threadId;
         try {
           const result = await adapter.send(outMsg);
           permissionReminderMsgId = result.messageId;
@@ -135,9 +125,7 @@ export class QueryOrchestrator {
 
         let outMsg: OutboundMessage;
         if (adapter.channelType === CHANNEL_TYPES.TELEGRAM) {
-          outMsg = { chatId: msg.chatId, html: markdownToTelegram(content), threadId };
-        } else if (adapter.channelType === CHANNEL_TYPES.DISCORD) {
-          outMsg = { chatId: msg.chatId, text: content, threadId };
+          outMsg = { chatId: msg.chatId, html: markdownToTelegram(content) };
         } else if (adapter.channelType === CHANNEL_TYPES.FEISHU && state) {
           const actionButtons = buttons?.length
             ? buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
@@ -184,17 +172,6 @@ export class QueryOrchestrator {
         }
 
         if (!isEdit) {
-          if (adapter.channelType === CHANNEL_TYPES.DISCORD && !threadId && 'createThread' in adapter) {
-            const result = await adapter.send(outMsg);
-            clearInterval(typingInterval);
-            const preview = (msg.text || 'Claude').slice(0, 80);
-            const newThreadId = await (adapter as any).createThread(msg.chatId, result.messageId, `💬 ${preview}`);
-            if (newThreadId) {
-              threadId = newThreadId;
-              this.options.state.setThread(msg.channelType, msg.chatId, newThreadId);
-            }
-            return result.messageId;
-          }
           const result = await adapter.send(outMsg);
           clearInterval(typingInterval);
           return result.messageId;
@@ -204,16 +181,13 @@ export class QueryOrchestrator {
         if (content.length > limit) {
           const chunks = chunkByParagraph(content, limit);
           const firstOutMsg: OutboundMessage = adapter.channelType === CHANNEL_TYPES.TELEGRAM
-            ? { chatId: msg.chatId, html: markdownToTelegram(chunks[0]), threadId }
-            : adapter.channelType === CHANNEL_TYPES.DISCORD
-              ? { chatId: msg.chatId, text: chunks[0], threadId }
-              : { chatId: msg.chatId, text: chunks[0] };
+            ? { chatId: msg.chatId, html: markdownToTelegram(chunks[0]) }
+            : { chatId: msg.chatId, text: chunks[0] };
           await adapter.editMessage(msg.chatId, renderer.messageId!, firstOutMsg);
-          const target = threadId && adapter.channelType === CHANNEL_TYPES.DISCORD ? threadId : msg.chatId;
           for (let i = 1; i < chunks.length; i++) {
             const overflowMsg: OutboundMessage = adapter.channelType === CHANNEL_TYPES.TELEGRAM
-              ? { chatId: target, html: markdownToTelegram(chunks[i]) }
-              : { chatId: target, text: chunks[i] };
+              ? { chatId: msg.chatId, html: markdownToTelegram(chunks[i]) }
+              : { chatId: msg.chatId, text: chunks[i] };
             await adapter.send(overflowMsg);
           }
         } else {
@@ -488,10 +462,9 @@ export class QueryOrchestrator {
         },
         onPromptSuggestion: (suggestion) => {
           if (verboseLevel === 0) return;
-          const targetChatId = threadId && adapter.channelType === CHANNEL_TYPES.DISCORD ? threadId : msg.chatId;
           const truncated = truncate(suggestion, 60);
           adapter.send({
-            chatId: targetChatId,
+            chatId: msg.chatId,
             text: `💡 ${truncated}`,
             buttons: [{ label: `💡 ${truncated}`, callbackData: `suggest:${suggestion.slice(0, 200)}`, style: 'default' as const }],
           }).catch(() => {});

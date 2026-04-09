@@ -6,7 +6,6 @@ import { truncate } from '../utils/string.js';
 interface PermissionMessage {
   text?: string;
   html?: string;
-  embed?: OutboundMessage['embed'];
   buttons: OutboundMessage['buttons'];
   feishuElements?: OutboundMessage['feishuElements'];
   /** Feishu card header (caller passes to buildFeishuCard) */
@@ -45,25 +44,6 @@ export function formatPermissionCard(data: PermissionCardData, channelType: Chan
       }
       parts.push('', `💬 Or reply <b>allow</b> / <b>deny</b>`);
       return { html: parts.join('\n'), buttons };
-    }
-
-    case 'discord': {
-      const fields: Array<{ name: string; value: string; inline?: boolean }> = [
-        { name: '🔧 Tool', value: `\`${data.toolName}\``, inline: true },
-        { name: '⏱ Expires', value: `${expires} min`, inline: true },
-      ];
-      if (data.terminalUrl) {
-        fields.push({ name: '🔗 Terminal', value: `[Open](${data.terminalUrl})`, inline: true });
-      }
-      return {
-        embed: {
-          title: '🔐 Permission Required',
-          color: 0xFFA500,
-          description: `\`\`\`\n${input}\n\`\`\`\n💬 Or reply \`allow\` / \`deny\``,
-          fields,
-        },
-        buttons,
-      };
     }
 
     case 'feishu': {

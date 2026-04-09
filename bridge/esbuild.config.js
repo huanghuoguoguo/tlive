@@ -12,7 +12,6 @@ const common = {
   format: 'esm',
   external: [
     '@anthropic-ai/*',
-    'discord.js',
     'grammy',
     '@grammyjs/*',
     '@larksuiteoapi/*',
@@ -30,7 +29,6 @@ const common = {
 await Promise.all([
   build({ ...common, entryPoints: ['src/main.ts'], outfile: 'dist/main.mjs' }),
   build({ ...common, entryPoints: ['src/channels/telegram.ts'], outfile: 'dist/channels/telegram.mjs' }),
-  build({ ...common, entryPoints: ['src/channels/discord.ts'], outfile: 'dist/channels/discord.mjs' }),
   build({ ...common, entryPoints: ['src/channels/feishu.ts'], outfile: 'dist/channels/feishu.mjs' }),
   build({ ...common, entryPoints: ['src/channels/qqbot.ts'], outfile: 'dist/channels/qqbot.mjs' }),
   build({ ...common, entryPoints: ['src/setup-wizard.ts'], outfile: 'dist/setup.mjs' }),

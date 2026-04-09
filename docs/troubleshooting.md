@@ -53,14 +53,13 @@ curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.s
 - Send a message to the bot first
 - Verify Chat ID (user ID for DM, group ID for groups)
 
-**Discord:**
-- Verify bot joined the server
-- Verify bot has send message permission
-- Verify channel ID is correct
-
 **Feishu:**
 - Verify app is published
 - Verify message receive permission
+- Check whitelist config
+
+**QQ Bot:**
+- Verify app credentials are correct
 - Check whitelist config
 
 ### Hooks Not Working

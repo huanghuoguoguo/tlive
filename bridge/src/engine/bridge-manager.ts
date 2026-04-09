@@ -62,10 +62,7 @@ export class BridgeManager {
   private running = false;
   private engine: ConversationEngine;
   private router: ChannelRouter;
-  private coreUrl: string;
-  private token: string;
   private port: number;
-  private coreAvailable = false;
   private state = new SessionStateManager();
   private permissions: PermissionCoordinator;
   /** SDK Engine for LiveSession management */
@@ -87,18 +84,15 @@ export class BridgeManager {
     const localUrl = `http://${getLocalIP()}:${config.port || 8080}`;
     const gateway = new PendingPermissions();
     const broker = new PermissionBroker(gateway, localUrl);
-    this.coreUrl = config.coreUrl;
-    this.token = config.token;
     this.port = config.port || 8080;
     this.router = new ChannelRouter(store);
-    this.permissions = new PermissionCoordinator(gateway, broker, this.coreUrl, this.token);
+    this.permissions = new PermissionCoordinator(gateway, broker);
     this.engine = new ConversationEngine(store, llm);
     this.sdkEngine = new SDKEngine(this.state, this.router);
     this.commands = new CommandRouter(
       this.state,
       () => this.adapters,
       this.router,
-      () => this.coreAvailable,
       store,
       defaultWorkdir,
       llm,
@@ -117,9 +111,6 @@ export class BridgeManager {
       permissions: this.permissions,
       sdkEngine: this.sdkEngine,
       state: this.state,
-      coreUrl: this.coreUrl,
-      token: this.token,
-      isCoreAvailable: () => this.coreAvailable,
     });
     this.query = new QueryOrchestrator({
       engine: this.engine,
@@ -130,21 +121,14 @@ export class BridgeManager {
       store,
       defaultWorkdir,
       port: this.port,
-      token: this.token,
-      isCoreAvailable: () => this.coreAvailable,
     });
     this.notifications = new HookNotificationDispatcher({
       permissions: this.permissions,
-      isCoreAvailable: () => this.coreAvailable,
-      buildTerminalUrl: (sessionId) => `http://${getLocalIP()}:${this.port}/terminal.html?id=${sessionId}&token=${this.token}`,
+      buildTerminalUrl: (sessionId) => `http://${getLocalIP()}:${this.port}/terminal.html?id=${sessionId}`,
     });
   }
 
-  /** Expose coreAvailable flag for main.ts polling loop */
-  setCoreAvailable(available: boolean): void {
-    this.coreAvailable = available;
-  }
-
+  
   /** Returns all active adapters */
   getAdapters(): BaseChannelAdapter[] {
     return Array.from(this.adapters.values());
@@ -174,26 +158,12 @@ export class BridgeManager {
 
   /** Get target chatId for broadcast messages */
   private getBroadcastTarget(channelType: string): string {
-    if (channelType === 'telegram') {
-      return this.config.telegram.chatId;
-    }
-    if (channelType === 'discord') {
-      return this.config.discord.allowedChannels[0] || '';
-    }
-    if (channelType === 'feishu') {
-      const userId = this.config.feishu.allowedUsers[0];
-      return userId || this.getLastChatId(channelType);
-    }
+    // Broadcast uses last active chat since config doesn't have per-channel defaults
     return this.getLastChatId(channelType);
   }
 
   /** Get receiveIdType for broadcast messages */
-  private getBroadcastReceiveIdType(channelType: string): string | undefined {
-    if (channelType === 'feishu') {
-      const userId = this.config.feishu.allowedUsers[0];
-      if (userId?.startsWith('ou_')) return 'open_id';
-      if (userId) return 'user_id';
-    }
+  private getBroadcastReceiveIdType(_channelType: string): string | undefined {
     return undefined;
   }
 
@@ -344,7 +314,6 @@ export class BridgeManager {
       return handleCallbackMessage(adapter, msg, {
         permissions: this.permissions,
         sdkEngine: this.sdkEngine,
-        isCoreAvailable: () => this.coreAvailable,
         replayMessage: (replayAdapter, replayMsg) => this.handleInboundMessage(replayAdapter, replayMsg),
       });
     }

@@ -39,7 +39,6 @@ describe('QueryOrchestrator', () => {
       defaultWorkdir: '/tmp/project',
       store: mockStore,
       llm: {} as any,
-      core: null,
     });
   });
 
@@ -91,8 +90,6 @@ describe('QueryOrchestrator', () => {
       store: mockStore,
       defaultWorkdir: '/tmp/project',
       port: 8080,
-      token: 'token',
-      isCoreAvailable: () => true,
     });
 
     await orchestrator.run(adapter, {

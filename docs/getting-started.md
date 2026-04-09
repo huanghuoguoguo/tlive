@@ -5,7 +5,7 @@ This guide takes you from zero to a working tlive setup. By the end, you'll be a
 ## Prerequisites
 
 - **Node.js 20+** and npm
-- One of: **Telegram**, **Discord**, or **Feishu** account (for IM Bridge and Hook Approval)
+- One of: **Telegram** or **Feishu** account (for IM Bridge and Hook Approval)
 - **Claude Code** installed (required for IM Bridge and Hook Approval features)
 - The **Web Terminal** feature works standalone — no IM platform needed
 
@@ -30,13 +30,11 @@ You can enable one or more platforms simultaneously. Here's a quick comparison t
 | Platform | Best for | Setup time |
 |----------|----------|------------|
 | **Telegram** | Individual developers. Create a bot with @BotFather in 2 minutes. | ~2 min |
-| **Discord** | Teams already on Discord. Requires a server you can admin. | ~5 min |
 | **Feishu** | Chinese teams on Feishu/Lark. More involved setup (needs admin approval). | ~15 min |
 
 Detailed platform guides:
 
 - [Telegram Setup](setup-telegram.md)
-- [Discord Setup](setup-discord.md)
 - [Feishu Setup](setup-feishu.md)
 
 ## Configure

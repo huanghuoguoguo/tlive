@@ -1,7 +1,7 @@
 ---
 name: tlive
 description: |
-  IM bridge for Claude Code — chat from Telegram, Discord, Feishu, or QQ Bot.
+  IM bridge for Claude Code — chat from Telegram, Feishu, or QQ Bot.
   Approve permissions, get streaming responses, manage sessions from your phone.
   Use for: starting IM bridge, configuring IM platforms, checking status,
   diagnosing issues.
@@ -21,7 +21,7 @@ allowed-tools:
 
 # TLive — IM Bridge Skill
 
-You are managing the TLive IM Bridge — bidirectional chat with Claude Code from Telegram, Discord, Feishu, or QQ Bot.
+You are managing the TLive IM Bridge — bidirectional chat with Claude Code from Telegram, Feishu, or QQ Bot.
 
 The Bridge uses the Claude Agent SDK to interact with Claude Code. It is completely independent from the optional Go Core web terminal server.
 
@@ -70,16 +70,14 @@ Before asking for platform credentials, read `references/setup-guides.md` intern
 ```
 AskUserQuestion: "Which IM platforms to enable?
 1. Telegram — streaming preview, inline permission buttons
-2. Discord — team use, channel-level access control
-3. Feishu (飞书) — streaming cards, tool progress
-4. QQ Bot — for QQ users, interactive buttons
+2. Feishu (飞书) — streaming cards, tool progress
+3. QQ Bot — for QQ users, interactive buttons
 Enter numbers (e.g., 1,3):"
 ```
 
 **Step 2 — Collect credentials per platform:**
 
 - **Telegram**: Bot Token → confirm (masked) → Chat ID (optional) → Allowed User IDs (optional). **Important:** At least one of Chat ID or Allowed User IDs should be set.
-- **Discord**: Bot Token → confirm (masked) → Allowed User IDs → Allowed Channel IDs (optional). **Important:** At least one of Allowed User IDs or Allowed Channel IDs should be set.
 - **Feishu**: App ID → confirm → App Secret → confirm (masked) → Allowed User IDs (optional).
 - **QQ Bot**: App ID → confirm → Client Secret → confirm (masked) → Allowed Users (optional).
 
@@ -88,7 +86,7 @@ Enter numbers (e.g., 1,3):"
 - Auto-generate TL_TOKEN (32-char hex)
 
 **Step 4 — Write config and validate:**
-1. Read `config.env.example` as the template — use its exact variable names (e.g., `TL_TG_*` for Telegram, `TL_DC_*` for Discord, `TL_FS_*` for Feishu, `TL_QQ_*` for QQ Bot). Do NOT invent variable names.
+1. Read `config.env.example` as the template — use its exact variable names (e.g., `TL_TG_*` for Telegram, `TL_FS_*` for Feishu, `TL_QQ_*` for QQ Bot). Do NOT invent variable names.
 2. Show a summary table (secrets masked to last 4 chars)
 3. Ask user to confirm before writing
 4. `mkdir -p ~/.tlive/{data,logs,runtime}`

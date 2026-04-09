@@ -107,7 +107,7 @@ describe('content-filter', () => {
     });
 
     it('redacts TOKEN= assignments', () => {
-      const input = 'DISCORD_TOKEN=NzA5NTg2.YrxAkQ.abc123def456';
+      const input = 'SECRET_TOKEN=NzA5NTg2.YrxAkQ.abc123def456';
       const result = redactSensitiveContent(input);
       expect(result).toContain('[REDACTED]');
     });

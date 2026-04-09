@@ -7,7 +7,7 @@
 
 > **Fork of [y49/tlive](https://github.com/y49/tlive)** — Claude-only version with enhancements.
 
-**Control Claude Code from your phone** — Send tasks via Telegram, Discord, Feishu, or QQ Bot. Watch progress in real-time. Approve permissions remotely.
+**Control Claude Code from your phone** — Send tasks via Telegram, Feishu, or QQ Bot. Watch progress in real-time. Approve permissions remotely.
 
 ## Changes from Original
 
@@ -59,7 +59,7 @@ claude
 ```
 
 That's it! Claude Code will help you:
-- Choose IM platforms (Telegram/Discord/Feishu/QQ Bot)
+- Choose IM platforms (Telegram/Feishu/QQ Bot)
 - Get platform credentials
 - Configure Claude Code integration
 - Start the service
@@ -78,12 +78,10 @@ That's it! Claude Code will help you:
 ┌─────────────┐     ┌──────────────────┐     ┌─────────────┐
 │   Telegram  │     │                  │     │             │
 ├─────────────┤     │   Bridge (TS)    │     │  ~/.claude  │
-│   Discord   │────▶│   IM Adapter     │◀────│   sessions  │
+│   Feishu    │────▶│   IM Adapter     │◀────│   sessions  │
 ├─────────────┤     │                  │     │             │
-│   Feishu    │     │   (Required)     │     │  (scanned)  │
-├─────────────┤     └──────────────────┘     └─────────────┘
-│   QQ Bot    │
-└─────────────┘
+│   QQ Bot    │     │   (Required)     │     │  (scanned)  │
+└─────────────┘     └──────────────────┘     └─────────────┘
 
 ┌──────────────────┐
 │   Core (Go)      │     Optional: `tlive <cmd>` web terminal
@@ -97,7 +95,7 @@ That's it! Claude Code will help you:
 
 ## IM Commands
 
-Send directly in Telegram/Discord/Feishu/QQ Bot:
+Send directly in Telegram/Feishu/QQ Bot:
 
 ```
 Fix the login bug in auth.ts

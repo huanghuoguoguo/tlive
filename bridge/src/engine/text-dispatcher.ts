@@ -11,9 +11,6 @@ interface TextDispatcherOptions {
   permissions: PermissionCoordinator;
   sdkEngine: SDKEngine;
   state: SessionStateManager;
-  coreUrl: string;
-  token: string;
-  isCoreAvailable: () => boolean;
 }
 
 type PendingSdkQuestion = {
@@ -30,7 +27,6 @@ type HookQuestion = {
  * Handles text-driven control flows before a message reaches the main Claude turn:
  * - plain-text permission approvals
  * - AskUserQuestion numeric/text answers
- * - quote-reply routing back into local PTY sessions
  */
 export class TextDispatcher {
   constructor(private options: TextDispatcherOptions) {}
@@ -48,8 +44,10 @@ export class TextDispatcher {
       return true;
     }
 
+    // Hook reply feature removed with Go Core
     if ((msg.text || msg.attachments?.length) && msg.replyToMessageId && this.options.permissions.isHookMessage(msg.replyToMessageId)) {
-      return this.handleHookReply(adapter, msg);
+      await adapter.send({ chatId: msg.chatId, text: '⚠️ Hook reply feature no longer available' });
+      return true;
     }
 
     return false;
@@ -87,12 +85,13 @@ export class TextDispatcher {
     }
 
     const permEntry = this.options.permissions.findHookPermission(msg.replyToMessageId, adapter.channelType);
-    if (!permEntry || !this.options.isCoreAvailable()) {
+    if (!permEntry) {
       return false;
     }
 
+    // Hook permission resolution simplified (Go Core removed)
     try {
-      await this.options.permissions.resolveHookPermission(permEntry.permissionId, decision, adapter.channelType, this.options.isCoreAvailable());
+      await this.options.permissions.resolveHookPermission(permEntry.permissionId, decision, adapter.channelType);
       const label = decision === 'deny' ? '❌ Denied' : decision === 'allow_always' ? '📌 Always allowed' : '✅ Allowed';
       await adapter.send({ chatId: msg.chatId, text: label });
     } catch (err) {
@@ -120,7 +119,6 @@ export class TextDispatcher {
           pendingHookQuestion.messageId,
           adapter,
           msg.chatId,
-          this.options.isCoreAvailable(),
         );
         return true;
       }
@@ -141,7 +139,6 @@ export class TextDispatcher {
         pendingHookQuestion.messageId,
         adapter,
         msg.chatId,
-        this.options.isCoreAvailable(),
       );
       return true;
     }
@@ -180,57 +177,5 @@ export class TextDispatcher {
 
     const optionsCount = questionData?.questions?.[0]?.options?.length ?? 0;
     return index < optionsCount ? index : null;
-  }
-
-  private async handleHookReply(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
-    const entry = this.options.permissions.getHookMessage(msg.replyToMessageId!);
-    if (!entry) {
-      await adapter.send({ chatId: msg.chatId, text: '⚠️ Hook message expired or not found' });
-      return true;
-    }
-
-    if (!entry.sessionId || !this.options.isCoreAvailable()) {
-      await adapter.send({ chatId: msg.chatId, text: '⚠️ Local session not available (no session ID)' });
-      return true;
-    }
-
-    try {
-      let inputText = msg.text || '';
-      if (msg.attachments?.length) {
-        inputText = this.appendAttachmentPaths(inputText, msg.attachments);
-      }
-      await fetch(`${this.options.coreUrl}/api/sessions/${entry.sessionId}/input`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.options.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ text: inputText + '\r' }),
-        signal: AbortSignal.timeout(5000),
-      });
-      await adapter.send({ chatId: msg.chatId, text: '✓ Sent to local session' });
-    } catch (err) {
-      await adapter.send({ chatId: msg.chatId, text: `❌ Failed to send: ${err}` });
-    }
-
-    return true;
-  }
-
-  private appendAttachmentPaths(text: string, attachments: NonNullable<InboundMessage['attachments']>): string {
-    let inputText = text;
-    const imageDir = join(tmpdir(), 'tlive-images');
-    mkdirSync(imageDir, { recursive: true });
-
-    for (const attachment of attachments) {
-      if (attachment.type !== 'image') {
-        continue;
-      }
-      const ext = attachment.mimeType === 'image/png' ? '.png' : '.jpg';
-      const filePath = join(imageDir, `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
-      writeFileSync(filePath, Buffer.from(attachment.base64Data, 'base64'));
-      inputText = inputText ? `${inputText}\n${filePath}` : filePath;
-    }
-
-    return inputText;
   }
 }

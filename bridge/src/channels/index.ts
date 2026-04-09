@@ -16,9 +16,6 @@ export async function loadAdapters(enabledChannels: string[]): Promise<void> {
   if (enabledChannels.includes('telegram')) {
     importPromises.push(import(join(__dirname, 'channels', 'telegram.mjs')).then(() => {}));
   }
-  if (enabledChannels.includes('discord')) {
-    importPromises.push(import(join(__dirname, 'channels', 'discord.mjs')).then(() => {}));
-  }
   if (enabledChannels.includes('feishu')) {
     importPromises.push(import(join(__dirname, 'channels', 'feishu.mjs')).then(() => {}));
   }

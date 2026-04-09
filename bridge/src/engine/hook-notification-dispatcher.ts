@@ -18,7 +18,6 @@ export interface HookNotificationData {
 
 interface HookNotificationDispatcherOptions {
   permissions: PermissionCoordinator;
-  isCoreAvailable: () => boolean;
   buildTerminalUrl: (sessionId: string) => string;
 }
 
@@ -65,7 +64,7 @@ export class HookNotificationDispatcher {
       type = 'generic';
     }
 
-    const terminalUrl = this.options.isCoreAvailable() && hook.tlive_session_id
+    const terminalUrl = hook.tlive_session_id
       ? this.options.buildTerminalUrl(hook.tlive_session_id)
       : undefined;
 
@@ -75,7 +74,6 @@ export class HookNotificationDispatcher {
       chatId,
       text: formatted.text,
       html: formatted.html,
-      embed: formatted.embed,
       buttons: (formatted as any).buttons,
       feishuHeader: formatted.feishuHeader,
       feishuElements: (formatted as any).feishuElements,

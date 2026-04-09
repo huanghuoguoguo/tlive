@@ -313,8 +313,8 @@ async function runDoctor() {
     const config = loadConfigEnv();
     console.log(config.TL_TOKEN ? '  TL_TOKEN: set' : '  TL_TOKEN: NOT SET');
     console.log(config.TL_TG_BOT_TOKEN ? '  Telegram: configured' : '  Telegram: not configured');
-    console.log(config.TL_DC_BOT_TOKEN ? '  Discord:  configured' : '  Discord:  not configured');
     console.log(config.TL_FS_APP_ID ? '  Feishu:   configured' : '  Feishu:   not configured');
+    console.log(config.TL_QQ_APP_ID ? '  QQ Bot:   configured' : '  QQ Bot:   not configured');
   } else {
     console.log("  config.env: NOT FOUND (run 'tlive setup')");
   }
@@ -395,7 +395,7 @@ Web Terminal:
   tlive npm run build        Access from phone browser via QR code
 
 Setup (one-time):
-  tlive setup                Configure IM platforms (Telegram/Discord/Feishu)
+  tlive setup                Configure IM platforms (Telegram/Feishu/QQ Bot)
   tlive install skills       Install /tlive skill + hooks to Claude Code
 
 Service Management:
@@ -412,7 +412,7 @@ Hook Control:
   tlive hooks pause          Auto-allow all, no IM notifications
   tlive hooks resume         Resume IM approval flow
 
-IM Commands (in Telegram/Discord/Feishu):
+IM Commands (in Telegram/Feishu/QQ Bot):
   /new                       New conversation
   /runtime claude|codex      Switch AI provider
   /perm on|off               Permission prompts

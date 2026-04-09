@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createNodeAgent, createUndiciAgent, maskProxyUrl } from '../proxy.js';
+import { createNodeAgent, maskProxyUrl } from '../proxy.js';
 
 describe('createNodeAgent (for grammy / node-fetch)', () => {
   it('returns undefined for empty string', () => {
@@ -36,34 +36,6 @@ describe('createNodeAgent (for grammy / node-fetch)', () => {
 
   it('throws on malformed URL without ://', () => {
     expect(() => createNodeAgent('socks5:foo')).toThrow('Invalid proxy URL');
-  });
-});
-
-describe('createUndiciAgent (for discord.js)', () => {
-  it('returns undefined for empty string', () => {
-    expect(createUndiciAgent('')).toBeUndefined();
-  });
-
-  it('returns ProxyAgent for http:// URL', () => {
-    const agent = createUndiciAgent('http://127.0.0.1:7890');
-    expect(agent).toBeDefined();
-  });
-
-  it('returns ProxyAgent for https:// URL', () => {
-    const agent = createUndiciAgent('https://127.0.0.1:7890');
-    expect(agent).toBeDefined();
-  });
-
-  it('returns undefined and warns for socks:// URL', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const agent = createUndiciAgent('socks5://127.0.0.1:1080');
-    expect(agent).toBeUndefined();
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('SOCKS'));
-    warnSpy.mockRestore();
-  });
-
-  it('throws on unsupported protocol', () => {
-    expect(() => createUndiciAgent('ftp://foo')).toThrow();
   });
 });
 

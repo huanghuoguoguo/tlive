@@ -12,7 +12,7 @@ TL_PORT=8080
 TL_TOKEN=auto-generated
 
 # 启用的 IM 平台
-TL_ENABLED_CHANNELS=telegram,discord
+TL_ENABLED_CHANNELS=telegram,feishu
 ```
 
 ## Telegram
@@ -32,20 +32,6 @@ TL_TG_ALLOWED_USERS=123456789,987654321
 ```
 
 详见 [Telegram 配置指南](setup-telegram-cn.md)
-
-## Discord
-
-```env
-TL_DC_BOT_TOKEN=your-bot-token
-
-# 允许的频道（逗号分隔）
-TL_DC_ALLOWED_CHANNELS=123456789,987654321
-
-# 允许的用户白名单
-TL_DC_ALLOWED_USERS=111222333
-```
-
-详见 [Discord 配置指南](setup-discord-cn.md)
 
 ## 飞书
 
@@ -72,7 +58,7 @@ TL_DEFAULT_WORKDIR=/home/user/projects
 ## 代理
 
 ```env
-# HTTP 代理（适用于无法直连 Telegram/Discord 的地区）
+# HTTP 代理（适用于无法直连 Telegram 的地区）
 TL_PROXY=http://127.0.0.1:7890
 ```
 

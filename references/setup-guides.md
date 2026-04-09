@@ -37,30 +37,6 @@ Enter comma-separated IDs to restrict access. Leave empty to allow anyone who ca
 
 ---
 
-## Discord
-
-### Bot Token
-
-1. Go to https://discord.com/developers/applications
-2. Click **New Application**, name it
-3. Go to **Bot** tab → **Reset Token** → copy the token
-4. Under **Privileged Gateway Intents**, enable **Message Content Intent**
-5. Go to **OAuth2** → **URL Generator**: check `bot` scope, and permissions: Send Messages, Read Message History, Manage Messages
-6. Copy the generated URL and open it to invite the bot to your server
-
-### Allowed User IDs
-
-1. In Discord, enable Developer Mode: User Settings → Advanced → Developer Mode
-2. Right-click on a user → **Copy User ID**
-
-### Allowed Channel IDs (optional)
-
-1. Right-click on a channel → **Copy Channel ID**
-
-**Important:** At least one of Allowed User IDs or Allowed Channel IDs should be set (default-deny).
-
----
-
 ## Feishu / Lark
 
 ### App ID & App Secret

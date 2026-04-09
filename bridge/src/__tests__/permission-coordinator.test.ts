@@ -11,7 +11,7 @@ describe('PermissionCoordinator', () => {
   beforeEach(() => {
     gateway = new PendingPermissions();
     broker = new PermissionBroker(gateway, 'http://localhost:8080');
-    coord = new PermissionCoordinator(gateway, broker, 'http://localhost:9090', 'test-token');
+    coord = new PermissionCoordinator(gateway, broker);
   });
 
   describe('parsePermissionText', () => {
@@ -72,9 +72,9 @@ describe('PermissionCoordinator', () => {
 
     it('isolates per chat key', () => {
       coord.setPendingSdkPerm('telegram:123', 'perm-1');
-      coord.setPendingSdkPerm('discord:456', 'perm-2');
+      coord.setPendingSdkPerm('feishu:456', 'perm-2');
       expect(coord.getPendingSdkPerm('telegram:123')).toBe('perm-1');
-      expect(coord.getPendingSdkPerm('discord:456')).toBe('perm-2');
+      expect(coord.getPendingSdkPerm('feishu:456')).toBe('perm-2');
     });
   });
 

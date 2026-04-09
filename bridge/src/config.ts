@@ -36,13 +36,6 @@ export interface Config {
     /** HTTP/SOCKS proxy URL — overrides global TL_PROXY */
     proxy: string;
   };
-  discord: {
-    botToken: string;
-    allowedUsers: string[];
-    allowedChannels: string[];
-    /** HTTP/HTTPS proxy URL — overrides global TL_PROXY (SOCKS not supported) */
-    proxy: string;
-  };
   feishu: {
     appId: string;
     appSecret: string;
@@ -132,12 +125,6 @@ export function loadConfig(): Config {
       disableLinkPreview: get('TL_TG_DISABLE_LINK_PREVIEW', 'true') !== 'false',
       proxy: get('TL_TG_PROXY') || globalProxy,
     },
-    discord: {
-      botToken: get('TL_DC_BOT_TOKEN'),
-      allowedUsers: parseList(get('TL_DC_ALLOWED_USERS')),
-      allowedChannels: parseList(get('TL_DC_ALLOWED_CHANNELS')),
-      proxy: get('TL_DC_PROXY') || globalProxy,
-    },
     feishu: {
       appId: get('TL_FS_APP_ID'),
       appSecret: get('TL_FS_APP_SECRET'),
@@ -164,11 +151,6 @@ export function loadConfig(): Config {
       case 'telegram':
         if (!config.telegram.botToken) {
           throw new Error('Config error: TL_TG_BOT_TOKEN is required (telegram is in enabled channels)');
-        }
-        break;
-      case 'discord':
-        if (!config.discord.botToken) {
-          throw new Error('Config error: TL_DC_BOT_TOKEN is required (discord is in enabled channels)');
         }
         break;
       case 'feishu':

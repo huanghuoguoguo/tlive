@@ -29,11 +29,12 @@ describe('loadConfig', () => {
   });
 
   it('parses enabled channels', () => {
-    process.env.TL_ENABLED_CHANNELS = 'telegram,discord';
+    process.env.TL_ENABLED_CHANNELS = 'telegram,feishu';
     process.env.TL_TG_BOT_TOKEN = 'tg-token';
-    process.env.TL_DC_BOT_TOKEN = 'dc-token';
+    process.env.TL_FS_APP_ID = 'fs-id';
+    process.env.TL_FS_APP_SECRET = 'fs-secret';
     const config = loadConfig();
-    expect(config.enabledChannels).toEqual(['telegram', 'discord']);
+    expect(config.enabledChannels).toEqual(['telegram', 'feishu']);
   });
 
   it('parses telegram config', () => {
@@ -46,16 +47,6 @@ describe('loadConfig', () => {
     expect(config.telegram.allowedUsers).toEqual(['user1', 'user2']);
   });
 
-  it('parses discord config', () => {
-    process.env.TL_DC_BOT_TOKEN = 'dc-token';
-    process.env.TL_DC_ALLOWED_USERS = 'u1,u2';
-    process.env.TL_DC_ALLOWED_CHANNELS = 'ch1';
-    const config = loadConfig();
-    expect(config.discord.botToken).toBe('dc-token');
-    expect(config.discord.allowedUsers).toEqual(['u1', 'u2']);
-    expect(config.discord.allowedChannels).toEqual(['ch1']);
-  });
-
   it('parses feishu config', () => {
     process.env.TL_FS_APP_ID = 'fs-id';
     process.env.TL_FS_APP_SECRET = 'fs-secret';
@@ -64,5 +55,15 @@ describe('loadConfig', () => {
     expect(config.feishu.appId).toBe('fs-id');
     expect(config.feishu.appSecret).toBe('fs-secret');
     expect(config.feishu.allowedUsers).toEqual(['fsu1']);
+  });
+
+  it('parses qqbot config', () => {
+    process.env.TL_QQ_APP_ID = 'qq-id';
+    process.env.TL_QQ_CLIENT_SECRET = 'qq-secret';
+    process.env.TL_QQ_ALLOWED_USERS = 'qqu1';
+    const config = loadConfig();
+    expect(config.qqbot.appId).toBe('qq-id');
+    expect(config.qqbot.clientSecret).toBe('qq-secret');
+    expect(config.qqbot.allowedUsers).toEqual(['qqu1']);
   });
 });
