@@ -28,10 +28,10 @@ start() {
     return
   fi
 
-  local bridge_entry="${SKILL_DIR}/bridge/dist/main.mjs"
+  local bridge_entry="${SKILL_DIR}/dist/main.mjs"
   if [ ! -f "$bridge_entry" ]; then
     echo "ERROR: Bridge not built."
-    echo "Build: cd ${SKILL_DIR}/bridge && npm install && npm run build"
+    echo "Build: cd ${SKILL_DIR} && npm install && npm run build"
     exit 1
   fi
 

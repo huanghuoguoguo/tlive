@@ -23,24 +23,18 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
-          cache-dependency-path: bridge/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
-        working-directory: bridge
+        run: npm install
 
       - name: Type check
         run: npm run typecheck
-        working-directory: bridge
 
       - name: Lint
         run: npm run lint
-        working-directory: bridge
 
       - name: Run tests
         run: npm test
-        working-directory: bridge
 
       - name: Build
         run: npm run build
-        working-directory: bridge

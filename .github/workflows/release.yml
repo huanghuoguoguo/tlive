@@ -41,10 +41,8 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: bridge/package-lock.json
 
-      - name: Install and build bridge
-        working-directory: bridge
+      - name: Install, test, and build
         run: |
           npm ci
           npm run typecheck
@@ -59,14 +57,13 @@ jobs:
           tar czf "$TARBALL" \
             --exclude='node_modules' \
             --exclude='.git' \
-            --exclude='bridge/src' \
-            --exclude='bridge/esbuild.config.js' \
-            --exclude='bridge/tsconfig.json' \
-            --exclude='bridge/vitest.config.ts' \
+            --exclude='src' \
+            --exclude='esbuild.config.js' \
+            --exclude='tsconfig.json' \
+            --exclude='biome.json' \
             package.json \
-            bridge/package.json \
-            bridge/package-lock.json \
-            bridge/dist/ \
+            package-lock.json \
+            dist/ \
             scripts/ \
             install.sh
 

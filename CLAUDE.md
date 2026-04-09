@@ -16,12 +16,12 @@ IM 桥接服务 — 在手机上操控 Claude Code。
 
 ```
 tlive/
-├── bridge/           # TypeScript 桥接服务
-│   ├── src/
-│   │   ├── channels/ # IM 平台适配器
-│   │   ├── providers/# AI 提供商集成
-│   │   └── main.ts   # 入口
-│   └── package.json
+├── src/              # TypeScript 桥接服务源码
+│   ├── channels/     # IM 平台适配器
+│   ├── providers/    # AI 提供商集成
+│   └── main.ts       # 入口
+├── scripts/          # CLI 和守护进程脚本
+├── dist/             # 构建输出（esbuild）
 ├── docs/             # 用户文档
 ├── SKILL.md          # /tlive skill 定义
 └── config.env.example
@@ -36,8 +36,8 @@ tlive/
 ### 代码风格
 - 使用 TypeScript，编译目标 ES2022
 - 测试框架：Vitest
-- 工具函数放在 `bridge/src/utils/`
-- 常量放在 `bridge/src/utils/constants.ts`
+- 工具函数放在 `src/utils/`
+- 常量放在 `src/utils/constants.ts`
 
 ### 提交代码
 - **main 分支受保护，禁止直接推送**
@@ -49,20 +49,18 @@ tlive/
 
 ### 测试
 ```bash
-cd bridge && npm test
+npm test
 ```
 
 ### 构建
 ```bash
-cd bridge && npm run build
+npm run build
 ```
 
 ### 发布
 除非开发者指定发布版本，否则不要随便发布版本。
 ```bash
-# 1. 同步更新两个 package.json 的版本号（必须一致）
-#    - /package.json（CLI 显示版本，scripts/cli.js 读取）
-#    - /bridge/package.json（Bridge 版本检查，version-checker.ts 读取）
+# 1. 更新 package.json 版本号
 # 2. 提交版本号变更
 # 3. 合并到 main 后打 tag，release workflow 自动构建并上传 tarball
 git tag v0.x.x

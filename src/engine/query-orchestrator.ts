@@ -404,6 +404,12 @@ export class QueryOrchestrator {
           }).catch(() => {});
         },
         onError: async (err) => {
+          // Check for session expiry error - clear sdkSessionId and retry
+          if (err.includes('No conversation found') || err.includes('session ID')) {
+            console.log(`[bridge] Session expired, clearing sdkSessionId for ${msg.channelType}:${msg.chatId}`);
+            binding.sdkSessionId = undefined;
+            await this.options.store.saveBinding(binding);
+          }
           await renderer.onError(err);
         },
       });

@@ -274,30 +274,37 @@ export class FeishuFormatter extends MessageFormatter {
           ? { template: 'orange' as const, title: '🔐 等待权限' }
           : { template: 'blue' as const, title: data.phase === 'starting' ? '⏳ 准备开始' : '⏳ 执行中' };
 
-    const summaryLines = [`**任务**\n${truncate(data.taskSummary || '未命名任务', 180)}`];
+    const elements: FeishuElement[] = [];
+    const isDone = data.phase === 'completed' || data.phase === 'failed';
 
-    if (data.phase === 'waiting_permission' && data.permission) {
-      const extraQueue = data.permission.queueLength > 1 ? `\n待处理审批：${data.permission.queueLength} 个` : '';
-      summaryLines.push(
-        `**当前等待**\n${data.permission.toolName}\n\`\`\`\n${truncate(data.permission.input, 260)}\n\`\`\`${extraQueue}`
-      );
-    } else if (data.currentTool?.input) {
-      const currentElapsed = data.currentTool.elapsed > 0 ? ` · ${data.currentTool.elapsed}s` : '';
-      summaryLines.push(`**最近动作**\n${data.currentTool.name}: ${truncate(data.currentTool.input, 140)}${currentElapsed}`);
-    } else if (data.totalTools > 0 && data.toolSummary) {
-      summaryLines.push(`**当前阶段**\n${truncate(data.toolSummary, 180)}`);
+    if (isDone) {
+      // Completed/failed: show response text directly, minimal chrome
+      if (data.renderedText.trim()) {
+        elements.push(this.md(downgradeHeadings(truncate(data.renderedText, 3000))));
+      }
+      // Footer line (model | cwd)
+      if (data.footerLine) {
+        elements.push(this.md(`<font color='grey'>${data.footerLine}</font>`));
+      }
     } else {
-      summaryLines.push('**当前阶段**\n等待开始处理');
+      // In-progress: show status info
+      const summaryLines: string[] = [];
+      if (data.phase === 'waiting_permission' && data.permission) {
+        const extraQueue = data.permission.queueLength > 1 ? `\n待处理审批：${data.permission.queueLength} 个` : '';
+        summaryLines.push(
+          `**当前等待**\n${data.permission.toolName}\n\`\`\`\n${truncate(data.permission.input, 260)}\n\`\`\`${extraQueue}`
+        );
+      } else if (data.currentTool?.input) {
+        const currentElapsed = data.currentTool.elapsed > 0 ? ` · ${data.currentTool.elapsed}s` : '';
+        summaryLines.push(`**最近动作**\n${data.currentTool.name}: ${truncate(data.currentTool.input, 140)}${currentElapsed}`);
+      } else if (data.totalTools > 0 && data.toolSummary) {
+        summaryLines.push(truncate(data.toolSummary, 180));
+      }
+      summaryLines.push(`**运行时长** ${data.elapsedSeconds}s`);
+      elements.push(this.md(summaryLines.join('\n\n')));
     }
 
-    summaryLines.push(`**运行时长**\n${data.elapsedSeconds}s`);
-    if (data.footerLine) {
-      summaryLines.push(`**上下文**\n${data.footerLine}`);
-    }
-
-    const elements: FeishuElement[] = [this.md(summaryLines.join('\n\n'))];
-
-    // Add todo summary if available
+    // Todo progress (both in-progress and done)
     if (data.todoItems.length > 0) {
       const done = data.todoItems.filter(item => item.status === 'completed').length;
       const todoLines = data.todoItems.slice(0, 5).map(item => {
@@ -307,17 +314,17 @@ export class FeishuFormatter extends MessageFormatter {
       elements.push(this.md(`**工作进度** (${done}/${data.todoItems.length})\n${todoLines.join('\n')}`));
     }
 
-    // Add collapsible thinking process panel
+    // Collapsible thinking process panel
     if (data.thinkingText?.trim()) {
       elements.push({
         tag: 'collapsible_panel',
         expanded: false,
-        header: { title: { tag: 'plain_text', content: '思考过程' } },
-        body: { elements: [{ tag: 'markdown', content: truncate(data.thinkingText.trim(), 1500) }] },
+        header: { title: { tag: 'plain_text', content: '💭 思考过程' } },
+        elements: [{ tag: 'markdown', content: truncate(data.thinkingText.trim(), 1500) }],
       });
     }
 
-    // Add collapsible tool call details panel
+    // Collapsible tool call details panel
     if (data.toolLogs?.length) {
       const logLines = data.toolLogs.map(log => {
         const icon = log.isError ? '❌' : '✅';
@@ -328,18 +335,8 @@ export class FeishuFormatter extends MessageFormatter {
       elements.push({
         tag: 'collapsible_panel',
         expanded: false,
-        header: { title: { tag: 'plain_text', content: `工具调用详情 (${data.toolLogs.length})` } },
-        body: { elements: [{ tag: 'markdown', content: truncate(logLines.join('\n'), 2000) }] },
-      });
-    }
-
-    // Add collapsible process summary
-    if (data.renderedText.trim()) {
-      elements.push({
-        tag: 'collapsible_panel',
-        expanded: false,
-        header: { title: { tag: 'plain_text', content: '工作日志摘要' } },
-        body: { elements: [{ tag: 'markdown', content: truncate(data.renderedText, 700) }] },
+        header: { title: { tag: 'plain_text', content: `🔧 工具调用 (${data.toolLogs.length})` } },
+        elements: [{ tag: 'markdown', content: truncate(logLines.join('\n'), 2000) }],
       });
     }
 
