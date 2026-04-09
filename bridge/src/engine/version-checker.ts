@@ -4,11 +4,16 @@
  */
 
 import { createRequire } from 'node:module';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
 
 const REPO = 'huanghuoguoguo/tlive';
 const GITHUB_API = `https://api.github.com/repos/${REPO}/releases/latest`;
+const SKIP_VERSION_FILE = join(homedir(), '.tlive', 'data', 'skipped-version.json');
 
 export interface VersionInfo {
   current: string;
@@ -47,10 +52,51 @@ function compareVersions(a: string, b: string): number {
 }
 
 /**
- * Check for updates by querying GitHub Releases API.
- * Returns null if check fails.
+ * Get skipped version from file
  */
-export async function checkForUpdates(): Promise<VersionInfo | null> {
+export function getSkippedVersion(): string | null {
+  try {
+    if (existsSync(SKIP_VERSION_FILE)) {
+      const data = JSON.parse(readFileSync(SKIP_VERSION_FILE, 'utf-8'));
+      return data.skippedVersion || null;
+    }
+  } catch {
+    // Ignore errors
+  }
+  return null;
+}
+
+/**
+ * Skip a specific version (won't notify again for this version)
+ */
+export function skipVersion(version: string): void {
+  try {
+    const dir = join(homedir(), '.tlive', 'data');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(SKIP_VERSION_FILE, JSON.stringify({ skippedVersion: version, skippedAt: new Date().toISOString() }));
+  } catch {
+    // Ignore errors
+  }
+}
+
+/**
+ * Clear skipped version (re-enable notifications)
+ */
+export function clearSkippedVersion(): void {
+  try {
+    if (existsSync(SKIP_VERSION_FILE)) {
+      writeFileSync(SKIP_VERSION_FILE, JSON.stringify({ skippedVersion: null }));
+    }
+  } catch {
+    // Ignore errors
+  }
+}
+
+/**
+ * Check for updates by querying GitHub Releases API.
+ * Returns null if check fails or version was skipped.
+ */
+export async function checkForUpdates(options?: { ignoreSkip?: boolean }): Promise<VersionInfo | null> {
   const current = getCurrentVersion();
 
   try {
@@ -81,6 +127,15 @@ export async function checkForUpdates(): Promise<VersionInfo | null> {
     }
 
     const hasUpdate = compareVersions(current, latest) < 0;
+
+    // Check if this version was skipped
+    if (hasUpdate && !options?.ignoreSkip) {
+      const skipped = getSkippedVersion();
+      if (skipped === latest) {
+        console.log(`[version-checker] Version ${latest} was skipped, not notifying`);
+        return null;
+      }
+    }
 
     return {
       current,

@@ -493,13 +493,14 @@ export function presentVersionCheck(
   if (channelType === 'feishu') {
     return withChatId(chatId, {
       text: info.hasUpdate
-        ? `**发现新版本**\n当前：v${info.current}\n最新：v${info.latest}${dateStr ? `\n发布时间：${dateStr}` : ''}\n\n点击下方按钮升级`
+        ? `**发现新版本**\n当前：v${info.current}\n最新：v${info.latest}${dateStr ? `\n发布时间：${dateStr}` : ''}\n\n点击下方按钮升级或跳过`
         : `**已是最新版本**\n当前版本：v${info.current}`,
       feishuHeader: { template: info.hasUpdate ? 'green' : 'blue', title: '🔄 版本检查' },
       buttons: info.hasUpdate
         ? [
-            { label: '⬆️ 立即升级', callbackData: 'cmd:upgrade confirm', style: 'primary' as const },
-            { label: '📋 查看更新', callbackData: 'cmd:upgrade notes', style: 'default' as const },
+            { label: '⬆️ 立即升级', callbackData: `cmd:upgrade confirm:${info.latest}`, style: 'primary' as const, row: 0 },
+            { label: '⏭️ 跳过此版本', callbackData: `cmd:upgrade skip:${info.latest}`, style: 'default' as const, row: 0 },
+            { label: '📋 查看更新', callbackData: 'cmd:upgrade notes', style: 'default' as const, row: 1 },
           ]
         : [
             { label: '🔄 再次检查', callbackData: 'cmd:upgrade', style: 'default' as const },
@@ -518,7 +519,8 @@ export function presentVersionCheck(
       },
       buttons: info.hasUpdate
         ? [
-            { label: '⬆️ Upgrade Now', callbackData: 'cmd:upgrade confirm', style: 'primary' as const },
+            { label: '⬆️ Upgrade Now', callbackData: `cmd:upgrade confirm:${info.latest}`, style: 'primary' as const, row: 0 },
+            { label: '⏭️ Skip Version', callbackData: `cmd:upgrade skip:${info.latest}`, style: 'default' as const, row: 0 },
           ]
         : undefined,
     });
@@ -527,7 +529,7 @@ export function presentVersionCheck(
   // Telegram
   return withChatId(chatId, {
     html: info.hasUpdate
-      ? `🔄 <b>New version available!</b>\n\nCurrent: <code>v${info.current}</code>\nLatest: <code>v${info.latest}</code>${dateStr ? `\nReleased: ${dateStr}` : ''}\n\nRun <code>/upgrade confirm</code> to upgrade.`
+      ? `🔄 <b>New version available!</b>\n\nCurrent: <code>v${info.current}</code>\nLatest: <code>v${info.latest}</code>${dateStr ? `\nReleased: ${dateStr}` : ''}\n\nRun <code>/upgrade confirm</code> to upgrade or <code>/upgrade skip</code> to skip this version.`
       : `✅ <b>Up to date</b>\n\nCurrent version: <code>v${info.current}</code>`,
   });
 }
@@ -589,5 +591,32 @@ export function presentRestartResult(chatId: string, channelType: ChannelType): 
   }
   return withChatId(chatId, {
     text: '🔄 Restarting... The service will reconnect in a few seconds.',
+  });
+}
+
+export function presentVersionSkipped(chatId: string, channelType: ChannelType, version: string): OutboundMessage {
+  if (channelType === 'feishu') {
+    return withChatId(chatId, {
+      text: `⏭️ 已跳过版本 v${version}\n\n下次有新版本时将再次提醒`,
+      feishuHeader: { template: 'yellow', title: '⏭️ 跳过版本' },
+      buttons: [
+        { label: '↩️ 取消跳过', callbackData: 'cmd:upgrade unskip', style: 'default' as const },
+      ],
+    });
+  }
+  return withChatId(chatId, {
+    text: `⏭️ Skipped version v${version}\n\nYou will be notified when a newer version is available.`,
+  });
+}
+
+export function presentVersionUnskipped(chatId: string, channelType: ChannelType): OutboundMessage {
+  if (channelType === 'feishu') {
+    return withChatId(chatId, {
+      text: '↩️ 已取消跳过\n\n下次检查时会重新提醒更新',
+      feishuHeader: { template: 'blue', title: '↩️ 恢复提醒' },
+    });
+  }
+  return withChatId(chatId, {
+    text: '↩️ Update notifications re-enabled.',
   });
 }

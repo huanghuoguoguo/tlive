@@ -48,6 +48,8 @@ import {
   presentVerbose,
   presentVerboseUsage,
   presentVersionCheck,
+  presentVersionSkipped,
+  presentVersionUnskipped,
   presentUpgradeResult,
   presentUpgradeCommand,
   presentRestartResult,
@@ -419,15 +421,14 @@ export class CommandRouter {
       case '/upgrade': {
         const subCmd = parts[1]?.toLowerCase();
 
-        // Handle sub-commands
-        if (subCmd === 'confirm') {
-          // Perform upgrade
+        // Handle sub-commands with optional version parameter (e.g., confirm:0.9.3)
+        if (subCmd?.startsWith('confirm')) {
           const { execSync } = await import('node:child_process');
+          const { getCurrentVersion } = await import('./version-checker.js');
           try {
             // Download and run installer
             const cmd = 'curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash';
             execSync(cmd, { stdio: 'inherit', timeout: 120_000 });
-            const { getCurrentVersion } = await import('./version-checker.js');
             await adapter.send(presentUpgradeResult(msg.chatId, adapter.channelType, {
               success: true,
               version: getCurrentVersion(),
@@ -438,6 +439,24 @@ export class CommandRouter {
               error: err?.message || 'Upgrade failed',
             }));
           }
+          return true;
+        }
+
+        if (subCmd?.startsWith('skip')) {
+          // Extract version from skip:VERSION format
+          const version = subCmd.split(':')[1];
+          if (version) {
+            const { skipVersion } = await import('./version-checker.js');
+            skipVersion(version);
+            await adapter.send(presentVersionSkipped(msg.chatId, adapter.channelType, version));
+          }
+          return true;
+        }
+
+        if (subCmd === 'unskip') {
+          const { clearSkippedVersion } = await import('./version-checker.js');
+          clearSkippedVersion();
+          await adapter.send(presentVersionUnskipped(msg.chatId, adapter.channelType));
           return true;
         }
 
@@ -456,9 +475,9 @@ export class CommandRouter {
           return true;
         }
 
-        // Check for updates
+        // Check for updates (ignore skip to always show when manually checking)
         const { checkForUpdates } = await import('./version-checker.js');
-        const info = await checkForUpdates();
+        const info = await checkForUpdates({ ignoreSkip: true });
         if (info) {
           await adapter.send(presentVersionCheck(msg.chatId, adapter.channelType, info));
         } else {

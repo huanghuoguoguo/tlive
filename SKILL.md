@@ -187,7 +187,7 @@ In IM (from phone):
   /hooks pause|resume        Toggle hook approval
   /status                    Check status
   /upgrade                   Check for updates
-  /upgrade confirm           Upgrade to latest version
+  /upgrade skip              Skip current update notification
   /restart                   Restart bridge service
   /help                      Show all commands
 
