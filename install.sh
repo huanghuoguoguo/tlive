@@ -5,47 +5,32 @@
 set -e
 
 REPO="huanghuoguoguo/tlive"
-BINARY_NAME="tlive"
+INSTALL_DIR="${TLIVE_HOME:-$HOME/.tlive}"
+APP_DIR="${INSTALL_DIR}/app"
 
-# Colors for output
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
+info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
+warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
+error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
+
+# Check Node.js >= 20
+check_node() {
+    if ! command -v node &>/dev/null; then
+        error "Node.js is required but not installed. Install Node.js 20+ first: https://nodejs.org"
+    fi
+    local node_major
+    node_major=$(node -p 'process.versions.node.split(".")[0]')
+    if [ "$node_major" -lt 20 ]; then
+        error "Node.js 20+ is required (found v$(node -p process.version))"
+    fi
+    info "Node.js $(node -p process.version) ✓"
 }
 
-warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
-}
-
-error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-    exit 1
-}
-
-# Detect OS
-detect_os() {
-    case "$(uname -s)" in
-        Darwin*)    echo "darwin" ;;
-        Linux*)     echo "linux" ;;
-        CYGWIN*|MINGW*|MSYS*)    echo "windows" ;;
-        *)          error "Unsupported OS: $(uname -s)" ;;
-    esac
-}
-
-# Detect architecture
-detect_arch() {
-    case "$(uname -m)" in
-        x86_64|amd64)    echo "amd64" ;;
-        arm64|aarch64)   echo "arm64" ;;
-        *)               error "Unsupported architecture: $(uname -m)" ;;
-    esac
-}
-
-# Get latest release version
 get_latest_version() {
     local version
     version=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
@@ -55,58 +40,6 @@ get_latest_version() {
     echo "$version"
 }
 
-# Download binary
-download_binary() {
-    local os="$1"
-    local arch="$2"
-    local version="$3"
-    local ext=""
-
-    if [ "$os" = "windows" ]; then
-        ext=".exe"
-    fi
-
-    local download_url="https://github.com/${REPO}/releases/download/${version}/${BINARY_NAME}-${os}-${arch}${ext}"
-    local tmp_dir=$(mktemp -d)
-    local tmp_file="${tmp_dir}/${BINARY_NAME}${ext}"
-
-    info "Downloading ${BINARY_NAME} ${version} for ${os}/${arch}..."
-
-    if ! curl -fsSL "$download_url" -o "$tmp_file"; then
-        error "Failed to download from ${download_url}"
-    fi
-
-    echo "$tmp_file"
-}
-
-# Install binary
-install_binary() {
-    local tmp_file="$1"
-    local install_dir="$2"
-    local binary_name=$(basename "$tmp_file")
-
-    chmod +x "$tmp_file"
-
-    if [ -w "$install_dir" ]; then
-        mv "$tmp_file" "${install_dir}/${binary_name}"
-        info "Installed ${binary_name} to ${install_dir}"
-    else
-        warn "No write permission for ${install_dir}, trying with sudo..."
-        sudo mv "$tmp_file" "${install_dir}/${binary_name}"
-        info "Installed ${binary_name} to ${install_dir} (with sudo)"
-    fi
-}
-
-# Check if directory is in PATH
-check_path() {
-    local dir="$1"
-    if echo "$PATH" | grep -q "$dir"; then
-        return 0
-    else
-        return 1
-    fi
-}
-
 main() {
     echo ""
     echo "  ╔═══════════════════════════════════════╗"
@@ -114,12 +47,9 @@ main() {
     echo "  ╚═══════════════════════════════════════╝"
     echo ""
 
-    # Detect system
-    local os=$(detect_os)
-    local arch=$(detect_arch)
-    info "Detected: ${os}/${arch}"
+    check_node
 
-    # Get version
+    # Determine version
     local version
     if [ -n "$1" ]; then
         version="$1"
@@ -128,32 +58,50 @@ main() {
     fi
     info "Version: ${version}"
 
-    # Determine install directory
-    local install_dir="/usr/local/bin"
-    if [ ! -w "$install_dir" ] && [ -z "$SUDO_USER" ]; then
-        # Try ~/.local/bin if /usr/local/bin is not writable
-        install_dir="${HOME}/.local/bin"
-        mkdir -p "$install_dir"
+    # Download tarball
+    local download_url="https://github.com/${REPO}/releases/download/${version}/tlive-${version}.tar.gz"
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    local tarball="${tmp_dir}/tlive.tar.gz"
+
+    info "Downloading tlive ${version}..."
+    if ! curl -fsSL "$download_url" -o "$tarball"; then
+        error "Failed to download from ${download_url}"
     fi
 
-    # Download
-    local tmp_file=$(download_binary "$os" "$arch" "$version")
+    # Extract to app directory
+    info "Installing to ${APP_DIR}..."
+    rm -rf "$APP_DIR"
+    mkdir -p "$APP_DIR"
+    tar xzf "$tarball" -C "$APP_DIR"
 
-    # Install
-    install_binary "$tmp_file" "$install_dir"
+    # Install production dependencies
+    info "Installing dependencies..."
+    cd "${APP_DIR}/bridge"
+    npm ci --production --ignore-scripts 2>/dev/null || npm install --production --ignore-scripts 2>/dev/null
+    cd - >/dev/null
+
+    # Create wrapper script
+    local bin_dir="${HOME}/.local/bin"
+    mkdir -p "$bin_dir"
+    cat > "${bin_dir}/tlive" << 'WRAPPER'
+#!/bin/bash
+exec node "${TLIVE_HOME:-$HOME/.tlive}/app/scripts/cli.js" "$@"
+WRAPPER
+    chmod +x "${bin_dir}/tlive"
+    info "Created ${bin_dir}/tlive"
 
     # Check PATH
-    if ! check_path "$install_dir"; then
-        warn "${install_dir} is not in your PATH"
+    if ! echo "$PATH" | grep -q "$bin_dir"; then
+        warn "${bin_dir} is not in your PATH"
         echo ""
         echo "  Add this to your shell profile (~/.bashrc, ~/.zshrc, etc.):"
-        echo ""
-        echo "    export PATH=\"\${PATH}:${install_dir}\""
+        echo "    export PATH=\"\${PATH}:${bin_dir}\""
         echo ""
     fi
 
     # Cleanup
-    rm -rf "$(dirname "$tmp_file")"
+    rm -rf "$tmp_dir"
 
     echo ""
     info "Installation complete! Run 'tlive --help' to get started."

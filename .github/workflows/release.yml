@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v0.11.0)'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  get-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - id: tag
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          elif [[ -n "${{ inputs.tag }}" ]]; then
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "::error::No tag specified"
+            exit 1
+          fi
+
+  build:
+    needs: get-tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.get-tag.outputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: bridge/package-lock.json
+
+      - name: Install and build bridge
+        working-directory: bridge
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Create release tarball
+        run: |
+          TAG="${{ needs.get-tag.outputs.tag }}"
+          TARBALL="tlive-${TAG}.tar.gz"
+
+          tar czf "$TARBALL" \
+            --exclude='node_modules' \
+            --exclude='.git' \
+            --exclude='bridge/src' \
+            --exclude='bridge/esbuild.config.js' \
+            --exclude='bridge/tsconfig.json' \
+            --exclude='bridge/vitest.config.ts' \
+            package.json \
+            bridge/package.json \
+            bridge/package-lock.json \
+            bridge/dist/ \
+            scripts/ \
+            install.sh
+
+          echo "TARBALL=$TARBALL" >> $GITHUB_ENV
+          echo "TAG=$TAG" >> $GITHUB_ENV
+
+      - name: Create release if not exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${{ env.TAG }}" --repo ${{ github.repository }} 2>/dev/null \
+            || gh release create "${{ env.TAG }}" \
+                 --repo ${{ github.repository }} \
+                 --title "${{ env.TAG }}" \
+                 --generate-notes
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          files: ${{ env.TARBALL }}
