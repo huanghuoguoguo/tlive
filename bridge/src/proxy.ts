@@ -1,8 +1,6 @@
 import { SocksProxyAgent } from 'socks-proxy-agent';
 import { HttpsProxyAgent } from 'https-proxy-agent';
-import { ProxyAgent } from 'undici';
 import type { Agent } from 'node:http';
-import type { Dispatcher } from 'undici';
 
 function getProtocol(url: string): string {
   if (!url.includes('://')) {
@@ -30,24 +28,6 @@ export function createNodeAgent(proxyUrl: string): Agent | undefined {
     return new HttpsProxyAgent(proxyUrl);
   }
   throw new Error(`Unsupported proxy protocol: ${protocol}. Use http://, https://, socks4://, or socks5://`);
-}
-
-/**
- * Create an undici Dispatcher-compatible proxy agent.
- * Supports: http, https only. SOCKS is not supported by undici.
- */
-export function createUndiciAgent(proxyUrl: string): Dispatcher | undefined {
-  if (!proxyUrl) return undefined;
-  const protocol = getProtocol(proxyUrl);
-
-  if (isSocks(protocol)) {
-    console.warn(`[proxy] SOCKS proxy is not supported for undici-based clients. Use http:// or https:// proxy instead.`);
-    return undefined;
-  }
-  if (protocol === 'http' || protocol === 'https') {
-    return new ProxyAgent(proxyUrl);
-  }
-  throw new Error(`Unsupported proxy protocol: ${protocol}. Use http:// or https://`);
 }
 
 /** Mask credentials in proxy URL for safe logging */
