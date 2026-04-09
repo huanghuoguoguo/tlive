@@ -42,7 +42,6 @@ export class PermissionBroker {
         chatId,
         text: formatted.text,
         html: formatted.html,
-        embed: formatted.embed,
         buttons: formatted.buttons,
         feishuHeader: formatted.feishuHeader,
         feishuElements: formatted.feishuElements,

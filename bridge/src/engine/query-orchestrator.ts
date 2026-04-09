@@ -26,8 +26,6 @@ interface QueryOrchestratorOptions {
   store: BridgeStore;
   defaultWorkdir: string;
   port: number;
-  token: string;
-  isCoreAvailable: () => boolean;
 }
 
 /**

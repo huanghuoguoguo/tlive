@@ -160,21 +160,12 @@ describe('TelegramAdapter', () => {
   });
 
   describe('topic support', () => {
-    it('passes message_thread_id when threadId is set', async () => {
+    it('omits message_thread_id (threadId removed from OutboundMessage)', async () => {
       await adapter.start();
-      await adapter.send({ chatId: '12345', text: 'topic message', threadId: '999' });
+      await adapter.send({ chatId: '12345', text: 'topic message' });
       expect(mockSendMessage).toHaveBeenCalledWith(
         '12345', 'topic message',
-        expect.objectContaining({ message_thread_id: 999 })
-      );
-    });
-
-    it('omits message_thread_id for General topic (1)', async () => {
-      await adapter.start();
-      await adapter.send({ chatId: '12345', text: 'general', threadId: '1' });
-      expect(mockSendMessage).toHaveBeenCalledWith(
-        '12345', 'general',
-        expect.objectContaining({ message_thread_id: undefined })
+        expect.not.objectContaining({ message_thread_id: expect.anything() })
       );
     });
   });

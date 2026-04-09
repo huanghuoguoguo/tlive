@@ -72,7 +72,6 @@ export class CommandRouter {
     private state: SessionStateManager,
     private getAdapters: () => Map<string, BaseChannelAdapter>,
     private router: ChannelRouter,
-    private isCoreAvailable: () => boolean,
     private store: BridgeStore,
     private defaultWorkdir: string,
     private llm: LLMProvider,
@@ -87,10 +86,8 @@ export class CommandRouter {
 
     switch (cmd) {
       case '/status': {
-        const healthy = this.isCoreAvailable();
-        const coreStatus = healthy ? '🟢 connected' : '🔴 disconnected';
         const channelList = Array.from(this.getAdapters().keys()).join(', ') || 'none';
-        await adapter.send(presentStatus(msg.chatId, adapter.channelType, coreStatus, channelList));
+        await adapter.send(presentStatus(msg.chatId, adapter.channelType, '🟢 running', channelList));
         return true;
       }
       case '/new': {

@@ -54,9 +54,6 @@ describe('TextDispatcher', () => {
       permissions,
       sdkEngine,
       state: new SessionStateManager(),
-      coreUrl: 'http://localhost:8080',
-      token: 'token',
-      isCoreAvailable: () => true,
     });
     const adapter = createAdapter();
 
@@ -103,9 +100,6 @@ describe('TextDispatcher', () => {
       permissions,
       sdkEngine,
       state: new SessionStateManager(),
-      coreUrl: 'http://localhost:8080',
-      token: 'token',
-      isCoreAvailable: () => true,
     });
 
     const handled = await dispatcher.handle(createAdapter(), createMessage('2'));
@@ -115,15 +109,7 @@ describe('TextDispatcher', () => {
     expect(gateway.resolve).toHaveBeenCalledWith('askq-1', 'allow');
   });
 
-  it('routes hook replies back into the local session input API', async () => {
-    const originalFetch = global.fetch;
-    global.fetch = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => [],
-      })
-      .mockResolvedValueOnce({ ok: true }) as any;
-
+  it('shows warning for hook replies (feature removed with Go Core)', async () => {
     const permissions = {
       parsePermissionText: vi.fn().mockReturnValue(null),
       tryResolveByText: vi.fn().mockReturnValue(false),
@@ -154,21 +140,12 @@ describe('TextDispatcher', () => {
       permissions,
       sdkEngine,
       state: new SessionStateManager(),
-      coreUrl: 'http://localhost:8080',
-      token: 'token',
-      isCoreAvailable: () => true,
     });
     const adapter = createAdapter();
 
     const handled = await dispatcher.handle(adapter, createMessage('send this', { replyToMessageId: 'hook-1' }));
 
     expect(handled).toBe(true);
-    expect(global.fetch).toHaveBeenCalledWith(
-      'http://localhost:8080/api/sessions/session-1/input',
-      expect.objectContaining({ method: 'POST' }),
-    );
-    expect(adapter.send).toHaveBeenCalledWith(expect.objectContaining({ text: '✓ Sent to local session' }));
-
-    global.fetch = originalFetch;
+    expect(adapter.send).toHaveBeenCalledWith(expect.objectContaining({ text: '⚠️ Hook reply feature no longer available' }));
   });
 });

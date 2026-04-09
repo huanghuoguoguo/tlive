@@ -11,7 +11,7 @@ describe('PermissionCoordinator', () => {
   beforeEach(() => {
     gateway = new PendingPermissions();
     broker = new PermissionBroker(gateway, 'http://localhost:8080');
-    coord = new PermissionCoordinator(gateway, broker, 'http://localhost:9090', 'test-token');
+    coord = new PermissionCoordinator(gateway, broker);
   });
 
   describe('parsePermissionText', () => {

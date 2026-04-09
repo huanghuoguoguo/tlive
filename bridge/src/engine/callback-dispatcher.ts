@@ -18,7 +18,6 @@ import {
 interface CallbackDispatcherDeps {
   permissions: PermissionCoordinator;
   sdkEngine: SDKEngine;
-  isCoreAvailable: () => boolean;
   replayMessage: (adapter: BaseChannelAdapter, msg: InboundMessage) => Promise<boolean>;
 }
 
@@ -46,7 +45,6 @@ export async function handleCallbackMessage(
       msg.messageId,
       adapter,
       msg.chatId,
-      deps.isCoreAvailable(),
     );
     return true;
   }
@@ -88,7 +86,6 @@ export async function handleCallbackMessage(
       msg.messageId,
       adapter,
       msg.chatId,
-      deps.isCoreAvailable(),
     );
     return true;
   }
@@ -101,7 +98,6 @@ export async function handleCallbackMessage(
       msg.messageId,
       adapter,
       msg.chatId,
-      deps.isCoreAvailable(),
     );
     return true;
   }
@@ -164,7 +160,6 @@ export async function handleCallbackMessage(
       msg.messageId,
       adapter,
       msg.chatId,
-      deps.isCoreAvailable(),
     );
     return true;
   }

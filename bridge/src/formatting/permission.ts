@@ -6,7 +6,6 @@ import { truncate } from '../utils/string.js';
 interface PermissionMessage {
   text?: string;
   html?: string;
-  embed?: OutboundMessage['embed'];
   buttons: OutboundMessage['buttons'];
   feishuElements?: OutboundMessage['feishuElements'];
   /** Feishu card header (caller passes to buildFeishuCard) */

@@ -13,8 +13,6 @@ import { truncate } from '../utils/string.js';
 export class PermissionCoordinator {
   private gateway: PendingPermissions;
   private broker: PermissionBroker;
-  private coreUrl: string;
-  private token: string;
 
   /** Track pending SDK permission IDs per chat for text-based resolution (key: stateKey, value: permId) */
   private pendingSdkPerms = new Map<string, string>();
@@ -41,11 +39,9 @@ export class PermissionCoordinator {
   /** Dynamic Bash prefix whitelist — commands approved via "Allow Bash(prefix *)" */
   private allowedBashPrefixes = new Set<string>();
 
-  constructor(gateway: PendingPermissions, broker: PermissionBroker, coreUrl: string, token: string) {
+  constructor(gateway: PendingPermissions, broker: PermissionBroker) {
     this.gateway = gateway;
     this.broker = broker;
-    this.coreUrl = coreUrl;
-    this.token = token;
   }
 
   /** Expose the PendingPermissions gateway instance */
@@ -249,126 +245,18 @@ export class PermissionCoordinator {
     return this.permissionMessages.size;
   }
 
-  /** Resolve a hook permission via Core API */
-  async resolveHookPermission(permissionId: string, decision: string, channelType: string, coreAvailable: boolean): Promise<void> {
+  /** Resolve a hook permission (simplified - Go Core removed) */
+  async resolveHookPermission(permissionId: string, decision: string, channelType: string): Promise<void> {
     // Deduplicate: skip if already resolved (race between button and text)
     if (this.resolvedHookIds.has(permissionId)) return;
     this.resolvedHookIds.set(permissionId, Date.now());
 
-    if (!coreAvailable) throw new Error('Go Core not available');
-    try {
-      await fetch(`${this.coreUrl}/api/hooks/permission/${permissionId}/resolve`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decision }),
-        signal: AbortSignal.timeout(5000),
-      });
-    } finally {
-      // Always clean up tracking maps, even if fetch failed —
-      // stale entries cause worse problems than a missed resolution
-      for (const [id, e] of this.permissionMessages) {
-        if (e.permissionId === permissionId) this.permissionMessages.delete(id);
-      }
-      const latest = this.latestPermission.get(channelType);
-      if (latest?.permissionId === permissionId) this.latestPermission.delete(channelType);
+    // Clean up tracking maps
+    for (const [id, e] of this.permissionMessages) {
+      if (e.permissionId === permissionId) this.permissionMessages.delete(id);
     }
-  }
-
-  // --- PTY input injection for AskUserQuestion in interactive mode ---
-
-  /**
-   * In interactive (non-headless) mode, Claude Code ignores PermissionRequest
-   * updatedInput for AskUserQuestion — it renders the interactive picker in the
-   * terminal after the hook allows the permission. Inject keystrokes into the
-   * PTY to select the option in the picker.
-   *
-   * Single-select: ↓ × optionIndex + Enter
-   * Multi-select:  ↓ × optionIndex + Space (toggle) + Enter (confirm)
-   * Free text:     type text + Enter
-   */
-  /**
-   * Send a single keystroke to PTY and wait for it to be processed.
-   */
-  private async sendKey(sessionId: string, key: string): Promise<boolean> {
-    try {
-      const resp = await fetch(`${this.coreUrl}/api/sessions/${sessionId}/input`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: key }),
-        signal: AbortSignal.timeout(3000),
-      });
-      return resp.ok;
-    } catch { return false; }
-  }
-
-  private static readonly PTY_INITIAL_DELAY = 1500;
-  private static readonly PTY_KEY_INTERVAL = 100;
-
-  injectPtyAnswer(sessionId: string, optionIndex: number, multiSelect?: boolean, freeText?: string, totalOptions?: number): void {
-    if (!sessionId) return;
-    // Wait for Claude Code to render the picker after hook returns.
-    // No screen-read API exists, so we use a best-effort initial delay
-    // then retry the first keystroke up to 3 times with back-off.
-    setTimeout(async () => {
-      const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
-      const keyInterval = PermissionCoordinator.PTY_KEY_INTERVAL;
-
-      /** Send key with retry — first keystroke may fail if picker isn't ready */
-      const sendKeyRetry = async (key: string, retries = 3): Promise<boolean> => {
-        for (let attempt = 0; attempt < retries; attempt++) {
-          if (await this.sendKey(sessionId, key)) return true;
-          await delay(500 * (attempt + 1));
-        }
-        return false;
-      };
-
-      try {
-        if (freeText != null) {
-          await sendKeyRetry(freeText + '\r');
-        } else if (multiSelect && totalOptions != null) {
-          // Multi-select: navigate → Space (toggle) → navigate to Submit → Enter → confirm
-          // Picker items: [option0..optionN-1, "Type something", Submit]
-          for (let i = 0; i < optionIndex; i++) {
-            const ok = i === 0 ? await sendKeyRetry('\x1b[B') : await this.sendKey(sessionId, '\x1b[B');
-            if (!ok && i === 0) return;
-            await delay(keyInterval);
-          }
-          await delay(keyInterval);
-          if (optionIndex === 0) {
-            if (!await sendKeyRetry(' ')) return;
-          } else {
-            await this.sendKey(sessionId, ' ');
-          }
-
-          // Navigate from current option to Submit (totalOptions + 1 - optionIndex downs)
-          const downsToSubmit = totalOptions + 1 - optionIndex;
-          for (let i = 0; i < downsToSubmit; i++) {
-            await delay(keyInterval);
-            await this.sendKey(sessionId, '\x1b[B');
-          }
-
-          await delay(keyInterval);
-          await this.sendKey(sessionId, '\r'); // review screen
-          await delay(500);
-          await this.sendKey(sessionId, '\r'); // confirm submit
-        } else {
-          // Single-select: navigate → Enter
-          for (let i = 0; i < optionIndex; i++) {
-            const ok = i === 0 ? await sendKeyRetry('\x1b[B') : await this.sendKey(sessionId, '\x1b[B');
-            if (!ok && i === 0) return;
-            await delay(keyInterval);
-          }
-          await delay(keyInterval);
-          if (optionIndex === 0) {
-            await sendKeyRetry('\r');
-          } else {
-            await this.sendKey(sessionId, '\r');
-          }
-        }
-      } catch {
-        // PTY injection is best-effort
-      }
-    }, PermissionCoordinator.PTY_INITIAL_DELAY);
+    const latest = this.latestPermission.get(channelType);
+    if (latest?.permissionId === permissionId) this.latestPermission.delete(channelType);
   }
 
   // --- Hook callback resolution (button-based) ---
@@ -381,65 +269,46 @@ export class PermissionCoordinator {
     messageId: string,
     adapter: { editMessage: (chatId: string, messageId: string, msg: any) => Promise<any>; send: (msg: any) => Promise<any> },
     chatId: string,
-    coreAvailable: boolean,
   ): Promise<boolean> {
     // Deduplicate: skip if already resolved
     if (this.resolvedHookIds.has(hookId)) return true;
     this.resolvedHookIds.set(hookId, Date.now());
 
-    if (!coreAvailable) {
-      await adapter.send({ chatId, text: '❌ Go Core not available' });
-      return true;
-    }
+    const labels: Record<string, string> = {
+      allow: '✅ Allowed',
+      allow_always: '📌 Always Allowed',
+      deny: '❌ Denied',
+    };
+    const label = labels[decision] || '✅ Allowed';
 
-    try {
-      await fetch(`${this.coreUrl}/api/hooks/permission/${hookId}/resolve`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          'Content-Type': 'application/json',
+    // AskUserQuestion cards use hookQuestionData, not hookPermissionTexts
+    if (this.hookQuestionData.has(hookId)) {
+      this.hookQuestionData.delete(hookId);
+      await adapter.editMessage(chatId, messageId, {
+        chatId,
+        text: decision === 'deny' ? '❌ Skipped' : label,
+        buttons: [], // clear buttons
+        feishuHeader: {
+          template: decision === 'deny' ? 'red' : 'green',
+          title: decision === 'deny' ? '❌ Skipped' : label,
         },
-        body: JSON.stringify({ decision }),
-        signal: AbortSignal.timeout(5000),
       });
-      const labels: Record<string, string> = {
-        allow: '✅ Allowed',
-        allow_always: '📌 Always Allowed',
-        deny: '❌ Denied',
-      };
-      const label = labels[decision] || '✅ Allowed';
-
-      // AskUserQuestion cards use hookQuestionData, not hookPermissionTexts
-      if (this.hookQuestionData.has(hookId)) {
-        this.hookQuestionData.delete(hookId);
-        await adapter.editMessage(chatId, messageId, {
-          chatId,
-          text: decision === 'deny' ? '❌ Skipped' : label,
-          buttons: [], // clear buttons
-          feishuHeader: {
-            template: decision === 'deny' ? 'red' : 'green',
-            title: decision === 'deny' ? '❌ Skipped' : label,
-          },
-        });
-      } else {
-        const originalText = this.hookPermissionTexts.get(hookId)?.text || '';
-        this.hookPermissionTexts.delete(hookId);
-        await adapter.editMessage(chatId, messageId, {
-          chatId,
-          text: originalText + `\n\n${label}`,
-          buttons: [], // clear buttons
-          feishuHeader: {
-            template: decision === 'deny' ? 'red' : 'green',
-            title: label,
-          },
-        });
-      }
-      // Track confirmation message for reply routing
-      if (sessionId) {
-        this.trackHookMessage(messageId, sessionId);
-      }
-    } catch (err) {
-      await adapter.send({ chatId, text: `❌ Failed to resolve: ${err}` });
+    } else {
+      const originalText = this.hookPermissionTexts.get(hookId)?.text || '';
+      this.hookPermissionTexts.delete(hookId);
+      await adapter.editMessage(chatId, messageId, {
+        chatId,
+        text: originalText + `\n\n${label}`,
+        buttons: [], // clear buttons
+        feishuHeader: {
+          template: decision === 'deny' ? 'red' : 'green',
+          title: label,
+        },
+      });
+    }
+    // Track confirmation message for reply routing
+    if (sessionId) {
+      this.trackHookMessage(messageId, sessionId);
     }
     return true;
   }
@@ -452,16 +321,11 @@ export class PermissionCoordinator {
     messageId: string,
     adapter: { editMessage: (chatId: string, messageId: string, msg: any) => Promise<any>; send: (msg: any) => Promise<any> },
     chatId: string,
-    coreAvailable: boolean,
   ): Promise<boolean> {
     if (this.resolvedHookIds.has(hookId)) return true;
     // Mark resolved immediately to prevent double-click races (async yields below)
     this.resolvedHookIds.set(hookId, Date.now());
 
-    if (!coreAvailable) {
-      await adapter.send({ chatId, text: '❌ Go Core not available' });
-      return true;
-    }
     const questionData = this.hookQuestionData.get(hookId);
     if (!questionData) {
       await adapter.send({ chatId, text: '❌ Question data not found' });
@@ -474,37 +338,20 @@ export class PermissionCoordinator {
       await adapter.send({ chatId, text: `❌ Invalid option (1-${q.options.length})` });
       return true;
     }
-    const answers: Record<string, string> = { [q.question]: selected.label };
-    const updatedInput = { questions: questionData.questions, answers };
 
-    try {
-      await fetch(`${this.coreUrl}/api/hooks/permission/${hookId}/resolve`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ decision: 'allow', updated_input: updatedInput }),
-        signal: AbortSignal.timeout(5000),
-      });
-      const ctx = questionData.contextSuffix || '';
-      this.hookQuestionData.delete(hookId);
-      await adapter.editMessage(chatId, messageId, {
-        chatId,
-        text: `✅ Selected: ${selected.label}`,
-        buttons: [],
-        feishuHeader: {
-          template: 'green',
-          title: `✅ Terminal${ctx}`,
-        },
-      });
-      if (sessionId) {
-        this.trackHookMessage(messageId, sessionId);
-      }
-      // Inject PTY input for interactive mode (updatedInput only works in headless)
-      this.injectPtyAnswer(sessionId, optionIndex, q.multiSelect, undefined, q.options.length);
-    } catch (err) {
-      await adapter.send({ chatId, text: `❌ Failed to resolve: ${err}` });
+    const ctx = questionData.contextSuffix || '';
+    this.hookQuestionData.delete(hookId);
+    await adapter.editMessage(chatId, messageId, {
+      chatId,
+      text: `✅ Selected: ${selected.label}`,
+      buttons: [],
+      feishuHeader: {
+        template: 'green',
+        title: `✅ Terminal${ctx}`,
+      },
+    });
+    if (sessionId) {
+      this.trackHookMessage(messageId, sessionId);
     }
     return true;
   }
@@ -544,13 +391,9 @@ export class PermissionCoordinator {
     messageId: string,
     adapter: { editMessage: (chatId: string, messageId: string, msg: any) => Promise<any>; send: (msg: any) => Promise<any> },
     chatId: string,
-    coreAvailable: boolean,
   ): Promise<boolean> {
     if (this.resolvedHookIds.has(hookId)) return true;
-    if (!coreAvailable) {
-      await adapter.send({ chatId, text: '❌ Go Core not available' });
-      return true;
-    }
+
     const questionData = this.hookQuestionData.get(hookId);
     if (!questionData) {
       await adapter.send({ chatId, text: '❌ Question data not found' });
@@ -566,38 +409,18 @@ export class PermissionCoordinator {
     const q = questionData.questions[0];
     // Join selected labels with comma (per Claude Code docs)
     const selectedLabels = [...selected].sort((a, b) => a - b).map(i => q.options[i]?.label).filter(Boolean);
-    const answersValue = selectedLabels.join(',');
-    const answers: Record<string, string> = { [q.question]: answersValue };
-    const updatedInput = { questions: questionData.questions, answers };
 
-    try {
-      await fetch(`${this.coreUrl}/api/hooks/permission/${hookId}/resolve`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ decision: 'allow', updated_input: updatedInput }),
-        signal: AbortSignal.timeout(5000),
-      });
-      const ctx = questionData.contextSuffix || '';
-      this.hookQuestionData.delete(hookId);
-      this.toggledSelections.delete(hookId);
-      await adapter.editMessage(chatId, messageId, {
-        chatId,
-        text: `✅ Selected: ${selectedLabels.join(', ')}`,
-        buttons: [],
-        feishuHeader: { template: 'green', title: `✅ Terminal${ctx}` },
-      });
-      if (sessionId) {
-        this.trackHookMessage(messageId, sessionId);
-      }
-      // Inject PTY input for interactive mode — toggle each selected option then submit
-      for (const idx of [...selected].sort((a, b) => a - b)) {
-        this.injectPtyAnswer(sessionId, idx, true, undefined, q.options.length);
-      }
-    } catch (err) {
-      await adapter.send({ chatId, text: `❌ Failed to resolve: ${err}` });
+    const ctx = questionData.contextSuffix || '';
+    this.hookQuestionData.delete(hookId);
+    this.toggledSelections.delete(hookId);
+    await adapter.editMessage(chatId, messageId, {
+      chatId,
+      text: `✅ Selected: ${selectedLabels.join(', ')}`,
+      buttons: [],
+      feishuHeader: { template: 'green', title: `✅ Terminal${ctx}` },
+    });
+    if (sessionId) {
+      this.trackHookMessage(messageId, sessionId);
     }
     return true;
   }
@@ -610,14 +433,9 @@ export class PermissionCoordinator {
     messageId: string,
     adapter: { editMessage: (chatId: string, messageId: string, msg: any) => Promise<any>; send: (msg: any) => Promise<any> },
     chatId: string,
-    coreAvailable: boolean,
   ): Promise<boolean> {
     if (this.resolvedHookIds.has(hookId)) return true;
 
-    if (!coreAvailable) {
-      await adapter.send({ chatId, text: '❌ Go Core not available' });
-      return true;
-    }
     const questionData = this.hookQuestionData.get(hookId);
     if (!questionData) {
       await adapter.send({ chatId, text: '❌ Question data not found' });
@@ -625,33 +443,17 @@ export class PermissionCoordinator {
     }
 
     this.resolvedHookIds.set(hookId, Date.now());
-    const q = questionData.questions[0];
-    const answers: Record<string, string> = { [q.question]: '' };
-    const updatedInput = { questions: questionData.questions, answers };
 
-    try {
-      await fetch(`${this.coreUrl}/api/hooks/permission/${hookId}/resolve`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ decision: 'allow', updated_input: updatedInput }),
-        signal: AbortSignal.timeout(5000),
-      });
-      const ctx = questionData.contextSuffix || '';
-      this.hookQuestionData.delete(hookId);
-      await adapter.editMessage(chatId, messageId, {
-        chatId,
-        text: '⏭ Skipped',
-        buttons: [],
-        feishuHeader: { template: 'grey', title: `⏭ Terminal${ctx}` },
-      });
-      if (sessionId) {
-        this.trackHookMessage(messageId, sessionId);
-      }
-    } catch (err) {
-      await adapter.send({ chatId, text: `❌ Failed to resolve: ${err}` });
+    const ctx = questionData.contextSuffix || '';
+    this.hookQuestionData.delete(hookId);
+    await adapter.editMessage(chatId, messageId, {
+      chatId,
+      text: '⏭ Skipped',
+      buttons: [],
+      feishuHeader: { template: 'grey', title: `⏭ Terminal${ctx}` },
+    });
+    if (sessionId) {
+      this.trackHookMessage(messageId, sessionId);
     }
     return true;
   }
@@ -664,14 +466,9 @@ export class PermissionCoordinator {
     messageId: string,
     adapter: { editMessage: (chatId: string, messageId: string, msg: any) => Promise<any>; send: (msg: any) => Promise<any> },
     chatId: string,
-    coreAvailable: boolean,
   ): Promise<boolean> {
     if (this.resolvedHookIds.has(hookId)) return true;
 
-    if (!coreAvailable) {
-      await adapter.send({ chatId, text: '❌ Go Core not available' });
-      return true;
-    }
     const questionData = this.hookQuestionData.get(hookId);
     if (!questionData) {
       await adapter.send({ chatId, text: '❌ Question data not found' });
@@ -679,40 +476,17 @@ export class PermissionCoordinator {
     }
 
     this.resolvedHookIds.set(hookId, Date.now());
-    const q = questionData.questions[0];
-    const answers: Record<string, string> = { [q.question]: text };
-    const updatedInput = { questions: questionData.questions, answers };
 
-    try {
-      await fetch(`${this.coreUrl}/api/hooks/permission/${hookId}/resolve`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ decision: 'allow', updated_input: updatedInput }),
-        signal: AbortSignal.timeout(5000),
-      });
-      const ctx = questionData.contextSuffix || '';
-      this.hookQuestionData.delete(hookId);
-      await adapter.editMessage(chatId, messageId, {
-        chatId,
-        text: `✅ Answer: ${truncate(text, 50)}`,
-        buttons: [],
-        feishuHeader: { template: 'green', title: `✅ Terminal${ctx}` },
-      });
-      if (sessionId) {
-        this.trackHookMessage(messageId, sessionId);
-      }
-      // Inject PTY input for interactive mode
-      const optIdx = q.options?.findIndex((o: { label: string }) => o.label === text) ?? -1;
-      if (optIdx >= 0) {
-        this.injectPtyAnswer(sessionId, optIdx, q.multiSelect, undefined, q.options.length);
-      } else {
-        this.injectPtyAnswer(sessionId, 0, false, text);
-      }
-    } catch (err) {
-      await adapter.send({ chatId, text: `❌ Failed to resolve: ${err}` });
+    const ctx = questionData.contextSuffix || '';
+    this.hookQuestionData.delete(hookId);
+    await adapter.editMessage(chatId, messageId, {
+      chatId,
+      text: `✅ Answer: ${truncate(text, 50)}`,
+      buttons: [],
+      feishuHeader: { template: 'green', title: `✅ Terminal${ctx}` },
+    });
+    if (sessionId) {
+      this.trackHookMessage(messageId, sessionId);
     }
     return true;
   }
