@@ -16,6 +16,7 @@ import type {
   NewSessionData,
   ErrorData,
   ProgressData,
+  FormattableMessage,
 } from './message-types.js';
 import { truncate } from '../utils/string.js';
 import { escapeHtml } from './escape.js';
@@ -33,6 +34,39 @@ export abstract class MessageFormatter {
 
   /** Check if platform supports native buttons */
   protected abstract supportsButtons(): boolean;
+
+  // --- Generic format method ---
+
+  /** Format a semantic message into an OutboundMessage */
+  format(msg: FormattableMessage): OutboundMessage {
+    const { type, chatId } = msg;
+    switch (type) {
+      case 'status':
+        return this.formatStatus(chatId, msg.data);
+      case 'permission':
+        return this.formatPermission(chatId, msg.data);
+      case 'question':
+        return this.formatQuestion(chatId, msg.data);
+      case 'notification':
+        return this.formatNotification(chatId, msg.data);
+      case 'home':
+        return this.formatHome(chatId, msg.data);
+      case 'sessions':
+        return this.formatSessions(chatId, msg.data);
+      case 'sessionDetail':
+        return this.formatSessionDetail(chatId, msg.data);
+      case 'help':
+        return this.formatHelp(chatId, msg.data);
+      case 'newSession':
+        return this.formatNewSession(chatId, msg.data);
+      case 'error':
+        return this.formatError(chatId, msg.data);
+      case 'progress':
+        return this.formatProgress(chatId, msg.data);
+      default:
+        throw new Error(`Unknown message type: ${type}`);
+    }
+  }
 
   // --- Public formatting methods ---
 

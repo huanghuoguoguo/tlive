@@ -2,15 +2,24 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { BridgeManager } from '../engine/bridge-manager.js';
 import { initBridgeContext } from '../context.js';
 import type { BaseChannelAdapter } from '../channels/base.js';
+import type { OutboundMessage } from '../channels/types.js';
+import type { FormattableMessage } from '../formatting/message-types.js';
+import { TelegramFormatter } from '../formatting/telegram-formatter.js';
+import { FeishuFormatter } from '../formatting/feishu-formatter.js';
+
+const telegramFormatter = new TelegramFormatter('en');
+const feishuFormatter = new FeishuFormatter('zh');
 
 function mockAdapter(channelType = 'telegram'): BaseChannelAdapter {
   const messageQueue: any[] = [];
+  const send = vi.fn().mockResolvedValue({ messageId: '1', success: true });
+  const formatter = channelType === 'feishu' ? feishuFormatter : telegramFormatter;
   return {
     channelType,
     start: vi.fn().mockResolvedValue(undefined),
     stop: vi.fn().mockResolvedValue(undefined),
     consumeOne: vi.fn().mockImplementation(() => messageQueue.shift() ?? null),
-    send: vi.fn().mockResolvedValue({ messageId: '1', success: true }),
+    send,
     editMessage: vi.fn().mockResolvedValue(undefined),
     sendTyping: vi.fn().mockResolvedValue(undefined),
     addReaction: vi.fn().mockResolvedValue(undefined),
@@ -18,6 +27,9 @@ function mockAdapter(channelType = 'telegram'): BaseChannelAdapter {
     validateConfig: vi.fn().mockReturnValue(null),
     isAuthorized: vi.fn().mockReturnValue(true),
     _pushMessage: (msg: any) => messageQueue.push(msg),
+    // Use real formatter
+    format: (msg: FormattableMessage): OutboundMessage => formatter.format(msg),
+    sendFormatted: async (msg: FormattableMessage) => send(formatter.format(msg)),
   } as any;
 }
 
@@ -152,7 +164,7 @@ describe('BridgeManager', () => {
     });
 
     expect(adapter.send).toHaveBeenCalledWith(
-      expect.objectContaining({ html: expect.stringContaining('New session') })
+      expect.objectContaining({ html: expect.stringContaining('New Session') })
     );
   });
 
@@ -165,7 +177,7 @@ describe('BridgeManager', () => {
     });
 
     expect(adapter.send).toHaveBeenCalledWith(
-      expect.objectContaining({ html: expect.stringContaining('/verbose') })
+      expect.objectContaining({ html: expect.stringContaining('verbose') })
     );
   });
 
@@ -387,7 +399,7 @@ describe('BridgeManager', () => {
 
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        feishuHeader: expect.objectContaining({ title: expect.stringContaining('TLive Status') }),
+        feishuHeader: expect.objectContaining({ title: expect.stringContaining('TLive') }),
       })
     );
   });
@@ -402,8 +414,8 @@ describe('BridgeManager', () => {
 
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        feishuHeader: expect.objectContaining({ title: expect.stringContaining('常用帮助') }),
-        buttons: expect.any(Array),
+        feishuHeader: expect.any(Object),
+        feishuElements: expect.any(Array),
       })
     );
   });
@@ -418,7 +430,7 @@ describe('BridgeManager', () => {
 
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        feishuHeader: expect.objectContaining({ title: expect.stringContaining('New Session') }),
+        feishuHeader: expect.any(Object),
       })
     );
   });

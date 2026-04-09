@@ -22,10 +22,9 @@ import {
   presentEffortChanged,
   presentEffortStatus,
   presentHelp,
-  presentHelpCli,
-  presentHome,
   presentHooksChanged,
   presentHooksStatus,
+  presentHome,
   presentModelChanged,
   presentModelStatus,
   presentNewSession,
@@ -35,6 +34,7 @@ import {
   presentPairings,
   presentPermissionModeChanged,
   presentPermissionModeStatus,
+  presentRestartResult,
   presentSessionNotFound,
   presentSessionDetail,
   presentSessions,
@@ -45,16 +45,16 @@ import {
   presentSettingsUnavailable,
   presentStatus,
   presentStopResult,
+  presentUpgradeCommand,
+  presentUpgradeResult,
   presentVerbose,
   presentVerboseUsage,
   presentVersionCheck,
   presentVersionSkipped,
   presentVersionUnskipped,
-  presentUpgradeResult,
-  presentUpgradeCommand,
-  presentRestartResult,
 } from './command-presenter.js';
 import { areHooksPaused, pauseHooks, resumeHooks } from './hooks-state.js';
+import type { FormattableMessage } from '../formatting/message-types.js';
 
 /** Format file size in human-readable format */
 function formatSize(bytes: number): string {
@@ -65,6 +65,18 @@ function formatSize(bytes: number): string {
 
 function formatSessionDate(mtime: number): string {
   return new Date(mtime).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+/** Helper to send either a formatted message or simple text */
+async function send(
+  adapter: BaseChannelAdapter,
+  msg: FormattableMessage | { chatId: string; text: string },
+): Promise<void> {
+  if ('type' in msg) {
+    await adapter.sendFormatted(msg);
+  } else {
+    await adapter.send({ chatId: msg.chatId, text: msg.text });
+  }
 }
 
 export class CommandRouter {
@@ -87,7 +99,10 @@ export class CommandRouter {
     switch (cmd) {
       case '/status': {
         const channelList = Array.from(this.getAdapters().keys()).join(', ') || 'none';
-        await adapter.send(presentStatus(msg.chatId, adapter.channelType, '🟢 running', channelList));
+        await send(adapter, presentStatus(msg.chatId, {
+          healthy: true,
+          channels: channelList.split(', '),
+        }));
         return true;
       }
       case '/new': {
@@ -106,9 +121,11 @@ export class CommandRouter {
         this.permissions.clearSessionWhitelist();
 
         const cwdLabel = binding?.cwd ? ` in ${shortPath(binding.cwd)}` : '';
-        await adapter.send(presentNewSession(msg.chatId, adapter.channelType, cwdLabel));
+        await send(adapter, presentNewSession(msg.chatId, { cwd: binding?.cwd }));
+
+        // Send home screen for Feishu
         if (adapter.channelType === 'feishu') {
-          await adapter.send(presentHome(msg.chatId, adapter.channelType, {
+          await send(adapter, presentHome(msg.chatId, {
             cwd: shortPath(binding?.cwd || this.defaultWorkdir),
             hasActiveTask: false,
           }));
@@ -120,7 +137,7 @@ export class CommandRouter {
         const currentCwd = binding?.cwd || this.defaultWorkdir;
         const recentSession = scanClaudeSessions(1, currentCwd)[0];
         const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
-        await adapter.send(presentHome(msg.chatId, adapter.channelType, {
+        await send(adapter, presentHome(msg.chatId, {
           cwd: shortPath(currentCwd),
           hasActiveTask: this.activeControls.has(chatKey),
           recentSummary: recentSession?.preview,
@@ -131,9 +148,9 @@ export class CommandRouter {
         const level = parseInt(parts[1], 10) as VerboseLevel;
         if ([0, 1].includes(level)) {
           this.state.setVerboseLevel(msg.channelType, msg.chatId, level);
-          await adapter.send(presentVerbose(msg.chatId, adapter.channelType, level));
+          await send(adapter, presentVerbose(msg.chatId, level));
         } else {
-          await adapter.send(presentVerboseUsage(msg.chatId, adapter.channelType));
+          await send(adapter, presentVerboseUsage(msg.chatId));
         }
         return true;
       }
@@ -141,10 +158,10 @@ export class CommandRouter {
         const sub = parts[1]?.toLowerCase();
         if (sub === 'on' || sub === 'off') {
           this.state.setPermMode(msg.channelType, msg.chatId, sub);
-          await adapter.send(presentPermissionModeChanged(msg.chatId, adapter.channelType, sub));
+          await send(adapter, presentPermissionModeChanged(msg.chatId, sub));
         } else {
           const current = this.state.getPermMode(msg.channelType, msg.chatId);
-          await adapter.send(presentPermissionModeStatus(msg.chatId, adapter.channelType, current));
+          await send(adapter, presentPermissionModeStatus(msg.chatId, current));
         }
         return true;
       }
@@ -154,9 +171,9 @@ export class CommandRouter {
         if (ctrl) {
           this.activeControls.delete(chatKey);
           await ctrl.interrupt();
-          await adapter.send(presentStopResult(msg.chatId, true));
+          await send(adapter, presentStopResult(msg.chatId, true));
         } else {
-          await adapter.send(presentStopResult(msg.chatId, false));
+          await send(adapter, presentStopResult(msg.chatId, false));
         }
         return true;
       }
@@ -165,10 +182,10 @@ export class CommandRouter {
         const level = parts[1]?.toLowerCase();
         if (level && LEVELS.includes(level as typeof LEVELS[number])) {
           this.state.setEffort(msg.channelType, msg.chatId, level as typeof LEVELS[number]);
-          await adapter.send(presentEffortChanged(msg.chatId, level as typeof LEVELS[number]));
+          await send(adapter, presentEffortChanged(msg.chatId, level as typeof LEVELS[number]));
         } else {
           const current = this.state.getEffort(msg.channelType, msg.chatId) || 'default';
-          await adapter.send(presentEffortStatus(msg.chatId, current));
+          await send(adapter, presentEffortStatus(msg.chatId, current));
         }
         return true;
       }
@@ -176,12 +193,12 @@ export class CommandRouter {
         const sub = parts[1]?.toLowerCase();
         if (sub === 'pause') {
           pauseHooks();
-          await adapter.send(presentHooksChanged(msg.chatId, true));
+          await send(adapter, presentHooksChanged(msg.chatId, true));
         } else if (sub === 'resume') {
           resumeHooks();
-          await adapter.send(presentHooksChanged(msg.chatId, false));
+          await send(adapter, presentHooksChanged(msg.chatId, false));
         } else {
-          await adapter.send(presentHooksStatus(msg.chatId, areHooksPaused()));
+          await send(adapter, presentHooksStatus(msg.chatId, areHooksPaused()));
         }
         return true;
       }
@@ -195,39 +212,30 @@ export class CommandRouter {
 
         if (sessions.length === 0) {
           const hint = showAll ? '' : ` in ${shortPath(currentCwd)}\nUse /sessions --all to see all projects.`;
-          await adapter.send(presentNoSessions(msg.chatId, hint));
+          await send(adapter, presentNoSessions(msg.chatId, hint));
           return true;
         }
 
-        const lines: string[] = [];
-        const buttons = adapter.channelType === 'feishu' ? [] as NonNullable<ReturnType<typeof presentSessions>['buttons']> : undefined;
-        for (let i = 0; i < sessions.length; i++) {
-          const s = sessions[i];
-          const isCurrent = currentSdkId === s.sdkSessionId;
-          const marker = isCurrent ? ' ◀' : '';
-          const date = formatSessionDate(s.mtime);
-          const cwdShort = shortPath(s.cwd);
-          const sizeStr = formatSize(s.size);
-          lines.push(`${i + 1}. ${date} · ${cwdShort} · ${sizeStr} · ${s.preview}${marker}`);
-          if (buttons && i < 5) {
-            buttons.push(
-              { label: `▶️ 继续 #${i + 1}`, callbackData: `cmd:session ${i + 1}`, style: 'primary', row: i },
-              { label: `ℹ️ 详情 #${i + 1}`, callbackData: `cmd:sessioninfo ${i + 1}`, style: 'default', row: i },
-            );
-          }
-        }
+        const sessionData = sessions.map((s, i) => ({
+          index: i + 1,
+          date: formatSessionDate(s.mtime),
+          cwd: shortPath(s.cwd),
+          size: formatSize(s.size),
+          preview: s.preview,
+          isCurrent: currentSdkId === s.sdkSessionId,
+        }));
 
         const filterHint = showAll ? ' (all projects)' : ` (${shortPath(currentCwd)})`;
-        const footer = adapter.channelType === 'feishu'
-          ? '\n可直接点击“继续”或“详情”，也可以手输 /session <n>。'
-          : '\nUse /session <n> to switch';
-        await adapter.send(presentSessions(msg.chatId, adapter.channelType, filterHint, lines, footer, buttons));
+        await send(adapter, presentSessions(msg.chatId, {
+          sessions: sessionData,
+          filterHint,
+        }));
         return true;
       }
       case '/session': {
         const idx = parseInt(parts[1], 10);
         if (Number.isNaN(idx) || idx < 1) {
-          await adapter.send(presentSessionUsage(msg.chatId));
+          await send(adapter, presentSessionUsage(msg.chatId));
           return true;
         }
 
@@ -236,7 +244,7 @@ export class CommandRouter {
         const sessions = scanClaudeSessions(10, currentCwd);
 
         if (idx > sessions.length) {
-          await adapter.send(presentSessionNotFound(msg.chatId, idx));
+          await send(adapter, presentSessionNotFound(msg.chatId, idx));
           return true;
         }
 
@@ -250,13 +258,13 @@ export class CommandRouter {
 
         this.state.clearLastActive(msg.channelType, msg.chatId);
 
-        await adapter.send(presentSessionSwitched(msg.chatId, idx, shortPath(target.cwd), target.preview));
+        await send(adapter, presentSessionSwitched(msg.chatId, idx, shortPath(target.cwd), target.preview));
         return true;
       }
       case '/sessioninfo': {
         const idx = parseInt(parts[1], 10);
         if (Number.isNaN(idx) || idx < 1) {
-          await adapter.send(presentSessionUsage(msg.chatId));
+          await send(adapter, presentSessionUsage(msg.chatId));
           return true;
         }
 
@@ -265,7 +273,7 @@ export class CommandRouter {
         const showAll = parts[2]?.toLowerCase() === '--all' || parts[1]?.toLowerCase() === '--all';
         const sessions = scanClaudeSessions(10, showAll ? undefined : currentCwd);
         if (idx > sessions.length) {
-          await adapter.send(presentSessionNotFound(msg.chatId, idx));
+          await send(adapter, presentSessionNotFound(msg.chatId, idx));
           return true;
         }
 
@@ -274,7 +282,7 @@ export class CommandRouter {
           role: item.role,
           text: item.text,
         }));
-        await adapter.send(presentSessionDetail(msg.chatId, adapter.channelType, {
+        await send(adapter, presentSessionDetail(msg.chatId, {
           index: idx,
           cwd: shortPath(target.cwd),
           preview: target.preview,
@@ -291,7 +299,7 @@ export class CommandRouter {
           // Show current directory
           const binding = await this.store.getBinding(msg.channelType, msg.chatId);
           const current = binding?.cwd || this.defaultWorkdir;
-          await adapter.send(presentDirectory(msg.chatId, shortPath(current), true));
+          await send(adapter, presentDirectory(msg.chatId, shortPath(current), true));
           return true;
         }
 
@@ -304,7 +312,7 @@ export class CommandRouter {
         const resolvedPath = expandedPath.startsWith('/') ? expandedPath : join(baseCwd, expandedPath);
 
         if (!existsSync(resolvedPath)) {
-          await adapter.send(presentDirectoryNotFound(msg.chatId, shortPath(resolvedPath)));
+          await send(adapter, presentDirectoryNotFound(msg.chatId, shortPath(resolvedPath)));
           return true;
         }
 
@@ -316,13 +324,13 @@ export class CommandRouter {
           await this.router.rebind(msg.channelType, msg.chatId, generateSessionId(), { cwd: resolvedPath });
         }
 
-        await adapter.send(presentDirectory(msg.chatId, shortPath(resolvedPath), true));
+        await send(adapter, presentDirectory(msg.chatId, shortPath(resolvedPath), true));
         return true;
       }
       case '/pwd': {
         const binding = await this.store.getBinding(msg.channelType, msg.chatId);
         const current = binding?.cwd || this.defaultWorkdir;
-        await adapter.send(presentDirectory(msg.chatId, shortPath(current)));
+        await send(adapter, presentDirectory(msg.chatId, shortPath(current)));
         return true;
       }
       case '/model': {
@@ -330,14 +338,14 @@ export class CommandRouter {
         if (model) {
           if (model === 'reset' || model === 'default') {
             this.state.setModel(msg.channelType, msg.chatId, undefined);
-            await adapter.send(presentModelChanged(msg.chatId));
+            await send(adapter, presentModelChanged(msg.chatId));
           } else {
             this.state.setModel(msg.channelType, msg.chatId, model);
-            await adapter.send(presentModelChanged(msg.chatId, model));
+            await send(adapter, presentModelChanged(msg.chatId, model));
           }
         } else {
           const current = this.state.getModel(msg.channelType, msg.chatId) || 'default';
-          await adapter.send(presentModelStatus(msg.chatId, current));
+          await send(adapter, presentModelStatus(msg.chatId, current));
         }
         return true;
       }
@@ -345,7 +353,7 @@ export class CommandRouter {
         const arg = parts[1]?.toLowerCase();
 
         if (!(this.llm instanceof ClaudeSDKProvider)) {
-          await adapter.send(presentSettingsUnavailable(msg.chatId));
+          await send(adapter, presentSettingsUnavailable(msg.chatId));
           return true;
         }
 
@@ -362,41 +370,72 @@ export class CommandRouter {
             full: '📦 full — auth, CLAUDE.md, MCP, skills',
             isolated: '🔒 isolated — no external settings',
           };
-          await adapter.send(presentSettingsChanged(msg.chatId, labels[arg]));
+          await send(adapter, presentSettingsChanged(msg.chatId, labels[arg]));
         } else {
           const current = this.llm.getSettingSources();
           const preset = current.length === 0 ? 'isolated'
             : current.length === 1 && current[0] === 'user' ? 'user'
             : current.includes('project') ? 'full'
             : current.join(',');
-          await adapter.send(presentSettingsStatus(msg.chatId, preset, current));
+          await send(adapter, presentSettingsStatus(msg.chatId, preset, current));
         }
         return true;
       }
       case '/help': {
-        await adapter.send(presentHelp(msg.chatId, adapter.channelType));
+        await send(adapter, presentHelp(msg.chatId, {
+          commands: [
+            { cmd: 'new', desc: 'New conversation' },
+            { cmd: 'sessions', desc: 'List sessions in current dir' },
+            { cmd: 'session <n>', desc: 'Switch to session #n' },
+            { cmd: 'cd <path>', desc: 'Change directory' },
+            { cmd: 'pwd', desc: 'Show current directory' },
+            { cmd: 'verbose 0|1', desc: 'Detail level' },
+            { cmd: 'perm on|off', desc: 'Permission prompts' },
+            { cmd: 'effort low|high|max', desc: 'Thinking depth' },
+            { cmd: 'model <name>', desc: 'Switch model' },
+            { cmd: 'stop', desc: 'Interrupt execution' },
+            { cmd: 'status', desc: 'Bridge status' },
+            { cmd: 'help', desc: 'This message' },
+          ],
+        }));
         return true;
       }
       case '/help-cli': {
-        await adapter.send(presentHelpCli(msg.chatId, adapter.channelType));
+        // For non-Feishu, just show regular help
+        await send(adapter, presentHelp(msg.chatId, {
+          commands: [
+            { cmd: 'new', desc: 'New conversation' },
+            { cmd: 'sessions', desc: 'List sessions' },
+            { cmd: 'session <n>', desc: 'Switch session' },
+            { cmd: 'cd <path>', desc: 'Change directory' },
+            { cmd: 'verbose 0|1', desc: 'Detail level' },
+            { cmd: 'perm on|off', desc: 'Permission prompts' },
+            { cmd: 'effort low|high|max', desc: 'Thinking depth' },
+            { cmd: 'model <name>', desc: 'Switch model' },
+            { cmd: 'settings user|full|isolated', desc: 'Claude settings' },
+            { cmd: 'stop', desc: 'Interrupt execution' },
+            { cmd: 'status', desc: 'Bridge status' },
+            { cmd: 'help', desc: 'Commands list' },
+          ],
+        }));
         return true;
       }
       case '/approve': {
         const code = parts[1];
         if (!code) {
-          await adapter.send(presentApproveUsage(msg.chatId));
+          await send(adapter, presentApproveUsage(msg.chatId));
           return true;
         }
         const tgAdapter = this.getAdapters().get('telegram');
         if (tgAdapter && 'approvePairing' in tgAdapter) {
           const result = (tgAdapter as any).approvePairing(code);
           if (result) {
-            await adapter.send(presentApproveSuccess(msg.chatId, result.username, result.userId));
+            await send(adapter, presentApproveSuccess(msg.chatId, result.username, result.userId));
           } else {
-            await adapter.send(presentApproveFailure(msg.chatId));
+            await send(adapter, presentApproveFailure(msg.chatId));
           }
         } else {
-          await adapter.send(presentPairingUnavailable(msg.chatId));
+          await send(adapter, presentPairingUnavailable(msg.chatId));
         }
         return true;
       }
@@ -405,13 +444,13 @@ export class CommandRouter {
         if (tgAdapter && 'listPairings' in tgAdapter) {
           const pairings = (tgAdapter as any).listPairings() as Array<{ code: string; userId: string; username: string }>;
           if (pairings.length === 0) {
-            await adapter.send(presentNoPairings(msg.chatId));
+            await send(adapter, presentNoPairings(msg.chatId));
           } else {
             const lines = pairings.map(p => `• <code>${p.code}</code> — ${p.username} (${p.userId})`);
-            await adapter.send(presentPairings(msg.chatId, lines));
+            await send(adapter, presentPairings(msg.chatId, lines));
           }
         } else {
-          await adapter.send(presentPairingUnavailable(msg.chatId));
+          await send(adapter, presentPairingUnavailable(msg.chatId));
         }
         return true;
       }
@@ -426,12 +465,12 @@ export class CommandRouter {
             // Download and run installer
             const cmd = 'curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash';
             execSync(cmd, { stdio: 'inherit', timeout: 120_000 });
-            await adapter.send(presentUpgradeResult(msg.chatId, adapter.channelType, {
+            await send(adapter, presentUpgradeResult(msg.chatId, {
               success: true,
               version: getCurrentVersion(),
             }));
           } catch (err: any) {
-            await adapter.send(presentUpgradeResult(msg.chatId, adapter.channelType, {
+            await send(adapter, presentUpgradeResult(msg.chatId, {
               success: false,
               error: err?.message || 'Upgrade failed',
             }));
@@ -445,7 +484,7 @@ export class CommandRouter {
           if (version) {
             const { skipVersion } = await import('./version-checker.js');
             skipVersion(version);
-            await adapter.send(presentVersionSkipped(msg.chatId, adapter.channelType, version));
+            await send(adapter, presentVersionSkipped(msg.chatId, version));
           }
           return true;
         }
@@ -453,12 +492,12 @@ export class CommandRouter {
         if (subCmd === 'unskip') {
           const { clearSkippedVersion } = await import('./version-checker.js');
           clearSkippedVersion();
-          await adapter.send(presentVersionUnskipped(msg.chatId, adapter.channelType));
+          await send(adapter, presentVersionUnskipped(msg.chatId));
           return true;
         }
 
         if (subCmd === 'cmd' || subCmd === 'command') {
-          await adapter.send(presentUpgradeCommand(msg.chatId, adapter.channelType));
+          await send(adapter, presentUpgradeCommand(msg.chatId));
           return true;
         }
 
@@ -467,7 +506,6 @@ export class CommandRouter {
           await adapter.send({
             chatId: msg.chatId,
             text: '📋 查看更新内容：\nhttps://github.com/huanghuoguoguo/tlive/releases',
-            feishuHeader: adapter.channelType === 'feishu' ? { template: 'blue', title: '📋 更新内容' } : undefined,
           });
           return true;
         }
@@ -476,18 +514,17 @@ export class CommandRouter {
         const { checkForUpdates } = await import('./version-checker.js');
         const info = await checkForUpdates({ ignoreSkip: true });
         if (info) {
-          await adapter.send(presentVersionCheck(msg.chatId, adapter.channelType, info));
+          await send(adapter, presentVersionCheck(msg.chatId, info));
         } else {
           await adapter.send({
             chatId: msg.chatId,
             text: '⚠️ 无法检查更新，请稍后重试',
-            feishuHeader: adapter.channelType === 'feishu' ? { template: 'yellow', title: '⚠️ 检查失败' } : undefined,
           });
         }
         return true;
       }
       case '/restart': {
-        await adapter.send(presentRestartResult(msg.chatId, adapter.channelType));
+        await send(adapter, presentRestartResult(msg.chatId));
         // Delay restart to allow message to be sent
         setTimeout(() => {
           process.exit(0); // Exit cleanly, external process manager should restart
