@@ -1,5 +1,5 @@
-import type { ChannelType, InboundMessage, OutboundMessage, SendResult } from './types.js';
-import type { FormattableMessage } from '../formatting/message-types.js';
+import type { Button, ChannelType, InboundMessage, OutboundMessage, SendResult } from './types.js';
+import type { CardResolutionData, FormattableMessage } from '../formatting/message-types.js';
 import type { MessageFormatter } from '../formatting/message-formatter.js';
 
 export abstract class BaseChannelAdapter {
@@ -34,13 +34,12 @@ export abstract class BaseChannelAdapter {
 
   /** Get the locale for this adapter */
   getLocale(): 'en' | 'zh' {
-    return (this.formatter as any).locale ?? 'en';
+    return this.formatter.getLocale();
   }
 
   /** Check if this platform supports rich card display (buttons, headers, etc.) */
   supportsRichCards(): boolean {
-    // Access protected method via type assertion
-    return (this.formatter as any).supportsButtons();
+    return this.formatter.hasRichCardSupport();
   }
 
   /**
@@ -56,6 +55,17 @@ export abstract class BaseChannelAdapter {
    */
   async sendFormatted(msg: FormattableMessage): Promise<SendResult> {
     return this.send(this.format(msg));
+  }
+
+  /** Format a card resolution and edit an existing message. */
+  editCardResolution(chatId: string, messageId: string, data: CardResolutionData): Promise<void> {
+    const outMsg = this.format({ type: 'cardResolution', chatId, data });
+    return this.editMessage(chatId, messageId, outMsg);
+  }
+
+  /** Format raw markdown content into a platform-appropriate message (HTML for Telegram, text for others). */
+  formatContent(chatId: string, content: string, buttons?: Button[]): OutboundMessage {
+    return this.formatter.formatContent(chatId, content, buttons);
   }
 }
 

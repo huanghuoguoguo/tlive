@@ -250,28 +250,18 @@ export class PermissionCoordinator {
     // AskUserQuestion cards use hookQuestionData, not hookPermissionTexts
     if (this.hookQuestionData.has(hookId)) {
       this.hookQuestionData.delete(hookId);
-      const outMsg = adapter.format({
-        type: 'cardResolution',
-        chatId,
-        data: {
-          resolution: decision === 'deny' ? 'denied' : 'approved',
-          label: decision === 'deny' ? '❌ Skipped' : label,
-        },
+      await adapter.editCardResolution(chatId, messageId, {
+        resolution,
+        label: decision === 'deny' ? '❌ Skipped' : label,
       });
-      await adapter.editMessage(chatId, messageId, outMsg);
     } else {
       const originalText = this.hookPermissionTexts.get(hookId)?.text || '';
       this.hookPermissionTexts.delete(hookId);
-      const outMsg = adapter.format({
-        type: 'cardResolution',
-        chatId,
-        data: {
-          resolution,
-          label,
-          originalText,
-        },
+      await adapter.editCardResolution(chatId, messageId, {
+        resolution,
+        label,
+        originalText,
       });
-      await adapter.editMessage(chatId, messageId, outMsg);
     }
     // Track confirmation message for reply routing
     if (sessionId) {
@@ -308,16 +298,11 @@ export class PermissionCoordinator {
 
     const ctx = questionData.contextSuffix || '';
     this.hookQuestionData.delete(hookId);
-    const outMsg = adapter.format({
-      type: 'cardResolution',
-      chatId,
-      data: {
-        resolution: 'selected',
-        label: `✅ Selected: ${selected.label}`,
-        contextSuffix: ctx ? ` Terminal${ctx}` : undefined,
-      },
+    await adapter.editCardResolution(chatId, messageId, {
+      resolution: 'selected',
+      label: `✅ Selected: ${selected.label}`,
+      contextSuffix: ctx ? ` Terminal${ctx}` : undefined,
     });
-    await adapter.editMessage(chatId, messageId, outMsg);
     if (sessionId) {
       this.trackHookMessage(messageId, sessionId);
     }
@@ -381,16 +366,11 @@ export class PermissionCoordinator {
     const ctx = questionData.contextSuffix || '';
     this.hookQuestionData.delete(hookId);
     this.toggledSelections.delete(hookId);
-    const outMsg = adapter.format({
-      type: 'cardResolution',
-      chatId,
-      data: {
-        resolution: 'answered',
-        label: `✅ Selected: ${selectedLabels.join(', ')}`,
-        contextSuffix: ctx ? ` Terminal${ctx}` : undefined,
-      },
+    await adapter.editCardResolution(chatId, messageId, {
+      resolution: 'answered',
+      label: `✅ Selected: ${selectedLabels.join(', ')}`,
+      contextSuffix: ctx ? ` Terminal${ctx}` : undefined,
     });
-    await adapter.editMessage(chatId, messageId, outMsg);
     if (sessionId) {
       this.trackHookMessage(messageId, sessionId);
     }
@@ -418,16 +398,11 @@ export class PermissionCoordinator {
 
     const ctx = questionData.contextSuffix || '';
     this.hookQuestionData.delete(hookId);
-    const outMsg = adapter.format({
-      type: 'cardResolution',
-      chatId,
-      data: {
-        resolution: 'skipped',
-        label: '⏭ Skipped',
-        contextSuffix: ctx ? ` Terminal${ctx}` : undefined,
-      },
+    await adapter.editCardResolution(chatId, messageId, {
+      resolution: 'skipped',
+      label: '⏭ Skipped',
+      contextSuffix: ctx ? ` Terminal${ctx}` : undefined,
     });
-    await adapter.editMessage(chatId, messageId, outMsg);
     if (sessionId) {
       this.trackHookMessage(messageId, sessionId);
     }
@@ -455,16 +430,11 @@ export class PermissionCoordinator {
 
     const ctx = questionData.contextSuffix || '';
     this.hookQuestionData.delete(hookId);
-    const outMsg = adapter.format({
-      type: 'cardResolution',
-      chatId,
-      data: {
-        resolution: 'answered',
-        label: `✅ Answer: ${truncate(text, 50)}`,
-        contextSuffix: ctx ? ` Terminal${ctx}` : undefined,
-      },
+    await adapter.editCardResolution(chatId, messageId, {
+      resolution: 'answered',
+      label: `✅ Answer: ${truncate(text, 50)}`,
+      contextSuffix: ctx ? ` Terminal${ctx}` : undefined,
     });
-    await adapter.editMessage(chatId, messageId, outMsg);
     if (sessionId) {
       this.trackHookMessage(messageId, sessionId);
     }

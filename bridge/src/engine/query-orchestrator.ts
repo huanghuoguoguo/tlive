@@ -1,7 +1,6 @@
 import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage, OutboundMessage } from '../channels/types.js';
 import type { ProgressData } from '../formatting/message-types.js';
-import { markdownToTelegram } from '../markdown/index.js';
 import { downgradeHeadings } from '../markdown/feishu.js';
 import { MessageRenderer } from './message-renderer.js';
 import { getToolCommand } from './tool-registry.js';
@@ -75,10 +74,9 @@ export class QueryOrchestrator {
         permissionReminderTool = toolName;
         permissionReminderInput = input;
         const text = `⚠️ Permission pending — ${toolName}: ${permissionReminderInput}`;
-        const outMsg: OutboundMessage = adapter.channelType === CHANNEL_TYPES.TELEGRAM
-          ? { chatId: msg.chatId, html: markdownToTelegram(text) }
-          : { chatId: msg.chatId, text };
-        outMsg.buttons = buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }));
+        const outMsg = adapter.formatContent(msg.chatId, text,
+          buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
+        );
         try {
           const result = await adapter.send(outMsg);
           permissionReminderMsgId = result.messageId;
@@ -87,8 +85,7 @@ export class QueryOrchestrator {
         }
       },
       onProgressTimeout: async (summary) => {
-        // Progress reminder is a Feishu-only UX feature
-        if (adapter.channelType !== CHANNEL_TYPES.FEISHU) return;
+        if (!adapter.supportsRichCards()) return;
         const progressData: ProgressData = {
           phase: 'executing',
           renderedText: '',
@@ -101,9 +98,6 @@ export class QueryOrchestrator {
             input: summary.currentTool.input,
             elapsed: 0,
           } : null,
-          actionButtons: [
-            { label: '⏹ 停止执行', callbackData: 'cmd:stop', style: 'danger' as const },
-          ],
         };
         try {
           const result = await adapter.send(adapter.format({
@@ -133,31 +127,7 @@ export class QueryOrchestrator {
         }
 
         let outMsg: OutboundMessage;
-        if (adapter.channelType === CHANNEL_TYPES.TELEGRAM) {
-          outMsg = { chatId: msg.chatId, html: markdownToTelegram(content) };
-          if (buttons?.length) {
-            outMsg.buttons = buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }));
-          }
-        } else if (state) {
-          // Use semantic formatting for progress cards
-          const actionButtons = buttons?.length
-            ? buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
-            : state.phase === 'completed'
-              ? [
-                  { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'primary' as const, row: 0 },
-                  { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default' as const, row: 0 },
-                  { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default' as const, row: 1 },
-                ]
-              : state.phase === 'failed'
-                ? [
-                    { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'primary' as const, row: 0 },
-                    { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default' as const, row: 0 },
-                    { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default' as const, row: 1 },
-                  ]
-                : [
-                    { label: '⏹ 停止执行', callbackData: 'cmd:stop', style: 'danger' as const, row: 0 },
-                    { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default' as const, row: 1 },
-                  ];
+        if (state) {
           const progressData: ProgressData = {
             phase: state.phase,
             renderedText: content,
@@ -169,14 +139,16 @@ export class QueryOrchestrator {
             currentTool: state.currentTool,
             permission: state.permission,
             todoItems: state.todoItems,
-            actionButtons,
+            actionButtons: buttons?.length
+              ? buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
+              : undefined,
           };
           outMsg = adapter.format({ type: 'progress', chatId: msg.chatId, data: progressData });
         } else {
-          outMsg = { chatId: msg.chatId, text: content };
-          if (buttons?.length) {
-            outMsg.buttons = buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }));
-          }
+          const castButtons = buttons?.length
+            ? buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
+            : undefined;
+          outMsg = adapter.formatContent(msg.chatId, content, castButtons);
         }
 
         if (!isEdit) {
@@ -188,15 +160,9 @@ export class QueryOrchestrator {
         const limit = PLATFORM_LIMITS[adapter.channelType as ChannelType] ?? 4096;
         if (content.length > limit) {
           const chunks = chunkByParagraph(content, limit);
-          const firstOutMsg: OutboundMessage = adapter.channelType === CHANNEL_TYPES.TELEGRAM
-            ? { chatId: msg.chatId, html: markdownToTelegram(chunks[0]) }
-            : { chatId: msg.chatId, text: chunks[0] };
-          await adapter.editMessage(msg.chatId, renderer.messageId!, firstOutMsg);
+          await adapter.editMessage(msg.chatId, renderer.messageId!, adapter.formatContent(msg.chatId, chunks[0]));
           for (let i = 1; i < chunks.length; i++) {
-            const overflowMsg: OutboundMessage = adapter.channelType === CHANNEL_TYPES.TELEGRAM
-              ? { chatId: msg.chatId, html: markdownToTelegram(chunks[i]) }
-              : { chatId: msg.chatId, text: chunks[i] };
-            await adapter.send(overflowMsg);
+            await adapter.send(adapter.formatContent(msg.chatId, chunks[i]));
           }
         } else {
           await adapter.editMessage(msg.chatId, renderer.messageId!, outMsg);
@@ -301,7 +267,6 @@ export class QueryOrchestrator {
         },
       });
 
-      // Use semantic formatting for question cards
       const outMsg = adapter.format({
         type: 'question',
         chatId: msg.chatId,
@@ -322,12 +287,9 @@ export class QueryOrchestrator {
 
       if (result.behavior === 'deny') {
         sdkQuestionData.delete(permId);
-        const skippedMsg = adapter.format({
-          type: 'cardResolution',
-          chatId: msg.chatId,
-          data: { resolution: 'skipped', label: '⏭ Skipped' },
-        });
-        adapter.editMessage(msg.chatId, sendResult.messageId, skippedMsg).catch(() => {});
+        adapter.editCardResolution(msg.chatId, sendResult.messageId, {
+          resolution: 'skipped', label: '⏭ Skipped',
+        }).catch(() => {});
         throw new Error('User skipped question');
       }
 
@@ -339,12 +301,9 @@ export class QueryOrchestrator {
       sdkQuestionData.delete(permId);
 
       if (textAnswer !== undefined) {
-        const answeredMsg = adapter.format({
-          type: 'cardResolution',
-          chatId: msg.chatId,
-          data: { resolution: 'answered', label: `✅ Answer: ${truncate(textAnswer, 50)}` },
-        });
-        adapter.editMessage(msg.chatId, sendResult.messageId, answeredMsg).catch(() => {});
+        adapter.editCardResolution(msg.chatId, sendResult.messageId, {
+          resolution: 'answered', label: `✅ Answer: ${truncate(textAnswer, 50)}`,
+        }).catch(() => {});
         return { [q.question]: textAnswer };
       }
 
@@ -354,12 +313,9 @@ export class QueryOrchestrator {
       const answerLabel = selected?.label ?? '';
 
       if (!selected) {
-        const answeredMsg = adapter.format({
-          type: 'cardResolution',
-          chatId: msg.chatId,
-          data: { resolution: 'answered', label: '✅ Answered' },
-        });
-        adapter.editMessage(msg.chatId, sendResult.messageId, answeredMsg).catch(() => {});
+        adapter.editCardResolution(msg.chatId, sendResult.messageId, {
+          resolution: 'answered', label: '✅ Answered',
+        }).catch(() => {});
       }
 
       return { [q.question]: answerLabel };

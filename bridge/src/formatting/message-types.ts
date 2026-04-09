@@ -100,7 +100,7 @@ export interface ProgressData {
   footerLine?: string;
   totalTools: number;
   toolSummary?: string;
-  /** Optional action buttons (passed from engine layer) */
+  /** Override buttons (e.g., permission-specific). Formatters derive defaults from phase when absent. */
   actionButtons?: Button[];
 }
 
@@ -150,14 +150,3 @@ export type FormattableMessage =
   | { type: 'cardResolution'; chatId: string; data: CardResolutionData }
   | { type: 'versionUpdate'; chatId: string; data: VersionUpdateData }
   | { type: 'multiSelectToggle'; chatId: string; data: MultiSelectToggleData };
-
-/** Helper to build buttons consistently */
-export function buildButtons(items: Array<{ label: string; callbackData: string; style?: 'primary' | 'danger' | 'default'; url?: string; row?: number }>): Button[] {
-  return items.map(item => ({
-    label: item.label,
-    callbackData: item.callbackData,
-    style: item.style ?? 'default',
-    url: item.url,
-    row: item.row,
-  }));
-}

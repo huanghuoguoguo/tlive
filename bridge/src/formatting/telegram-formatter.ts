@@ -88,7 +88,12 @@ export class TelegramFormatter extends MessageFormatter {
   }
 
   override formatProgress(chatId: string, data: ProgressData): OutboundMessage {
-    // For Telegram, we just send text updates, not card-like structures
+    if (data.renderedText?.trim()) {
+      const msg: OutboundMessage = { chatId, html: this.formatMarkdown(data.renderedText) };
+      const buttons = data.actionButtons?.length ? data.actionButtons : this.defaultProgressButtons(data.phase);
+      if (buttons.length) msg.buttons = buttons;
+      return msg;
+    }
     const phaseLabels = {
       starting: '⏳ Starting',
       executing: '⏳ Running',
@@ -103,6 +108,9 @@ export class TelegramFormatter extends MessageFormatter {
       `**Task:** ${truncate(data.taskSummary, 100)}`,
       `**Time:** ${data.elapsedSeconds}s`,
     ];
-    return { chatId, html: this.formatMarkdown(lines.join('\n')) };
+    const buttons = data.actionButtons?.length ? data.actionButtons : this.defaultProgressButtons(data.phase);
+    const msg: OutboundMessage = { chatId, html: this.formatMarkdown(lines.join('\n')) };
+    if (buttons.length) msg.buttons = buttons;
+    return msg;
   }
 }

@@ -317,11 +317,12 @@ export class FeishuFormatter extends MessageFormatter {
       });
     }
 
-    return this.createCardMessage(chatId, headerConfig, elements, data.actionButtons);
+    const buttons = data.actionButtons?.length ? data.actionButtons : this.defaultProgressButtons(data.phase);
+    return this.createCardMessage(chatId, headerConfig, elements, buttons);
   }
 
   override formatCardResolution(chatId: string, data: CardResolutionData): OutboundMessage {
-    const templateMap: Record<string, string> = {
+    const templateMap: Record<CardResolutionData['resolution'], string> = {
       approved: 'green',
       denied: 'red',
       skipped: 'grey',
@@ -365,16 +366,12 @@ export class FeishuFormatter extends MessageFormatter {
       .map((opt, i) => `${data.selectedIndices.has(i) ? '☑' : '☐'} ${i + 1}. **${opt.label}**${opt.description ? ` — ${opt.description}` : ''}`)
       .join('\n');
 
-    const buttons: Button[] = data.options.map((opt, idx) => ({
-      label: `${data.selectedIndices.has(idx) ? '☑' : '☐'} ${opt.label}`,
-      callbackData: `askq_toggle:${data.permId}:${idx}:${data.sessionId}`,
-      style: 'primary' as const,
-      row: idx,
-    }));
-    buttons.push(
-      { label: '✅ Submit', callbackData: `askq_submit:${data.permId}:${data.sessionId}`, style: 'primary', row: data.options.length },
-      { label: '❌ Skip', callbackData: `askq_skip:${data.permId}:${data.sessionId}`, style: 'danger', row: data.options.length }
-    );
+    const buttons = this.buildMultiSelectButtons(data.permId, data.sessionId, data.options);
+    buttons.forEach((btn, idx) => {
+      if (idx < data.options.length) {
+        btn.label = `${data.selectedIndices.has(idx) ? '☑' : '☐'} ${data.options[idx].label}`;
+      }
+    });
 
     const elements: FeishuElement[] = [
       this.md(`**问题**\n${data.question}`),

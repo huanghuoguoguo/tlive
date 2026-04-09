@@ -3,6 +3,9 @@ import type { BaseChannelAdapter } from '../channels/base.js';
 import { initBridgeContext } from '../context.js';
 import { QueryOrchestrator } from '../engine/query-orchestrator.js';
 import { SessionStateManager } from '../engine/session-state.js';
+import { TelegramFormatter } from '../formatting/telegram-formatter.js';
+
+const telegramFormatter = new TelegramFormatter('en');
 
 function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
   return {
@@ -11,6 +14,10 @@ function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
     editMessage: vi.fn().mockResolvedValue(undefined),
     sendTyping: vi.fn().mockResolvedValue(undefined),
     addReaction: vi.fn().mockResolvedValue(undefined),
+    format: (msg: any) => telegramFormatter.format(msg),
+    formatContent: (chatId: string, content: string, buttons?: any[]) => telegramFormatter.formatContent(chatId, content, buttons),
+    supportsRichCards: () => telegramFormatter.hasRichCardSupport(),
+    editCardResolution: vi.fn().mockResolvedValue(undefined),
   } as unknown as BaseChannelAdapter;
 }
 

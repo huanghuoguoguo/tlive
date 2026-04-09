@@ -37,6 +37,16 @@ export abstract class MessageFormatter {
   /** Check if platform supports native buttons */
   protected abstract supportsButtons(): boolean;
 
+  /** Public accessor for locale */
+  getLocale(): MessageLocale {
+    return this.locale;
+  }
+
+  /** Whether this platform supports rich card display (buttons, headers, etc.) */
+  hasRichCardSupport(): boolean {
+    return this.supportsButtons();
+  }
+
   // --- Generic format method ---
 
   /** Format a semantic message into an OutboundMessage */
@@ -238,7 +248,39 @@ export abstract class MessageFormatter {
     if (data.currentTool) {
       lines.push(``, `**Current:** ${data.currentTool.name}: ${truncate(data.currentTool.input, 100)}`);
     }
-    return this.createMessage(chatId, lines.join('\n'));
+    const buttons = data.actionButtons?.length ? data.actionButtons : this.defaultProgressButtons(data.phase);
+    return this.createMessage(chatId, lines.join('\n'), buttons);
+  }
+
+  /** Generate default action buttons for a progress phase. */
+  protected defaultProgressButtons(phase: ProgressData['phase']): Button[] {
+    if (phase === 'completed' || phase === 'failed') {
+      return this.locale === 'zh'
+        ? [
+            { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'primary', row: 0 },
+            { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default', row: 0 },
+            { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default', row: 1 },
+          ]
+        : [
+            { label: '🕘 Recent', callbackData: 'cmd:sessions --all', style: 'primary', row: 0 },
+            { label: '🆕 New', callbackData: 'cmd:new', style: 'default', row: 0 },
+            { label: '❓ Help', callbackData: 'cmd:help', style: 'default', row: 1 },
+          ];
+    }
+    return this.locale === 'zh'
+      ? [
+          { label: '⏹ 停止执行', callbackData: 'cmd:stop', style: 'danger', row: 0 },
+          { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default', row: 1 },
+        ]
+      : [
+          { label: '⏹ Stop', callbackData: 'cmd:stop', style: 'danger', row: 0 },
+          { label: '❓ Help', callbackData: 'cmd:help', style: 'default', row: 1 },
+        ];
+  }
+
+  /** Format raw markdown content into a platform-appropriate message. */
+  formatContent(chatId: string, content: string, buttons?: Button[]): OutboundMessage {
+    return this.createMessage(chatId, content, buttons);
   }
 
   formatCardResolution(chatId: string, data: CardResolutionData): OutboundMessage {

@@ -13,6 +13,7 @@ const feishuFormatter = new FeishuFormatter('zh');
 function mockAdapter(channelType = 'telegram'): BaseChannelAdapter {
   const messageQueue: any[] = [];
   const send = vi.fn().mockResolvedValue({ messageId: '1', success: true });
+  const editMessage = vi.fn().mockResolvedValue(undefined);
   const formatter = channelType === 'feishu' ? feishuFormatter : telegramFormatter;
   return {
     channelType,
@@ -20,7 +21,7 @@ function mockAdapter(channelType = 'telegram'): BaseChannelAdapter {
     stop: vi.fn().mockResolvedValue(undefined),
     consumeOne: vi.fn().mockImplementation(() => messageQueue.shift() ?? null),
     send,
-    editMessage: vi.fn().mockResolvedValue(undefined),
+    editMessage,
     sendTyping: vi.fn().mockResolvedValue(undefined),
     addReaction: vi.fn().mockResolvedValue(undefined),
     removeReaction: vi.fn().mockResolvedValue(undefined),
@@ -30,8 +31,13 @@ function mockAdapter(channelType = 'telegram'): BaseChannelAdapter {
     // Use real formatter
     format: (msg: FormattableMessage): OutboundMessage => formatter.format(msg),
     sendFormatted: async (msg: FormattableMessage) => send(formatter.format(msg)),
-    getLocale: () => (formatter as any).locale ?? 'en',
-    supportsRichCards: () => formatter instanceof FeishuFormatter,
+    getLocale: () => formatter.getLocale(),
+    supportsRichCards: () => formatter.hasRichCardSupport(),
+    editCardResolution: async (chatId: string, messageId: string, data: any) => {
+      const outMsg = formatter.format({ type: 'cardResolution', chatId, data });
+      return editMessage(chatId, messageId, outMsg);
+    },
+    formatContent: (chatId: string, content: string, buttons?: any[]) => formatter.formatContent(chatId, content, buttons),
   } as any;
 }
 
