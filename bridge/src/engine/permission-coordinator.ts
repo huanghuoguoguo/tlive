@@ -211,7 +211,7 @@ export class PermissionCoordinator {
   }
 
   /** Resolve a hook permission (simplified - Go Core removed) */
-  async resolveHookPermission(permissionId: string, _decision: string, _channelType: string): Promise<void> {
+  async resolveHookPermission(permissionId: string, _decision: string, channelType: string): Promise<void> {
     // Deduplicate: skip if already resolved (race between button and text)
     if (this.resolvedHookIds.has(permissionId)) return;
     this.resolvedHookIds.set(permissionId, Date.now());

@@ -31,7 +31,7 @@ function mockAdapter(channelType = 'telegram'): BaseChannelAdapter {
     format: (msg: FormattableMessage): OutboundMessage => formatter.format(msg),
     sendFormatted: async (msg: FormattableMessage) => send(formatter.format(msg)),
     getLocale: () => (formatter as any).locale ?? 'en',
-    supportsRichCards: () => formatter['supportsButtons'](),
+    supportsRichCards: () => formatter instanceof FeishuFormatter,
   } as any;
 }
 
