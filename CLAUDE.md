@@ -66,11 +66,19 @@ npm run build
 ```
 
 ### 发布
-除非开发者指定发布版本，否则不要随便发布版本。
+**重要：禁止未经授权发布版本**
+
+- **不要在没有用户明确允许的情况下打 tag 或发布版本**
+- 版本发布频率应保持合理，不要因为小改动就频繁发版
+- 只有以下情况可以例外发布：
+  - Hotfix：修复严重影响用户体验的 bug（如崩溃、安全漏洞）
+  - 用户明确要求立即发布
+- 正常流程：功能开发 → PR 合并 → 等待用户确认发布时机 → 更新版本号 → 打 tag
+
 ```bash
 # 1. 更新 package.json 版本号
-# 2. 提交版本号变更
-# 3. 合并到 main 后打 tag，release workflow 自动构建并上传 tarball
+# 2. 提交版本号变更并通过 PR 合并
+# 3. 打 tag，release workflow 自动构建并上传 tarball
 git tag v0.x.x
 git push origin v0.x.x
 # 如果需要手动创建 release：
