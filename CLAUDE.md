@@ -66,11 +66,19 @@ npm run build
 ```
 
 ### 发布
-除非开发者指定发布版本，否则不要随便发布版本。
+**重要：禁止未经授权发布版本**
+
+- **不要在没有用户明确允许的情况下打 tag 或发布版本**
+- 版本发布频率应保持合理，不要因为小改动就频繁发版
+- 只有以下情况可以例外发布：
+  - Hotfix：修复严重影响用户体验的 bug（如崩溃、安全漏洞）
+  - 用户明确要求立即发布
+- 正常流程：功能开发 → PR 合并 → 等待用户确认发布时机 → 更新版本号 → 打 tag
+
 ```bash
 # 1. 更新 package.json 版本号
-# 2. 提交版本号变更
-# 3. 合并到 main 后打 tag，release workflow 自动构建并上传 tarball
+# 2. 提交版本号变更并通过 PR 合并
+# 3. 打 tag，release workflow 自动构建并上传 tarball
 git tag v0.x.x
 git push origin v0.x.x
 # 如果需要手动创建 release：
@@ -90,7 +98,8 @@ gh release create v0.x.x
 npm run build          # 构建
 npm test               # 运行测试
 npm start              # 构建并启动 bridge（开发用，替代 tlive start）
-npm run dev            # watch 模式自动重编译
+npm run dev            # watch 模式自动重编译（不重启进程）
+npm run dev:hot        # 热更新模式：编译 + 自动重启（推荐开发时使用）
 
 # 生产（全局安装后）
 tlive start            # 启动 Bridge
@@ -99,4 +108,4 @@ tlive logs             # 查看日志
 tlive doctor           # 诊断问题
 ```
 
-> **注意**：开发调试时用 `npm start`，不要用 `tlive start`。后者启动的是全局安装的版本，不是当前工作区的代码。
+> **注意**：开发调试时用 `npm run dev:hot`（热更新）或 `npm start`。不要用 `tlive start`，后者启动的是全局安装的版本，不是当前工作区的代码。

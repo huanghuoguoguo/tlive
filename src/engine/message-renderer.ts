@@ -155,6 +155,7 @@ export class MessageRenderer {
 
   onThinkingDelta(text: string): void {
     this.thinkingText += text;
+    this.scheduleFlush();
   }
 
   onToolStart(name: string, input?: Record<string, unknown>, toolUseId?: string): void {
