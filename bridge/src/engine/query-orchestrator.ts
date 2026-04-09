@@ -71,6 +71,7 @@ export class QueryOrchestrator {
     let permissionReminderMsgId: string | undefined;
     let permissionReminderTool: string | undefined;
     let permissionReminderInput: string | undefined;
+    let progressReminderMsgId: string | undefined;
     const renderer = new MessageRenderer({
       platformLimit: PLATFORM_LIMITS[adapter.channelType as ChannelType] ?? 4096,
       throttleMs: 300,
@@ -91,6 +92,27 @@ export class QueryOrchestrator {
         try {
           const result = await adapter.send(outMsg);
           permissionReminderMsgId = result.messageId;
+        } catch {
+          // Non-fatal.
+        }
+      },
+      onProgressTimeout: async (summary) => {
+        // Only send progress reminder for Feishu
+        if (adapter.channelType !== CHANNEL_TYPES.FEISHU) return;
+        const currentToolHint = summary.currentTool
+          ? `\n当前：${summary.currentTool.name} — ${truncate(summary.currentTool.input, 50)}`
+          : '';
+        const text = `⏳ 任务进行中\n${summary.taskSummary}${currentToolHint}\n运行时长：${summary.elapsedSeconds}s`;
+        try {
+          const result = await adapter.send({
+            chatId: msg.chatId,
+            text,
+            feishuHeader: { template: 'blue', title: '⏳ 进度更新' },
+            buttons: [
+              { label: '⏹ 停止执行', callbackData: 'cmd:stop', style: 'danger' as const },
+            ],
+          });
+          progressReminderMsgId = result.messageId;
         } catch {
           // Non-fatal.
         }
@@ -458,6 +480,11 @@ export class QueryOrchestrator {
           };
           costTracker.finish(usage);
           await renderer.onComplete();
+          // Delete progress reminder message if exists
+          if (progressReminderMsgId) {
+            adapter.deleteMessage(msg.chatId, progressReminderMsgId).catch(() => {});
+            progressReminderMsgId = undefined;
+          }
         },
         onPromptSuggestion: (suggestion) => {
           if (verboseLevel === 0) return;

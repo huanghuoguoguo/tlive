@@ -24,6 +24,8 @@ export interface MessageRendererOptions {
   ) => Promise<string | undefined>;
   /** Called when permission waits >60s without response */
   onPermissionTimeout?: (toolName: string, input: string, buttons: Array<{ label: string; callbackData: string; style: string }>) => void;
+  /** Called when no progress for >30s during execution (Feishu intermediate update) */
+  onProgressTimeout?: (summary: { taskSummary: string; elapsedSeconds: number; currentTool?: { name: string; input: string } }) => void;
 }
 
 /** Tools silently ignored — never counted or displayed */
@@ -83,6 +85,10 @@ export class MessageRenderer {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private elapsedTimer: ReturnType<typeof setInterval> | null = null;
   private permissionTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Progress timeout timer for intermediate updates */
+  private progressTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Task summary for progress timeout message */
+  private taskSummary = '';
   private elapsedSeconds = 0;
   private platformLimit: number;
   private throttleMs: number;
@@ -94,6 +100,7 @@ export class MessageRenderer {
   private model?: string;
   private sessionId?: string;
   private verboseLevel: VerboseLevel;
+  private onProgressTimeout?: MessageRendererOptions['onProgressTimeout'];
   /** Last rendered content - for change detection */
   private lastRenderedContent = '';
   /** Force next flush regardless of content change */
@@ -112,6 +119,7 @@ export class MessageRenderer {
     this.throttleMs = options.throttleMs ?? 300;
     this.flushCallback = options.flushCallback;
     this.onPermissionTimeout = options.onPermissionTimeout;
+    this.onProgressTimeout = options.onProgressTimeout;
     this.cwd = options.cwd;
     this.model = options.model;
     this.sessionId = options.sessionId;
@@ -144,6 +152,9 @@ export class MessageRenderer {
         }
       }, 1000);
     }
+
+    // Start progress timeout for intermediate updates
+    this.resetProgressTimeout();
 
     this.forceFlush = true; // Force update on new tool
     this.scheduleFlush();
@@ -207,6 +218,8 @@ export class MessageRenderer {
     buttons: Array<{ label: string; callbackData: string; style: string }>,
   ): void {
     this.permissionQueue.push({ toolName, input, permId, buttons });
+    // Clear progress timeout during permission wait - user needs to act
+    this.clearProgressTimeout();
     // Only start timeout for the first permission (the one being displayed)
     if (this.permissionQueue.length === 1) {
       this.startPermissionTimeout();
@@ -227,6 +240,9 @@ export class MessageRenderer {
     this.clearPermissionTimeout();
     if (this.permissionQueue.length > 0) {
       this.startPermissionTimeout();
+    } else {
+      // No more permissions - restart progress timeout
+      this.startProgressTimeout();
     }
     this.scheduleFlush();
   }
@@ -243,8 +259,40 @@ export class MessageRenderer {
     }
   }
 
+  private startProgressTimeout(): void {
+    this.clearProgressTimeout();
+    if (this.onProgressTimeout && !this.completed && !this.errorMessage) {
+      this.progressTimeoutTimer = setTimeout(() => {
+        if (!this.completed && !this.errorMessage && this.totalTools > 0) {
+          this.onProgressTimeout!({
+            taskSummary: this.taskSummary || '正在执行',
+            elapsedSeconds: this.elapsedSeconds,
+            currentTool: this.currentTool ? { name: this.currentTool.name, input: this.currentTool.input } : undefined,
+          });
+        }
+      }, 30_000); // 30 seconds timeout
+    }
+  }
+
+  private resetProgressTimeout(): void {
+    // Reset timer when there's new activity
+    this.startProgressTimeout();
+  }
+
+  private clearProgressTimeout(): void {
+    if (this.progressTimeoutTimer) {
+      clearTimeout(this.progressTimeoutTimer);
+      this.progressTimeoutTimer = null;
+    }
+  }
+
   onTextDelta(text: string): void {
     this.responseText += text;
+    // Update task summary from first meaningful text
+    if (!this.taskSummary && this.responseText.trim().length > 20) {
+      this.taskSummary = truncate(this.responseText.trim(), 100);
+    }
+    this.resetProgressTimeout();
     this.scheduleFlush();
   }
 
@@ -474,6 +522,7 @@ export class MessageRenderer {
       this.elapsedTimer = null;
     }
     this.clearPermissionTimeout();
+    this.clearProgressTimeout();
   }
 
   private clearPermissionTimeout(): void {

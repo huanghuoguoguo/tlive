@@ -28,6 +28,19 @@ function markdown(content: string): FeishuCardElement {
   return { tag: 'markdown', content };
 }
 
+function collapsiblePanel(title: string, content: string): FeishuCardElement {
+  return {
+    tag: 'collapsible_panel',
+    expanded: false,
+    header: {
+      title: { tag: 'plain_text', content: title },
+    },
+    body: {
+      elements: [{ tag: 'markdown', content }],
+    },
+  };
+}
+
 function buildTodoSummary(todos: FeishuTaskCardState['todoItems']): string | null {
   if (!todos.length) return null;
   const done = todos.filter(item => item.status === 'completed').length;
@@ -82,8 +95,11 @@ export function buildFeishuTaskCard(
   const todoSummary = buildTodoSummary(state.todoItems);
   if (todoSummary) elements.push(markdown(todoSummary));
 
+  // Use collapsible panel for process summary (工作日志摘要)
   const processSummary = buildProcessSummary(state.renderedText);
-  if (processSummary) elements.push(markdown(processSummary));
+  if (processSummary) {
+    elements.push(collapsiblePanel('工作日志摘要', processSummary.replace('**工作日志摘要**\n', '')));
+  }
 
   elements.push(...buildFeishuButtonElements(buttons));
   return { header, elements };

@@ -26,4 +26,12 @@ export interface FeishuCardElement {
     type: string;
     value: Record<string, string>;
   }>;
+  /** For collapsible_panel */
+  expanded?: boolean;
+  header?: {
+    title: { tag: string; content: string };
+  };
+  body?: {
+    elements: Array<{ tag: string; content: string }>;
+  };
 }
