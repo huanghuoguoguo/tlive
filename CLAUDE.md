@@ -39,6 +39,14 @@ tlive/
 - 工具函数放在 `bridge/src/utils/`
 - 常量放在 `bridge/src/utils/constants.ts`
 
+### 提交代码
+- **main 分支受保护，禁止直接推送**
+- **开发新功能或修复 bug 时，必须新建分支**（不要在 main 上直接工作）
+  - 功能分支命名：`feat/xxx`
+  - 修复分支命名：`fix/xxx`
+- 所有代码变更必须通过 Pull Request 合并
+- PR 合并方式：Squash merge（自动压缩为单个 commit）
+
 ### 测试
 ```bash
 cd bridge && npm test
@@ -50,6 +58,7 @@ cd bridge && npm run build
 ```
 
 ### 发布
+除非开发者指定发布版本，否则不要随便发布版本。
 ```bash
 # 更新 package.json 版本号
 # 创建 tag 和 release
