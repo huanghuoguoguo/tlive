@@ -36,6 +36,11 @@ const HIDDEN_TOOLS = new Set([
 
 const SEPARATOR = '───────────────';
 
+/** Timeout constants */
+const PERMISSION_TIMEOUT_MS = 60_000;
+const PROGRESS_TIMEOUT_MS = 30_000;
+const PROGRESS_RESET_THROTTLE_MS = 5000;
+
 interface PermissionState {
   toolName: string;
   input: string;
@@ -87,6 +92,8 @@ export class MessageRenderer {
   private permissionTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
   /** Progress timeout timer for intermediate updates */
   private progressTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Last progress timeout reset timestamp for throttling */
+  private lastProgressReset = 0;
   /** Task summary for progress timeout message */
   private taskSummary = '';
   private elapsedSeconds = 0;
@@ -154,7 +161,7 @@ export class MessageRenderer {
     }
 
     // Start progress timeout for intermediate updates
-    this.resetProgressTimeout();
+    this.startProgressTimeout();
 
     this.forceFlush = true; // Force update on new tool
     this.scheduleFlush();
@@ -255,7 +262,7 @@ export class MessageRenderer {
         if (head) {
           this.onPermissionTimeout!(head.toolName, head.input, head.buttons);
         }
-      }, 60_000);
+      }, PERMISSION_TIMEOUT_MS);
     }
   }
 
@@ -270,13 +277,8 @@ export class MessageRenderer {
             currentTool: this.currentTool ? { name: this.currentTool.name, input: this.currentTool.input } : undefined,
           });
         }
-      }, 30_000); // 30 seconds timeout
+      }, PROGRESS_TIMEOUT_MS);
     }
-  }
-
-  private resetProgressTimeout(): void {
-    // Reset timer when there's new activity
-    this.startProgressTimeout();
   }
 
   private clearProgressTimeout(): void {
@@ -288,11 +290,19 @@ export class MessageRenderer {
 
   onTextDelta(text: string): void {
     this.responseText += text;
-    // Update task summary from first meaningful text
-    if (!this.taskSummary && this.responseText.trim().length > 20) {
-      this.taskSummary = truncate(this.responseText.trim(), 100);
+    // Update task summary from first meaningful text (cache trim to avoid double call)
+    if (!this.taskSummary) {
+      const trimmed = this.responseText.trim();
+      if (trimmed.length > 20) {
+        this.taskSummary = truncate(trimmed, 100);
+      }
     }
-    this.resetProgressTimeout();
+    // Throttle progress timeout reset to avoid timer churn on frequent deltas
+    const now = Date.now();
+    if (now - this.lastProgressReset >= PROGRESS_RESET_THROTTLE_MS) {
+      this.lastProgressReset = now;
+      this.startProgressTimeout();
+    }
     this.scheduleFlush();
   }
 
