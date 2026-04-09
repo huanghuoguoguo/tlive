@@ -49,8 +49,16 @@ tlive/
 
 ### 测试
 ```bash
-npm test
+npm test               # 运行全部测试（CI 也跑这个）
+npm test -- src/__tests__/feishu-progress-card.test.ts  # 单个文件
+npm run test:watch     # watch 模式
 ```
+
+测试分两类：
+- **单元/集成测试**（`src/__tests__/`）— 纯函数测试，不需要凭证，CI 可跑。覆盖消息格式化、卡片结构、markdown 转换、权限逻辑等。
+- **端到端手动测试** — 需要真实 IM 平台凭证和 Claude Code，只能本地跑。用 `npm start` 启动后在 IM 端发消息验证。
+
+新增功能时至少要写对应的单元/集成测试。涉及飞书卡片的改动，确保 `feishu-progress-card.test.ts` 覆盖了卡片结构正确性（如 `collapsible_panel` 用 `elements` 而非 `body.elements`）。
 
 ### 构建
 ```bash
@@ -79,12 +87,16 @@ gh release create v0.x.x
 
 ```bash
 # 开发
-npm run build          # 构建 bridge
+npm run build          # 构建
 npm test               # 运行测试
+npm start              # 构建并启动 bridge（开发用，替代 tlive start）
+npm run dev            # watch 模式自动重编译
 
-# 运行
+# 生产（全局安装后）
 tlive start            # 启动 Bridge
 tlive status           # 查看状态
 tlive logs             # 查看日志
 tlive doctor           # 诊断问题
 ```
+
+> **注意**：开发调试时用 `npm start`，不要用 `tlive start`。后者启动的是全局安装的版本，不是当前工作区的代码。
