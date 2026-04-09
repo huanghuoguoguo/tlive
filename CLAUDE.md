@@ -60,10 +60,14 @@ cd bridge && npm run build
 ### 发布
 除非开发者指定发布版本，否则不要随便发布版本。
 ```bash
-# 更新 package.json 版本号
-# 创建 tag 和 release
+# 1. 同步更新两个 package.json 的版本号（必须一致）
+#    - /package.json（CLI 显示版本，scripts/cli.js 读取）
+#    - /bridge/package.json（Bridge 版本检查，version-checker.ts 读取）
+# 2. 提交版本号变更
+# 3. 合并到 main 后打 tag，release workflow 自动构建并上传 tarball
 git tag v0.x.x
-git push origin main --tags
+git push origin v0.x.x
+# 如果需要手动创建 release：
 gh release create v0.x.x
 ```
 
