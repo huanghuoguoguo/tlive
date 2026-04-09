@@ -1,7 +1,10 @@
 import { build } from 'esbuild';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 
 const isWatch = process.argv.includes('--watch');
+
+// Read version from package.json for build-time injection
+const packageJson = JSON.parse(readFileSync('package.json', 'utf-8'));
 
 mkdirSync('dist/channels', { recursive: true });
 
@@ -22,6 +25,9 @@ const common = {
     'ws',
   ],
   sourcemap: true,
+  define: {
+    'process.env.npm_package_version': JSON.stringify(packageJson.version),
+  },
   ...(isWatch ? { watch: true } : {}),
 };
 

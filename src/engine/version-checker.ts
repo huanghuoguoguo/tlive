@@ -3,13 +3,12 @@
  * Checks GitHub Releases API for new versions.
  */
 
-import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
-const require = createRequire(import.meta.url);
-const packageJson = require('../../package.json');
+// Version is injected at build time via esbuild define
+declare const process: { env: { npm_package_version: string } };
 
 const REPO = 'huanghuoguoguo/tlive';
 const GITHUB_API = `https://api.github.com/repos/${REPO}/releases/latest`;
@@ -25,10 +24,10 @@ export interface VersionInfo {
 }
 
 /**
- * Get current installed version from package.json
+ * Get current installed version from build-time injection
  */
 export function getCurrentVersion(): string {
-  return packageJson.version;
+  return process.env.npm_package_version;
 }
 
 /**
