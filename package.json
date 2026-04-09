@@ -1,8 +1,9 @@
 {
   "name": "tlive",
   "version": "0.11.1",
-  "description": "Terminal live monitoring + IM bridge for AI coding tools",
+  "description": "IM bridge for Claude Code — chat from Telegram, Feishu, or QQ Bot",
   "type": "module",
+  "main": "dist/main.mjs",
   "bin": {
     "tlive": "./scripts/cli.js"
   },
@@ -21,8 +22,7 @@
     "scripts/statusline.sh",
     "scripts/doctor.sh",
     "scripts/install.sh",
-    "bridge/dist/",
-    "bridge/package.json",
+    "dist/",
     "SKILL.md",
     "references/",
     "config.env.example"
@@ -30,14 +30,15 @@
   "scripts": {
     "postinstall": "node scripts/postinstall.js",
     "preuninstall": "node scripts/preuninstall.js",
-    "prepublishOnly": "cd bridge && npm install && npm run build && npm test",
-    "build": "cd bridge && npm run build",
-    "typecheck": "cd bridge && npm run typecheck",
-    "lint": "cd bridge && npm run lint",
-    "format": "cd bridge && npm run format",
-    "check": "cd bridge && npm run check",
-    "test": "cd bridge && npm test",
-    "test:go": "cd core && go test ./... -v -timeout 30s"
+    "prepublishOnly": "npm run build && npm test",
+    "build": "node esbuild.config.js",
+    "dev": "node esbuild.config.js --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint src esbuild.config.js",
+    "format": "biome format --write src esbuild.config.js",
+    "check": "npm run typecheck && npm run lint && npm test",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "terminal",
@@ -60,7 +61,19 @@
     "@larksuiteoapi/node-sdk": "^1.59.0",
     "grammy": "^1.41.1",
     "https-proxy-agent": "^9.0.0",
-    "socks-proxy-agent": "^10.0.0"
+    "markdown-it": "^14.1.1",
+    "socks-proxy-agent": "^10.0.0",
+    "ws": "^8.18.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.10",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^25.5.0",
+    "@types/ws": "^8.5.10",
+    "esbuild": "^0.27.4",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
   },
   "engines": {
     "node": ">=20.0.0"

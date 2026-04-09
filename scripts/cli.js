@@ -16,7 +16,7 @@ const TLIVE_HOME = join(homedir(), '.tlive');
 const RUNTIME_DIR = join(TLIVE_HOME, 'runtime');
 const LOG_DIR = join(TLIVE_HOME, 'logs');
 const BRIDGE_PID = join(RUNTIME_DIR, 'bridge.pid');
-const BRIDGE_ENTRY = join(PACKAGE_ROOT, 'bridge', 'dist', 'main.mjs');
+const BRIDGE_ENTRY = join(PACKAGE_ROOT, 'dist', 'main.mjs');
 const CONFIG_FILE = join(TLIVE_HOME, 'config.env');
 const CORE_BIN = join(TLIVE_HOME, 'bin', isWindows ? 'tlive-core.exe' : 'tlive-core');
 
