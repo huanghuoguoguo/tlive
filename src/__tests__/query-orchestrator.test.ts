@@ -85,11 +85,16 @@ describe('QueryOrchestrator', () => {
         sdkQuestionTextAnswers: new Map(),
       }),
       setControlsForChat: vi.fn(),
+      setActiveMessageId: vi.fn(),
+      closeSession: vi.fn(),
+      getOrCreateSession: vi.fn().mockReturnValue(undefined),
     } as any;
     const adapter = createAdapter();
+    const llm = {} as any;
 
     const orchestrator = new QueryOrchestrator({
       engine,
+      llm,
       router,
       state,
       permissions,

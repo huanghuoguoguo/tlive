@@ -15,9 +15,11 @@ import { CHANNEL_TYPES, PLATFORM_LIMITS, PLATFORM_REACTIONS, type ChannelType } 
 import { generateSessionId } from '../utils/id.js';
 import { truncate } from '../utils/string.js';
 import type { BridgeStore } from '../store/interface.js';
+import type { LLMProvider, LiveSession } from '../providers/base.js';
 
 interface QueryOrchestratorOptions {
   engine: ConversationEngine;
+  llm: LLMProvider;
   router: ChannelRouter;
   state: SessionStateManager;
   permissions: PermissionCoordinator;
@@ -306,17 +308,53 @@ export class QueryOrchestrator {
     };
 
     try {
+      // Get or create a LiveSession for this chat
+      const workdir = binding.cwd || this.options.defaultWorkdir;
+      const chatKey = this.options.state.stateKey(msg.channelType, msg.chatId);
+      let liveSession: LiveSession | undefined;
+      let streamResult: import('../providers/base.js').StreamChatResult | undefined;
+
+      try {
+        liveSession = this.options.sdkEngine.getOrCreateSession(
+          this.options.llm,
+          msg.channelType,
+          msg.chatId,
+          workdir,
+          {
+            sessionId: binding.sdkSessionId,
+            effort: this.options.state.getEffort(msg.channelType, msg.chatId),
+            model: this.options.state.getModel(msg.channelType, msg.chatId),
+          },
+        );
+      } catch (err) {
+        console.warn(`[bridge] Failed to create LiveSession, falling back to streamChat: ${err}`);
+      }
+
+      if (liveSession) {
+        // Use LiveSession: startTurn with per-turn handlers
+        streamResult = liveSession.startTurn(msg.text, {
+          onPermissionRequest: sdkPermissionHandler,
+          onAskUserQuestion: sdkAskQuestionHandler,
+          effort: this.options.state.getEffort(msg.channelType, msg.chatId),
+          model: this.options.state.getModel(msg.channelType, msg.chatId),
+          attachments: msg.attachments?.filter(a => a.type === 'image'),
+        });
+      }
+
       await this.options.engine.processMessage({
         sdkSessionId: binding.sdkSessionId,
-        workingDirectory: binding.cwd || this.options.defaultWorkdir,
+        workingDirectory: workdir,
         text: msg.text,
         attachments: msg.attachments,
-        sdkPermissionHandler,
-        sdkAskQuestionHandler,
+        // When using LiveSession, streamResult bypasses streamChat;
+        // permission/question handlers are set per-turn on the session.
+        // When no LiveSession, fall back to streamChat with these handlers.
+        streamResult,
+        sdkPermissionHandler: streamResult ? undefined : sdkPermissionHandler,
+        sdkAskQuestionHandler: streamResult ? undefined : sdkAskQuestionHandler,
         effort: this.options.state.getEffort(msg.channelType, msg.chatId),
         model: this.options.state.getModel(msg.channelType, msg.chatId),
         onControls: (ctrl) => {
-          const chatKey = this.options.state.stateKey(msg.channelType, msg.chatId);
           this.options.sdkEngine.setControlsForChat(chatKey, ctrl);
         },
         onSdkSessionId: async (id) => {
@@ -381,15 +419,21 @@ export class QueryOrchestrator {
           }).catch(() => {});
         },
         onError: async (err) => {
-          // Check for session expiry / stale thinking signature — clear sdkSessionId so next query starts fresh
+          // Check for session expiry / stale thinking signature — clear sdkSessionId and kill LiveSession
           if (err.includes('No conversation found') || err.includes('session ID') || err.includes('Invalid') && err.includes('signature')) {
-            console.log(`[bridge] Session expired or stale, clearing sdkSessionId for ${msg.channelType}:${msg.chatId}`);
+            console.log(`[bridge] Session expired or stale, clearing for ${msg.channelType}:${msg.chatId}`);
             binding.sdkSessionId = undefined;
             await this.options.store.saveBinding(binding);
+            this.options.sdkEngine.closeSession(msg.channelType, msg.chatId);
           }
           await renderer.onError(err);
         },
       });
+
+      // Track active message ID for steer matching
+      if (renderer.messageId) {
+        this.options.sdkEngine.setActiveMessageId(chatKey, renderer.messageId);
+      }
 
       adapter.addReaction(reactionChatId, msg.messageId, reactions.done).catch(() => {});
       // Also add reaction to the bot's progress message for visibility

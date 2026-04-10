@@ -116,6 +116,7 @@ export class BridgeManager {
     });
     this.query = new QueryOrchestrator({
       engine: this.engine,
+      llm,
       router: this.router,
       state: this.state,
       permissions: this.permissions,
