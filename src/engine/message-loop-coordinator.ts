@@ -66,11 +66,7 @@ export class MessageLoopCoordinator {
       // Use SDK native queue: if there's an active session, send with priority
       if (this.options.sdkEngine.hasActiveSession(msg.channelType, msg.chatId)) {
         // Steer if turn is active (inject into running turn)
-        const sessionKey = this.options.state.stateKey(msg.channelType, msg.chatId);
-        const canSteerResult = this.options.sdkEngine.canSteer(msg.channelType, msg.chatId, msg.replyToMessageId);
-
-        if (canSteerResult) {
-          // Legacy steer via reply-to-message matching
+        if (this.options.sdkEngine.canSteer(msg.channelType, msg.chatId)) {
           const sent = await this.options.sdkEngine.steer(msg.channelType, msg.chatId, msg.text);
           if (sent) {
             await adapter.send({ chatId: msg.chatId, text: '💬 Message injected into active session' }).catch(() => {});

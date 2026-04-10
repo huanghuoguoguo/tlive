@@ -50,7 +50,7 @@ describe('MessageLoopCoordinator', () => {
     expect(coordinator.isQuickMessage(createAdapter(), createMessage('hello'))).toBe(true);
   });
 
-  it('steers the active session when a busy chat replies to the working card', async () => {
+  it('steers the active session when turn is active', async () => {
     const state = new SessionStateManager();
     const chatKey = state.stateKey('telegram', 'chat-1');
     state.setProcessing(chatKey, true);
@@ -77,7 +77,7 @@ describe('MessageLoopCoordinator', () => {
 
     await coordinator.dispatchSlowMessage({
       adapter,
-      msg: createMessage('follow-up', { replyToMessageId: 'card-1' }),
+      msg: createMessage('follow-up'),
       coalesceMessage: async (_adapter, msg) => msg,
       handleMessage: vi.fn(),
       onError: vi.fn(),
@@ -89,14 +89,14 @@ describe('MessageLoopCoordinator', () => {
     );
   });
 
-  it('queues follow-up messages when a busy chat cannot be steered', async () => {
+  it('queues follow-up messages when turn is not active', async () => {
     const state = new SessionStateManager();
     const chatKey = state.stateKey('telegram', 'chat-1');
     state.setProcessing(chatKey, true);
 
     const sdkEngine = {
-      canSteer: vi.fn().mockReturnValue(false),
-      hasActiveSession: vi.fn().mockReturnValue(true),
+      canSteer: vi.fn().mockReturnValue(false), // turn not active
+      hasActiveSession: vi.fn().mockReturnValue(true), // but session alive
       steer: vi.fn().mockResolvedValue(false),
       queue: vi.fn().mockResolvedValue(true),
     } as any;

@@ -160,7 +160,15 @@ export class SDKEngine {
 
   // ── Steer / Queue ──
 
-  /** Check if there's an active session for this chat (for steer/queue) */
+  /** Check if there's an active session with active turn for steer */
+  canSteer(channelType: string, chatId: string): boolean {
+    const sessionKey = this.activeSessionByChat.get(`${channelType}:${chatId}`);
+    if (!sessionKey) return false;
+    const managed = this.registry.get(sessionKey);
+    return (managed?.session.isAlive && managed?.session.isTurnActive) ?? false;
+  }
+
+  /** Check if there's an alive session (may or may not have active turn) */
   hasActiveSession(channelType: string, chatId: string): boolean {
     const sessionKey = this.activeSessionByChat.get(`${channelType}:${chatId}`);
     if (!sessionKey) return false;
@@ -191,30 +199,6 @@ export class SDKEngine {
   /** Queue message using SDK native priority='later' */
   async queue(channelType: string, chatId: string, text: string): Promise<boolean> {
     return this.sendWithPriority(channelType, chatId, text, 'later');
-  }
-
-  // Legacy methods kept for backwards compatibility during transition
-  /** @deprecated Use sendWithPriority instead */
-  canSteer(channelType: string, chatId: string, replyToMessageId?: string): boolean {
-    const chatKey = this.state.stateKey(channelType, chatId);
-    const activeId = this.activeMessageIds.get(chatKey);
-    if (!replyToMessageId || !activeId || replyToMessageId !== activeId) return false;
-    // O(1) lookup: check active session for this chat
-    const sessionKey = this.activeSessionByChat.get(`${channelType}:${chatId}`);
-    if (!sessionKey) return false;
-    const managed = this.registry.get(sessionKey);
-    return managed?.session.isTurnActive ?? false;
-  }
-
-  /** @deprecated Use steer() async version instead */
-  steerSync(channelType: string, chatId: string, text: string): void {
-    // O(1) lookup: get active session for this chat
-    const sessionKey = this.activeSessionByChat.get(`${channelType}:${chatId}`);
-    if (!sessionKey) return;
-    const managed = this.registry.get(sessionKey);
-    if (managed?.session.isTurnActive) {
-      managed.session.steerTurn(text);
-    }
   }
 
   // ── Shared State (CallbackRouter, /stop) ──
