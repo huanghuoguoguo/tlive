@@ -62,21 +62,32 @@ export class MessageLoopCoordinator {
   }
 
   private async handleBusyChat(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<void> {
-    if (msg.text && this.options.sdkEngine.canSteer(msg.channelType, msg.chatId, msg.replyToMessageId)) {
-      this.options.sdkEngine.steer(msg.channelType, msg.chatId, msg.text);
-      await adapter.send({ chatId: msg.chatId, text: '💬 Message sent to active session' }).catch(() => {});
-      return;
-    }
+    if (msg.text) {
+      // Use SDK native queue: if there's an active session, send with priority
+      if (this.options.sdkEngine.hasActiveSession(msg.channelType, msg.chatId)) {
+        // Steer if turn is active (inject into running turn)
+        const sessionKey = this.options.state.stateKey(msg.channelType, msg.chatId);
+        const canSteerResult = this.options.sdkEngine.canSteer(msg.channelType, msg.chatId, msg.replyToMessageId);
 
-    if (!msg.text) {
-      return;
-    }
+        if (canSteerResult) {
+          // Legacy steer via reply-to-message matching
+          const sent = await this.options.sdkEngine.steer(msg.channelType, msg.chatId, msg.text);
+          if (sent) {
+            await adapter.send({ chatId: msg.chatId, text: '💬 Message injected into active session' }).catch(() => {});
+            return;
+          }
+        }
 
-    const queued = this.options.sdkEngine.queueMessage(msg.channelType, msg.chatId, msg);
-    if (queued) {
-      await adapter.send({ chatId: msg.chatId, text: '📥 Queued — will process after current task' }).catch(() => {});
-    } else {
-      await adapter.send({ chatId: msg.chatId, text: '⚠️ Queue full — please wait for current tasks to finish' }).catch(() => {});
+        // Queue for later using SDK native priority='later'
+        const queued = await this.options.sdkEngine.queue(msg.channelType, msg.chatId, msg.text);
+        if (queued) {
+          await adapter.send({ chatId: msg.chatId, text: '📥 Queued — will process after current task' }).catch(() => {});
+          return;
+        }
+      }
+
+      // No active session or SDK queue failed — drop message
+      await adapter.send({ chatId: msg.chatId, text: '⚠️ No active session — please start a task first' }).catch(() => {});
     }
   }
 
@@ -87,16 +98,7 @@ export class MessageLoopCoordinator {
     handleMessage: (adapter: BaseChannelAdapter, msg: InboundMessage) => Promise<unknown>,
     onError: (err: unknown) => void,
   ): Promise<void> {
-    let next = this.options.sdkEngine.dequeueMessage(channelType, chatId);
-    while (next) {
-      console.log(`[${adapter.channelType}] Processing queued message`);
-      try {
-        await handleMessage(adapter, next);
-      } catch (err) {
-        onError(err);
-        break;
-      }
-      next = this.options.sdkEngine.dequeueMessage(channelType, chatId);
-    }
+    // SDK handles queue internally — no manual drain needed
+    // This method is kept for backwards compatibility but does nothing
   }
 }

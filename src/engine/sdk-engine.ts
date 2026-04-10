@@ -3,11 +3,10 @@
  *
  * Core responsibilities:
  * - Session registry: manage LiveSessions per chat+workdir
- * - Steer/Queue: inject messages into active turns or queue for later
+ * - Steer/Queue: inject messages into active turns or queue for later using SDK native priority
  */
 
-import type { InboundMessage } from '../channels/types.js';
-import type { QueryControls, LiveSession, LLMProvider } from '../providers/base.js';
+import type { QueryControls, LiveSession, LLMProvider, MessagePriority } from '../providers/base.js';
 import type { SessionStateManager } from './session-state.js';
 import type { ChannelRouter } from './router.js';
 import type { EffortLevel } from '../utils/types.js';
@@ -38,10 +37,8 @@ export class SDKEngine {
   private registry = new Map<string, ManagedSession>();
   /** Active session per chat: channelType:chatId → sessionKey (for O(1) steer/canSteer) */
   private activeSessionByChat = new Map<string, string>();
-  /** Current working card messageId per chat — for steer matching */
+  /** Current working card messageId per chat — for legacy steer matching */
   private activeMessageIds = new Map<string, string>();
-  /** Queued messages per chat — processed after current turn completes */
-  private messageQueue = new Map<string, Array<InboundMessage>>();
 
   // SDK AskUserQuestion state — shared with CallbackRouter via SdkQuestionState interface
   sdkQuestionData = new Map<string, { questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string; preview?: string }>; multiSelect: boolean }>; chatId: string }>();
@@ -163,7 +160,41 @@ export class SDKEngine {
 
   // ── Steer / Queue ──
 
-  /** Check if reply-to matches the current working card (for steer) */
+  /** Check if there's an active session for this chat (for steer/queue) */
+  hasActiveSession(channelType: string, chatId: string): boolean {
+    const sessionKey = this.activeSessionByChat.get(`${channelType}:${chatId}`);
+    if (!sessionKey) return false;
+    const managed = this.registry.get(sessionKey);
+    return managed?.session.isAlive ?? false;
+  }
+
+  /** Send message with SDK native priority. Returns true if sent, false if no session. */
+  async sendWithPriority(channelType: string, chatId: string, text: string, priority: MessagePriority): Promise<boolean> {
+    const sessionKey = this.activeSessionByChat.get(`${channelType}:${chatId}`);
+    if (!sessionKey) return false;
+    const managed = this.registry.get(sessionKey);
+    if (!managed?.session.isAlive) return false;
+    try {
+      await managed.session.sendWithPriority(text, priority);
+      return true;
+    } catch (err) {
+      console.error(`[tlive:engine] sendWithPriority error:`, err);
+      return false;
+    }
+  }
+
+  /** Steer the active turn using SDK native priority='now' */
+  async steer(channelType: string, chatId: string, text: string): Promise<boolean> {
+    return this.sendWithPriority(channelType, chatId, text, 'now');
+  }
+
+  /** Queue message using SDK native priority='later' */
+  async queue(channelType: string, chatId: string, text: string): Promise<boolean> {
+    return this.sendWithPriority(channelType, chatId, text, 'later');
+  }
+
+  // Legacy methods kept for backwards compatibility during transition
+  /** @deprecated Use sendWithPriority instead */
   canSteer(channelType: string, chatId: string, replyToMessageId?: string): boolean {
     const chatKey = this.state.stateKey(channelType, chatId);
     const activeId = this.activeMessageIds.get(chatKey);
@@ -175,8 +206,8 @@ export class SDKEngine {
     return managed?.session.isTurnActive ?? false;
   }
 
-  /** Steer the active turn (inject text into running turn) */
-  steer(channelType: string, chatId: string, text: string): void {
+  /** @deprecated Use steer() async version instead */
+  steerSync(channelType: string, chatId: string, text: string): void {
     // O(1) lookup: get active session for this chat
     const sessionKey = this.activeSessionByChat.get(`${channelType}:${chatId}`);
     if (!sessionKey) return;
@@ -184,28 +215,6 @@ export class SDKEngine {
     if (managed?.session.isTurnActive) {
       managed.session.steerTurn(text);
     }
-  }
-
-  private static MAX_QUEUE_SIZE = 10;
-
-  /** Queue a message for processing after the current turn completes. Returns false if queue is full. */
-  queueMessage(channelType: string, chatId: string, msg: InboundMessage): boolean {
-    const chatKey = this.state.stateKey(channelType, chatId);
-    const queue = this.messageQueue.get(chatKey) ?? [];
-    if (queue.length >= SDKEngine.MAX_QUEUE_SIZE) return false;
-    queue.push(msg);
-    this.messageQueue.set(chatKey, queue);
-    return true;
-  }
-
-  /** Dequeue the next message for a chat */
-  dequeueMessage(channelType: string, chatId: string): InboundMessage | undefined {
-    const chatKey = this.state.stateKey(channelType, chatId);
-    const queue = this.messageQueue.get(chatKey);
-    if (!queue?.length) return undefined;
-    const msg = queue.shift()!;
-    if (queue.length === 0) this.messageQueue.delete(chatKey);
-    return msg;
   }
 
   // ── Shared State (CallbackRouter, /stop) ──

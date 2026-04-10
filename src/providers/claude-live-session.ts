@@ -257,6 +257,23 @@ export class ClaudeLiveSession implements LiveSession {
     this.pushMessage(text);
   }
 
+  async sendWithPriority(text: string, priority: 'now' | 'next' | 'later'): Promise<void> {
+    if (!this._isAlive) return;
+    // Use SDK's native send() method with priority
+    const q = this._query as any;
+    if (q?.send) {
+      await q.send({
+        type: 'user',
+        message: { role: 'user', content: text },
+        parent_tool_use_id: null,
+        priority,
+      });
+    } else {
+      // Fallback: use generator pushMessage (no priority support)
+      this.pushMessage(text);
+    }
+  }
+
   async interruptTurn(): Promise<void> {
     await this.queryControls?.interrupt();
   }

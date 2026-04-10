@@ -27,9 +27,9 @@ describe('MessageLoopCoordinator', () => {
     const state = new SessionStateManager();
     const sdkEngine = {
       canSteer: vi.fn().mockReturnValue(false),
-      steer: vi.fn(),
-      queueMessage: vi.fn(),
-      dequeueMessage: vi.fn(),
+      hasActiveSession: vi.fn().mockReturnValue(false),
+      steer: vi.fn().mockResolvedValue(false),
+      queue: vi.fn().mockResolvedValue(false),
     } as any;
     const permissions = {
       getLatestPendingQuestion: vi.fn().mockReturnValue(null),
@@ -57,9 +57,9 @@ describe('MessageLoopCoordinator', () => {
 
     const sdkEngine = {
       canSteer: vi.fn().mockReturnValue(true),
-      steer: vi.fn(),
-      queueMessage: vi.fn(),
-      dequeueMessage: vi.fn(),
+      hasActiveSession: vi.fn().mockReturnValue(true),
+      steer: vi.fn().mockResolvedValue(true),
+      queue: vi.fn().mockResolvedValue(false),
     } as any;
     const permissions = {
       getLatestPendingQuestion: vi.fn().mockReturnValue(null),
@@ -85,7 +85,7 @@ describe('MessageLoopCoordinator', () => {
 
     expect(sdkEngine.steer).toHaveBeenCalledWith('telegram', 'chat-1', 'follow-up');
     expect(adapter.send).toHaveBeenCalledWith(
-      expect.objectContaining({ text: '💬 Message sent to active session' }),
+      expect.objectContaining({ text: '💬 Message injected into active session' }),
     );
   });
 
@@ -96,9 +96,9 @@ describe('MessageLoopCoordinator', () => {
 
     const sdkEngine = {
       canSteer: vi.fn().mockReturnValue(false),
-      steer: vi.fn(),
-      queueMessage: vi.fn().mockReturnValue(true),
-      dequeueMessage: vi.fn(),
+      hasActiveSession: vi.fn().mockReturnValue(true),
+      steer: vi.fn().mockResolvedValue(false),
+      queue: vi.fn().mockResolvedValue(true),
     } as any;
     const permissions = {
       getLatestPendingQuestion: vi.fn().mockReturnValue(null),
@@ -122,11 +122,7 @@ describe('MessageLoopCoordinator', () => {
       onError: vi.fn(),
     });
 
-    expect(sdkEngine.queueMessage).toHaveBeenCalledWith(
-      'telegram',
-      'chat-1',
-      expect.objectContaining({ text: 'queued follow-up' }),
-    );
+    expect(sdkEngine.queue).toHaveBeenCalledWith('telegram', 'chat-1', 'queued follow-up');
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({ text: '📥 Queued — will process after current task' }),
     );
