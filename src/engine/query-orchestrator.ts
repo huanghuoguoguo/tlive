@@ -415,8 +415,16 @@ export class QueryOrchestrator {
       });
 
       adapter.addReaction(reactionChatId, msg.messageId, reactions.done).catch(() => {});
+      // Also add reaction to the bot's progress message for visibility
+      if (renderer.messageId) {
+        adapter.addReaction(msg.chatId, renderer.messageId, reactions.done).catch(() => {});
+      }
     } catch (err) {
       adapter.addReaction(reactionChatId, msg.messageId, reactions.error).catch(() => {});
+      // Also add error reaction to the bot's progress message
+      if (renderer.messageId) {
+        adapter.addReaction(msg.chatId, renderer.messageId, reactions.error).catch(() => {});
+      }
       throw err;
     } finally {
       clearInterval(typingInterval);
