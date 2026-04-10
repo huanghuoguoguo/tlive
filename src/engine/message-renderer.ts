@@ -640,6 +640,9 @@ export class MessageRenderer {
 
   private scheduleFlush(): void {
     if (this.timer) return;
+    // First message not sent yet → flush immediately so user sees the card ASAP.
+    // After that, throttle to reduce API calls.
+    const delay = this._messageId ? this.throttleMs : 0;
     this.timer = setTimeout(() => {
       this.timer = null;
       const content = this.render();
