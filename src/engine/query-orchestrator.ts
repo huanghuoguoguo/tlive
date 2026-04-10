@@ -14,6 +14,8 @@ import type { SDKEngine } from './sdk-engine.js';
 import { CHANNEL_TYPES, PLATFORM_LIMITS, PLATFORM_REACTIONS, type ChannelType } from '../utils/constants.js';
 import { generateSessionId } from '../utils/id.js';
 import { truncate } from '../utils/string.js';
+import { shortPath } from '../utils/path.js';
+import { scanClaudeSessions } from '../session-scanner.js';
 import type { BridgeStore } from '../store/interface.js';
 const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
 import type { LLMProvider, LiveSession } from '../providers/base.js';
@@ -84,9 +86,13 @@ export class QueryOrchestrator {
 
   async run(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
     const expired = this.options.state.checkAndUpdateLastActive(msg.channelType, msg.chatId);
+    let previousSessionPreview: string | undefined;
     if (expired) {
       const previousBinding = await this.options.store.getBinding(msg.channelType, msg.chatId);
       this.options.permissions.clearSessionWhitelist(previousBinding?.sessionId);
+      // Get preview of previous session before rebind
+      const sessions = scanClaudeSessions(3, previousBinding?.cwd || this.options.defaultWorkdir);
+      previousSessionPreview = sessions.find(s => s.sdkSessionId === previousBinding?.sdkSessionId)?.preview;
       await this.options.router.rebind(msg.channelType, msg.chatId, generateSessionId(), {
         cwd: previousBinding?.cwd,
       });
@@ -94,6 +100,21 @@ export class QueryOrchestrator {
     }
 
     const binding = await this.options.router.resolve(msg.channelType, msg.chatId);
+
+    // Send task start notification card for session reset (Feishu rich cards only)
+    if (expired && adapter.supportsRichCards()) {
+      const taskStartMsg = adapter.format({
+        type: 'taskStart',
+        chatId: msg.chatId,
+        data: {
+          cwd: shortPath(binding.cwd || this.options.defaultWorkdir),
+          permissionMode: this.options.state.getPermMode(msg.channelType, msg.chatId),
+          isNewSession: true,
+          previousSessionPreview,
+        },
+      });
+      await adapter.send(taskStartMsg);
+    }
 
     const reactionChatId = msg.chatId;
     const typingInterval = setInterval(() => {

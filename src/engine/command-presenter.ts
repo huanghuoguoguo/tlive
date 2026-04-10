@@ -7,6 +7,7 @@ import type {
   StatusData,
   HomeData,
   PermissionStatusData,
+  TaskStartData,
   SessionsData,
   SessionDetailData,
   HelpData,
@@ -28,6 +29,10 @@ export function presentHome(chatId: string, data: HomeData): FormattableMessage 
 
 export function presentPermissionStatus(chatId: string, data: PermissionStatusData): FormattableMessage {
   return { type: 'permissionStatus', chatId, data };
+}
+
+export function presentTaskStart(chatId: string, data: TaskStartData): FormattableMessage {
+  return { type: 'taskStart', chatId, data };
 }
 
 export function presentSessions(chatId: string, data: SessionsData): FormattableMessage {

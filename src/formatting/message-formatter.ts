@@ -11,6 +11,7 @@ import type {
   NotificationData,
   HomeData,
   PermissionStatusData,
+  TaskStartData,
   SessionsData,
   SessionDetailData,
   HelpData,
@@ -67,6 +68,8 @@ export abstract class MessageFormatter {
         return this.formatHome(chatId, msg.data);
       case 'permissionStatus':
         return this.formatPermissionStatus(chatId, msg.data);
+      case 'taskStart':
+        return this.formatTaskStart(chatId, msg.data);
       case 'sessions':
         return this.formatSessions(chatId, msg.data);
       case 'sessionDetail':
@@ -278,6 +281,40 @@ export abstract class MessageFormatter {
             { label: '🔐 Turn On', callbackData: 'cmd:perm on', style: 'primary', row: 0 },
             { label: '🏠 Home', callbackData: 'cmd:home', style: 'default', row: 0 },
           ];
+
+    return this.createMessage(chatId, lines.join('\n'), buttons);
+  }
+
+  formatTaskStart(chatId: string, data: TaskStartData): OutboundMessage {
+    const lines = this.locale === 'zh'
+      ? [
+          data.isNewSession ? '🔄 **会话已重置，开始新任务**' : '🚀 **开始执行**',
+          '',
+          `**目录:** ${data.cwd}`,
+          `**权限模式:** ${data.permissionMode === 'on' ? '开启审批' : '关闭审批'}`,
+        ]
+      : [
+          data.isNewSession ? '🔄 **Session reset, starting new task**' : '🚀 **Starting task**',
+          '',
+          `**Directory:** ${data.cwd}`,
+          `**Permission mode:** ${data.permissionMode}`,
+        ];
+
+    if (data.previousSessionPreview) {
+      lines.push('', this.locale === 'zh'
+        ? `**上次会话:** ${truncate(data.previousSessionPreview, 80)}`
+        : `**Previous session:** ${truncate(data.previousSessionPreview, 80)}`);
+    }
+
+    const buttons: Button[] = this.locale === 'zh'
+      ? [
+          { label: '⚡ 调整配置', callbackData: 'cmd:home', style: 'default', row: 0 },
+          { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default', row: 0 },
+        ]
+      : [
+          { label: '⚡ Settings', callbackData: 'cmd:home', style: 'default', row: 0 },
+          { label: '🆕 New', callbackData: 'cmd:new', style: 'default', row: 0 },
+        ];
 
     return this.createMessage(chatId, lines.join('\n'), buttons);
   }

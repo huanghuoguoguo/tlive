@@ -71,6 +71,14 @@ export interface PermissionStatusData {
   };
 }
 
+/** Task start confirmation card (session reset or new task) */
+export interface TaskStartData {
+  cwd: string;
+  permissionMode: 'on' | 'off';
+  isNewSession: boolean;
+  previousSessionPreview?: string;
+}
+
 /** Session list for /sessions command */
 export interface SessionsData {
   sessions: Array<{
@@ -185,6 +193,7 @@ export type FormattableMessage =
   | { type: 'notification'; chatId: string; data: NotificationData }
   | { type: 'home'; chatId: string; data: HomeData }
   | { type: 'permissionStatus'; chatId: string; data: PermissionStatusData }
+  | { type: 'taskStart'; chatId: string; data: TaskStartData }
   | { type: 'sessions'; chatId: string; data: SessionsData }
   | { type: 'sessionDetail'; chatId: string; data: SessionDetailData }
   | { type: 'help'; chatId: string; data: HelpData }

@@ -10,6 +10,7 @@ import type {
   NotificationData,
   HomeData,
   PermissionStatusData,
+  TaskStartData,
   SessionsData,
   SessionDetailData,
   HelpData,
@@ -405,6 +406,30 @@ export class FeishuFormatter extends MessageFormatter {
 
     return this.createCardMessage(chatId,
       { template: data.mode === 'on' ? 'orange' : 'grey', title: '🔐 权限状态' },
+      elements,
+      buttons
+    );
+  }
+
+  override formatTaskStart(chatId: string, data: TaskStartData): OutboundMessage {
+    const title = data.isNewSession ? '🔄 会话已重置' : '🚀 开始执行';
+    const elements: FeishuElement[] = [
+      this.md(`**当前配置**\n目录：${data.cwd}\n权限：${data.permissionMode === 'on' ? '开启审批' : '关闭审批'}`),
+    ];
+
+    if (data.previousSessionPreview) {
+      elements.push(this.md(`**上次会话**\n${truncate(data.previousSessionPreview, 100)}`));
+    }
+
+    elements.push(this.md('💡 任务已开始执行。如需调整配置，点击下方按钮。'));
+
+    const buttons: Button[] = [
+      { label: '🏠 调整配置', callbackData: 'cmd:home', style: 'default', row: 0 },
+      { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default', row: 0 },
+    ];
+
+    return this.createCardMessage(chatId,
+      { template: 'blue', title },
       elements,
       buttons
     );
