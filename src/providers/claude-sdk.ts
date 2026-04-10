@@ -23,6 +23,7 @@ export type { PermissionTimeoutCallback } from './claude-shared.js';
 
 const CLI_AUTH_PATTERNS = [/not logged in/i, /please run \/login/i];
 const API_AUTH_PATTERNS = [/unauthorized/i, /invalid.*api.?key/i, /401\b/];
+const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
 
 function classifyAuthError(text: string): 'cli' | 'api' | false {
   if (CLI_AUTH_PATTERNS.some(re => re.test(text))) return 'cli';
@@ -216,6 +217,8 @@ export class ClaudeSDKProvider implements LLMProvider {
               resume: params.sessionId || undefined,
               permissionMode: params.permissionMode || undefined,
               effort: params.effort || undefined,
+              // Required for stream_event partials, including thinking/text deltas.
+              includePartialMessages: true,
               // Enable AI-generated progress summaries for subagents (~30s interval)
               agentProgressSummaries: true,
               // Enable prompt suggestions (predicted next user prompt after each turn)
@@ -336,6 +339,27 @@ export class ClaudeSDKProvider implements LLMProvider {
               console.log(`[claude-sdk] msg: ${msg.type}${sub}${turns}`);
 
               const events = adapter.mapMessage(msg as any);
+              if (DEBUG_EVENTS && events.length > 0) {
+                const summary = events.map((event) => {
+                  switch (event.kind) {
+                    case 'thinking_delta':
+                    case 'text_delta':
+                      return `${event.kind}:${event.text.length}`;
+                    case 'tool_start':
+                      return `tool_start:${event.name}`;
+                    case 'tool_result':
+                      return `tool_result:${event.toolUseId}:${event.content.length}`;
+                    case 'agent_start':
+                    case 'agent_progress':
+                      return `${event.kind}:${event.description}`;
+                    case 'agent_complete':
+                      return `agent_complete:${event.status}`;
+                    default:
+                      return event.kind;
+                  }
+                }).join(', ');
+                console.log(`[claude-sdk] mapped events: ${summary}`);
+              }
               for (const event of events) {
                 controller.enqueue(event);
               }

@@ -15,6 +15,7 @@ import { CHANNEL_TYPES, PLATFORM_LIMITS, PLATFORM_REACTIONS, type ChannelType } 
 import { generateSessionId } from '../utils/id.js';
 import { truncate } from '../utils/string.js';
 import type { BridgeStore } from '../store/interface.js';
+const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
 import type { LLMProvider, LiveSession } from '../providers/base.js';
 
 interface QueryOrchestratorOptions {
@@ -371,9 +372,15 @@ export class QueryOrchestrator {
           renderer.onToolComplete(event.toolUseId);
         },
         onAgentStart: (data) => {
+          if (DEBUG_EVENTS) {
+            console.log(`[bridge] agent_start: ${data.description}`);
+          }
           renderer.onToolStart('Agent', { description: data.description, prompt: '' });
         },
         onAgentProgress: (data) => {
+          if (DEBUG_EVENTS) {
+            console.log(`[bridge] agent_progress: ${data.description}${data.lastTool ? ` (lastTool=${data.lastTool})` : ''}`);
+          }
           if (data.usage?.durationMs) {
             renderer.onToolProgress({ toolName: 'Agent', elapsed: data.usage.durationMs });
           }
@@ -407,6 +414,10 @@ export class QueryOrchestrator {
             cost_usd: event.usage.costUsd,
           };
           costTracker.finish(usage);
+          if (DEBUG_EVENTS) {
+            const state = renderer.getDebugSnapshot();
+            console.log(`[bridge] final timeline: thinking=${state.thinkingEntries} text=${state.textEntries} tool=${state.toolEntries}`);
+          }
           await renderer.onComplete();
         },
         onPromptSuggestion: (suggestion) => {
@@ -425,6 +436,10 @@ export class QueryOrchestrator {
             binding.sdkSessionId = undefined;
             await this.options.store.saveBinding(binding);
             this.options.sdkEngine.closeSession(msg.channelType, msg.chatId);
+          }
+          if (DEBUG_EVENTS) {
+            const state = renderer.getDebugSnapshot();
+            console.log(`[bridge] error timeline: thinking=${state.thinkingEntries} text=${state.textEntries} tool=${state.toolEntries}`);
           }
           await renderer.onError(err);
         },

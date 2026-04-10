@@ -322,6 +322,10 @@ export class MessageRenderer {
       entry.toolResult = isError ? `❌ ${truncate(content, 200)}` : truncate(content, 200);
       entry.isError = isError;
     }
+    // Plain-text render() does not include tool result details, but rich card
+    // state does. Force a flush so Feishu cards update as soon as output lands.
+    this.forceFlush = true;
+    this.scheduleFlush();
   }
 
   onPermissionNeeded(
@@ -450,6 +454,18 @@ export class MessageRenderer {
 
   getResponseText(): string {
     return this.responseText;
+  }
+
+  getDebugSnapshot(): { thinkingEntries: number; textEntries: number; toolEntries: number } {
+    let thinkingEntries = 0;
+    let textEntries = 0;
+    let toolEntries = 0;
+    for (const entry of this.timeline) {
+      if (entry.kind === 'thinking') thinkingEntries++;
+      else if (entry.kind === 'text') textEntries++;
+      else if (entry.kind === 'tool') toolEntries++;
+    }
+    return { thinkingEntries, textEntries, toolEntries };
   }
 
   dispose(): void {
@@ -647,7 +663,7 @@ export class MessageRenderer {
       this.timer = null;
       const content = this.render();
       this.doFlush(content);
-    }, this.throttleMs);
+    }, delay);
   }
 
   private stopTimers(): void {

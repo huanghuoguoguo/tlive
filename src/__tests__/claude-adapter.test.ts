@@ -49,7 +49,7 @@ describe('ClaudeAdapter', () => {
 
       const events = adapter.mapMessage({
         type: 'stream_event',
-        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'reasoning...' } },
+        event: { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: 'reasoning...' } },
       });
 
       expect(events).toHaveLength(1);
@@ -60,12 +60,12 @@ describe('ClaudeAdapter', () => {
   // ── 3. tool_start from content_block_start ──
 
   describe('tool_start from content_block_start', () => {
-    it('emits tool_start for tool_use blocks', () => {
+    it('emits tool_start immediately when tool_use start already includes full input', () => {
       const events = adapter.mapMessage({
         type: 'stream_event',
         event: {
           type: 'content_block_start',
-          content_block: { type: 'tool_use', id: 'tu_123', name: 'Read', input: {} },
+          content_block: { type: 'tool_use', id: 'tu_123', name: 'Read', input: { file_path: 'src/main.ts' } },
         },
       });
 
@@ -74,7 +74,40 @@ describe('ClaudeAdapter', () => {
         kind: 'tool_start',
         id: 'tu_123',
         name: 'Read',
-        input: {},
+        input: { file_path: 'src/main.ts' },
+      });
+    });
+
+    it('emits tool_start on content_block_stop after input_json_delta arrives', () => {
+      adapter.mapMessage({
+        type: 'stream_event',
+        event: {
+          type: 'content_block_start',
+          index: 0,
+          content_block: { type: 'tool_use', id: 'tu_bash', name: 'Bash' },
+        },
+      });
+
+      adapter.mapMessage({
+        type: 'stream_event',
+        event: {
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'input_json_delta', partial_json: '{"command":"git status --short"}' },
+        },
+      });
+
+      const events = adapter.mapMessage({
+        type: 'stream_event',
+        event: { type: 'content_block_stop', index: 0 },
+      });
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        kind: 'tool_start',
+        id: 'tu_bash',
+        name: 'Bash',
+        input: { command: 'git status --short' },
       });
     });
   });
@@ -183,6 +216,38 @@ describe('ClaudeAdapter', () => {
       expect(events).toHaveLength(2);
       expect(events[0]).toMatchObject({ kind: 'text_delta', text: 'Let me check' });
       expect(events[1]).toMatchObject({ kind: 'tool_start', name: 'Bash', id: 'tu_1' });
+    });
+
+    it('deduplicates assistant tool_use when stream_event already emitted the same tool', () => {
+      adapter.mapMessage({
+        type: 'stream_event',
+        event: {
+          type: 'content_block_start',
+          index: 0,
+          content_block: { type: 'tool_use', id: 'tu_same', name: 'Bash' },
+        },
+      });
+      adapter.mapMessage({
+        type: 'stream_event',
+        event: {
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'input_json_delta', partial_json: '{"command":"pwd"}' },
+        },
+      });
+      adapter.mapMessage({
+        type: 'stream_event',
+        event: { type: 'content_block_stop', index: 0 },
+      });
+
+      const events = adapter.mapMessage({
+        type: 'assistant',
+        message: {
+          content: [{ type: 'tool_use', id: 'tu_same', name: 'Bash', input: { command: 'pwd' } }],
+        },
+      });
+
+      expect(events).toHaveLength(0);
     });
   });
 
@@ -620,7 +685,7 @@ describe('ClaudeAdapter', () => {
         parent_tool_use_id: 'parent_2',
         event: {
           type: 'content_block_start',
-          content_block: { type: 'tool_use', id: 'tu_sub', name: 'Read', input: {} },
+          content_block: { type: 'tool_use', id: 'tu_sub', name: 'Read', input: { file_path: 'src/sub.ts' } },
         },
       });
 

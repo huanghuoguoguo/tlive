@@ -24,6 +24,12 @@ import { truncate } from '../utils/string.js';
 import { buildFeishuButtonElements } from './feishu-card.js';
 
 type FeishuElement = { tag: string; [key: string]: unknown };
+type TimelineToolDisplay = {
+  toolName: string;
+  toolInput: string;
+  toolResult?: string;
+  isError?: boolean;
+};
 
 export class FeishuFormatter extends MessageFormatter {
   constructor(locale: MessageLocale = 'zh') {
@@ -68,6 +74,75 @@ export class FeishuFormatter extends MessageFormatter {
 
   private md(content: string): FeishuElement {
     return { tag: 'markdown', content: downgradeHeadings(content) };
+  }
+
+  private collectTimelineDisplay(data: ProgressData): {
+    thinkingContent: string;
+    textEntries: string[];
+    toolEntries: TimelineToolDisplay[];
+  } {
+    const thinkingParts: string[] = [];
+    const textEntries: string[] = [];
+    const toolEntries: TimelineToolDisplay[] = [];
+    const toolByKey = new Map<string, TimelineToolDisplay>();
+
+    for (const entry of data.timeline ?? []) {
+      if (entry.kind === 'thinking' && entry.text?.trim()) {
+        thinkingParts.push(entry.text.trim());
+        continue;
+      }
+
+      if (entry.kind === 'text' && entry.text?.trim()) {
+        textEntries.push(entry.text.trim());
+        continue;
+      }
+
+      if (entry.kind === 'tool' && entry.toolName) {
+        const toolInput = entry.toolInput || '(no input)';
+        const key = `${entry.toolName}\u0000${toolInput}`;
+        const existing = toolByKey.get(key);
+        if (existing) {
+          if (entry.toolResult !== undefined) {
+            existing.toolResult = entry.toolResult;
+          }
+          if (entry.isError !== undefined) {
+            existing.isError = entry.isError;
+          }
+          continue;
+        }
+
+        const toolEntry: TimelineToolDisplay = {
+          toolName: entry.toolName,
+          toolInput,
+          toolResult: entry.toolResult,
+          isError: entry.isError,
+        };
+        toolByKey.set(key, toolEntry);
+        toolEntries.push(toolEntry);
+      }
+    }
+
+    return {
+      thinkingContent: thinkingParts.join('\n\n'),
+      textEntries,
+      toolEntries,
+    };
+  }
+
+  private extractCompletedBody(data: ProgressData): string {
+    let body = data.renderedText.trim();
+
+    if (data.footerLine && body.endsWith(data.footerLine)) {
+      body = body.slice(0, -data.footerLine.length).trimEnd();
+    }
+    if (data.toolSummary && body.endsWith(data.toolSummary)) {
+      body = body.slice(0, -data.toolSummary.length).trimEnd();
+    }
+    if (body.endsWith('───────────────')) {
+      body = body.slice(0, -'───────────────'.length).trimEnd();
+    }
+
+    return body;
   }
 
   // --- Override all formatting methods for Feishu Card format ---
@@ -276,82 +351,45 @@ export class FeishuFormatter extends MessageFormatter {
 
     const elements: FeishuElement[] = [];
     const isDone = data.phase === 'completed' || data.phase === 'failed';
+    const display = this.collectTimelineDisplay(data);
 
-    if (isDone) {
-      // Completed/failed: show response text directly, minimal chrome
-      if (data.renderedText.trim()) {
-        elements.push(this.md(downgradeHeadings(truncate(data.renderedText, 3000))));
-      }
-    } else if (data.phase === 'waiting_permission' && data.permission) {
-      // Permission: show what's being waited on
-      const extraQueue = data.permission.queueLength > 1 ? `\n待处理审批：${data.permission.queueLength} 个` : '';
-      elements.push(this.md(
-        `**当前等待**\n${data.permission.toolName}\n\`\`\`\n${truncate(data.permission.input, 260)}\n\`\`\`${extraQueue}`
-      ));
-      elements.push(this.md(`**运行时长** ${data.elapsedSeconds}s`));
-    } else {
-      // In-progress: nothing here — timeline handles the content below
-      if (!data.timeline?.length) {
-        // Fallback for no timeline data
-        if (data.currentTool?.input) {
-          const currentElapsed = data.currentTool.elapsed > 0 ? ` · ${data.currentTool.elapsed}s` : '';
-          elements.push(this.md(`**最近动作**\n${data.currentTool.name}: ${truncate(data.currentTool.input, 140)}${currentElapsed}`));
-        }
-        elements.push(this.md(`**运行时长** ${data.elapsedSeconds}s`));
-      }
-    }
-
-    // Todo progress
-    if (data.todoItems.length > 0) {
-      const done = data.todoItems.filter(item => item.status === 'completed').length;
-      const todoLines = data.todoItems.slice(0, 5).map(item => {
-        const icon = item.status === 'completed' ? '✅' : item.status === 'in_progress' ? '🔧' : '⬜';
-        return `${icon} ${item.content}`;
-      });
-      elements.push(this.md(`**工作进度** (${done}/${data.todoItems.length})\n${todoLines.join('\n')}`));
-    }
-
-    // Timeline: interleaved thinking, text, and tool calls
+    // Timeline: thinking, text, and tool call panels (shown for ALL phases)
     if (data.timeline?.length) {
-      // Budget: limit total elements to avoid huge cards
       let budget = 3000;
-      for (const entry of data.timeline) {
-        if (budget <= 0) break;
-        if (entry.kind === 'thinking' && entry.text?.trim()) {
-          const content = truncate(entry.text.trim(), Math.min(budget, 1500));
-          budget -= content.length;
-          elements.push({
-            tag: 'collapsible_panel',
-            expanded: false,
-            header: { title: { tag: 'plain_text', content: '💭 思考过程' } },
-            elements: [{ tag: 'markdown', content }],
-          });
-        } else if (entry.kind === 'text' && entry.text?.trim() && !isDone) {
-          // Skip text entries for completed cards — renderedText already has the full text
-          const content = truncate(downgradeHeadings(entry.text.trim()), Math.min(budget, 1500));
+      if (display.thinkingContent && budget > 0) {
+        const content = truncate(display.thinkingContent, Math.min(budget, 1500));
+        budget -= content.length;
+        elements.push({
+          tag: 'collapsible_panel',
+          expanded: false,
+          header: { title: { tag: 'plain_text', content: '💭 思考过程' } },
+          elements: [{ tag: 'markdown', content }],
+        });
+      }
+
+      if (!isDone) {
+        for (const textEntry of display.textEntries) {
+          if (budget <= 0) break;
+          const content = truncate(downgradeHeadings(textEntry), Math.min(budget, 1500));
           budget -= content.length;
           elements.push(this.md(content));
-        } else if (entry.kind === 'tool' && entry.toolName) {
-          const icon = entry.isError ? '❌' : entry.toolResult !== undefined ? '✅' : '⏳';
-          const resultLine = entry.toolResult ? `\n→ ${truncate(entry.toolResult, 120)}` : '';
-          const content = `${truncate(entry.toolInput || '(no input)', 200)}${resultLine}`;
-          budget -= content.length;
-          elements.push({
-            tag: 'collapsible_panel',
-            expanded: false,
-            header: { title: { tag: 'plain_text', content: `${icon} ${entry.toolName}` } },
-            elements: [{ tag: 'markdown', content }],
-          });
         }
       }
-      // Status line at the bottom
-      if (!isDone) {
-        const statusParts: string[] = [];
-        if (data.totalTools > 0) statusParts.push(`${data.totalTools} tools`);
-        statusParts.push(`${data.elapsedSeconds}s`);
-        elements.push(this.md(`⏳ ${statusParts.join(' · ')}`));
+
+      for (const toolEntry of display.toolEntries) {
+        if (budget <= 0) break;
+        const icon = toolEntry.isError ? '❌' : toolEntry.toolResult !== undefined ? '✅' : '⏳';
+        const resultLine = toolEntry.toolResult ? `\n→ ${truncate(toolEntry.toolResult, 120)}` : '';
+        const content = `${truncate(toolEntry.toolInput, 200)}${resultLine}`;
+        budget -= content.length;
+        elements.push({
+          tag: 'collapsible_panel',
+          expanded: !isDone,
+          header: { title: { tag: 'plain_text', content: `${icon} ${toolEntry.toolName}` } },
+          elements: [{ tag: 'markdown', content }],
+        });
       }
-    } else if (!data.timeline?.length) {
+    } else {
       // Legacy fallback: separate thinking + tool panels (when no timeline data)
       if (data.thinkingText?.trim()) {
         elements.push({
@@ -370,11 +408,54 @@ export class FeishuFormatter extends MessageFormatter {
         });
         elements.push({
           tag: 'collapsible_panel',
-          expanded: false,
+          expanded: !isDone,
           header: { title: { tag: 'plain_text', content: `🔧 工具调用 (${data.toolLogs.length})` } },
           elements: [{ tag: 'markdown', content: truncate(logLines.join('\n'), 2000) }],
         });
       }
+    }
+
+    // Main content area (after timeline panels)
+    if (isDone) {
+      // Completed/failed: response text below the decision trail
+      const completedBody = this.extractCompletedBody(data);
+      if (completedBody) {
+        elements.push(this.md(downgradeHeadings(truncate(completedBody, 3000))));
+      }
+      if (data.footerLine) {
+        elements.push(this.md(`<font color='grey'>${data.footerLine}</font>`));
+      }
+    } else if (data.phase === 'waiting_permission' && data.permission) {
+      const extraQueue = data.permission.queueLength > 1 ? `\n待处理审批：${data.permission.queueLength} 个` : '';
+      elements.push(this.md(
+        `**当前等待**\n${data.permission.toolName}\n\`\`\`\n${truncate(data.permission.input, 260)}\n\`\`\`${extraQueue}`
+      ));
+      elements.push(this.md(`**运行时长** ${data.elapsedSeconds}s`));
+    } else if (!data.timeline?.length) {
+      // In-progress fallback when no timeline
+      if (data.currentTool?.input) {
+        const currentElapsed = data.currentTool.elapsed > 0 ? ` · ${data.currentTool.elapsed}s` : '';
+        elements.push(this.md(`**最近动作**\n${data.currentTool.name}: ${truncate(data.currentTool.input, 140)}${currentElapsed}`));
+      }
+      elements.push(this.md(`**运行时长** ${data.elapsedSeconds}s`));
+    }
+
+    // Status line for in-progress cards with timeline
+    if (!isDone && data.timeline?.length) {
+      const statusParts: string[] = [];
+      if (data.totalTools > 0) statusParts.push(`${data.totalTools} tools`);
+      statusParts.push(`${data.elapsedSeconds}s`);
+      elements.push(this.md(`⏳ ${statusParts.join(' · ')}`));
+    }
+
+    // Todo progress
+    if (data.todoItems.length > 0) {
+      const done = data.todoItems.filter(item => item.status === 'completed').length;
+      const todoLines = data.todoItems.slice(0, 5).map(item => {
+        const icon = item.status === 'completed' ? '✅' : item.status === 'in_progress' ? '🔧' : '⬜';
+        return `${icon} ${item.content}`;
+      });
+      elements.push(this.md(`**工作进度** (${done}/${data.todoItems.length})\n${todoLines.join('\n')}`));
     }
 
     const buttons = data.actionButtons?.length ? data.actionButtons : this.defaultProgressButtons(data.phase);

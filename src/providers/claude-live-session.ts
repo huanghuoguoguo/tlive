@@ -23,6 +23,7 @@ import type {
 import type { ClaudeSettingSource } from '../config.js';
 import type { PermissionTimeoutCallback } from './claude-shared.js';
 import { buildSubprocessEnv, preparePromptWithImages, SAFE_PERMISSIONS } from './claude-shared.js';
+const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
 
 export interface ClaudeLiveSessionOptions {
   workingDirectory: string;
@@ -77,6 +78,8 @@ export class ClaudeLiveSession implements LiveSession {
       model: model || undefined,
       resume: sessionId || undefined,
       effort: effort || undefined,
+      // Required for stream_event partials, including thinking/text deltas.
+      includePartialMessages: true,
       agentProgressSummaries: true,
       promptSuggestions: true,
       toolConfig: { askUserQuestion: { previewFormat: 'markdown' } },
@@ -160,6 +163,27 @@ export class ClaudeLiveSession implements LiveSession {
         console.log(`[tlive:session] msg: ${msg.type}${sub}`);
 
         const events = this.adapter.mapMessage(msg as any);
+        if (DEBUG_EVENTS && events.length > 0) {
+          const summary = events.map((event) => {
+            switch (event.kind) {
+              case 'thinking_delta':
+              case 'text_delta':
+                return `${event.kind}:${event.text.length}`;
+              case 'tool_start':
+                return `tool_start:${event.name}`;
+              case 'tool_result':
+                return `tool_result:${event.toolUseId}:${event.content.length}`;
+              case 'agent_start':
+              case 'agent_progress':
+                return `${event.kind}:${event.description}`;
+              case 'agent_complete':
+                return `agent_complete:${event.status}`;
+              default:
+                return event.kind;
+            }
+          }).join(', ');
+          console.log(`[tlive:session] mapped events: ${summary}`);
+        }
         for (const event of events) {
           if (!this._isAlive) break;
           this.currentTurnController?.enqueue(event);

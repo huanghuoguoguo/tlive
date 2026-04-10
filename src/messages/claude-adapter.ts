@@ -25,12 +25,21 @@ export class ClaudeAdapter {
   private currentBlockType: 'text' | 'thinking' | null = null;
   private hasStreamedText = false;
   private hiddenToolUseIds = new Set<string>();
+  private streamedToolUseIds = new Set<string>();
+  private streamToolBlocks = new Map<number, {
+    id: string;
+    name: string;
+    inputBuffer: string;
+    emitted: boolean;
+  }>();
 
   /** Reset state between queries. */
   reset(): void {
     this.currentBlockType = null;
     this.hasStreamedText = false;
     this.hiddenToolUseIds.clear();
+    this.streamedToolUseIds.clear();
+    this.streamToolBlocks.clear();
   }
 
   /** Map one SDKMessage to zero or more CanonicalEvents. */
@@ -89,6 +98,7 @@ export class ClaudeAdapter {
   ): void {
     const event = msg.event as Record<string, unknown> | undefined;
     if (!event) return;
+    const index = typeof event.index === 'number' ? event.index : undefined;
 
     if (event.type === 'content_block_start') {
       const block = event.content_block as Record<string, unknown> | undefined;
@@ -107,20 +117,44 @@ export class ClaudeAdapter {
           return;
         }
 
-        const ev: CanonicalEvent = {
-          kind: 'tool_start',
-          id,
-          name,
-          input: (block.input as Record<string, unknown>) ?? {},
-          ...(parentToolUseId ? { parentToolUseId } : {}),
-        };
-        events.push(ev);
+        const input = (block.input as Record<string, unknown>) ?? {};
+        const hasInput = Object.keys(input).length > 0;
+
+        if (typeof index === 'number') {
+          this.streamToolBlocks.set(index, {
+            id,
+            name,
+            inputBuffer: '',
+            emitted: false,
+          });
+        }
+
+        if (hasInput) {
+          const ev: CanonicalEvent = {
+            kind: 'tool_start',
+            id,
+            name,
+            input,
+            ...(parentToolUseId ? { parentToolUseId } : {}),
+          };
+          events.push(ev);
+          this.streamedToolUseIds.add(id);
+          const state = typeof index === 'number' ? this.streamToolBlocks.get(index) : undefined;
+          if (state) state.emitted = true;
+        }
       }
     } else if (event.type === 'content_block_delta') {
       const delta = event.delta as Record<string, unknown> | undefined;
       if (!delta) return;
 
-      if (delta.type === 'text_delta' && typeof delta.text === 'string') {
+      if (delta.type === 'thinking_delta' && typeof delta.thinking === 'string') {
+        const ev: CanonicalEvent = {
+          kind: 'thinking_delta',
+          text: delta.thinking,
+          ...(parentToolUseId ? { parentToolUseId } : {}),
+        };
+        events.push(ev);
+      } else if (delta.type === 'text_delta' && typeof delta.text === 'string') {
         if (this.currentBlockType === 'thinking') {
           const ev: CanonicalEvent = {
             kind: 'thinking_delta',
@@ -137,7 +171,28 @@ export class ClaudeAdapter {
           };
           events.push(ev);
         }
+      } else if (delta.type === 'input_json_delta' && typeof delta.partial_json === 'string' && typeof index === 'number') {
+        const state = this.streamToolBlocks.get(index);
+        if (state) {
+          state.inputBuffer += delta.partial_json;
+        }
       }
+    } else if (event.type === 'content_block_stop' && typeof index === 'number') {
+      const state = this.streamToolBlocks.get(index);
+      if (!state) return;
+      this.streamToolBlocks.delete(index);
+      if (state.emitted) return;
+
+      const input = this.parseToolInput(state.inputBuffer);
+      const ev: CanonicalEvent = {
+        kind: 'tool_start',
+        id: state.id,
+        name: state.name,
+        input,
+        ...(parentToolUseId ? { parentToolUseId } : {}),
+      };
+      events.push(ev);
+      this.streamedToolUseIds.add(state.id);
     }
   }
 
@@ -164,6 +219,10 @@ export class ClaudeAdapter {
           continue;
         }
 
+        if (this.streamedToolUseIds.has(id)) {
+          continue;
+        }
+
         // Tool use resets the streamed flag — any text after tools is new
         this.hasStreamedText = false;
 
@@ -184,6 +243,16 @@ export class ClaudeAdapter {
         };
         events.push(ev);
       }
+    }
+  }
+
+  private parseToolInput(inputBuffer: string): Record<string, unknown> {
+    if (!inputBuffer.trim()) return {};
+    try {
+      const parsed = JSON.parse(inputBuffer);
+      return typeof parsed === 'object' && parsed !== null ? parsed as Record<string, unknown> : {};
+    } catch {
+      return {};
     }
   }
 
