@@ -193,6 +193,10 @@ export class MessageRenderer {
       this.timeline.push({ kind: 'thinking', text });
     }
     this.lastTimelineIsText = false;
+    // Force flush: plain-text render() doesn't include thinking, but Feishu
+    // card uses state.timeline which has changed. Without forceFlush, the
+    // change detection sees unchanged plain text and skips the flush.
+    this.forceFlush = true;
     this.scheduleFlush();
   }
 

@@ -326,7 +326,8 @@ export class FeishuFormatter extends MessageFormatter {
             header: { title: { tag: 'plain_text', content: '💭 思考过程' } },
             elements: [{ tag: 'markdown', content }],
           });
-        } else if (entry.kind === 'text' && entry.text?.trim()) {
+        } else if (entry.kind === 'text' && entry.text?.trim() && !isDone) {
+          // Skip text entries for completed cards — renderedText already has the full text
           const content = truncate(downgradeHeadings(entry.text.trim()), Math.min(budget, 1500));
           budget -= content.length;
           elements.push(this.md(content));
