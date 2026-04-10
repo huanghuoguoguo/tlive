@@ -213,20 +213,23 @@ export class FeishuFormatter extends MessageFormatter {
     const sections: string[] = [];
 
     if (operation.thinkingContent.trim()) {
-      sections.push(`**思考**\n${operation.thinkingContent.trim()}`);
+      sections.push(operation.thinkingContent.trim());
     }
 
     if (includeTextEntries && operation.textEntries.length > 0) {
-      sections.push(`**说明**\n${operation.textEntries.join('\n\n')}`);
+      sections.push(operation.textEntries.join('\n\n'));
     }
 
     if (operation.toolEntries.length > 0) {
       const toolLines = operation.toolEntries.map(tool => {
         const status = tool.isError ? '❌' : tool.toolResult !== undefined ? '✅' : '⏳';
         const resultLine = tool.toolResult ? `\n→ ${truncate(tool.toolResult, 120)}` : '';
-        return `${status} **${tool.toolName}**\n${truncate(tool.toolInput, 200)}${resultLine}`;
+        const inputPreview = tool.toolName === 'Bash'
+          ? `\`${truncate(tool.toolInput, 120)}\``
+          : truncate(tool.toolInput, 160);
+        return `${status} **${tool.toolName}**\n\n${inputPreview}${resultLine}`;
       });
-      sections.push(`**工具调用**\n${toolLines.join('\n\n')}`);
+      sections.push(toolLines.join('\n\n'));
     }
 
     return sections.join('\n\n');
@@ -340,9 +343,9 @@ export class FeishuFormatter extends MessageFormatter {
     ];
 
     const buttons: Button[] = [
-      { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'primary', row: 0 },
-      { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default', row: 0 },
-      { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default', row: 1 },
+      { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'primary' },
+      { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default' },
+      { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default' },
     ];
 
     return this.createCardMessage(chatId,
