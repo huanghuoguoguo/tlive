@@ -16,7 +16,7 @@ Detailed step-by-step guides for each IM platform. Referenced by the `setup` sub
 
 **Recommended bot settings** (send to @BotFather):
 - `/setprivacy` → choose your bot → `Disable` (for group messages)
-- `/setcommands` → set: `new - Start new session`, `verbose - Set detail level`, `hooks - Toggle hook approval`
+- `/setcommands` → set: `new - Start new session`, `sessions - List recent sessions`, `hooks - Toggle hook approval`
 
 ### Chat ID
 

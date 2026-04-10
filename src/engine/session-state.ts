@@ -1,7 +1,6 @@
 import type { SessionMode } from '../messages/types.js';
-import type { EffortLevel } from '../utils/types.js';
-import { readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 export type VerboseLevel = 0 | 1;
 
@@ -11,14 +10,13 @@ interface PersistedState {
 }
 
 /**
- * Manages per-chat session state: verbose levels, permission modes, effort,
+ * Manages per-chat session state: permission modes,
  * processing guards, activity tracking, and thread bindings.
  *
  * Extracted from BridgeManager to keep session bookkeeping in one place.
  * Permission modes are persisted to disk so they survive restarts.
  */
 export class SessionStateManager {
-  private verboseLevels = new Map<string, VerboseLevel>();
   private modes = new Map<string, SessionMode>();
   private processingChats = new Map<string, number>();
   private lastActive = new Map<string, number>();
@@ -41,14 +39,6 @@ export class SessionStateManager {
     return `${channelType}:${chatId}`;
   }
 
-  getVerboseLevel(channelType: string, chatId: string): VerboseLevel {
-    return this.verboseLevels.get(this.stateKey(channelType, chatId)) ?? 1;
-  }
-
-  setVerboseLevel(channelType: string, chatId: string, level: VerboseLevel): void {
-    this.verboseLevels.set(this.stateKey(channelType, chatId), level);
-  }
-
   getPermMode(channelType: string, chatId: string): 'on' | 'off' {
     // QQ Bot doesn't support interactive buttons → default to auto-approve
     if (channelType === 'qqbot') return 'off';
@@ -63,17 +53,6 @@ export class SessionStateManager {
     current.permissionMode = mode === 'off' ? 'bypassPermissions' : 'default';
     this.modes.set(key, current);
     this.savePersisted();
-  }
-
-  getEffort(channelType: string, chatId: string): EffortLevel | undefined {
-    return this.modes.get(this.stateKey(channelType, chatId))?.effort;
-  }
-
-  setEffort(channelType: string, chatId: string, level: EffortLevel): void {
-    const key = this.stateKey(channelType, chatId);
-    const current = this.modes.get(key) || this.defaultMode();
-    current.effort = level;
-    this.modes.set(key, current);
   }
 
   getSessionMode(channelType: string, chatId: string): SessionMode {
@@ -127,17 +106,6 @@ export class SessionStateManager {
 
   clearLastActive(channelType: string, chatId: string): void {
     this.lastActive.delete(this.stateKey(channelType, chatId));
-  }
-
-  getModel(channelType: string, chatId: string): string | undefined {
-    return this.modes.get(this.stateKey(channelType, chatId))?.model;
-  }
-
-  setModel(channelType: string, chatId: string, model: string | undefined): void {
-    const key = this.stateKey(channelType, chatId);
-    const current = this.modes.get(key) || this.defaultMode();
-    current.model = model;
-    this.modes.set(key, current);
   }
 
   // --- Persistence ---

@@ -46,7 +46,7 @@
 **Symptoms**: Bot sends final response only, no real-time updates.
 
 **Steps**:
-1. Check verbose level is 1: send `/verbose 1` in IM
+1. Check the bridge is healthy with `/status` or `tlive logs`
 2. For Feishu: verify `editMessage` card patching works (check logs for API errors)
 3. Check delivery rate limiting — rapid edits may be throttled
 

@@ -173,12 +173,9 @@ In IM (from phone):
   /cd <path>                 Change working directory
   /pwd                       Show current directory
   /bash <cmd>                Execute shell command
-  /model <name>              Switch model (e.g. claude-sonnet-4-6)
   /settings user|full|isolated  Claude settings scope
   /perm on|off               Permission prompts on/off
-  /effort low|high|max       Thinking depth
   /stop                      Interrupt execution
-  /verbose 0|1               Detail level (quiet/terminal card)
   /hooks pause|resume        Toggle hook approval
   /status                    Check status
   /upgrade                   Check for updates

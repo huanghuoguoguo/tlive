@@ -47,7 +47,6 @@ export class QueryOrchestrator {
     }
 
     const binding = await this.options.router.resolve(msg.channelType, msg.chatId);
-    const verboseLevel = this.options.state.getVerboseLevel(msg.channelType, msg.chatId);
 
     const reactionChatId = msg.chatId;
     const typingInterval = setInterval(() => {
@@ -67,9 +66,7 @@ export class QueryOrchestrator {
       platformLimit: PLATFORM_LIMITS[adapter.channelType as ChannelType] ?? 4096,
       throttleMs: 300,
       cwd: binding.cwd || this.options.defaultWorkdir,
-      model: this.options.state.getModel(msg.channelType, msg.chatId),
       sessionId: binding.sdkSessionId,
-      verboseLevel,
       onPermissionReaction: () => {
         // Add 🔐 reaction on the progress message to notify user
         const progressMsgId = renderer.messageId;
@@ -323,8 +320,6 @@ export class QueryOrchestrator {
           workdir,
           {
             sessionId: binding.sdkSessionId,
-            effort: this.options.state.getEffort(msg.channelType, msg.chatId),
-            model: this.options.state.getModel(msg.channelType, msg.chatId),
           },
         );
       } catch (err) {
@@ -336,8 +331,6 @@ export class QueryOrchestrator {
         streamResult = liveSession.startTurn(msg.text, {
           onPermissionRequest: sdkPermissionHandler,
           onAskUserQuestion: sdkAskQuestionHandler,
-          effort: this.options.state.getEffort(msg.channelType, msg.chatId),
-          model: this.options.state.getModel(msg.channelType, msg.chatId),
           attachments: msg.attachments?.filter(a => a.type === 'image'),
         });
       }
@@ -353,8 +346,6 @@ export class QueryOrchestrator {
         streamResult,
         sdkPermissionHandler: streamResult ? undefined : sdkPermissionHandler,
         sdkAskQuestionHandler: streamResult ? undefined : sdkAskQuestionHandler,
-        effort: this.options.state.getEffort(msg.channelType, msg.chatId),
-        model: this.options.state.getModel(msg.channelType, msg.chatId),
         onControls: (ctrl) => {
           this.options.sdkEngine.setControlsForChat(chatKey, ctrl);
         },
@@ -421,7 +412,6 @@ export class QueryOrchestrator {
           await renderer.onComplete();
         },
         onPromptSuggestion: (suggestion) => {
-          if (verboseLevel === 0) return;
           const truncated = truncate(suggestion, 60);
           adapter.send({
             chatId: msg.chatId,

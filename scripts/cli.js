@@ -487,9 +487,7 @@ IM Commands (in Telegram/Feishu/QQ Bot):
   /new                       New conversation
   /runtime claude|codex      Switch AI provider
   /perm on|off               Permission prompts
-  /effort low|medium|high|max  Thinking depth
   /stop                      Interrupt execution
-  /verbose 0|1               Detail level (0=quiet, 1=terminal card)
   /sessions                  List recent sessions
   /session <n>               Switch to session
   /help                      Show all commands
