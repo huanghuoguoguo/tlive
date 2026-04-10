@@ -79,6 +79,10 @@ main() {
     info "Installing dependencies..."
     cd "${APP_DIR}"
     npm ci --production --ignore-scripts 2>/dev/null || npm install --production --ignore-scripts 2>/dev/null
+    if [ -f "scripts/postinstall.js" ]; then
+        info "Running tlive postinstall..."
+        node scripts/postinstall.js
+    fi
     cd - >/dev/null
 
     # Create wrapper script
