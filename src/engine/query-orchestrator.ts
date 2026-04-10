@@ -67,14 +67,6 @@ export class QueryOrchestrator {
       model: this.options.state.getModel(msg.channelType, msg.chatId),
       sessionId: binding.sdkSessionId,
       verboseLevel,
-      onPermissionTimeout: async (toolName, input, buttons) => {
-        // 60s timeout: send a separate reminder message as backup notification
-        const text = `⚠️ Permission pending — ${toolName}: ${truncate(input, 100)}`;
-        const outMsg = adapter.formatContent(msg.chatId, text,
-          buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
-        );
-        adapter.send(outMsg).catch(() => {});
-      },
       onPermissionReaction: () => {
         // Add 🔐 reaction on the progress message to notify user
         const progressMsgId = renderer.messageId;
