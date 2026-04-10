@@ -32,8 +32,8 @@ export const PLATFORM_LIMITS: Record<ChannelType, number> = {
 };
 
 /** Reaction emojis per platform */
-export const PLATFORM_REACTIONS: Record<ChannelType, { processing: string; done: string; error: string }> = {
-  [CHANNEL_TYPES.TELEGRAM]: { processing: '\u{1F914}', done: '\u{1F44D}', error: '\u{1F631}' },
-  [CHANNEL_TYPES.FEISHU]: { processing: 'Typing', done: 'OK', error: 'FACEPALM' },
-  [CHANNEL_TYPES.QQBOT]: { processing: '\u{1F914}', done: '\u{1F44D}', error: '\u{1F631}' },
+export const PLATFORM_REACTIONS: Record<ChannelType, { processing: string; done: string; error: string; stalled: string }> = {
+  [CHANNEL_TYPES.TELEGRAM]: { processing: '\u{1F914}', done: '\u{1F44D}', error: '\u{1F631}', stalled: '\u{23F3}' },
+  [CHANNEL_TYPES.FEISHU]: { processing: 'Typing', done: 'OK', error: 'FACEPALM', stalled: 'HOURGLASS' },
+  [CHANNEL_TYPES.QQBOT]: { processing: '\u{1F914}', done: '\u{1F44D}', error: '\u{1F631}', stalled: '\u{23F3}' },
 };

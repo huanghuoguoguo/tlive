@@ -1,13 +1,21 @@
 import type { SessionMode } from '../messages/types.js';
 import type { EffortLevel } from '../utils/types.js';
+import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join } from 'path';
 
 export type VerboseLevel = 0 | 1;
+
+/** Persisted state shape (saved to disk) */
+interface PersistedState {
+  permModes: Record<string, 'on' | 'off'>;
+}
 
 /**
  * Manages per-chat session state: verbose levels, permission modes, effort,
  * processing guards, activity tracking, and thread bindings.
  *
  * Extracted from BridgeManager to keep session bookkeeping in one place.
+ * Permission modes are persisted to disk so they survive restarts.
  */
 export class SessionStateManager {
   private verboseLevels = new Map<string, VerboseLevel>();
@@ -15,6 +23,15 @@ export class SessionStateManager {
   private processingChats = new Map<string, number>();
   private lastActive = new Map<string, number>();
   private sessionThreads = new Map<string, string>();
+  private persistPath: string | undefined;
+
+  constructor(runtimeDir?: string) {
+    if (runtimeDir) {
+      this.persistPath = join(runtimeDir, 'session-state.json');
+      this.loadPersisted();
+    }
+  }
+
   private defaultMode(): SessionMode {
     return { permissionMode: 'default' };
   }
@@ -45,6 +62,7 @@ export class SessionStateManager {
     const current = this.modes.get(key) || this.defaultMode();
     current.permissionMode = mode === 'off' ? 'bypassPermissions' : 'default';
     this.modes.set(key, current);
+    this.savePersisted();
   }
 
   getEffort(channelType: string, chatId: string): EffortLevel | undefined {
@@ -120,5 +138,39 @@ export class SessionStateManager {
     const current = this.modes.get(key) || this.defaultMode();
     current.model = model;
     this.modes.set(key, current);
+  }
+
+  // --- Persistence ---
+
+  private loadPersisted(): void {
+    if (!this.persistPath) return;
+    try {
+      const data: PersistedState = JSON.parse(readFileSync(this.persistPath, 'utf-8'));
+      if (data.permModes) {
+        for (const [key, mode] of Object.entries(data.permModes)) {
+          const current = this.modes.get(key) || this.defaultMode();
+          current.permissionMode = mode === 'off' ? 'bypassPermissions' : 'default';
+          this.modes.set(key, current);
+        }
+      }
+    } catch {
+      // File doesn't exist or invalid — start fresh
+    }
+  }
+
+  private savePersisted(): void {
+    if (!this.persistPath) return;
+    const permModes: Record<string, 'on' | 'off'> = {};
+    for (const [key, mode] of this.modes) {
+      if (mode.permissionMode === 'bypassPermissions') {
+        permModes[key] = 'off';
+      }
+    }
+    try {
+      mkdirSync(join(this.persistPath, '..'), { recursive: true });
+      writeFileSync(this.persistPath, JSON.stringify({ permModes }, null, 2));
+    } catch (err) {
+      console.warn('[session] Failed to persist state:', err);
+    }
   }
 }

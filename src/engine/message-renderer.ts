@@ -24,8 +24,10 @@ export interface MessageRendererOptions {
   ) => Promise<string | undefined>;
   /** Called when permission waits >60s without response */
   onPermissionTimeout?: (toolName: string, input: string, buttons: Array<{ label: string; callbackData: string; style: string }>) => void;
-  /** Called when no progress for >30s during execution (Feishu intermediate update) */
-  onProgressTimeout?: (summary: { taskSummary: string; elapsedSeconds: number; currentTool?: { name: string; input: string } }) => void;
+  /** Called when no progress for >30s during execution — add reaction to progress message */
+  onProgressStalled?: () => void;
+  /** Called when progress resumes after stall — remove reaction */
+  onProgressResumed?: () => void;
 }
 
 /** Tools silently ignored — never counted or displayed */
@@ -127,7 +129,10 @@ export class MessageRenderer {
   private model?: string;
   private sessionId?: string;
   private verboseLevel: VerboseLevel;
-  private onProgressTimeout?: MessageRendererOptions['onProgressTimeout'];
+  private onProgressStalled?: MessageRendererOptions['onProgressStalled'];
+  private onProgressResumed?: MessageRendererOptions['onProgressResumed'];
+  /** Whether progress is currently stalled (reaction added) */
+  private progressStalled = false;
   /** Last rendered content - for change detection */
   private lastRenderedContent = '';
   /** Force next flush regardless of content change */
@@ -146,7 +151,8 @@ export class MessageRenderer {
     this.throttleMs = options.throttleMs ?? 300;
     this.flushCallback = options.flushCallback;
     this.onPermissionTimeout = options.onPermissionTimeout;
-    this.onProgressTimeout = options.onProgressTimeout;
+    this.onProgressStalled = options.onProgressStalled;
+    this.onProgressResumed = options.onProgressResumed;
     this.cwd = options.cwd;
     this.model = options.model;
     this.sessionId = options.sessionId;
@@ -193,6 +199,7 @@ export class MessageRenderer {
     }
 
     // Start progress timeout for intermediate updates
+    this.resumeProgress();
     this.startProgressTimeout();
 
     this.forceFlush = true; // Force update on new tool
@@ -332,14 +339,11 @@ export class MessageRenderer {
 
   private startProgressTimeout(): void {
     this.clearProgressTimeout();
-    if (this.onProgressTimeout && !this.completed && !this.errorMessage) {
+    if (this.onProgressStalled && !this.completed && !this.errorMessage) {
       this.progressTimeoutTimer = setTimeout(() => {
-        if (!this.completed && !this.errorMessage && this.totalTools > 0) {
-          this.onProgressTimeout!({
-            taskSummary: this.taskSummary || '正在执行',
-            elapsedSeconds: this.elapsedSeconds,
-            currentTool: this.currentTool ? { name: this.currentTool.name, input: this.currentTool.input } : undefined,
-          });
+        if (!this.completed && !this.errorMessage && this.totalTools > 0 && !this.progressStalled) {
+          this.progressStalled = true;
+          this.onProgressStalled!();
         }
       }, PROGRESS_TIMEOUT_MS);
     }
@@ -349,6 +353,14 @@ export class MessageRenderer {
     if (this.progressTimeoutTimer) {
       clearTimeout(this.progressTimeoutTimer);
       this.progressTimeoutTimer = null;
+    }
+  }
+
+  /** If stalled, notify that progress resumed and clear stalled flag */
+  private resumeProgress(): void {
+    if (this.progressStalled) {
+      this.progressStalled = false;
+      this.onProgressResumed?.();
     }
   }
 
@@ -365,6 +377,7 @@ export class MessageRenderer {
     const now = Date.now();
     if (now - this.lastProgressReset >= PROGRESS_RESET_THROTTLE_MS) {
       this.lastProgressReset = now;
+      this.resumeProgress();
       this.startProgressTimeout();
     }
     this.scheduleFlush();
