@@ -545,6 +545,87 @@ describe('MessageRenderer', () => {
       r.dispose();
     });
 
+    it('splits bubble after threshold tools (12 tools triggers split)', async () => {
+      // Track message IDs returned by flushCallback
+      const messageIds: string[] = [];
+      flushCallback.mockImplementation((_content: string, isEdit: boolean) => {
+        if (!isEdit) {
+          const id = `msg-${messageIds.length + 1}`;
+          messageIds.push(id);
+          return Promise.resolve(id);
+        }
+        return Promise.resolve();
+      });
+
+      const r = createRenderer(4096, 300);
+
+      // First tool sends new message
+      r.onToolStart('Bash');
+      await advance(300);
+      expect(messageIds).toEqual(['msg-1']);
+
+      // Tools 2-11 should edit the same message (total 11 tools)
+      for (let i = 2; i <= 11; i++) {
+        r.onToolStart('Read');
+        await advance(300);
+      }
+      expect(messageIds).toEqual(['msg-1']); // Still only one message (11 tools)
+
+      // Tool 12 triggers split (reaches threshold) → sends new message after flush
+      r.onToolStart('Grep');
+      await advance(300);
+      expect(messageIds).toEqual(['msg-1', 'msg-2']); // New message created after split
+
+      // New message should show continuation hint
+      const lastCall = flushCallback.mock.calls[flushCallback.mock.calls.length - 1];
+      const content = lastCall[0] as string;
+      expect(content).toContain('继续执行');
+      expect(content).toContain('12 步已完成');
+
+      // After split, new tools should edit the new message (msg-2)
+      r.onToolStart('Bash');
+      await advance(300);
+      expect(messageIds).toEqual(['msg-1', 'msg-2']); // Still only 2 messages
+
+      r.dispose();
+    });
+
+    it('splits bubble after threshold timeline entries', async () => {
+      const messageIds: string[] = [];
+      flushCallback.mockImplementation((_content: string, isEdit: boolean) => {
+        if (!isEdit) {
+          const id = `msg-${messageIds.length + 1}`;
+          messageIds.push(id);
+          return Promise.resolve(id);
+        }
+        return Promise.resolve();
+      });
+
+      const r = createRenderer(4096, 300);
+
+      // First creates a new message
+      r.onToolStart('Bash');
+      await advance(300);
+      expect(messageIds).toEqual(['msg-1']);
+
+      // Add alternating tool/thinking entries to build timeline
+      // Each tool + thinking creates new timeline entries
+      for (let i = 0; i < 8; i++) {
+        r.onToolStart('Read'); // tool entry
+        r.onThinkingDelta(`Step ${i}...`); // thinking entry (creates new since tool preceded)
+      }
+      await advance(300);
+      // Now: 1 (Bash) + 16 (8 tools + 8 thinking) = 17 timeline entries
+
+      // Add one more tool to reach 18 threshold
+      r.onToolStart('Grep'); // 18th entry triggers split
+      await advance(300);
+
+      expect(messageIds).toEqual(['msg-1', 'msg-2']);
+
+      r.dispose();
+    });
+
     it('dispose clears timers', async () => {
       const r = createRenderer();
       r.onToolStart('Bash');
