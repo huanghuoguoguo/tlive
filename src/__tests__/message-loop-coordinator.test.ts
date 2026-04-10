@@ -26,10 +26,7 @@ describe('MessageLoopCoordinator', () => {
   it('classifies commands and pending questions as quick messages', () => {
     const state = new SessionStateManager();
     const sdkEngine = {
-      canSteer: vi.fn().mockReturnValue(false),
-      hasActiveSession: vi.fn().mockReturnValue(false),
-      steer: vi.fn().mockResolvedValue(false),
-      queue: vi.fn().mockResolvedValue(false),
+      sendWithContext: vi.fn().mockResolvedValue({ sent: false, mode: 'none' }),
     } as any;
     const permissions = {
       getLatestPendingQuestion: vi.fn().mockReturnValue(null),
@@ -56,10 +53,7 @@ describe('MessageLoopCoordinator', () => {
     state.setProcessing(chatKey, true);
 
     const sdkEngine = {
-      canSteer: vi.fn().mockReturnValue(true),
-      hasActiveSession: vi.fn().mockReturnValue(true),
-      steer: vi.fn().mockResolvedValue(true),
-      queue: vi.fn().mockResolvedValue(false),
+      sendWithContext: vi.fn().mockResolvedValue({ sent: true, mode: 'steer', sessionKey: 'session-1' }),
     } as any;
     const permissions = {
       getLatestPendingQuestion: vi.fn().mockReturnValue(null),
@@ -83,7 +77,7 @@ describe('MessageLoopCoordinator', () => {
       onError: vi.fn(),
     });
 
-    expect(sdkEngine.steer).toHaveBeenCalledWith('telegram', 'chat-1', 'follow-up');
+    expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('telegram', 'chat-1', 'follow-up', undefined);
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({ text: '💬 Message injected into active session' }),
     );
@@ -95,10 +89,7 @@ describe('MessageLoopCoordinator', () => {
     state.setProcessing(chatKey, true);
 
     const sdkEngine = {
-      canSteer: vi.fn().mockReturnValue(false), // turn not active
-      hasActiveSession: vi.fn().mockReturnValue(true), // but session alive
-      steer: vi.fn().mockResolvedValue(false),
-      queue: vi.fn().mockResolvedValue(true),
+      sendWithContext: vi.fn().mockResolvedValue({ sent: true, mode: 'queue', sessionKey: 'session-1' }),
     } as any;
     const permissions = {
       getLatestPendingQuestion: vi.fn().mockReturnValue(null),
@@ -122,9 +113,80 @@ describe('MessageLoopCoordinator', () => {
       onError: vi.fn(),
     });
 
-    expect(sdkEngine.queue).toHaveBeenCalledWith('telegram', 'chat-1', 'queued follow-up');
+    expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('telegram', 'chat-1', 'queued follow-up', undefined);
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({ text: '📥 Queued — will process after current task' }),
+    );
+  });
+
+  it('steers to specific session when replying to a bubble', async () => {
+    const state = new SessionStateManager();
+    const chatKey = state.stateKey('telegram', 'chat-1');
+    state.setProcessing(chatKey, true);
+
+    const sdkEngine = {
+      sendWithContext: vi.fn().mockResolvedValue({ sent: true, mode: 'steer', sessionKey: 'session-2' }),
+    } as any;
+    const permissions = {
+      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
+      parsePermissionText: vi.fn().mockReturnValue(null),
+    } as any;
+
+    const coordinator = new MessageLoopCoordinator({
+      state,
+      sdkEngine,
+      permissions,
+      quickCommands: new Set(),
+      hasPendingSdkQuestion: () => false,
+    });
+    const adapter = createAdapter();
+
+    await coordinator.dispatchSlowMessage({
+      adapter,
+      msg: createMessage('reply to bubble', { replyToMessageId: 'bubble-1' }),
+      coalesceMessage: async (_adapter, msg) => msg,
+      handleMessage: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('telegram', 'chat-1', 'reply to bubble', 'bubble-1');
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '💬 Message injected into active session' }),
+    );
+  });
+
+  it('prompts user when no active session found', async () => {
+    const state = new SessionStateManager();
+    const chatKey = state.stateKey('telegram', 'chat-1');
+    state.setProcessing(chatKey, true);
+
+    const sdkEngine = {
+      sendWithContext: vi.fn().mockResolvedValue({ sent: false, mode: 'none' }),
+    } as any;
+    const permissions = {
+      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
+      parsePermissionText: vi.fn().mockReturnValue(null),
+    } as any;
+
+    const coordinator = new MessageLoopCoordinator({
+      state,
+      sdkEngine,
+      permissions,
+      quickCommands: new Set(),
+      hasPendingSdkQuestion: () => false,
+    });
+    const adapter = createAdapter();
+
+    await coordinator.dispatchSlowMessage({
+      adapter,
+      msg: createMessage('no session'),
+      coalesceMessage: async (_adapter, msg) => msg,
+      handleMessage: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '⚠️ No active session — please start a task first' }),
     );
   });
 });

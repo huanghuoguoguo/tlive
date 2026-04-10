@@ -436,6 +436,7 @@ export class QueryOrchestrator {
       // Get or create a LiveSession for this chat
       const workdir = binding.cwd || this.options.defaultWorkdir;
       const chatKey = this.options.state.stateKey(msg.channelType, msg.chatId);
+      const sessionKey = `${msg.channelType}:${msg.chatId}:${workdir}`;
       let liveSession: LiveSession | undefined;
       let streamResult: import('../providers/base.js').StreamChatResult | undefined;
 
@@ -562,9 +563,9 @@ export class QueryOrchestrator {
         },
       });
 
-      // Track active message ID for steer matching
+      // Track progress bubble → session for multi-session steering
       if (renderer.messageId) {
-        this.options.sdkEngine.setActiveMessageId(chatKey, renderer.messageId);
+        this.options.sdkEngine.setActiveMessageId(chatKey, renderer.messageId, sessionKey);
       }
 
       adapter.addReaction(reactionChatId, msg.messageId, reactions.done).catch(() => {});

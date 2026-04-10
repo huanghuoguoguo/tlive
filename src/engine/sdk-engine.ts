@@ -4,6 +4,7 @@
  * Core responsibilities:
  * - Session registry: manage LiveSessions per chat+workdir
  * - Steer/Queue: inject messages into active turns or queue for later using SDK native priority
+ * - Bubble tracking: map progress bubble messageId to session for multi-session steering
  */
 
 import type { QueryControls, LiveSession, LLMProvider, MessagePriority } from '../providers/base.js';
@@ -35,10 +36,10 @@ export class SDKEngine {
 
   /** Session registry: sessionKey → ManagedSession */
   private registry = new Map<string, ManagedSession>();
-  /** Active session per chat: channelType:chatId → sessionKey (for O(1) steer/canSteer) */
+  /** Active session per chat: channelType:chatId → sessionKey (fallback when no replyTo) */
   private activeSessionByChat = new Map<string, string>();
-  /** Current working card messageId per chat — for legacy steer matching */
-  private activeMessageIds = new Map<string, string>();
+  /** Progress bubble → session: messageId → sessionKey (for multi-session steering) */
+  private bubbleToSession = new Map<string, string>();
 
   // SDK AskUserQuestion state — shared with CallbackRouter via SdkQuestionState interface
   sdkQuestionData = new Map<string, { questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string; preview?: string }>; multiSelect: boolean }>; chatId: string }>();
@@ -70,12 +71,23 @@ export class SDKEngine {
     for (const [key, managed] of this.registry) {
       if (!managed.session.isAlive) {
         this.registry.delete(key);
+        this.cleanupBubblesForSession(key);
         continue;
       }
       if (!managed.session.isTurnActive && (now - managed.lastActiveAt) > SDKEngine.SESSION_IDLE_MS) {
         console.log(`[tlive:engine] Pruning idle LiveSession: ${key} (idle ${Math.round((now - managed.lastActiveAt) / 60000)}m)`);
         managed.session.close();
         this.registry.delete(key);
+        this.cleanupBubblesForSession(key);
+      }
+    }
+  }
+
+  /** Clean up bubble → session mappings when session is closed */
+  private cleanupBubblesForSession(sessionKey: string): void {
+    for (const [bubbleId, mappedKey] of this.bubbleToSession) {
+      if (mappedKey === sessionKey) {
+        this.bubbleToSession.delete(bubbleId);
       }
     }
   }
@@ -96,6 +108,7 @@ export class SDKEngine {
       if (managed) {
         managed.session.close();
         this.registry.delete(key);
+        this.cleanupBubblesForSession(key);
         if (this.activeSessionByChat.get(chatKey) === key) {
           this.activeSessionByChat.delete(chatKey);
         }
@@ -108,6 +121,7 @@ export class SDKEngine {
         if (key.startsWith(prefix)) {
           managed.session.close();
           this.registry.delete(key);
+          this.cleanupBubblesForSession(key);
           console.log(`[tlive:engine] Closed LiveSession for ${key}`);
         }
       }
@@ -160,12 +174,56 @@ export class SDKEngine {
 
   // ── Steer / Queue ──
 
-  /** Check if there's an active session with active turn for steer */
+  /**
+   * Track a progress bubble's associated session.
+   * Called when sending a progress card to link messageId → sessionKey.
+   */
+  trackBubbleSession(messageId: string, sessionKey: string): void {
+    this.bubbleToSession.set(messageId, sessionKey);
+  }
+
+  /**
+   * Get session key for a bubble (replyToMessageId).
+   * Returns undefined if bubble not tracked or session no longer alive.
+   */
+  getSessionForBubble(messageId: string): string | undefined {
+    const sessionKey = this.bubbleToSession.get(messageId);
+    if (!sessionKey) return undefined;
+    const managed = this.registry.get(sessionKey);
+    if (!managed?.session.isAlive) {
+      // Clean up stale mapping
+      this.bubbleToSession.delete(messageId);
+      return undefined;
+    }
+    return sessionKey;
+  }
+
+  /**
+   * Resolve target session for a message.
+   * - If replyToMessageId is provided and tracked → use that session
+   * - Otherwise → use activeSessionByChat (most recent)
+   */
+  resolveTargetSession(channelType: string, chatId: string, replyToMessageId?: string): string | undefined {
+    // Priority 1: reply to specific bubble
+    if (replyToMessageId) {
+      const bubbleSession = this.getSessionForBubble(replyToMessageId);
+      if (bubbleSession) return bubbleSession;
+    }
+    // Priority 2: fallback to most recent session
+    return this.activeSessionByChat.get(`${channelType}:${chatId}`);
+  }
+
+  /** Check if a specific session can be steered (alive + turn active) */
+  canSteerSession(sessionKey: string): boolean {
+    const managed = this.registry.get(sessionKey);
+    return (managed?.session.isAlive && managed?.session.isTurnActive) ?? false;
+  }
+
+  /** Check if there's an active session with active turn for steer (uses active session) */
   canSteer(channelType: string, chatId: string): boolean {
     const sessionKey = this.activeSessionByChat.get(`${channelType}:${chatId}`);
     if (!sessionKey) return false;
-    const managed = this.registry.get(sessionKey);
-    return (managed?.session.isAlive && managed?.session.isTurnActive) ?? false;
+    return this.canSteerSession(sessionKey);
   }
 
   /** Check if there's an alive session (may or may not have active turn) */
@@ -176,29 +234,67 @@ export class SDKEngine {
     return managed?.session.isAlive ?? false;
   }
 
-  /** Send message with SDK native priority. Returns true if sent, false if no session. */
-  async sendWithPriority(channelType: string, chatId: string, text: string, priority: MessagePriority): Promise<boolean> {
-    const sessionKey = this.activeSessionByChat.get(`${channelType}:${chatId}`);
-    if (!sessionKey) return false;
+  /** Send message to a specific session with SDK native priority */
+  async sendToSession(sessionKey: string, text: string, priority: MessagePriority): Promise<boolean> {
     const managed = this.registry.get(sessionKey);
     if (!managed?.session.isAlive) return false;
     try {
       await managed.session.sendWithPriority(text, priority);
       return true;
     } catch (err) {
-      console.error(`[tlive:engine] sendWithPriority error:`, err);
+      console.error(`[tlive:engine] sendToSession error:`, err);
       return false;
     }
   }
 
-  /** Steer the active turn using SDK native priority='now' */
-  async steer(channelType: string, chatId: string, text: string): Promise<boolean> {
-    return this.sendWithPriority(channelType, chatId, text, 'now');
+  /** Steer to specific session (priority='now') */
+  async steerSession(sessionKey: string, text: string): Promise<boolean> {
+    return this.sendToSession(sessionKey, text, 'now');
   }
 
-  /** Queue message using SDK native priority='later' */
+  /** Queue to specific session (priority='later') */
+  async queueSession(sessionKey: string, text: string): Promise<boolean> {
+    return this.sendToSession(sessionKey, text, 'later');
+  }
+
+  /** Steer the active session (uses activeSessionByChat) */
+  async steer(channelType: string, chatId: string, text: string): Promise<boolean> {
+    const sessionKey = this.resolveTargetSession(channelType, chatId);
+    if (!sessionKey) return false;
+    return this.sendToSession(sessionKey, text, 'now');
+  }
+
+  /** Queue to the active session (uses activeSessionByChat) */
   async queue(channelType: string, chatId: string, text: string): Promise<boolean> {
-    return this.sendWithPriority(channelType, chatId, text, 'later');
+    const sessionKey = this.resolveTargetSession(channelType, chatId);
+    if (!sessionKey) return false;
+    return this.sendToSession(sessionKey, text, 'later');
+  }
+
+  /**
+   * Steer or queue based on reply context.
+   * - If replyToMessageId → steer/queue to that bubble's session
+   * - Otherwise → steer/queue to active session
+   */
+  async sendWithContext(
+    channelType: string,
+    chatId: string,
+    text: string,
+    replyToMessageId?: string,
+  ): Promise<{ sent: boolean; mode: 'steer' | 'queue' | 'none'; sessionKey?: string }> {
+    const sessionKey = this.resolveTargetSession(channelType, chatId, replyToMessageId);
+    if (!sessionKey) {
+      return { sent: false, mode: 'none' };
+    }
+
+    // Steer if turn active, queue otherwise
+    if (this.canSteerSession(sessionKey)) {
+      const sent = await this.sendToSession(sessionKey, text, 'now');
+      return { sent, mode: 'steer', sessionKey };
+    } else {
+      const sent = await this.sendToSession(sessionKey, text, 'later');
+      return { sent, mode: 'queue', sessionKey };
+    }
   }
 
   // ── Shared State (CallbackRouter, /stop) ──
@@ -231,13 +327,13 @@ export class SDKEngine {
     }
   }
 
-  /** Track active message ID for steer matching */
-  setActiveMessageId(chatKey: string, messageId: string | undefined): void {
-    if (messageId) {
-      this.activeMessageIds.set(chatKey, messageId);
-    } else {
-      this.activeMessageIds.delete(chatKey);
+  /** Track progress bubble messageId → sessionKey mapping */
+  setActiveMessageId(chatKey: string, messageId: string | undefined, sessionKey?: string): void {
+    if (messageId && sessionKey) {
+      this.bubbleToSession.set(messageId, sessionKey);
     }
+    // Note: chatKey no longer needed for single-messageId tracking
+    // bubbleToSession handles multi-session scenarios
   }
 
 }

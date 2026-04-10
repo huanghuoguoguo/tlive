@@ -62,29 +62,27 @@ export class MessageLoopCoordinator {
   }
 
   private async handleBusyChat(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<void> {
-    if (msg.text) {
-      // Use SDK native queue: if there's an active session, send with priority
-      if (this.options.sdkEngine.hasActiveSession(msg.channelType, msg.chatId)) {
-        // Steer if turn is active (inject into running turn)
-        if (this.options.sdkEngine.canSteer(msg.channelType, msg.chatId)) {
-          const sent = await this.options.sdkEngine.steer(msg.channelType, msg.chatId, msg.text);
-          if (sent) {
-            await adapter.send({ chatId: msg.chatId, text: '💬 Message injected into active session' }).catch(() => {});
-            return;
-          }
-        }
+    if (!msg.text) return;
 
-        // Queue for later using SDK native priority='later'
-        const queued = await this.options.sdkEngine.queue(msg.channelType, msg.chatId, msg.text);
-        if (queued) {
-          await adapter.send({ chatId: msg.chatId, text: '📥 Queued — will process after current task' }).catch(() => {});
-          return;
-        }
+    // Use sendWithContext to handle reply-to-bubble or fallback to active session
+    const result = await this.options.sdkEngine.sendWithContext(
+      msg.channelType,
+      msg.chatId,
+      msg.text,
+      msg.replyToMessageId,
+    );
+
+    if (result.sent) {
+      if (result.mode === 'steer') {
+        await adapter.send({ chatId: msg.chatId, text: '💬 Message injected into active session' }).catch(() => {});
+      } else {
+        await adapter.send({ chatId: msg.chatId, text: '📥 Queued — will process after current task' }).catch(() => {});
       }
-
-      // No active session or SDK queue failed — drop message
-      await adapter.send({ chatId: msg.chatId, text: '⚠️ No active session — please start a task first' }).catch(() => {});
+      return;
     }
+
+    // No session found — prompt user
+    await adapter.send({ chatId: msg.chatId, text: '⚠️ No active session — please start a task first' }).catch(() => {});
   }
 
   private async drainQueue(
