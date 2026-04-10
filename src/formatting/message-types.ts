@@ -46,7 +46,29 @@ export interface NotificationData {
 export interface HomeData {
   cwd: string;
   hasActiveTask: boolean;
+  permissionMode: 'on' | 'off';
   recentSummary?: string;
+  recentSessions?: Array<{
+    index: number;
+    date: string;
+    preview: string;
+    isCurrent: boolean;
+  }>;
+}
+
+/** Permission status card for /perm command */
+export interface PermissionStatusData {
+  mode: 'on' | 'off';
+  rememberedTools: number;
+  rememberedBashPrefixes: number;
+  pending?: {
+    toolName: string;
+    input: string;
+  };
+  lastDecision?: {
+    toolName: string;
+    decision: 'allow' | 'allow_always' | 'deny' | 'cancelled';
+  };
 }
 
 /** Session list for /sessions command */
@@ -110,6 +132,19 @@ export interface ProgressData {
   completedTraceOnly?: boolean;
   /** Override buttons (e.g., permission-specific). Formatters derive defaults from phase when absent. */
   actionButtons?: Button[];
+  /** Number of permission prompts shown during this task. */
+  permissionRequests?: number;
+  /** True after bubble split — indicates continuation of previous task */
+  isContinuation?: boolean;
+}
+
+/** Task completion summary card */
+export interface TaskSummaryData {
+  summary: string;
+  changedFiles: number;
+  permissionRequests: number;
+  hasError: boolean;
+  nextStep: string;
 }
 
 /** Card resolution state update (after button click) */
@@ -149,12 +184,14 @@ export type FormattableMessage =
   | { type: 'question'; chatId: string; data: QuestionData }
   | { type: 'notification'; chatId: string; data: NotificationData }
   | { type: 'home'; chatId: string; data: HomeData }
+  | { type: 'permissionStatus'; chatId: string; data: PermissionStatusData }
   | { type: 'sessions'; chatId: string; data: SessionsData }
   | { type: 'sessionDetail'; chatId: string; data: SessionDetailData }
   | { type: 'help'; chatId: string; data: HelpData }
   | { type: 'newSession'; chatId: string; data: NewSessionData }
   | { type: 'error'; chatId: string; data: ErrorData }
   | { type: 'progress'; chatId: string; data: ProgressData }
+  | { type: 'taskSummary'; chatId: string; data: TaskSummaryData }
   | { type: 'cardResolution'; chatId: string; data: CardResolutionData }
   | { type: 'versionUpdate'; chatId: string; data: VersionUpdateData }
   | { type: 'multiSelectToggle'; chatId: string; data: MultiSelectToggleData };

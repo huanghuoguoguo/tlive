@@ -165,20 +165,24 @@ export async function handleCallbackMessage(
   if (msg.callbackData.startsWith(CALLBACK_PREFIXES.PERM_ALLOW_TOOL)) {
     const parts = parseCallback(msg.callbackData);
     const permId = parts[2];
-    const toolName = parts.slice(3).join(':');
+    const hasSessionScope = parts.length >= 5;
+    const sessionId = hasSessionScope ? parts[3] : undefined;
+    const toolName = parts.slice(hasSessionScope ? 4 : 3).join(':');
     deps.permissions.getGateway().resolve(permId, 'allow');
-    deps.permissions.addAllowedTool(toolName);
-    console.log(`[bridge] Added ${toolName} to session whitelist`);
+    deps.permissions.addAllowedTool(sessionId, toolName);
+    console.log(`[bridge] Added ${toolName} to session whitelist${sessionId ? ` (${sessionId})` : ''}`);
     return true;
   }
 
   if (msg.callbackData.startsWith(CALLBACK_PREFIXES.PERM_ALLOW_BASH)) {
     const parts = parseCallback(msg.callbackData);
     const permId = parts[2];
-    const prefix = parts.slice(3).join(':');
+    const hasSessionScope = parts.length >= 5;
+    const sessionId = hasSessionScope ? parts[3] : undefined;
+    const prefix = parts.slice(hasSessionScope ? 4 : 3).join(':');
     deps.permissions.getGateway().resolve(permId, 'allow');
-    deps.permissions.addAllowedBashPrefix(prefix);
-    console.log(`[bridge] Added Bash(${prefix} *) to session whitelist`);
+    deps.permissions.addAllowedBashPrefix(sessionId, prefix);
+    console.log(`[bridge] Added Bash(${prefix} *) to session whitelist${sessionId ? ` (${sessionId})` : ''}`);
     return true;
   }
 

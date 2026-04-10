@@ -3,6 +3,22 @@ import type { PermissionBroker } from '../permissions/broker.js';
 import type { BaseChannelAdapter } from '../channels/base.js';
 import { truncate } from '../utils/string.js';
 
+type PermissionDecision = 'allow' | 'allow_always' | 'deny' | 'cancelled';
+
+interface PermissionSnapshotState {
+  pending?: {
+    permissionId: string;
+    sessionId?: string;
+    toolName: string;
+    input: string;
+  };
+  lastDecision?: {
+    sessionId?: string;
+    toolName: string;
+    decision: PermissionDecision;
+  };
+}
+
 /**
  * Coordinates all permission-related state and resolution logic.
  *
@@ -35,10 +51,12 @@ export class PermissionCoordinator {
 
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
 
-  /** Dynamic session whitelist — tools approved via "Allow {tool}" button */
-  private allowedTools = new Set<string>();
-  /** Dynamic Bash prefix whitelist — commands approved via "Allow Bash(prefix *)" */
-  private allowedBashPrefixes = new Set<string>();
+  /** Dynamic session whitelist — keyed by bridge sessionId */
+  private allowedToolsBySession = new Map<string, Set<string>>();
+  /** Dynamic Bash prefix whitelist — keyed by bridge sessionId */
+  private allowedBashPrefixesBySession = new Map<string, Set<string>>();
+  /** Recent pending / resolved SDK permission snapshots per chat */
+  private permissionSnapshotsByChat = new Map<string, PermissionSnapshotState>();
 
   constructor(gateway: PendingPermissions, broker: PermissionBroker) {
     this.gateway = gateway;
@@ -67,6 +85,80 @@ export class PermissionCoordinator {
 
   clearPendingSdkPerm(chatKey: string): void {
     this.pendingSdkPerms.delete(chatKey);
+  }
+
+  notePermissionPending(
+    chatKey: string,
+    permissionId: string,
+    sessionId: string | undefined,
+    toolName: string,
+    input: string,
+  ): void {
+    const snapshot = this.permissionSnapshotsByChat.get(chatKey) || {};
+    snapshot.pending = {
+      permissionId,
+      sessionId,
+      toolName,
+      input: truncate(input, 260),
+    };
+    this.permissionSnapshotsByChat.set(chatKey, snapshot);
+  }
+
+  notePermissionResolved(
+    chatKey: string,
+    sessionId: string | undefined,
+    toolName: string,
+    decision: PermissionDecision,
+    permissionId?: string,
+  ): void {
+    const snapshot = this.permissionSnapshotsByChat.get(chatKey) || {};
+    if (!permissionId || snapshot.pending?.permissionId === permissionId) {
+      delete snapshot.pending;
+    }
+    snapshot.lastDecision = { sessionId, toolName, decision };
+    this.permissionSnapshotsByChat.set(chatKey, snapshot);
+  }
+
+  clearPendingPermissionSnapshot(chatKey: string, permissionId?: string): void {
+    const snapshot = this.permissionSnapshotsByChat.get(chatKey);
+    if (!snapshot?.pending) return;
+    if (!permissionId || snapshot.pending.permissionId === permissionId) {
+      delete snapshot.pending;
+    }
+    if (!snapshot.lastDecision && !snapshot.pending) {
+      this.permissionSnapshotsByChat.delete(chatKey);
+    }
+  }
+
+  getPermissionStatus(chatKey: string, sessionId?: string): {
+    rememberedTools: number;
+    rememberedBashPrefixes: number;
+    pending?: { toolName: string; input: string };
+    lastDecision?: { toolName: string; decision: PermissionDecision };
+  } {
+    const snapshot = this.permissionSnapshotsByChat.get(chatKey);
+    const allowedTools = sessionId ? this.allowedToolsBySession.get(sessionId) : undefined;
+    const allowedBashPrefixes = sessionId ? this.allowedBashPrefixesBySession.get(sessionId) : undefined;
+    const pending = snapshot?.pending
+      && (!sessionId || !snapshot.pending.sessionId || snapshot.pending.sessionId === sessionId)
+      ? {
+          toolName: snapshot.pending.toolName,
+          input: snapshot.pending.input,
+        }
+      : undefined;
+    const lastDecision = snapshot?.lastDecision
+      && (!sessionId || !snapshot.lastDecision.sessionId || snapshot.lastDecision.sessionId === sessionId)
+      ? {
+          toolName: snapshot.lastDecision.toolName,
+          decision: snapshot.lastDecision.decision,
+        }
+      : undefined;
+    return {
+      rememberedTools: allowedTools?.size ?? 0,
+      rememberedBashPrefixes: allowedBashPrefixes?.size ?? 0,
+      pending,
+      lastDecision,
+    };
   }
 
   // --- Parse permission text ---
@@ -444,24 +536,57 @@ export class PermissionCoordinator {
   // --- Dynamic session whitelist ---
 
   /** Check if a tool is allowed by the dynamic session whitelist */
-  isToolAllowed(toolName: string, toolInput: Record<string, unknown>): boolean {
-    if (this.allowedTools.has(toolName)) return true;
+  isToolAllowed(sessionId: string | undefined, toolName: string, toolInput: Record<string, unknown>): boolean {
+    if (!sessionId) return false;
+    const allowedTools = this.allowedToolsBySession.get(sessionId);
+    if (allowedTools?.has(toolName)) return true;
     if (toolName === 'Bash') {
       const cmd = typeof toolInput.command === 'string' ? toolInput.command : '';
       const prefix = this.extractBashPrefix(cmd);
-      if (prefix && this.allowedBashPrefixes.has(prefix)) return true;
+      const allowedPrefixes = this.allowedBashPrefixesBySession.get(sessionId);
+      if (prefix && allowedPrefixes?.has(prefix)) return true;
     }
     return false;
   }
 
   /** Add a tool to the session whitelist */
-  addAllowedTool(toolName: string): void {
-    this.allowedTools.add(toolName);
+  addAllowedTool(sessionId: string | undefined, toolName: string): void {
+    if (!sessionId) return;
+    let tools = this.allowedToolsBySession.get(sessionId);
+    if (!tools) {
+      tools = new Set<string>();
+      this.allowedToolsBySession.set(sessionId, tools);
+    }
+    tools.add(toolName);
   }
 
   /** Add a Bash command prefix to the session whitelist */
-  addAllowedBashPrefix(prefix: string): void {
-    this.allowedBashPrefixes.add(prefix);
+  addAllowedBashPrefix(sessionId: string | undefined, prefix: string): void {
+    if (!sessionId || !prefix) return;
+    let prefixes = this.allowedBashPrefixesBySession.get(sessionId);
+    if (!prefixes) {
+      prefixes = new Set<string>();
+      this.allowedBashPrefixesBySession.set(sessionId, prefixes);
+    }
+    prefixes.add(prefix);
+  }
+
+  /** Remember an allow_always decision for the current bridge session. */
+  rememberSessionAllowance(
+    sessionId: string | undefined,
+    toolName: string,
+    toolInput: Record<string, unknown>,
+  ): void {
+    if (!sessionId) return;
+    if (toolName === 'Bash') {
+      const cmd = typeof toolInput.command === 'string' ? toolInput.command : '';
+      const prefix = this.extractBashPrefix(cmd);
+      if (prefix) {
+        this.addAllowedBashPrefix(sessionId, prefix);
+      }
+      return;
+    }
+    this.addAllowedTool(sessionId, toolName);
   }
 
   /** Extract the first word of a Bash command as a prefix */
@@ -470,9 +595,14 @@ export class PermissionCoordinator {
   }
 
   /** Clear the dynamic session whitelist (called on /new or session expiry) */
-  clearSessionWhitelist(): void {
-    this.allowedTools.clear();
-    this.allowedBashPrefixes.clear();
+  clearSessionWhitelist(sessionId?: string): void {
+    if (!sessionId) {
+      this.allowedToolsBySession.clear();
+      this.allowedBashPrefixesBySession.clear();
+      return;
+    }
+    this.allowedToolsBySession.delete(sessionId);
+    this.allowedBashPrefixesBySession.delete(sessionId);
   }
 
   // --- Broker callback delegation ---

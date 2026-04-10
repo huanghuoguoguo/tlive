@@ -200,28 +200,48 @@ describe('PermissionCoordinator', () => {
 
   describe('dynamic session whitelist', () => {
     it('isToolAllowed returns false by default', () => {
-      expect(coord.isToolAllowed('Edit', {})).toBe(false);
+      expect(coord.isToolAllowed('session-1', 'Edit', {})).toBe(false);
     });
 
-    it('allows tool after addAllowedTool', () => {
-      coord.addAllowedTool('Edit');
-      expect(coord.isToolAllowed('Edit', {})).toBe(true);
-      expect(coord.isToolAllowed('Write', {})).toBe(false);
+    it('allows tool after addAllowedTool within the same session', () => {
+      coord.addAllowedTool('session-1', 'Edit');
+      expect(coord.isToolAllowed('session-1', 'Edit', {})).toBe(true);
+      expect(coord.isToolAllowed('session-1', 'Write', {})).toBe(false);
+      expect(coord.isToolAllowed('session-2', 'Edit', {})).toBe(false);
     });
 
-    it('allows Bash with matching prefix', () => {
-      coord.addAllowedBashPrefix('npm');
-      expect(coord.isToolAllowed('Bash', { command: 'npm test' })).toBe(true);
-      expect(coord.isToolAllowed('Bash', { command: 'npm install' })).toBe(true);
-      expect(coord.isToolAllowed('Bash', { command: 'git push' })).toBe(false);
+    it('allows Bash with matching prefix within the same session', () => {
+      coord.addAllowedBashPrefix('session-1', 'npm');
+      expect(coord.isToolAllowed('session-1', 'Bash', { command: 'npm test' })).toBe(true);
+      expect(coord.isToolAllowed('session-1', 'Bash', { command: 'npm install' })).toBe(true);
+      expect(coord.isToolAllowed('session-1', 'Bash', { command: 'git push' })).toBe(false);
+      expect(coord.isToolAllowed('session-2', 'Bash', { command: 'npm test' })).toBe(false);
     });
 
-    it('clears whitelist on clearSessionWhitelist', () => {
-      coord.addAllowedTool('Edit');
-      coord.addAllowedBashPrefix('npm');
+    it('clears only the targeted session whitelist', () => {
+      coord.addAllowedTool('session-1', 'Edit');
+      coord.addAllowedBashPrefix('session-1', 'npm');
+      coord.addAllowedTool('session-2', 'Write');
+      coord.clearSessionWhitelist('session-1');
+      expect(coord.isToolAllowed('session-1', 'Edit', {})).toBe(false);
+      expect(coord.isToolAllowed('session-1', 'Bash', { command: 'npm test' })).toBe(false);
+      expect(coord.isToolAllowed('session-2', 'Write', {})).toBe(true);
+    });
+
+    it('remembers allow_always decisions by session', () => {
+      coord.rememberSessionAllowance('session-1', 'Edit', {});
+      coord.rememberSessionAllowance('session-1', 'Bash', { command: 'npm test' });
+      expect(coord.isToolAllowed('session-1', 'Edit', {})).toBe(true);
+      expect(coord.isToolAllowed('session-1', 'Bash', { command: 'npm run build' })).toBe(true);
+      expect(coord.isToolAllowed('session-2', 'Edit', {})).toBe(false);
+    });
+
+    it('clears all whitelists when sessionId is omitted', () => {
+      coord.addAllowedTool('session-1', 'Edit');
+      coord.addAllowedTool('session-2', 'Write');
       coord.clearSessionWhitelist();
-      expect(coord.isToolAllowed('Edit', {})).toBe(false);
-      expect(coord.isToolAllowed('Bash', { command: 'npm test' })).toBe(false);
+      expect(coord.isToolAllowed('session-1', 'Edit', {})).toBe(false);
+      expect(coord.isToolAllowed('session-2', 'Write', {})).toBe(false);
     });
 
     it('extractBashPrefix gets first word of command', () => {
@@ -229,6 +249,36 @@ describe('PermissionCoordinator', () => {
       expect(coord.extractBashPrefix('git push origin main')).toBe('git');
       expect(coord.extractBashPrefix('')).toBe('');
       expect(coord.extractBashPrefix('   ls -la  ')).toBe('ls');
+    });
+  });
+
+  describe('permission status snapshots', () => {
+    it('tracks pending and resolved sdk permissions per chat', () => {
+      coord.notePermissionPending('telegram:chat-1', 'perm-1', 'session-1', 'Edit', 'src/main.ts');
+
+      expect(coord.getPermissionStatus('telegram:chat-1', 'session-1')).toMatchObject({
+        rememberedTools: 0,
+        rememberedBashPrefixes: 0,
+        pending: { toolName: 'Edit' },
+      });
+
+      coord.notePermissionResolved('telegram:chat-1', 'session-1', 'Edit', 'allow_always', 'perm-1');
+
+      expect(coord.getPermissionStatus('telegram:chat-1', 'session-1')).toMatchObject({
+        lastDecision: { toolName: 'Edit', decision: 'allow_always' },
+      });
+      expect(coord.getPermissionStatus('telegram:chat-1', 'session-1').pending).toBeUndefined();
+    });
+
+    it('clears only the matching pending snapshot', () => {
+      coord.notePermissionPending('telegram:chat-1', 'perm-1', 'session-1', 'Edit', 'src/main.ts');
+      coord.clearPendingPermissionSnapshot('telegram:chat-1', 'perm-1');
+      expect(coord.getPermissionStatus('telegram:chat-1', 'session-1').pending).toBeUndefined();
+    });
+
+    it('does not surface a previous session snapshot to a new session', () => {
+      coord.notePermissionResolved('telegram:chat-1', 'session-1', 'Edit', 'allow_always');
+      expect(coord.getPermissionStatus('telegram:chat-1', 'session-2').lastDecision).toBeUndefined();
     });
   });
 });

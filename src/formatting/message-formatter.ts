@@ -10,12 +10,14 @@ import type {
   QuestionData,
   NotificationData,
   HomeData,
+  PermissionStatusData,
   SessionsData,
   SessionDetailData,
   HelpData,
   NewSessionData,
   ErrorData,
   ProgressData,
+  TaskSummaryData,
   CardResolutionData,
   VersionUpdateData,
   MultiSelectToggleData,
@@ -63,6 +65,8 @@ export abstract class MessageFormatter {
         return this.formatNotification(chatId, msg.data);
       case 'home':
         return this.formatHome(chatId, msg.data);
+      case 'permissionStatus':
+        return this.formatPermissionStatus(chatId, msg.data);
       case 'sessions':
         return this.formatSessions(chatId, msg.data);
       case 'sessionDetail':
@@ -75,6 +79,8 @@ export abstract class MessageFormatter {
         return this.formatError(chatId, msg.data);
       case 'progress':
         return this.formatProgress(chatId, msg.data);
+      case 'taskSummary':
+        return this.formatTaskSummary(chatId, msg.data);
       case 'cardResolution':
         return this.formatCardResolution(chatId, msg.data);
       case 'versionUpdate':
@@ -107,8 +113,9 @@ export abstract class MessageFormatter {
     const input = truncate(data.toolInput, 300);
     const expires = data.expiresInMinutes ?? 5;
     const buttons: Button[] = [
-      { label: '✅ Yes', callbackData: `perm:allow:${data.permissionId}`, style: 'primary' },
-      { label: '❌ No', callbackData: `perm:deny:${data.permissionId}`, style: 'danger' },
+      { label: '✅ Allow', callbackData: `perm:allow:${data.permissionId}`, style: 'primary', row: 0 },
+      { label: '📌 Always in Session', callbackData: `perm:allow_session:${data.permissionId}`, style: 'default', row: 0 },
+      { label: '❌ Deny', callbackData: `perm:deny:${data.permissionId}`, style: 'danger', row: 1 },
     ];
 
     const lines = [
@@ -124,7 +131,7 @@ export abstract class MessageFormatter {
     if (data.terminalUrl) {
       lines.push(`🔗 [Open Terminal](${data.terminalUrl})`);
     }
-    lines.push('', `💬 Or reply **allow** / **deny**`);
+    lines.push('', `💬 Or reply **allow** / **deny** / **always**`);
 
     const msg = this.createMessage(chatId, lines.join('\n'), buttons);
     return msg;
@@ -172,12 +179,107 @@ export abstract class MessageFormatter {
       ``,
       `**Status:** ${taskStatus}`,
       `**Directory:** \`${data.cwd}\``,
+      `**Permissions:** ${data.permissionMode}`,
     ];
     if (data.recentSummary) {
       lines.push(``, `**Recent:** ${truncate(data.recentSummary, 100)}`);
     }
+    if (data.recentSessions?.length) {
+      lines.push('', this.locale === 'zh' ? '**最近会话**' : '**Recent sessions**');
+      for (const session of data.recentSessions) {
+        const marker = session.isCurrent ? ' ◀' : '';
+        lines.push(`${session.index}. ${session.date} · ${truncate(session.preview, 50)}${marker}`);
+      }
+    }
 
-    return this.createMessage(chatId, lines.join('\n'));
+    const buttons: Button[] = this.locale === 'zh'
+      ? [
+          { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'primary', row: 0 },
+          { label: '🔐 权限设置', callbackData: 'cmd:perm', style: 'default', row: 0 },
+          { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default', row: 1 },
+          { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default', row: 1 },
+        ]
+      : [
+          { label: '🕘 Recent', callbackData: 'cmd:sessions --all', style: 'primary', row: 0 },
+          { label: '🔐 Permissions', callbackData: 'cmd:perm', style: 'default', row: 0 },
+          { label: '🆕 New', callbackData: 'cmd:new', style: 'default', row: 1 },
+          { label: '❓ Help', callbackData: 'cmd:help', style: 'default', row: 1 },
+        ];
+
+    return this.createMessage(chatId, lines.join('\n'), buttons);
+  }
+
+  formatPermissionStatus(chatId: string, data: PermissionStatusData): OutboundMessage {
+    const memoryCount = data.rememberedTools + data.rememberedBashPrefixes;
+    const lines = this.locale === 'zh'
+      ? [
+          '🔐 **权限状态**',
+          '',
+          `**当前模式:** ${data.mode}`,
+          `**本会话已记住:** ${memoryCount} 项`,
+        ]
+      : [
+          '🔐 **Permission Status**',
+          '',
+          `**Mode:** ${data.mode}`,
+          `**Remembered in this session:** ${memoryCount}`,
+        ];
+
+    if (data.pending) {
+      lines.push(
+        '',
+        this.locale === 'zh'
+          ? `**当前待审批:** ${data.pending.toolName}`
+          : `**Pending approval:** ${data.pending.toolName}`,
+        '```',
+        truncate(data.pending.input, 180),
+        '```',
+      );
+    }
+
+    if (data.lastDecision) {
+      const decisionLabel = this.locale === 'zh'
+        ? {
+            allow: '允许一次',
+            allow_always: '本会话始终允许',
+            deny: '拒绝',
+            cancelled: '已取消',
+          }[data.lastDecision.decision]
+        : {
+            allow: 'Allowed once',
+            allow_always: 'Always allow in session',
+            deny: 'Denied',
+            cancelled: 'Cancelled',
+          }[data.lastDecision.decision];
+      lines.push(
+        '',
+        this.locale === 'zh'
+          ? `**最近处理:** ${data.lastDecision.toolName} · ${decisionLabel}`
+          : `**Last decision:** ${data.lastDecision.toolName} · ${decisionLabel}`,
+      );
+    }
+
+    const buttons: Button[] = data.mode === 'on'
+      ? this.locale === 'zh'
+        ? [
+            { label: '⚡ 关闭审批', callbackData: 'cmd:perm off', style: 'danger', row: 0 },
+            { label: '🏠 首页', callbackData: 'cmd:home', style: 'default', row: 0 },
+          ]
+        : [
+            { label: '⚡ Turn Off', callbackData: 'cmd:perm off', style: 'danger', row: 0 },
+            { label: '🏠 Home', callbackData: 'cmd:home', style: 'default', row: 0 },
+          ]
+      : this.locale === 'zh'
+        ? [
+            { label: '🔐 开启审批', callbackData: 'cmd:perm on', style: 'primary', row: 0 },
+            { label: '🏠 首页', callbackData: 'cmd:home', style: 'default', row: 0 },
+          ]
+        : [
+            { label: '🔐 Turn On', callbackData: 'cmd:perm on', style: 'primary', row: 0 },
+            { label: '🏠 Home', callbackData: 'cmd:home', style: 'default', row: 0 },
+          ];
+
+    return this.createMessage(chatId, lines.join('\n'), buttons);
   }
 
   formatSessions(chatId: string, data: SessionsData): OutboundMessage {
@@ -249,6 +351,44 @@ export abstract class MessageFormatter {
       lines.push(``, `**Current:** ${data.currentTool.name}: ${truncate(data.currentTool.input, 100)}`);
     }
     const buttons = data.actionButtons?.length ? data.actionButtons : this.defaultProgressButtons(data.phase);
+    return this.createMessage(chatId, lines.join('\n'), buttons);
+  }
+
+  formatTaskSummary(chatId: string, data: TaskSummaryData): OutboundMessage {
+    const lines = this.locale === 'zh'
+      ? [
+          `✅ **任务摘要**`,
+          '',
+          data.summary,
+          '',
+          `改动文件：${data.changedFiles}`,
+          `权限审批：${data.permissionRequests}`,
+          `状态：${data.hasError ? '有错误' : '已完成'}`,
+          '',
+          `下一步：${data.nextStep}`,
+        ]
+      : [
+          `✅ **Task Summary**`,
+          '',
+          data.summary,
+          '',
+          `Changed files: ${data.changedFiles}`,
+          `Permission prompts: ${data.permissionRequests}`,
+          `Status: ${data.hasError ? 'Has errors' : 'Completed'}`,
+          '',
+          `Next step: ${data.nextStep}`,
+        ];
+
+    const buttons = this.locale === 'zh'
+      ? [
+          { label: '🏠 首页', callbackData: 'cmd:home', style: 'primary' as const, row: 0 },
+          { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'default' as const, row: 0 },
+        ]
+      : [
+          { label: '🏠 Home', callbackData: 'cmd:home', style: 'primary' as const, row: 0 },
+          { label: '🕘 Recent', callbackData: 'cmd:sessions --all', style: 'default' as const, row: 0 },
+        ];
+
     return this.createMessage(chatId, lines.join('\n'), buttons);
   }
 

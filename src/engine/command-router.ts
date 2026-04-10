@@ -29,6 +29,7 @@ import {
   presentPairings,
   presentPermissionModeChanged,
   presentPermissionModeStatus,
+  presentPermissionStatus,
   presentRestartResult,
   presentSessionNotFound,
   presentSessionDetail,
@@ -47,7 +48,7 @@ import {
   presentVersionUnskipped,
 } from './command-presenter.js';
 import { areHooksPaused, pauseHooks, resumeHooks } from './hooks-state.js';
-import type { FormattableMessage } from '../formatting/message-types.js';
+import type { FormattableMessage, HomeData } from '../formatting/message-types.js';
 
 /** Format file size in human-readable format */
 function formatSize(bytes: number): string {
@@ -81,9 +82,37 @@ export class CommandRouter {
     private defaultWorkdir: string,
     private llm: LLMProvider,
     private activeControls: Map<string, QueryControls>,
-    private permissions: { clearSessionWhitelist(): void },
+    private permissions: {
+      clearSessionWhitelist(sessionId?: string): void;
+      getPermissionStatus(chatKey: string, sessionId?: string): {
+        rememberedTools: number;
+        rememberedBashPrefixes: number;
+        pending?: { toolName: string; input: string };
+        lastDecision?: { toolName: string; decision: 'allow' | 'allow_always' | 'deny' | 'cancelled' };
+      };
+    },
     private onNewSession?: (channelType: string, chatId: string) => void,
   ) {}
+
+  private async buildHomePayload(channelType: string, chatId: string): Promise<HomeData> {
+    const binding = await this.store.getBinding(channelType, chatId);
+    const currentCwd = binding?.cwd || this.defaultWorkdir;
+    const chatKey = this.state.stateKey(channelType, chatId);
+    const recentSessions = scanClaudeSessions(3, currentCwd);
+
+    return {
+      cwd: shortPath(currentCwd),
+      hasActiveTask: this.activeControls.has(chatKey),
+      permissionMode: this.state.getPermMode(channelType, chatId),
+      recentSummary: recentSessions[0]?.preview,
+      recentSessions: recentSessions.map((session, index) => ({
+        index: index + 1,
+        date: formatSessionDate(session.mtime),
+        preview: session.preview,
+        isCurrent: binding?.sdkSessionId === session.sdkSessionId,
+      })),
+    };
+  }
 
   async handle(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
     const parts = msg.text.split(' ');
@@ -111,39 +140,48 @@ export class CommandRouter {
 
         this.state.clearLastActive(msg.channelType, msg.chatId);
         this.state.clearThread(msg.channelType, msg.chatId);
-        this.permissions.clearSessionWhitelist();
+        this.permissions.clearSessionWhitelist(binding?.sessionId);
 
         await send(adapter, presentNewSession(msg.chatId, { cwd: binding?.cwd }));
 
         // Send home screen for platforms with rich card support
         if (adapter.supportsRichCards()) {
-          await send(adapter, presentHome(msg.chatId, {
-            cwd: shortPath(binding?.cwd || this.defaultWorkdir),
-            hasActiveTask: false,
-          }));
+          const homeData = await this.buildHomePayload(msg.channelType, msg.chatId);
+          homeData.hasActiveTask = false;
+          await send(adapter, presentHome(msg.chatId, homeData));
         }
         return true;
       }
       case '/home': {
-        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-        const currentCwd = binding?.cwd || this.defaultWorkdir;
-        const recentSession = scanClaudeSessions(1, currentCwd)[0];
-        const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
-        await send(adapter, presentHome(msg.chatId, {
-          cwd: shortPath(currentCwd),
-          hasActiveTask: this.activeControls.has(chatKey),
-          recentSummary: recentSession?.preview,
-        }));
+        await send(adapter, presentHome(msg.chatId, await this.buildHomePayload(msg.channelType, msg.chatId)));
         return true;
       }
       case '/perm': {
         const sub = parts[1]?.toLowerCase();
         if (sub === 'on' || sub === 'off') {
           this.state.setPermMode(msg.channelType, msg.chatId, sub);
-          await send(adapter, presentPermissionModeChanged(msg.chatId, sub));
+          if (adapter.supportsRichCards()) {
+            const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+            const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
+            await send(adapter, presentPermissionStatus(msg.chatId, {
+              mode: sub,
+              ...this.permissions.getPermissionStatus(chatKey, binding?.sessionId),
+            }));
+          } else {
+            await send(adapter, presentPermissionModeChanged(msg.chatId, sub));
+          }
         } else {
-          const current = this.state.getPermMode(msg.channelType, msg.chatId);
-          await send(adapter, presentPermissionModeStatus(msg.chatId, current));
+          if (adapter.supportsRichCards()) {
+            const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+            const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
+            await send(adapter, presentPermissionStatus(msg.chatId, {
+              mode: this.state.getPermMode(msg.channelType, msg.chatId),
+              ...this.permissions.getPermissionStatus(chatKey, binding?.sessionId),
+            }));
+          } else {
+            const current = this.state.getPermMode(msg.channelType, msg.chatId);
+            await send(adapter, presentPermissionModeStatus(msg.chatId, current));
+          }
         }
         return true;
       }

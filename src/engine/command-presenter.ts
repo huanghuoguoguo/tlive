@@ -6,6 +6,7 @@
 import type {
   StatusData,
   HomeData,
+  PermissionStatusData,
   SessionsData,
   SessionDetailData,
   HelpData,
@@ -23,6 +24,10 @@ export function presentNewSession(chatId: string, data: NewSessionData): Formatt
 
 export function presentHome(chatId: string, data: HomeData): FormattableMessage {
   return { type: 'home', chatId, data };
+}
+
+export function presentPermissionStatus(chatId: string, data: PermissionStatusData): FormattableMessage {
+  return { type: 'permissionStatus', chatId, data };
 }
 
 export function presentSessions(chatId: string, data: SessionsData): FormattableMessage {

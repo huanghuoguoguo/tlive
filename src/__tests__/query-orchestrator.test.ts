@@ -77,7 +77,11 @@ describe('QueryOrchestrator', () => {
       }),
       setPendingSdkPerm: vi.fn(),
       clearPendingSdkPerm: vi.fn(),
+      notePermissionPending: vi.fn(),
+      notePermissionResolved: vi.fn(),
+      clearPendingPermissionSnapshot: vi.fn(),
       isToolAllowed: vi.fn().mockReturnValue(false),
+      rememberSessionAllowance: vi.fn(),
       storeQuestionData: vi.fn(),
       trackPermissionMessage: vi.fn(),
     } as any;
@@ -148,7 +152,11 @@ describe('QueryOrchestrator', () => {
       }),
       setPendingSdkPerm: vi.fn(),
       clearPendingSdkPerm: vi.fn(),
+      notePermissionPending: vi.fn(),
+      notePermissionResolved: vi.fn(),
+      clearPendingPermissionSnapshot: vi.fn(),
       isToolAllowed: vi.fn().mockReturnValue(false),
+      rememberSessionAllowance: vi.fn(),
       storeQuestionData: vi.fn(),
       trackPermissionMessage: vi.fn(),
     } as any;
@@ -190,7 +198,9 @@ describe('QueryOrchestrator', () => {
     const traceMessage = (adapter.send as any).mock.calls[0][0];
     expect(traceMessage.feishuHeader.title).toContain('已完成');
     const finalMessage = (adapter.send as any).mock.calls[1][0];
-    expect(finalMessage.text).toContain('最终答案');
+    expect(finalMessage.feishuHeader.title).toContain('任务摘要');
+    const finalContent = (finalMessage.feishuElements ?? []).map((e: any) => e.content || '').join('\n');
+    expect(finalContent).toContain('最终答案');
     expect(adapter.editMessage).not.toHaveBeenCalled();
   });
 
@@ -218,7 +228,11 @@ describe('QueryOrchestrator', () => {
       }),
       setPendingSdkPerm: vi.fn(),
       clearPendingSdkPerm: vi.fn(),
+      notePermissionPending: vi.fn(),
+      notePermissionResolved: vi.fn(),
+      clearPendingPermissionSnapshot: vi.fn(),
       isToolAllowed: vi.fn().mockReturnValue(false),
+      rememberSessionAllowance: vi.fn(),
       storeQuestionData: vi.fn(),
       trackPermissionMessage: vi.fn(),
     } as any;
@@ -261,5 +275,77 @@ describe('QueryOrchestrator', () => {
     const content = (onlyMessage.feishuElements ?? []).map((e: any) => e.content || '').join('\n');
     expect(content).toContain('简短答复');
     expect(adapter.editMessage).not.toHaveBeenCalled();
+  });
+
+  it('remembers allow_always approvals within the current bridge session', async () => {
+    const state = new SessionStateManager();
+    const engine = {
+      processMessage: vi.fn().mockImplementation(async (params) => {
+        await params.sdkPermissionHandler?.('Edit', { file_path: 'src/main.ts' }, 'Need edit');
+        await params.onQueryResult?.({
+          sessionId: 'sdk-2',
+          isError: false,
+          usage: { inputTokens: 10, outputTokens: 5, costUsd: 0.01 },
+        });
+      }),
+    } as any;
+    const router = {
+      resolve: vi.fn().mockResolvedValue({ ...binding }),
+      rebind: vi.fn(),
+    } as any;
+    const permissions = {
+      clearSessionWhitelist: vi.fn(),
+      getGateway: vi.fn().mockReturnValue({
+        waitFor: vi.fn().mockResolvedValue({ behavior: 'allow_always' }),
+        resolve: vi.fn(),
+      }),
+      setPendingSdkPerm: vi.fn(),
+      clearPendingSdkPerm: vi.fn(),
+      notePermissionPending: vi.fn(),
+      notePermissionResolved: vi.fn(),
+      clearPendingPermissionSnapshot: vi.fn(),
+      isToolAllowed: vi.fn().mockReturnValue(false),
+      rememberSessionAllowance: vi.fn(),
+      storeQuestionData: vi.fn(),
+      trackPermissionMessage: vi.fn(),
+    } as any;
+    const sdkEngine = {
+      getQuestionState: vi.fn().mockReturnValue({
+        sdkQuestionData: new Map(),
+        sdkQuestionAnswers: new Map(),
+        sdkQuestionTextAnswers: new Map(),
+      }),
+      setControlsForChat: vi.fn(),
+      setActiveMessageId: vi.fn(),
+      closeSession: vi.fn(),
+      getOrCreateSession: vi.fn().mockReturnValue(undefined),
+    } as any;
+
+    const orchestrator = new QueryOrchestrator({
+      engine,
+      llm: {} as any,
+      router,
+      state,
+      permissions,
+      sdkEngine,
+      store: mockStore,
+      defaultWorkdir: '/tmp/project',
+      port: 8080,
+    });
+
+    await orchestrator.run(createAdapter(), {
+      channelType: 'telegram',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      text: 'hello',
+      messageId: 'msg-1',
+    });
+
+    expect(permissions.isToolAllowed).toHaveBeenCalledWith('session-1', 'Edit', { file_path: 'src/main.ts' });
+    expect(permissions.rememberSessionAllowance).toHaveBeenCalledWith(
+      'session-1',
+      'Edit',
+      { file_path: 'src/main.ts' },
+    );
   });
 });
