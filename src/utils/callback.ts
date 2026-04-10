@@ -87,3 +87,21 @@ export function parseAskqSubmitSdkCallback(callbackData: string): { permId: stri
     1: { name: 'permId' },
   });
 }
+
+/** Parse form callback: form:interactionId:{JSON} */
+export function parseFormCallback(callbackData: string): { interactionId: string; formData: Record<string, string> } | null {
+  if (!callbackData.startsWith(CALLBACK_PREFIXES.FORM)) return null;
+  // Format: form:interactionId:{JSON formData}
+  // The JSON part contains all form values including _interaction_id
+  const afterPrefix = callbackData.slice(CALLBACK_PREFIXES.FORM.length);
+  const firstColon = afterPrefix.indexOf(':');
+  if (firstColon < 0) return null;
+  const interactionId = afterPrefix.slice(0, firstColon);
+  const jsonStr = afterPrefix.slice(firstColon + 1);
+  try {
+    const formData = JSON.parse(jsonStr) as Record<string, string>;
+    return { interactionId, formData };
+  } catch {
+    return null;
+  }
+}

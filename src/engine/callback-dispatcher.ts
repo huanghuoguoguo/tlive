@@ -13,6 +13,7 @@ import {
   parseAskqToggleCallback,
   parseCallback,
   parseHookCallback,
+  parseFormCallback,
 } from '../utils/callback.js';
 
 interface CallbackDispatcherDeps {
@@ -124,6 +125,46 @@ export async function handleCallbackMessage(
         label: `✅ Selected: ${selectedLabels.join(', ')}`,
       }).catch(() => {});
     }
+    deps.permissions.cleanupQuestion(permId);
+    deps.permissions.getGateway().resolve(permId, 'allow');
+    return true;
+  }
+
+  // Form submission callback (from Feishu form_input/form_select)
+  const formParsed = parseFormCallback(msg.callbackData);
+  if (formParsed) {
+    const { interactionId, formData } = formParsed;
+    const permId = interactionId;
+    const { sdkQuestionData, sdkQuestionTextAnswers, sdkQuestionAnswers } = deps.sdkEngine.getQuestionState();
+    const qData = sdkQuestionData.get(permId);
+
+    if (qData) {
+      const q = qData.questions[0];
+      // Check for text input (form_input)
+      const textAnswer = formData['_text_answer'] || formData['text'] || '';
+      if (textAnswer) {
+        sdkQuestionTextAnswers.set(permId, textAnswer);
+        adapter.editCardResolution(msg.chatId, msg.messageId, {
+          resolution: 'answered',
+          label: `✅ Answer: ${textAnswer.slice(0, 50)}`,
+        }).catch(() => {});
+      } else {
+        // Check for select option (form_select)
+        const selectValue = formData['_select'] || '';
+        if (selectValue) {
+          // Find the option index by matching the value
+          const optionIndex = q.options.findIndex(opt => opt.label === selectValue);
+          if (optionIndex >= 0) {
+            sdkQuestionAnswers.set(permId, optionIndex);
+            adapter.editCardResolution(msg.chatId, msg.messageId, {
+              resolution: 'selected',
+              label: `✅ ${selectValue}`,
+            }).catch(() => {});
+          }
+        }
+      }
+    }
+
     deps.permissions.cleanupQuestion(permId);
     deps.permissions.getGateway().resolve(permId, 'allow');
     return true;

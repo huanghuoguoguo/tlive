@@ -29,6 +29,125 @@ function findByTag(elements: any[], tag: string): any[] {
   return elements.filter(e => e.tag === tag);
 }
 
+describe('FeishuFormatter.formatQuestion', () => {
+  const formatter = new FeishuFormatter('zh');
+
+  /** Helper to extract form container elements */
+  function getFormElements(msg: any): any[] {
+    const elements = getElements(msg);
+    const formContainer = elements.find(e => e.tag === 'form');
+    return formContainer?.elements || [];
+  }
+
+  it('uses select_static for >4 options', () => {
+    const msg = formatter.formatQuestion('chat1', {
+      question: '选择一个选项',
+      options: [
+        { label: 'Option A' },
+        { label: 'Option B' },
+        { label: 'Option C' },
+        { label: 'Option D' },
+        { label: 'Option E' },
+      ],
+      multiSelect: false,
+      permId: 'test-123',
+      sessionId: 'sdk',
+    });
+
+    const formElements = getFormElements(msg as any);
+    const selectStatic = formElements.find(e => e.tag === 'select_static');
+    expect(selectStatic).toBeDefined();
+    expect(selectStatic!.name).toBe('_select');
+    expect(selectStatic!.options).toHaveLength(5);
+
+    // Should have input for free text
+    const input = formElements.find(e => e.tag === 'input' && e.name === '_text_answer');
+    expect(input).toBeDefined();
+
+    // Should have hidden interaction ID input
+    const hiddenInput = formElements.find(e => e.tag === 'input' && e.name === '_interaction_id');
+    expect(hiddenInput).toBeDefined();
+    expect(hiddenInput!.default_value).toBe('test-123');
+
+    // Submit button with form_action_type: submit (embedded in column_set inside form)
+    const columnSets = formElements.filter(e => e.tag === 'column_set');
+    expect(columnSets.length).toBeGreaterThan(0);
+    const submitBtn = columnSets[0]?.columns?.[0]?.elements?.[0];
+    expect(submitBtn?.tag).toBe('button');
+    expect(submitBtn?.form_action_type).toBe('submit');
+  });
+
+  it('uses buttons for few options', () => {
+    const msg = formatter.formatQuestion('chat1', {
+      question: '同意吗？',
+      options: [
+        { label: 'Yes' },
+        { label: 'No' },
+      ],
+      multiSelect: false,
+      permId: 'test-456',
+      sessionId: 'sdk',
+    });
+
+    const formElements = getFormElements(msg as any);
+    const selectStatic = formElements.find(e => e.tag === 'select_static');
+    expect(selectStatic).toBeUndefined();
+
+    // Should have input for free text
+    const input = formElements.find(e => e.tag === 'input' && e.name === '_text_answer');
+    expect(input).toBeDefined();
+
+    // Buttons inside column_set inside form - find any button with callback behavior
+    const columnSets = formElements.filter(e => e.tag === 'column_set');
+    expect(columnSets.length).toBeGreaterThan(0);
+
+    // Find all buttons across all column_sets
+    const allButtons: any[] = [];
+    for (const cs of columnSets) {
+      for (const col of cs.columns || []) {
+        for (const el of col.elements || []) {
+          if (el.tag === 'button') allButtons.push(el);
+        }
+      }
+    }
+    expect(allButtons.length).toBeGreaterThan(0);
+
+    // At least one button should have callback behavior (option buttons)
+    const callbackBtn = allButtons.find(b => b.behaviors?.[0]?.value?.action?.includes('askq'));
+    expect(callbackBtn).toBeDefined();
+  });
+
+  it('includes hidden _interaction_id input', () => {
+    const msg = formatter.formatQuestion('chat1', {
+      question: 'Test',
+      options: [{ label: 'A' }],
+      multiSelect: false,
+      permId: 'perm-xyz',
+      sessionId: 'sdk',
+    });
+
+    const formElements = getFormElements(msg as any);
+    const hiddenInput = formElements.find(e => e.tag === 'input' && e.name === '_interaction_id');
+    expect(hiddenInput).toBeDefined();
+    expect(hiddenInput!.default_value).toBe('perm-xyz');
+  });
+
+  it('uses form container for all components', () => {
+    const msg = formatter.formatQuestion('chat1', {
+      question: 'Test question',
+      options: [{ label: 'A' }, { label: 'B' }],
+      multiSelect: false,
+      permId: 'test-789',
+      sessionId: 'sdk',
+    });
+
+    const elements = getElements(msg as any);
+    const formContainer = elements.find(e => e.tag === 'form');
+    expect(formContainer).toBeDefined();
+    expect(formContainer!.name).toContain('form_');
+  });
+});
+
 describe('FeishuFormatter.formatProgress', () => {
   const formatter = new FeishuFormatter('zh');
 

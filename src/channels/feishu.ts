@@ -228,15 +228,44 @@ export class FeishuAdapter extends BaseChannelAdapter {
       },
     });
 
-    // Register card action handler for button callbacks (schema 2.0 cards)
+    // Register card action handler for button callbacks and form submissions (schema 2.0 cards)
     eventDispatcher.register({
       'card.action.trigger': async (data: unknown) => {
-        console.log('[feishu] card.action.trigger received:', JSON.stringify(data).slice(0, 300));
+        console.log('[feishu] card.action.trigger received:', JSON.stringify(data).slice(0, 500));
         const event = data as {
           operator?: { user_id?: string; open_id?: string };
-          action?: { value?: Record<string, string> };
+          action?: { value?: Record<string, string>; form_value?: Record<string, string> };
           context?: { chat_id?: string; open_chat_id?: string; open_message_id?: string };
         };
+
+        // Check for form submission (form_value present)
+        const formValue = event?.action?.form_value;
+        if (formValue && Object.keys(formValue).length > 0) {
+          // Form submission — extract interactionId and answers
+          const interactionId = formValue['_interaction_id'] || '';
+          const userId = event?.operator?.user_id || event?.operator?.open_id || '';
+          const chatId = event?.context?.chat_id || event?.context?.open_chat_id || '';
+          const messageId = event?.context?.open_message_id || '';
+
+          console.log('[feishu] Form submission:', interactionId, JSON.stringify(formValue));
+
+          this.messageQueue.push({
+            channelType: 'feishu',
+            chatId,
+            userId,
+            text: '',
+            callbackData: `form:${interactionId}:${JSON.stringify(formValue)}`,
+            messageId,
+          });
+          return {
+            toast: {
+              type: 'success',
+              content: '已提交',
+            },
+          };
+        }
+
+        // Button callback
         const action = event?.action?.value?.action;
         if (!action) {
           console.warn('[feishu] card.action.trigger: no action value found');

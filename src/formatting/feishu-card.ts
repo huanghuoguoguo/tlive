@@ -14,29 +14,53 @@ export interface FeishuCardOptions {
 export function buildFeishuButtonElements(buttons?: Button[]): FeishuCardElement[] {
   if (!buttons?.length) return [];
 
-  const makeButton = (btn: Button) => ({
-    tag: 'column' as const,
-    width: 'auto' as const,
-    vertical_align: 'top' as const,
-    elements: [{
-      tag: 'button' as const,
-      text: { tag: 'plain_text' as const, content: btn.label },
-      size: 'small' as const,
-      ...(btn.url
-        ? {
-            behaviors: [{ type: 'open_url' as const, default_url: btn.url }],
-            type: 'default' as const,
-          }
-        : {
-            type: btn.style === 'danger'
-              ? 'danger' as const
-              : btn.style === 'primary'
-                ? 'primary_filled' as const
-                : 'default' as const,
-            behaviors: [{ type: 'callback' as const, value: { action: btn.callbackData } }],
-          }),
-    }],
-  });
+  const makeButton = (btn: Button) => {
+    // Check if this is a form submit button (callbackData starts with 'form:')
+    const isFormSubmit = btn.callbackData?.startsWith('form:');
+    // Check if this is a form reset button
+    const isFormReset = btn.callbackData?.startsWith('form_reset:');
+
+    return {
+      tag: 'column' as const,
+      width: 'auto' as const,
+      vertical_align: 'top' as const,
+      elements: [{
+        tag: 'button' as const,
+        text: { tag: 'plain_text' as const, content: btn.label },
+        size: 'small' as const,
+        ...(btn.url
+          ? {
+              behaviors: [{ type: 'open_url' as const, default_url: btn.url }],
+              type: 'default' as const,
+            }
+          : isFormSubmit
+            ? {
+                // Form submit button - use form_action_type instead of behaviors
+                type: btn.style === 'primary'
+                  ? 'primary_filled' as const
+                  : btn.style === 'danger'
+                    ? 'danger' as const
+                    : 'default' as const,
+                form_action_type: 'submit' as const,
+                name: btn.callbackData?.slice('form:'.length) || 'submit',
+              }
+            : isFormReset
+              ? {
+                  type: 'default' as const,
+                  form_action_type: 'reset' as const,
+                  name: btn.callbackData?.slice('form_reset:'.length) || 'reset',
+                }
+              : {
+                  type: btn.style === 'danger'
+                    ? 'danger' as const
+                    : btn.style === 'primary'
+                      ? 'primary_filled' as const
+                      : 'default' as const,
+                  behaviors: [{ type: 'callback' as const, value: { action: btn.callbackData } }],
+                }),
+      }],
+    };
+  };
 
   const hasRows = buttons.some(button => button.row !== undefined);
   if (!hasRows) {

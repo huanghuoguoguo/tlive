@@ -285,28 +285,108 @@ export class FeishuFormatter extends MessageFormatter {
   override formatQuestion(chatId: string, data: QuestionData): OutboundMessage {
     const { question, options, multiSelect, permId, sessionId } = data;
 
-    const optionsList = options
-      .map((opt, i) => `${i + 1}. **${opt.label}**${opt.description ? ` — ${opt.description}` : ''}`)
-      .join('\n');
+    // Build form elements according to Feishu Card 2.0 spec
+    const formElements: FeishuElement[] = [];
 
-    const buttons: Button[] = multiSelect
-      ? this.buildMultiSelectButtons(permId, sessionId, options)
-      : this.buildSingleSelectButtons(permId, options);
+    // For single-select with many options, use select_static dropdown
+    const useSelectDropdown = !multiSelect && options.length > 4;
 
-    const hint = multiSelect
-      ? '点击选项切换勾选，然后点 Submit；也可以直接回复文字。'
-      : '可直接点选，也可以直接回复文字。';
+    if (useSelectDropdown) {
+      // Feishu select_static dropdown
+      formElements.push({
+        tag: 'select_static',
+        name: '_select',
+        placeholder: { tag: 'plain_text', content: '选择一个选项...' },
+        options: options.map(opt => ({
+          text: { tag: 'plain_text', content: opt.label },
+          value: opt.label,
+        })),
+        required: false,
+      } as FeishuElement);
+    }
 
-    const elements: FeishuElement[] = [
+    // Text input for free-form answers
+    formElements.push({
+      tag: 'input',
+      name: '_text_answer',
+      placeholder: { tag: 'plain_text', content: useSelectDropdown ? '或直接输入文字回答...' : '直接输入文字回答...' },
+      required: false,
+    } as FeishuElement);
+
+    // Hidden interaction ID input
+    formElements.push({
+      tag: 'input',
+      name: '_interaction_id',
+      placeholder: { tag: 'plain_text', content: '' },
+      required: false,
+      default_value: permId,
+    } as FeishuElement);
+
+    // Buttons based on mode
+    const formButtons: Button[] = [];
+
+    if (useSelectDropdown) {
+      // Submit + Skip buttons for dropdown mode
+      formButtons.push({
+        label: '✅ 提交',
+        callbackData: `form:${permId}`,
+        style: 'primary',
+        row: 0,
+      });
+      formButtons.push({
+        label: '⏭️ 跳过',
+        callbackData: `askq_skip:${permId}:${sessionId}`,
+        style: 'default',
+        row: 0,
+      });
+    } else if (multiSelect) {
+      // Multi-select uses toggle buttons + submit
+      formButtons.push(...this.buildMultiSelectButtons(permId, sessionId, options));
+    } else {
+      // Few options: direct option buttons
+      formButtons.push(...this.buildSingleSelectButtons(permId, options));
+      formButtons.push({
+        label: '⏭️ 跳过',
+        callbackData: `askq_skip:${permId}:${sessionId}`,
+        style: 'default',
+        row: Math.floor(options.length / 2),
+      });
+    }
+
+    // Build the card with form container
+    const cardElements: FeishuElement[] = [
       this.md(`**问题**\n${question}`),
-      this.md(`**选项**\n${optionsList}`),
-      this.md(`**说明**\n${hint}`),
     ];
+
+    if (!useSelectDropdown) {
+      // For non-dropdown modes, show options as markdown list
+      const optionsList = options
+        .map((opt, i) => `${i + 1}. **${opt.label}**${opt.description ? ` — ${opt.description}` : ''}`)
+        .join('\n');
+      cardElements.push(this.md(`**选项**\n${optionsList}`));
+      if (multiSelect) {
+        cardElements.push(this.md('💡 点击选项切换勾选，然后点提交。'));
+      } else {
+        cardElements.push(this.md('💡 点击选项或直接回复文字。'));
+      }
+    }
+
+    // Add form container with form elements and buttons
+    const formContainer: FeishuElement = {
+      tag: 'form',
+      name: `form_${permId}`,
+      elements: [
+        ...formElements,
+        ...buildFeishuButtonElements(formButtons) as unknown as FeishuElement[],
+      ],
+    };
+
+    cardElements.push(formContainer);
 
     return this.createCardMessage(chatId,
       { template: 'blue', title: '❓ 等待回答' },
-      elements,
-      buttons
+      cardElements,
+      undefined // buttons are inside form container
     );
   }
 
