@@ -412,32 +412,65 @@ export class FeishuFormatter extends MessageFormatter {
   }
 
   override formatHome(chatId: string, data: HomeData): OutboundMessage {
-    const statusText = data.hasActiveTask
-      ? '有任务正在执行，通常更适合先回到最近会话继续处理。'
-      : '当前没有执行中的任务，可从最近会话继续，也可开始新会话。';
+    // Header section: Bridge status
+    const bridgeStatus = data.bridgeHealthy ? '🟢 已连接' : '🔴 已断开';
+    const channels = data.activeChannels?.join(', ') || '无';
+    const taskStatus = data.hasActiveTask
+      ? '⏳ 有任务正在执行'
+      : '✅ 当前无执行任务';
 
+    const elements: FeishuElement[] = [
+      // Status overview panel
+      this.md(`**系统状态**\n${bridgeStatus} · 通道: ${channels}`),
+      this.md(`**任务状态**\n${taskStatus}`),
+      this.md(`**项目目录**\n\`${data.cwd}\``),
+      this.md(`**权限模式**\n${data.permissionMode === 'on' ? '🔐 开启审批' : '⚡ 关闭审批'}`),
+    ];
+
+    // Permission details (if relevant)
+    if (data.pendingPermission) {
+      elements.push(this.md(`**待处理审批**\n${data.pendingPermission.toolName}\n\`\`\`\n${truncate(data.pendingPermission.input, 180)}\n\`\`\``));
+    } else {
+      elements.push(this.md('**待处理审批**\n暂无'));
+    }
+
+    // Last permission decision
+    if (data.lastPermissionDecision) {
+      const decisionLabel = {
+        allow: '✅ 允许一次',
+        allow_always: '📌 本会话始终允许',
+        deny: '❌ 拒绝',
+        cancelled: '⏭ 已取消',
+      }[data.lastPermissionDecision.decision];
+      elements.push(this.md(`**最近审批**\n${data.lastPermissionDecision.toolName} → ${decisionLabel}`));
+    }
+
+    // Session whitelist count
+    if (data.sessionWhitelistCount && data.sessionWhitelistCount > 0) {
+      elements.push(this.md(`**会话白名单**\n已记忆 ${data.sessionWhitelistCount} 项工具/Bash 前缀`));
+    }
+
+    // Recent task summary
+    if (data.recentSummary) {
+      elements.push(this.md(`**最近任务**\n${truncate(data.recentSummary, 150)}`));
+    }
+
+    // Recent sessions
     const recentSessions = data.recentSessions?.length
       ? data.recentSessions
         .map(session => `${session.index}. ${session.date} · ${truncate(session.preview, 50)}${session.isCurrent ? ' ◀' : ''}`)
         .join('\n')
       : '暂无最近会话';
+    elements.push(this.md(`**最近会话**\n${recentSessions}`));
 
-    const elements: FeishuElement[] = [
-      this.md(`**当前状态**\n${statusText}`),
-      this.md(`**项目目录**\n${data.cwd}`),
-      this.md(`**权限模式**\n${data.permissionMode === 'on' ? '开启审批' : '关闭审批'}`),
-      this.md(data.recentSummary
-        ? `**最近一次任务**\n${truncate(data.recentSummary, 180)}`
-        : '**最近一次任务**\n暂无历史任务摘要'
-      ),
-      this.md(`**最近会话**\n${recentSessions}`),
-      this.md('**说明**\n"新会话"会清空当前飞书侧会话绑定；如果你只是想接着电脑上的工作做，优先用"最近会话"或"会话列表"。'),
-    ];
+    // Usage hint
+    elements.push(this.md('💡 点击下方按钮快速操作；也可直接发送消息让 AI 处理。'));
 
     const buttons: Button[] = [
       { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'primary' },
       { label: '🔐 权限设置', callbackData: 'cmd:perm', style: 'default' },
       { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default' },
+      { label: '📊 状态详情', callbackData: 'cmd:status', style: 'default' },
       { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default' },
     ];
 

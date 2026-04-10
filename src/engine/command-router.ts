@@ -100,6 +100,10 @@ export class CommandRouter {
     const chatKey = this.state.stateKey(channelType, chatId);
     const recentSessions = scanClaudeSessions(3, currentCwd);
 
+    // Get permission status info
+    const permStatus = this.permissions.getPermissionStatus(chatKey, binding?.sessionId);
+    const activeChannels = Array.from(this.getAdapters().keys());
+
     return {
       cwd: shortPath(currentCwd),
       hasActiveTask: this.activeControls.has(chatKey),
@@ -111,6 +115,12 @@ export class CommandRouter {
         preview: session.preview,
         isCurrent: binding?.sdkSessionId === session.sdkSessionId,
       })),
+      // Enhanced status overview
+      pendingPermission: permStatus.pending,
+      lastPermissionDecision: permStatus.lastDecision,
+      sessionWhitelistCount: permStatus.rememberedTools + permStatus.rememberedBashPrefixes,
+      bridgeHealthy: activeChannels.length > 0,
+      activeChannels,
     };
   }
 

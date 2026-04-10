@@ -54,6 +54,22 @@ export interface HomeData {
     preview: string;
     isCurrent: boolean;
   }>;
+  /** Pending permission request (if any) */
+  pendingPermission?: {
+    toolName: string;
+    input: string;
+  };
+  /** Last permission decision */
+  lastPermissionDecision?: {
+    toolName: string;
+    decision: 'allow' | 'allow_always' | 'deny' | 'cancelled';
+  };
+  /** Number of remembered tools/Bash prefixes in session whitelist */
+  sessionWhitelistCount?: number;
+  /** Bridge connection status */
+  bridgeHealthy?: boolean;
+  /** Active channels */
+  activeChannels?: string[];
 }
 
 /** Permission status card for /perm command */

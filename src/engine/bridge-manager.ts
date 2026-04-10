@@ -283,6 +283,28 @@ export class BridgeManager {
   }
 
   async handleInboundMessage(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
+    // Menu events: fallback to user's last active chat
+    if (!msg.chatId && msg.userId) {
+      const userLastChat = this.state.getUserLastChat(msg.userId);
+      if (userLastChat && userLastChat.channelType === adapter.channelType) {
+        console.log(`[${adapter.channelType}] Menu event: fallback to user's last chat ${userLastChat.chatId}`);
+        msg = { ...msg, chatId: userLastChat.chatId };
+      } else {
+        // No recent chat for this user — send guidance message
+        console.log(`[${adapter.channelType}] Menu event: no recent chat for user ${msg.userId}`);
+        // Try to get a fallback chatId from channel's last active record
+        const fallbackChatId = this.ingress.getLastChatId(adapter.channelType);
+        if (fallbackChatId) {
+          msg = { ...msg, chatId: fallbackChatId };
+        } else {
+          // Cannot send message — skip this menu event
+          console.warn(`[${adapter.channelType}] Menu event dropped: no chat context available`);
+          return false;
+        }
+      }
+    }
+
+    // Callback without chatId: fallback to last active chat for this channel
     if (msg.callbackData && !msg.chatId) {
       const fallbackChatId = this.ingress.getLastChatId(adapter.channelType);
       if (fallbackChatId) {
@@ -313,6 +335,11 @@ export class BridgeManager {
         }
       }
       return false;
+    }
+
+    // Track user's last active chat (for menu fallback)
+    if (msg.chatId && msg.userId) {
+      this.state.setUserLastChat(msg.userId, adapter.channelType, msg.chatId);
     }
 
     // Track last active chatId per channel type (used for hook notification routing)
