@@ -129,6 +129,7 @@ export class QueryOrchestrator {
             todoItems: state.todoItems,
             thinkingText: state.thinkingText,
             toolLogs: state.toolLogs,
+            timeline: state.timeline,
             actionButtons: buttons?.length
               ? buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
               : undefined,

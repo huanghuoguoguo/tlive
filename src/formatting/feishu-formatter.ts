@@ -279,29 +279,29 @@ export class FeishuFormatter extends MessageFormatter {
 
     if (isDone) {
       // Completed/failed: show response text directly, minimal chrome
-      // Note: footerLine is already included in renderedText by MessageRenderer.renderDone()
       if (data.renderedText.trim()) {
         elements.push(this.md(downgradeHeadings(truncate(data.renderedText, 3000))));
       }
+    } else if (data.phase === 'waiting_permission' && data.permission) {
+      // Permission: show what's being waited on
+      const extraQueue = data.permission.queueLength > 1 ? `\n待处理审批：${data.permission.queueLength} 个` : '';
+      elements.push(this.md(
+        `**当前等待**\n${data.permission.toolName}\n\`\`\`\n${truncate(data.permission.input, 260)}\n\`\`\`${extraQueue}`
+      ));
+      elements.push(this.md(`**运行时长** ${data.elapsedSeconds}s`));
     } else {
-      // In-progress: show status info
-      const summaryLines: string[] = [];
-      if (data.phase === 'waiting_permission' && data.permission) {
-        const extraQueue = data.permission.queueLength > 1 ? `\n待处理审批：${data.permission.queueLength} 个` : '';
-        summaryLines.push(
-          `**当前等待**\n${data.permission.toolName}\n\`\`\`\n${truncate(data.permission.input, 260)}\n\`\`\`${extraQueue}`
-        );
-      } else if (data.currentTool?.input) {
-        const currentElapsed = data.currentTool.elapsed > 0 ? ` · ${data.currentTool.elapsed}s` : '';
-        summaryLines.push(`**最近动作**\n${data.currentTool.name}: ${truncate(data.currentTool.input, 140)}${currentElapsed}`);
-      } else if (data.totalTools > 0 && data.toolSummary) {
-        summaryLines.push(truncate(data.toolSummary, 180));
+      // In-progress: nothing here — timeline handles the content below
+      if (!data.timeline?.length) {
+        // Fallback for no timeline data
+        if (data.currentTool?.input) {
+          const currentElapsed = data.currentTool.elapsed > 0 ? ` · ${data.currentTool.elapsed}s` : '';
+          elements.push(this.md(`**最近动作**\n${data.currentTool.name}: ${truncate(data.currentTool.input, 140)}${currentElapsed}`));
+        }
+        elements.push(this.md(`**运行时长** ${data.elapsedSeconds}s`));
       }
-      summaryLines.push(`**运行时长** ${data.elapsedSeconds}s`);
-      elements.push(this.md(summaryLines.join('\n\n')));
     }
 
-    // Todo progress (both in-progress and done)
+    // Todo progress
     if (data.todoItems.length > 0) {
       const done = data.todoItems.filter(item => item.status === 'completed').length;
       const todoLines = data.todoItems.slice(0, 5).map(item => {
@@ -311,30 +311,69 @@ export class FeishuFormatter extends MessageFormatter {
       elements.push(this.md(`**工作进度** (${done}/${data.todoItems.length})\n${todoLines.join('\n')}`));
     }
 
-    // Collapsible thinking process panel
-    if (data.thinkingText?.trim()) {
-      elements.push({
-        tag: 'collapsible_panel',
-        expanded: false,
-        header: { title: { tag: 'plain_text', content: '💭 思考过程' } },
-        elements: [{ tag: 'markdown', content: truncate(data.thinkingText.trim(), 1500) }],
-      });
-    }
-
-    // Collapsible tool call details panel
-    if (data.toolLogs?.length) {
-      const logLines = data.toolLogs.map(log => {
-        const icon = log.isError ? '❌' : '✅';
-        const status = log.result !== undefined ? icon : '⏳';
-        const resultLine = log.result ? `\n   → ${truncate(log.result, 120)}` : '';
-        return `${status} **${log.name}**: ${truncate(log.input || '(no input)', 100)}${resultLine}`;
-      });
-      elements.push({
-        tag: 'collapsible_panel',
-        expanded: false,
-        header: { title: { tag: 'plain_text', content: `🔧 工具调用 (${data.toolLogs.length})` } },
-        elements: [{ tag: 'markdown', content: truncate(logLines.join('\n'), 2000) }],
-      });
+    // Timeline: interleaved thinking, text, and tool calls
+    if (data.timeline?.length) {
+      // Budget: limit total elements to avoid huge cards
+      let budget = 3000;
+      for (const entry of data.timeline) {
+        if (budget <= 0) break;
+        if (entry.kind === 'thinking' && entry.text?.trim()) {
+          const content = truncate(entry.text.trim(), Math.min(budget, 1500));
+          budget -= content.length;
+          elements.push({
+            tag: 'collapsible_panel',
+            expanded: false,
+            header: { title: { tag: 'plain_text', content: '💭 思考过程' } },
+            elements: [{ tag: 'markdown', content }],
+          });
+        } else if (entry.kind === 'text' && entry.text?.trim()) {
+          const content = truncate(downgradeHeadings(entry.text.trim()), Math.min(budget, 1500));
+          budget -= content.length;
+          elements.push(this.md(content));
+        } else if (entry.kind === 'tool' && entry.toolName) {
+          const icon = entry.isError ? '❌' : entry.toolResult !== undefined ? '✅' : '⏳';
+          const resultLine = entry.toolResult ? `\n→ ${truncate(entry.toolResult, 120)}` : '';
+          const content = `${truncate(entry.toolInput || '(no input)', 200)}${resultLine}`;
+          budget -= content.length;
+          elements.push({
+            tag: 'collapsible_panel',
+            expanded: false,
+            header: { title: { tag: 'plain_text', content: `${icon} ${entry.toolName}` } },
+            elements: [{ tag: 'markdown', content }],
+          });
+        }
+      }
+      // Status line at the bottom
+      if (!isDone) {
+        const statusParts: string[] = [];
+        if (data.totalTools > 0) statusParts.push(`${data.totalTools} tools`);
+        statusParts.push(`${data.elapsedSeconds}s`);
+        elements.push(this.md(`⏳ ${statusParts.join(' · ')}`));
+      }
+    } else if (!data.timeline?.length) {
+      // Legacy fallback: separate thinking + tool panels (when no timeline data)
+      if (data.thinkingText?.trim()) {
+        elements.push({
+          tag: 'collapsible_panel',
+          expanded: false,
+          header: { title: { tag: 'plain_text', content: '💭 思考过程' } },
+          elements: [{ tag: 'markdown', content: truncate(data.thinkingText.trim(), 1500) }],
+        });
+      }
+      if (data.toolLogs?.length) {
+        const logLines = data.toolLogs.map(log => {
+          const icon = log.isError ? '❌' : '✅';
+          const status = log.result !== undefined ? icon : '⏳';
+          const resultLine = log.result ? `\n   → ${truncate(log.result, 120)}` : '';
+          return `${status} **${log.name}**: ${truncate(log.input || '(no input)', 100)}${resultLine}`;
+        });
+        elements.push({
+          tag: 'collapsible_panel',
+          expanded: false,
+          header: { title: { tag: 'plain_text', content: `🔧 工具调用 (${data.toolLogs.length})` } },
+          elements: [{ tag: 'markdown', content: truncate(logLines.join('\n'), 2000) }],
+        });
+      }
     }
 
     const buttons = data.actionButtons?.length ? data.actionButtons : this.defaultProgressButtons(data.phase);

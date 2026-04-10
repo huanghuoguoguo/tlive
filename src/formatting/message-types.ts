@@ -104,6 +104,8 @@ export interface ProgressData {
   thinkingText?: string;
   /** Tool call history with input/result details */
   toolLogs?: Array<{ name: string; input: string; result?: string; isError?: boolean }>;
+  /** Ordered interleaved timeline of thinking, text, and tool calls */
+  timeline?: Array<{ kind: 'thinking' | 'text' | 'tool'; text?: string; toolName?: string; toolInput?: string; toolResult?: string; isError?: boolean }>;
   /** Override buttons (e.g., permission-specific). Formatters derive defaults from phase when absent. */
   actionButtons?: Button[];
 }

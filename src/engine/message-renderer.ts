@@ -69,6 +69,18 @@ export interface ToolLogEntry {
   isError?: boolean;
 }
 
+/** Ordered timeline entry — interleaves text output with tool calls */
+export interface TimelineEntry {
+  kind: 'thinking' | 'text' | 'tool';
+  /** For thinking/text entries */
+  text?: string;
+  /** For tool entries */
+  toolName?: string;
+  toolInput?: string;
+  toolResult?: string;
+  isError?: boolean;
+}
+
 export interface MessageRendererState {
   phase: 'starting' | 'executing' | 'waiting_permission' | 'completed' | 'failed';
   renderedText: string;
@@ -82,6 +94,8 @@ export interface MessageRendererState {
   todoItems: Array<{ content: string; status: TodoStatus }>;
   thinkingText: string;
   toolLogs: ToolLogEntry[];
+  /** Ordered interleaved timeline of text + tool calls */
+  timeline: TimelineEntry[];
   permission?: {
     toolName: string;
     input: string;
@@ -107,6 +121,12 @@ export class MessageRenderer {
   private toolLogs: ToolLogEntry[] = [];
   /** Map tool use ID to toolLogs index */
   private toolIdToLogIndex = new Map<string, number>();
+  /** Ordered timeline — interleaves thinking, text, and tool entries */
+  private timeline: TimelineEntry[] = [];
+  /** Map tool use ID to timeline index (for updating results) */
+  private toolIdToTimelineIndex = new Map<string, number>();
+  /** Whether the last timeline entry is a text entry (for appending) */
+  private lastTimelineIsText = false;
 
   private _messageId?: string;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -165,6 +185,14 @@ export class MessageRenderer {
 
   onThinkingDelta(text: string): void {
     this.thinkingText += text;
+    // Append to timeline: merge into existing thinking entry or create new one
+    const last = this.timeline[this.timeline.length - 1];
+    if (last?.kind === 'thinking') {
+      last.text = (last.text || '') + text;
+    } else {
+      this.timeline.push({ kind: 'thinking', text });
+    }
+    this.lastTimelineIsText = false;
     this.scheduleFlush();
   }
 
@@ -187,6 +215,18 @@ export class MessageRenderer {
     if (toolUseId) {
       this.toolIdToLogIndex.set(toolUseId, logIndex);
     }
+
+    // Add to timeline
+    const tlIdx = this.timeline.length;
+    this.timeline.push({
+      kind: 'tool',
+      toolName: name,
+      toolInput: this.formatToolInput(name, input),
+    });
+    if (toolUseId) {
+      this.toolIdToTimelineIndex.set(toolUseId, tlIdx);
+    }
+    this.lastTimelineIsText = false;
 
     // Start elapsed timer on first tool
     if (!this.elapsedTimer) {
@@ -271,6 +311,13 @@ export class MessageRenderer {
       this.toolLogs[logIndex].result = preview;
       this.toolLogs[logIndex].isError = isError;
     }
+    // Also update timeline entry
+    const tlIdx = this.toolIdToTimelineIndex.get(toolUseId);
+    if (tlIdx !== undefined && tlIdx < this.timeline.length) {
+      const entry = this.timeline[tlIdx];
+      entry.toolResult = isError ? `❌ ${truncate(content, 200)}` : truncate(content, 200);
+      entry.isError = isError;
+    }
   }
 
   onPermissionNeeded(
@@ -352,6 +399,14 @@ export class MessageRenderer {
 
   onTextDelta(text: string): void {
     this.responseText += text;
+    // Append to timeline: merge into existing text entry or create new one
+    if (this.lastTimelineIsText) {
+      const last = this.timeline[this.timeline.length - 1];
+      last.text = (last.text || '') + text;
+    } else {
+      this.timeline.push({ kind: 'text', text });
+      this.lastTimelineIsText = true;
+    }
     // Update task summary from first meaningful text (cache trim to avoid double call)
     if (!this.taskSummary) {
       const trimmed = this.responseText.trim();
@@ -446,6 +501,7 @@ export class MessageRenderer {
       todoItems: [...this.todoItems],
       thinkingText: this.thinkingText,
       toolLogs: [...this.toolLogs],
+      timeline: this.timeline.map(e => ({ ...e })),
       permission: currentPermission
         ? {
             toolName: currentPermission.toolName,
