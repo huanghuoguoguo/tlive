@@ -24,6 +24,10 @@ export interface MessageRendererOptions {
   ) => Promise<string | undefined>;
   /** Called when permission waits >60s without response */
   onPermissionTimeout?: (toolName: string, input: string, buttons: Array<{ label: string; callbackData: string; style: string }>) => void;
+  /** Called when permission is first requested — add reaction to progress message */
+  onPermissionReaction?: () => void;
+  /** Called when all permissions resolved — remove permission reaction */
+  onPermissionReactionClear?: () => void;
   /** Called when no progress for >30s during execution — add reaction to progress message */
   onProgressStalled?: () => void;
   /** Called when progress resumes after stall — remove reaction */
@@ -105,10 +109,6 @@ export class MessageRenderer {
   private toolIdToLogIndex = new Map<string, number>();
 
   private _messageId?: string;
-  /** Saved messageId before permission request - restored after permission resolved */
-  private _savedMessageId?: string;
-  /** MessageId of the permission request message (for editing if queue has more) */
-  private _permissionMessageId?: string;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private elapsedTimer: ReturnType<typeof setInterval> | null = null;
   private permissionTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
@@ -123,6 +123,8 @@ export class MessageRenderer {
   private throttleMs: number;
   private flushCallback: MessageRendererOptions['flushCallback'];
   private onPermissionTimeout?: MessageRendererOptions['onPermissionTimeout'];
+  private onPermissionReaction?: MessageRendererOptions['onPermissionReaction'];
+  private onPermissionReactionClear?: MessageRendererOptions['onPermissionReactionClear'];
   private flushing = false;
   private pendingFlush = false;
   private cwd?: string;
@@ -151,6 +153,8 @@ export class MessageRenderer {
     this.throttleMs = options.throttleMs ?? 300;
     this.flushCallback = options.flushCallback;
     this.onPermissionTimeout = options.onPermissionTimeout;
+    this.onPermissionReaction = options.onPermissionReaction;
+    this.onPermissionReactionClear = options.onPermissionReactionClear;
     this.onProgressStalled = options.onProgressStalled;
     this.onProgressResumed = options.onProgressResumed;
     this.cwd = options.cwd;
@@ -278,18 +282,12 @@ export class MessageRenderer {
     this.permissionQueue.push({ toolName, input, permId, buttons });
     // Clear progress timeout during permission wait - user needs to act
     this.clearProgressTimeout();
-    // Only start timeout for the first permission (the one being displayed)
     if (this.permissionQueue.length === 1) {
-      // Save current messageId and clear it to force new message for permission request
-      if (this._messageId && !this._savedMessageId) {
-        this._savedMessageId = this._messageId;
-        this._messageId = undefined;
-      }
       this.startPermissionTimeout();
-    } else if (this.permissionQueue.length > 1 && this._permissionMessageId) {
-      // More permissions pending after first - edit the permission message
-      this._messageId = this._permissionMessageId;
+      // Add 🔐 reaction to notify user
+      this.onPermissionReaction?.();
     }
+    this.forceFlush = true;
     this.scheduleFlush();
   }
 
@@ -299,29 +297,17 @@ export class MessageRenderer {
       const idx = this.permissionQueue.findIndex(p => p.permId === permId);
       if (idx !== -1) this.permissionQueue.splice(idx, 1);
     } else {
-      // No permId: remove the head (currently displayed one)
       this.permissionQueue.shift();
     }
-    // Restart timeout for next permission in queue
     this.clearPermissionTimeout();
     if (this.permissionQueue.length > 0) {
-      // More permissions pending - use permission message id to edit
-      if (this._permissionMessageId) {
-        this._messageId = this._permissionMessageId;
-      } else {
-        this._messageId = undefined;
-      }
       this.startPermissionTimeout();
     } else {
-      // No more permissions - restore saved messageId for execution progress
-      if (this._savedMessageId) {
-        this._messageId = this._savedMessageId;
-        this._savedMessageId = undefined;
-      }
-      this._permissionMessageId = undefined;
-      // Restart progress timeout
+      // All permissions resolved — clear reaction, restart progress
+      this.onPermissionReactionClear?.();
       this.startProgressTimeout();
     }
+    this.forceFlush = true;
     this.scheduleFlush();
   }
 
@@ -688,10 +674,6 @@ export class MessageRenderer {
         }
       }
       if (!isEdit && typeof result === 'string') {
-        // If we're in permission phase with saved messageId, this is a permission message
-        if (this._savedMessageId) {
-          this._permissionMessageId = result;
-        }
         this._messageId = result;
       }
     } finally {

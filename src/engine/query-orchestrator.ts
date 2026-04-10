@@ -59,9 +59,6 @@ export class QueryOrchestrator {
     adapter.addReaction(reactionChatId, msg.messageId, reactions.processing).catch(() => {});
 
     let feishuSession: import('../channels/feishu-streaming.js').FeishuStreamingSession | null = null;
-    let permissionReminderMsgId: string | undefined;
-    let permissionReminderTool: string | undefined;
-    let permissionReminderInput: string | undefined;
     let stalledReactionAdded = false;
     const renderer = new MessageRenderer({
       platformLimit: PLATFORM_LIMITS[adapter.channelType as ChannelType] ?? 4096,
@@ -71,17 +68,25 @@ export class QueryOrchestrator {
       sessionId: binding.sdkSessionId,
       verboseLevel,
       onPermissionTimeout: async (toolName, input, buttons) => {
-        permissionReminderTool = toolName;
-        permissionReminderInput = input;
-        const text = `⚠️ Permission pending — ${toolName}: ${permissionReminderInput}`;
+        // 60s timeout: send a separate reminder message as backup notification
+        const text = `⚠️ Permission pending — ${toolName}: ${truncate(input, 100)}`;
         const outMsg = adapter.formatContent(msg.chatId, text,
           buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
         );
-        try {
-          const result = await adapter.send(outMsg);
-          permissionReminderMsgId = result.messageId;
-        } catch {
-          // Non-fatal.
+        adapter.send(outMsg).catch(() => {});
+      },
+      onPermissionReaction: () => {
+        // Add 🔐 reaction on the progress message to notify user
+        const progressMsgId = renderer.messageId;
+        if (progressMsgId) {
+          adapter.addReaction(msg.chatId, progressMsgId, reactions.permission).catch(() => {});
+        }
+      },
+      onPermissionReactionClear: () => {
+        // Replace permission reaction with processing reaction
+        const progressMsgId = renderer.messageId;
+        if (progressMsgId) {
+          adapter.addReaction(msg.chatId, progressMsgId, reactions.processing).catch(() => {});
         }
       },
       onProgressStalled: () => {
@@ -215,16 +220,6 @@ export class QueryOrchestrator {
           });
           signal?.removeEventListener('abort', abortCleanup);
           renderer.onPermissionResolved(permId);
-
-          if (permissionReminderMsgId) {
-            const icon = result.behavior === 'deny' ? '❌' : '✅';
-            const label = `${permissionReminderTool}: ${permissionReminderInput} ${icon}`;
-            adapter.editMessage(msg.chatId, permissionReminderMsgId, {
-              chatId: msg.chatId,
-              text: label,
-            }).catch(() => {});
-            permissionReminderMsgId = undefined;
-          }
 
           this.options.permissions.clearPendingSdkPerm(chatKey);
           console.log(`[bridge] Permission resolved: ${toolName} (${permId}) → ${result.behavior}`);
