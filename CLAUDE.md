@@ -98,7 +98,8 @@ gh release create v0.x.x
 npm run build          # 构建
 npm test               # 运行测试
 npm start              # 构建并启动 bridge（开发用，替代 tlive start）
-npm run dev            # watch 模式自动重编译
+npm run dev            # watch 模式自动重编译（不重启进程）
+npm run dev:hot        # 热更新模式：编译 + 自动重启（推荐开发时使用）
 
 # 生产（全局安装后）
 tlive start            # 启动 Bridge
@@ -107,4 +108,4 @@ tlive logs             # 查看日志
 tlive doctor           # 诊断问题
 ```
 
-> **注意**：开发调试时用 `npm start`，不要用 `tlive start`。后者启动的是全局安装的版本，不是当前工作区的代码。
+> **注意**：开发调试时用 `npm run dev:hot`（热更新）或 `npm start`。不要用 `tlive start`，后者启动的是全局安装的版本，不是当前工作区的代码。
