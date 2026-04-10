@@ -94,11 +94,8 @@ describe('MessageRenderer', () => {
     it('throttles flushes at the configured interval', async () => {
       const r = createRenderer();
       r.onToolStart('Bash');
-      // At 100ms — no flush yet (300ms throttle hasn't expired)
-      await advance(100);
-      expect(flushCallback).not.toHaveBeenCalled();
-      // At 300ms — throttle fires, first flush
-      await advance(200);
+      // First card should flush immediately before the message exists.
+      await advance(0);
       expect(flushCallback).toHaveBeenCalledTimes(1);
       // Subsequent tool starts are also throttled
       r.onToolStart('Read');
@@ -109,6 +106,21 @@ describe('MessageRenderer', () => {
       r.dispose();
     });
 
+    it('flushes the first progress card immediately before throttling later updates', async () => {
+      const r = createRenderer();
+      r.onThinkingDelta('Thinking...');
+      await advance(0);
+      expect(flushCallback).toHaveBeenCalledTimes(1);
+      expect(flushCallback.mock.calls[0][1]).toBe(false);
+
+      r.onToolStart('Bash');
+      await advance(100);
+      expect(flushCallback).toHaveBeenCalledTimes(1);
+      await advance(200);
+      expect(flushCallback).toHaveBeenCalledTimes(2);
+      r.dispose();
+    });
+
     it('shows elapsed time in seconds', async () => {
       const r = createRenderer();
       r.onToolStart('Bash');
@@ -116,6 +128,23 @@ describe('MessageRenderer', () => {
       await advance(3500);
       const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
       expect(content).toContain('3s');
+      r.dispose();
+    });
+
+    it('flushes when tool output arrives so rich cards can show output before completion', async () => {
+      const r = createRenderer();
+      r.onToolStart('Bash', { command: 'df -h' }, 'tool-1');
+      await advance(0);
+      expect(flushCallback).toHaveBeenCalledTimes(1);
+
+      r.onToolResult('tool-1', 'Filesystem  Size  Used', false);
+      await advance(300);
+      expect(flushCallback).toHaveBeenCalledTimes(2);
+
+      const lastCall = flushCallback.mock.calls[1];
+      const state = lastCall[3] as any;
+      expect(state.timeline[0].toolName).toBe('Bash');
+      expect(state.timeline[0].toolResult).toContain('Filesystem');
       r.dispose();
     });
 
@@ -150,7 +179,7 @@ describe('MessageRenderer', () => {
       const r = createRenderer();
       r.onToolStart('Bash');
       r.onPermissionNeeded('Bash', 'npm test -- schema.test.ts', 'perm-1', defaultButtons);
-      await advance(300);
+      await advance(0);
       const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
       expect(content).toContain('🔐');
       expect(content).toContain('Bash');
@@ -162,7 +191,7 @@ describe('MessageRenderer', () => {
       const r = createRenderer(4096, 300, undefined, undefined, 0);
       r.onToolStart('Bash');
       r.onPermissionNeeded('Bash', 'npm test -- schema.test.ts', 'perm-1', defaultButtons);
-      await advance(300);
+      await advance(0);
       expect(flushCallback).toHaveBeenCalledTimes(1);
       const content = flushCallback.mock.calls[0][0] as string;
       expect(content).toContain('🔐');
@@ -173,7 +202,7 @@ describe('MessageRenderer', () => {
       const r = createRenderer();
       r.onToolStart('Bash');
       r.onPermissionNeeded('Bash', 'rm -rf /', 'perm-1', defaultButtons);
-      await advance(300);
+      await advance(0);
       const lastCall = flushCallback.mock.calls[flushCallback.mock.calls.length - 1];
       expect(lastCall[2]).toEqual(defaultButtons);
       r.dispose();
@@ -184,7 +213,7 @@ describe('MessageRenderer', () => {
       const longInput = 'a'.repeat(200);
       r.onToolStart('Bash');
       r.onPermissionNeeded('Bash', longInput, 'perm-1', defaultButtons);
-      await advance(300);
+      await advance(0);
       const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
       expect(content).toContain(longInput);
       r.dispose();

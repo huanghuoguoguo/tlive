@@ -21,7 +21,6 @@
     "scripts/statusline.mjs",
     "scripts/statusline.sh",
     "scripts/doctor.sh",
-    "scripts/install.sh",
     "dist/",
     "SKILL.md",
     "references/",

@@ -84,9 +84,86 @@ describe('FeishuFormatter.formatProgress', () => {
       expect(allText).toContain('npm test');
       expect(allText).toContain('12s');
     });
+
+    it('shows tool output in an expanded panel while still executing', () => {
+      const msg = formatter.formatProgress('chat1', createProgressData({
+        phase: 'executing',
+        elapsedSeconds: 6,
+        totalTools: 1,
+        timeline: [
+          {
+            kind: 'tool',
+            toolName: 'Bash',
+            toolInput: 'df -h / /mnt/c /mnt/d /mnt/e 2>/dev/null',
+            toolResult: 'Filesystem  Size  Used  Avail',
+          },
+        ],
+      }));
+
+      const elements = getElements(msg);
+      const panels = findByTag(elements, 'collapsible_panel');
+      expect(panels).toHaveLength(1);
+      expect(panels[0].expanded).toBe(true);
+      expect(panels[0].header.title.content).toContain('Bash');
+      expect(panels[0].elements[0].content).toContain('df -h');
+      expect(panels[0].elements[0].content).toContain('Filesystem');
+    });
   });
 
   describe('collapsible_panel — correct structure per Feishu Card 2.0 docs', () => {
+    it('keeps thinking and tool panels above the final response in completed cards', () => {
+      const msg = formatter.formatProgress('chat1', createProgressData({
+        phase: 'completed',
+        renderedText: 'Final answer',
+        timeline: [
+          { kind: 'thinking', text: 'Plan the change' },
+          { kind: 'tool', toolName: 'Read', toolInput: 'src/main.ts', toolResult: 'ok' },
+          { kind: 'text', text: 'intermediate text that should be skipped in completed mode' },
+        ],
+      }));
+
+      const elements = getElements(msg);
+      expect(elements[0].tag).toBe('collapsible_panel');
+      expect(elements[0].header.title.content).toContain('思考');
+      expect(elements[1].tag).toBe('collapsible_panel');
+      expect(elements[1].header.title.content).toContain('Read');
+      expect(elements[2].tag).toBe('markdown');
+      expect(elements[2].content).toContain('Final answer');
+    });
+
+    it('merges repeated thinking blocks and duplicate tool panels in completed cards', () => {
+      const msg = formatter.formatProgress('chat1', createProgressData({
+        phase: 'completed',
+        renderedText: 'Final answer\n───────────────\n🖥️ Bash ×2 (2 total)\n[glm-5] │ ~/workspace/tlive │ #ea22',
+        toolSummary: '🖥️ Bash ×2 (2 total)',
+        footerLine: '[glm-5] │ ~/workspace/tlive │ #ea22',
+        timeline: [
+          { kind: 'thinking', text: '用户想查看磁盘使用情况。' },
+          { kind: 'tool', toolName: 'Bash', toolInput: 'df -h / /mnt/c /mnt/d /mnt/e 2>/dev/null' },
+          { kind: 'tool', toolName: 'Bash', toolInput: 'df -h / /mnt/c /mnt/d /mnt/e 2>/dev/null', toolResult: 'Filesystem  Size  Used  Avail' },
+          { kind: 'thinking', text: '显示磁盘使用情况表格。' },
+        ],
+      }));
+
+      const elements = getElements(msg);
+      const panels = findByTag(elements, 'collapsible_panel');
+      expect(panels).toHaveLength(2);
+
+      const thinkingPanel = panels[0];
+      expect(thinkingPanel.header.title.content).toContain('思考');
+      expect(thinkingPanel.elements[0].content).toContain('用户想查看磁盘使用情况。');
+      expect(thinkingPanel.elements[0].content).toContain('显示磁盘使用情况表格。');
+
+      const bashPanel = panels[1];
+      expect(bashPanel.header.title.content).toContain('Bash');
+      expect(bashPanel.elements[0].content).toContain('Filesystem');
+
+      const markdowns = findByTag(elements, 'markdown').map(e => e.content).join('\n');
+      expect(markdowns).toContain('Final answer');
+      expect(markdowns).not.toContain('🖥️ Bash ×2 (2 total)');
+      expect(markdowns).toContain('~/workspace/tlive');
+    });
+
     it('thinking panel uses elements array (not body.elements)', () => {
       const msg = formatter.formatProgress('chat1', createProgressData({
         phase: 'completed',

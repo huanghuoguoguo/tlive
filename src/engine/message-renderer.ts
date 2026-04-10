@@ -24,8 +24,14 @@ export interface MessageRendererOptions {
   ) => Promise<string | undefined>;
   /** Called when permission waits >60s without response */
   onPermissionTimeout?: (toolName: string, input: string, buttons: Array<{ label: string; callbackData: string; style: string }>) => void;
-  /** Called when no progress for >30s during execution (Feishu intermediate update) */
-  onProgressTimeout?: (summary: { taskSummary: string; elapsedSeconds: number; currentTool?: { name: string; input: string } }) => void;
+  /** Called when permission is first requested — add reaction to progress message */
+  onPermissionReaction?: () => void;
+  /** Called when all permissions resolved — remove permission reaction */
+  onPermissionReactionClear?: () => void;
+  /** Called when no progress for >30s during execution — add reaction to progress message */
+  onProgressStalled?: () => void;
+  /** Called when progress resumes after stall — remove reaction */
+  onProgressResumed?: () => void;
 }
 
 /** Tools silently ignored — never counted or displayed */
@@ -63,6 +69,18 @@ export interface ToolLogEntry {
   isError?: boolean;
 }
 
+/** Ordered timeline entry — interleaves text output with tool calls */
+export interface TimelineEntry {
+  kind: 'thinking' | 'text' | 'tool';
+  /** For thinking/text entries */
+  text?: string;
+  /** For tool entries */
+  toolName?: string;
+  toolInput?: string;
+  toolResult?: string;
+  isError?: boolean;
+}
+
 export interface MessageRendererState {
   phase: 'starting' | 'executing' | 'waiting_permission' | 'completed' | 'failed';
   renderedText: string;
@@ -76,6 +94,8 @@ export interface MessageRendererState {
   todoItems: Array<{ content: string; status: TodoStatus }>;
   thinkingText: string;
   toolLogs: ToolLogEntry[];
+  /** Ordered interleaved timeline of text + tool calls */
+  timeline: TimelineEntry[];
   permission?: {
     toolName: string;
     input: string;
@@ -101,12 +121,14 @@ export class MessageRenderer {
   private toolLogs: ToolLogEntry[] = [];
   /** Map tool use ID to toolLogs index */
   private toolIdToLogIndex = new Map<string, number>();
+  /** Ordered timeline — interleaves thinking, text, and tool entries */
+  private timeline: TimelineEntry[] = [];
+  /** Map tool use ID to timeline index (for updating results) */
+  private toolIdToTimelineIndex = new Map<string, number>();
+  /** Whether the last timeline entry is a text entry (for appending) */
+  private lastTimelineIsText = false;
 
   private _messageId?: string;
-  /** Saved messageId before permission request - restored after permission resolved */
-  private _savedMessageId?: string;
-  /** MessageId of the permission request message (for editing if queue has more) */
-  private _permissionMessageId?: string;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private elapsedTimer: ReturnType<typeof setInterval> | null = null;
   private permissionTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
@@ -121,13 +143,18 @@ export class MessageRenderer {
   private throttleMs: number;
   private flushCallback: MessageRendererOptions['flushCallback'];
   private onPermissionTimeout?: MessageRendererOptions['onPermissionTimeout'];
+  private onPermissionReaction?: MessageRendererOptions['onPermissionReaction'];
+  private onPermissionReactionClear?: MessageRendererOptions['onPermissionReactionClear'];
   private flushing = false;
   private pendingFlush = false;
   private cwd?: string;
   private model?: string;
   private sessionId?: string;
   private verboseLevel: VerboseLevel;
-  private onProgressTimeout?: MessageRendererOptions['onProgressTimeout'];
+  private onProgressStalled?: MessageRendererOptions['onProgressStalled'];
+  private onProgressResumed?: MessageRendererOptions['onProgressResumed'];
+  /** Whether progress is currently stalled (reaction added) */
+  private progressStalled = false;
   /** Last rendered content - for change detection */
   private lastRenderedContent = '';
   /** Force next flush regardless of content change */
@@ -146,7 +173,10 @@ export class MessageRenderer {
     this.throttleMs = options.throttleMs ?? 300;
     this.flushCallback = options.flushCallback;
     this.onPermissionTimeout = options.onPermissionTimeout;
-    this.onProgressTimeout = options.onProgressTimeout;
+    this.onPermissionReaction = options.onPermissionReaction;
+    this.onPermissionReactionClear = options.onPermissionReactionClear;
+    this.onProgressStalled = options.onProgressStalled;
+    this.onProgressResumed = options.onProgressResumed;
     this.cwd = options.cwd;
     this.model = options.model;
     this.sessionId = options.sessionId;
@@ -155,6 +185,18 @@ export class MessageRenderer {
 
   onThinkingDelta(text: string): void {
     this.thinkingText += text;
+    // Append to timeline: merge into existing thinking entry or create new one
+    const last = this.timeline[this.timeline.length - 1];
+    if (last?.kind === 'thinking') {
+      last.text = (last.text || '') + text;
+    } else {
+      this.timeline.push({ kind: 'thinking', text });
+    }
+    this.lastTimelineIsText = false;
+    // Force flush: plain-text render() doesn't include thinking, but Feishu
+    // card uses state.timeline which has changed. Without forceFlush, the
+    // change detection sees unchanged plain text and skips the flush.
+    this.forceFlush = true;
     this.scheduleFlush();
   }
 
@@ -178,6 +220,18 @@ export class MessageRenderer {
       this.toolIdToLogIndex.set(toolUseId, logIndex);
     }
 
+    // Add to timeline
+    const tlIdx = this.timeline.length;
+    this.timeline.push({
+      kind: 'tool',
+      toolName: name,
+      toolInput: this.formatToolInput(name, input),
+    });
+    if (toolUseId) {
+      this.toolIdToTimelineIndex.set(toolUseId, tlIdx);
+    }
+    this.lastTimelineIsText = false;
+
     // Start elapsed timer on first tool
     if (!this.elapsedTimer) {
       this.elapsedTimer = setInterval(() => {
@@ -193,6 +247,7 @@ export class MessageRenderer {
     }
 
     // Start progress timeout for intermediate updates
+    this.resumeProgress();
     this.startProgressTimeout();
 
     this.forceFlush = true; // Force update on new tool
@@ -260,6 +315,17 @@ export class MessageRenderer {
       this.toolLogs[logIndex].result = preview;
       this.toolLogs[logIndex].isError = isError;
     }
+    // Also update timeline entry
+    const tlIdx = this.toolIdToTimelineIndex.get(toolUseId);
+    if (tlIdx !== undefined && tlIdx < this.timeline.length) {
+      const entry = this.timeline[tlIdx];
+      entry.toolResult = isError ? `❌ ${truncate(content, 200)}` : truncate(content, 200);
+      entry.isError = isError;
+    }
+    // Plain-text render() does not include tool result details, but rich card
+    // state does. Force a flush so Feishu cards update as soon as output lands.
+    this.forceFlush = true;
+    this.scheduleFlush();
   }
 
   onPermissionNeeded(
@@ -271,18 +337,12 @@ export class MessageRenderer {
     this.permissionQueue.push({ toolName, input, permId, buttons });
     // Clear progress timeout during permission wait - user needs to act
     this.clearProgressTimeout();
-    // Only start timeout for the first permission (the one being displayed)
     if (this.permissionQueue.length === 1) {
-      // Save current messageId and clear it to force new message for permission request
-      if (this._messageId && !this._savedMessageId) {
-        this._savedMessageId = this._messageId;
-        this._messageId = undefined;
-      }
       this.startPermissionTimeout();
-    } else if (this.permissionQueue.length > 1 && this._permissionMessageId) {
-      // More permissions pending after first - edit the permission message
-      this._messageId = this._permissionMessageId;
+      // Add 🔐 reaction to notify user
+      this.onPermissionReaction?.();
     }
+    this.forceFlush = true;
     this.scheduleFlush();
   }
 
@@ -292,29 +352,17 @@ export class MessageRenderer {
       const idx = this.permissionQueue.findIndex(p => p.permId === permId);
       if (idx !== -1) this.permissionQueue.splice(idx, 1);
     } else {
-      // No permId: remove the head (currently displayed one)
       this.permissionQueue.shift();
     }
-    // Restart timeout for next permission in queue
     this.clearPermissionTimeout();
     if (this.permissionQueue.length > 0) {
-      // More permissions pending - use permission message id to edit
-      if (this._permissionMessageId) {
-        this._messageId = this._permissionMessageId;
-      } else {
-        this._messageId = undefined;
-      }
       this.startPermissionTimeout();
     } else {
-      // No more permissions - restore saved messageId for execution progress
-      if (this._savedMessageId) {
-        this._messageId = this._savedMessageId;
-        this._savedMessageId = undefined;
-      }
-      this._permissionMessageId = undefined;
-      // Restart progress timeout
+      // All permissions resolved — clear reaction, restart progress
+      this.onPermissionReactionClear?.();
       this.startProgressTimeout();
     }
+    this.forceFlush = true;
     this.scheduleFlush();
   }
 
@@ -332,14 +380,11 @@ export class MessageRenderer {
 
   private startProgressTimeout(): void {
     this.clearProgressTimeout();
-    if (this.onProgressTimeout && !this.completed && !this.errorMessage) {
+    if (this.onProgressStalled && !this.completed && !this.errorMessage) {
       this.progressTimeoutTimer = setTimeout(() => {
-        if (!this.completed && !this.errorMessage && this.totalTools > 0) {
-          this.onProgressTimeout!({
-            taskSummary: this.taskSummary || '正在执行',
-            elapsedSeconds: this.elapsedSeconds,
-            currentTool: this.currentTool ? { name: this.currentTool.name, input: this.currentTool.input } : undefined,
-          });
+        if (!this.completed && !this.errorMessage && this.totalTools > 0 && !this.progressStalled) {
+          this.progressStalled = true;
+          this.onProgressStalled!();
         }
       }, PROGRESS_TIMEOUT_MS);
     }
@@ -352,8 +397,24 @@ export class MessageRenderer {
     }
   }
 
+  /** If stalled, notify that progress resumed and clear stalled flag */
+  private resumeProgress(): void {
+    if (this.progressStalled) {
+      this.progressStalled = false;
+      this.onProgressResumed?.();
+    }
+  }
+
   onTextDelta(text: string): void {
     this.responseText += text;
+    // Append to timeline: merge into existing text entry or create new one
+    if (this.lastTimelineIsText) {
+      const last = this.timeline[this.timeline.length - 1];
+      last.text = (last.text || '') + text;
+    } else {
+      this.timeline.push({ kind: 'text', text });
+      this.lastTimelineIsText = true;
+    }
     // Update task summary from first meaningful text (cache trim to avoid double call)
     if (!this.taskSummary) {
       const trimmed = this.responseText.trim();
@@ -365,6 +426,7 @@ export class MessageRenderer {
     const now = Date.now();
     if (now - this.lastProgressReset >= PROGRESS_RESET_THROTTLE_MS) {
       this.lastProgressReset = now;
+      this.resumeProgress();
       this.startProgressTimeout();
     }
     this.scheduleFlush();
@@ -392,6 +454,18 @@ export class MessageRenderer {
 
   getResponseText(): string {
     return this.responseText;
+  }
+
+  getDebugSnapshot(): { thinkingEntries: number; textEntries: number; toolEntries: number } {
+    let thinkingEntries = 0;
+    let textEntries = 0;
+    let toolEntries = 0;
+    for (const entry of this.timeline) {
+      if (entry.kind === 'thinking') thinkingEntries++;
+      else if (entry.kind === 'text') textEntries++;
+      else if (entry.kind === 'tool') toolEntries++;
+    }
+    return { thinkingEntries, textEntries, toolEntries };
   }
 
   dispose(): void {
@@ -447,6 +521,7 @@ export class MessageRenderer {
       todoItems: [...this.todoItems],
       thinkingText: this.thinkingText,
       toolLogs: [...this.toolLogs],
+      timeline: this.timeline.map(e => ({ ...e })),
       permission: currentPermission
         ? {
             toolName: currentPermission.toolName,
@@ -581,11 +656,14 @@ export class MessageRenderer {
 
   private scheduleFlush(): void {
     if (this.timer) return;
+    // First message not sent yet → flush immediately so user sees the card ASAP.
+    // After that, throttle to reduce API calls.
+    const delay = this._messageId ? this.throttleMs : 0;
     this.timer = setTimeout(() => {
       this.timer = null;
       const content = this.render();
       this.doFlush(content);
-    }, this.throttleMs);
+    }, delay);
   }
 
   private stopTimers(): void {
@@ -675,10 +753,6 @@ export class MessageRenderer {
         }
       }
       if (!isEdit && typeof result === 'string') {
-        // If we're in permission phase with saved messageId, this is a permission message
-        if (this._savedMessageId) {
-          this._permissionMessageId = result;
-        }
         this._messageId = result;
       }
     } finally {

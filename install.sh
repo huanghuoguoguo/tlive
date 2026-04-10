@@ -77,7 +77,7 @@ main() {
 
     # Install production dependencies
     info "Installing dependencies..."
-    cd "${APP_DIR}/bridge"
+    cd "${APP_DIR}"
     npm ci --production --ignore-scripts 2>/dev/null || npm install --production --ignore-scripts 2>/dev/null
     cd - >/dev/null
 

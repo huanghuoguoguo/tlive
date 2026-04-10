@@ -13,6 +13,7 @@ import { SDKEngine } from './sdk-engine.js';
 import { networkInterfaces } from 'node:os';
 import { handleCallbackMessage } from './callback-dispatcher.js';
 import { IngressCoordinator } from './ingress-coordinator.js';
+import { getTliveRuntimeDir } from '../utils/path.js';
 import { MessageLoopCoordinator } from './message-loop-coordinator.js';
 import { TextDispatcher } from './text-dispatcher.js';
 import { QueryOrchestrator } from './query-orchestrator.js';
@@ -64,7 +65,7 @@ export class BridgeManager {
   private engine: ConversationEngine;
   private router: ChannelRouter;
   private port: number;
-  private state = new SessionStateManager();
+  private state = new SessionStateManager(getTliveRuntimeDir());
   private permissions: PermissionCoordinator;
   /** SDK Engine for LiveSession management */
   private sdkEngine: SDKEngine;
@@ -115,6 +116,7 @@ export class BridgeManager {
     });
     this.query = new QueryOrchestrator({
       engine: this.engine,
+      llm,
       router: this.router,
       state: this.state,
       permissions: this.permissions,

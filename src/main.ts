@@ -8,7 +8,7 @@ import { createAdapter, loadAdapters } from './channels/index.js';
 import type { ChannelType } from './channels/types.js';
 import { checkForUpdates, getCurrentVersion } from './engine/version-checker.js';
 import { join } from 'node:path';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, unlinkSync, existsSync } from 'node:fs';
 import { getTliveHome, getTliveRuntimeDir } from './utils/index.js';
 
 // Cached config (loaded once at startup)
@@ -24,7 +24,69 @@ function writeStatusFile(data: Record<string, unknown>): void {
   }
 }
 
+/**
+ * Ensure only one bridge instance runs at a time.
+ * Uses a PID file lock — kills stale processes if needed.
+ */
+function acquireSingletonLock(): void {
+  const runtimeDir = getTliveRuntimeDir();
+  mkdirSync(runtimeDir, { recursive: true });
+  const pidFile = join(runtimeDir, 'bridge.pid');
+
+  if (existsSync(pidFile)) {
+    try {
+      const oldPid = parseInt(readFileSync(pidFile, 'utf-8').trim(), 10);
+      if (oldPid && oldPid !== process.pid) {
+        // Check if process is still alive
+        try {
+          process.kill(oldPid, 0);
+          // Process is alive — kill it
+          console.warn(`[singleton] Killing existing bridge process (PID ${oldPid})`);
+          process.kill(oldPid, 'SIGTERM');
+          // Brief wait for graceful shutdown
+          const start = Date.now();
+          while (Date.now() - start < 2000) {
+            try { process.kill(oldPid, 0); } catch { break; }
+            // busy-wait ~50ms
+            const end = Date.now() + 50;
+            while (Date.now() < end) { /* spin */ }
+          }
+          // Force kill if still alive
+          try {
+            process.kill(oldPid, 0);
+            process.kill(oldPid, 'SIGKILL');
+            console.warn(`[singleton] Force-killed PID ${oldPid}`);
+          } catch {
+            // Already dead — good
+          }
+        } catch {
+          // Process not alive — stale PID file, safe to proceed
+        }
+      }
+    } catch {
+      // Malformed PID file — overwrite
+    }
+  }
+
+  // Write our PID
+  writeFileSync(pidFile, String(process.pid));
+
+  // Clean up PID file on exit
+  const cleanPid = () => {
+    try {
+      const current = readFileSync(pidFile, 'utf-8').trim();
+      if (current === String(process.pid)) {
+        unlinkSync(pidFile);
+      }
+    } catch { /* ignore */ }
+  };
+  process.on('exit', cleanPid);
+}
+
 async function main() {
+  // Ensure only one bridge instance runs
+  acquireSingletonLock();
+
   cachedConfig = loadConfig();
   const config = cachedConfig;
   const tliveHome = getTliveHome();

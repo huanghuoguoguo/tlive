@@ -7,9 +7,10 @@
  */
 
 import type { InboundMessage } from '../channels/types.js';
-import type { QueryControls, LiveSession } from '../providers/base.js';
+import type { QueryControls, LiveSession, LLMProvider } from '../providers/base.js';
 import type { SessionStateManager } from './session-state.js';
 import type { ChannelRouter } from './router.js';
+import type { EffortLevel } from '../utils/types.js';
 
 /** Shared SDK question state — owned by SDKEngine, read/written by CallbackRouter */
 export interface SdkQuestionState {
@@ -98,7 +99,6 @@ export class SDKEngine {
       if (managed) {
         managed.session.close();
         this.registry.delete(key);
-        // Clear active session ref if this was the active one
         if (this.activeSessionByChat.get(chatKey) === key) {
           this.activeSessionByChat.delete(chatKey);
         }
@@ -114,9 +114,51 @@ export class SDKEngine {
           console.log(`[tlive:engine] Closed LiveSession for ${key}`);
         }
       }
-      // Clear active session ref
       this.activeSessionByChat.delete(chatKey);
     }
+  }
+
+  /**
+   * Get existing LiveSession or create a new one.
+   * Returns the session, or undefined if provider doesn't support LiveSession.
+   */
+  getOrCreateSession(
+    llm: LLMProvider,
+    channelType: string,
+    chatId: string,
+    workdir: string,
+    options?: { sessionId?: string; effort?: EffortLevel; model?: string },
+  ): LiveSession | undefined {
+    if (!llm.createSession) return undefined;
+
+    const key = this.sessionKey(channelType, chatId, workdir);
+    const chatKey = `${channelType}:${chatId}`;
+
+    // Check existing session
+    const existing = this.registry.get(key);
+    if (existing?.session.isAlive) {
+      existing.lastActiveAt = Date.now();
+      this.activeSessionByChat.set(chatKey, key);
+      return existing.session;
+    }
+
+    // Clean up dead session if any
+    if (existing) {
+      this.registry.delete(key);
+    }
+
+    // Create new session
+    console.log(`[tlive:engine] Creating LiveSession for ${key}`);
+    const session = llm.createSession({
+      workingDirectory: workdir,
+      sessionId: options?.sessionId,
+      effort: options?.effort,
+      model: options?.model,
+    });
+
+    this.registry.set(key, { session, workdir, lastActiveAt: Date.now() });
+    this.activeSessionByChat.set(chatKey, key);
+    return session;
   }
 
   // ── Steer / Queue ──

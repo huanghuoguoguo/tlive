@@ -15,9 +15,12 @@ import { CHANNEL_TYPES, PLATFORM_LIMITS, PLATFORM_REACTIONS, type ChannelType } 
 import { generateSessionId } from '../utils/id.js';
 import { truncate } from '../utils/string.js';
 import type { BridgeStore } from '../store/interface.js';
+const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
+import type { LLMProvider, LiveSession } from '../providers/base.js';
 
 interface QueryOrchestratorOptions {
   engine: ConversationEngine;
+  llm: LLMProvider;
   router: ChannelRouter;
   state: SessionStateManager;
   permissions: PermissionCoordinator;
@@ -59,10 +62,7 @@ export class QueryOrchestrator {
     adapter.addReaction(reactionChatId, msg.messageId, reactions.processing).catch(() => {});
 
     let feishuSession: import('../channels/feishu-streaming.js').FeishuStreamingSession | null = null;
-    let permissionReminderMsgId: string | undefined;
-    let permissionReminderTool: string | undefined;
-    let permissionReminderInput: string | undefined;
-    let progressReminderMsgId: string | undefined;
+    let stalledReactionAdded = false;
     const renderer = new MessageRenderer({
       platformLimit: PLATFORM_LIMITS[adapter.channelType as ChannelType] ?? 4096,
       throttleMs: 300,
@@ -70,44 +70,35 @@ export class QueryOrchestrator {
       model: this.options.state.getModel(msg.channelType, msg.chatId),
       sessionId: binding.sdkSessionId,
       verboseLevel,
-      onPermissionTimeout: async (toolName, input, buttons) => {
-        permissionReminderTool = toolName;
-        permissionReminderInput = input;
-        const text = `⚠️ Permission pending — ${toolName}: ${permissionReminderInput}`;
-        const outMsg = adapter.formatContent(msg.chatId, text,
-          buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
-        );
-        try {
-          const result = await adapter.send(outMsg);
-          permissionReminderMsgId = result.messageId;
-        } catch {
-          // Non-fatal.
+      onPermissionReaction: () => {
+        // Add 🔐 reaction on the progress message to notify user
+        const progressMsgId = renderer.messageId;
+        if (progressMsgId) {
+          adapter.addReaction(msg.chatId, progressMsgId, reactions.permission).catch(() => {});
         }
       },
-      onProgressTimeout: async (summary) => {
-        if (!adapter.supportsRichCards()) return;
-        const progressData: ProgressData = {
-          phase: 'executing',
-          renderedText: '',
-          taskSummary: summary.taskSummary,
-          elapsedSeconds: summary.elapsedSeconds,
-          totalTools: 0,
-          todoItems: [],
-          currentTool: summary.currentTool ? {
-            name: summary.currentTool.name,
-            input: summary.currentTool.input,
-            elapsed: 0,
-          } : null,
-        };
-        try {
-          const result = await adapter.send(adapter.format({
-            type: 'progress',
-            chatId: msg.chatId,
-            data: progressData,
-          }));
-          progressReminderMsgId = result.messageId;
-        } catch {
-          // Non-fatal.
+      onPermissionReactionClear: () => {
+        // Replace permission reaction with processing reaction
+        const progressMsgId = renderer.messageId;
+        if (progressMsgId) {
+          adapter.addReaction(msg.chatId, progressMsgId, reactions.processing).catch(() => {});
+        }
+      },
+      onProgressStalled: () => {
+        // Add ⏳ reaction on the bot's progress message
+        const progressMsgId = renderer.messageId;
+        if (progressMsgId && !stalledReactionAdded) {
+          stalledReactionAdded = true;
+          adapter.addReaction(msg.chatId, progressMsgId, reactions.stalled).catch(() => {});
+        }
+      },
+      onProgressResumed: () => {
+        // Remove ⏳ reaction when progress resumes
+        const progressMsgId = renderer.messageId;
+        if (progressMsgId && stalledReactionAdded) {
+          stalledReactionAdded = false;
+          // Replace stalled reaction with processing reaction
+          adapter.addReaction(msg.chatId, progressMsgId, reactions.processing).catch(() => {});
         }
       },
       flushCallback: async (content, isEdit, buttons, state) => {
@@ -141,6 +132,7 @@ export class QueryOrchestrator {
             todoItems: state.todoItems,
             thinkingText: state.thinkingText,
             toolLogs: state.toolLogs,
+            timeline: state.timeline,
             actionButtons: buttons?.length
               ? buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
               : undefined,
@@ -173,9 +165,13 @@ export class QueryOrchestrator {
     });
 
     let askQuestionApproved = false;
-    const permMode = this.options.state.getPermMode(msg.channelType, msg.chatId);
-    const sdkPermissionHandler = permMode === 'on'
-      ? async (toolName: string, toolInput: Record<string, unknown>, _promptSentence: string, signal?: AbortSignal) => {
+    const sdkPermissionHandler = async (toolName: string, toolInput: Record<string, unknown>, _promptSentence: string, signal?: AbortSignal) => {
+          // Check perm mode dynamically (so /perm off mid-query takes effect)
+          const permMode = this.options.state.getPermMode(msg.channelType, msg.chatId);
+          if (permMode === 'off') {
+            return 'allow' as const;
+          }
+
           if (this.options.permissions.isToolAllowed(toolName, toolInput)) {
             console.log(`[bridge] Auto-allowed ${toolName} via session whitelist`);
             return 'allow' as const;
@@ -221,21 +217,10 @@ export class QueryOrchestrator {
           signal?.removeEventListener('abort', abortCleanup);
           renderer.onPermissionResolved(permId);
 
-          if (permissionReminderMsgId) {
-            const icon = result.behavior === 'deny' ? '❌' : '✅';
-            const label = `${permissionReminderTool}: ${permissionReminderInput} ${icon}`;
-            adapter.editMessage(msg.chatId, permissionReminderMsgId, {
-              chatId: msg.chatId,
-              text: label,
-            }).catch(() => {});
-            permissionReminderMsgId = undefined;
-          }
-
           this.options.permissions.clearPendingSdkPerm(chatKey);
           console.log(`[bridge] Permission resolved: ${toolName} (${permId}) → ${result.behavior}`);
           return result.behavior as 'allow' | 'allow_always' | 'deny';
-        }
-      : undefined;
+        };
 
     const sdkAskQuestionHandler = async (
       questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }>,
@@ -324,17 +309,53 @@ export class QueryOrchestrator {
     };
 
     try {
+      // Get or create a LiveSession for this chat
+      const workdir = binding.cwd || this.options.defaultWorkdir;
+      const chatKey = this.options.state.stateKey(msg.channelType, msg.chatId);
+      let liveSession: LiveSession | undefined;
+      let streamResult: import('../providers/base.js').StreamChatResult | undefined;
+
+      try {
+        liveSession = this.options.sdkEngine.getOrCreateSession(
+          this.options.llm,
+          msg.channelType,
+          msg.chatId,
+          workdir,
+          {
+            sessionId: binding.sdkSessionId,
+            effort: this.options.state.getEffort(msg.channelType, msg.chatId),
+            model: this.options.state.getModel(msg.channelType, msg.chatId),
+          },
+        );
+      } catch (err) {
+        console.warn(`[bridge] Failed to create LiveSession, falling back to streamChat: ${err}`);
+      }
+
+      if (liveSession) {
+        // Use LiveSession: startTurn with per-turn handlers
+        streamResult = liveSession.startTurn(msg.text, {
+          onPermissionRequest: sdkPermissionHandler,
+          onAskUserQuestion: sdkAskQuestionHandler,
+          effort: this.options.state.getEffort(msg.channelType, msg.chatId),
+          model: this.options.state.getModel(msg.channelType, msg.chatId),
+          attachments: msg.attachments?.filter(a => a.type === 'image'),
+        });
+      }
+
       await this.options.engine.processMessage({
         sdkSessionId: binding.sdkSessionId,
-        workingDirectory: binding.cwd || this.options.defaultWorkdir,
+        workingDirectory: workdir,
         text: msg.text,
         attachments: msg.attachments,
-        sdkPermissionHandler,
-        sdkAskQuestionHandler,
+        // When using LiveSession, streamResult bypasses streamChat;
+        // permission/question handlers are set per-turn on the session.
+        // When no LiveSession, fall back to streamChat with these handlers.
+        streamResult,
+        sdkPermissionHandler: streamResult ? undefined : sdkPermissionHandler,
+        sdkAskQuestionHandler: streamResult ? undefined : sdkAskQuestionHandler,
         effort: this.options.state.getEffort(msg.channelType, msg.chatId),
         model: this.options.state.getModel(msg.channelType, msg.chatId),
         onControls: (ctrl) => {
-          const chatKey = this.options.state.stateKey(msg.channelType, msg.chatId);
           this.options.sdkEngine.setControlsForChat(chatKey, ctrl);
         },
         onSdkSessionId: async (id) => {
@@ -351,9 +372,15 @@ export class QueryOrchestrator {
           renderer.onToolComplete(event.toolUseId);
         },
         onAgentStart: (data) => {
+          if (DEBUG_EVENTS) {
+            console.log(`[bridge] agent_start: ${data.description}`);
+          }
           renderer.onToolStart('Agent', { description: data.description, prompt: '' });
         },
         onAgentProgress: (data) => {
+          if (DEBUG_EVENTS) {
+            console.log(`[bridge] agent_progress: ${data.description}${data.lastTool ? ` (lastTool=${data.lastTool})` : ''}`);
+          }
           if (data.usage?.durationMs) {
             renderer.onToolProgress({ toolName: 'Agent', elapsed: data.usage.durationMs });
           }
@@ -387,12 +414,11 @@ export class QueryOrchestrator {
             cost_usd: event.usage.costUsd,
           };
           costTracker.finish(usage);
-          await renderer.onComplete();
-          // Delete progress reminder message if exists
-          if (progressReminderMsgId) {
-            adapter.deleteMessage(msg.chatId, progressReminderMsgId).catch(() => {});
-            progressReminderMsgId = undefined;
+          if (DEBUG_EVENTS) {
+            const state = renderer.getDebugSnapshot();
+            console.log(`[bridge] final timeline: thinking=${state.thinkingEntries} text=${state.textEntries} tool=${state.toolEntries}`);
           }
+          await renderer.onComplete();
         },
         onPromptSuggestion: (suggestion) => {
           if (verboseLevel === 0) return;
@@ -404,15 +430,25 @@ export class QueryOrchestrator {
           }).catch(() => {});
         },
         onError: async (err) => {
-          // Check for session expiry error - clear sdkSessionId and retry
-          if (err.includes('No conversation found') || err.includes('session ID')) {
-            console.log(`[bridge] Session expired, clearing sdkSessionId for ${msg.channelType}:${msg.chatId}`);
+          // Check for session expiry / stale thinking signature — clear sdkSessionId and kill LiveSession
+          if (err.includes('No conversation found') || err.includes('session ID') || err.includes('Invalid') && err.includes('signature')) {
+            console.log(`[bridge] Session expired or stale, clearing for ${msg.channelType}:${msg.chatId}`);
             binding.sdkSessionId = undefined;
             await this.options.store.saveBinding(binding);
+            this.options.sdkEngine.closeSession(msg.channelType, msg.chatId);
+          }
+          if (DEBUG_EVENTS) {
+            const state = renderer.getDebugSnapshot();
+            console.log(`[bridge] error timeline: thinking=${state.thinkingEntries} text=${state.textEntries} tool=${state.toolEntries}`);
           }
           await renderer.onError(err);
         },
       });
+
+      // Track active message ID for steer matching
+      if (renderer.messageId) {
+        this.options.sdkEngine.setActiveMessageId(chatKey, renderer.messageId);
+      }
 
       adapter.addReaction(reactionChatId, msg.messageId, reactions.done).catch(() => {});
       // Also add reaction to the bot's progress message for visibility

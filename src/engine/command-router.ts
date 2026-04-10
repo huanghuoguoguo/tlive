@@ -459,15 +459,16 @@ export class CommandRouter {
         // Handle sub-commands with optional version parameter (e.g., confirm:0.9.3)
         if (subCmd?.startsWith('confirm')) {
           const { execSync } = await import('node:child_process');
-          const { getCurrentVersion } = await import('./version-checker.js');
           try {
             // Download and run installer
             const cmd = 'curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash';
             execSync(cmd, { stdio: 'inherit', timeout: 120_000 });
-            await send(adapter, presentUpgradeResult(msg.chatId, {
-              success: true,
-              version: getCurrentVersion(),
-            }));
+            await adapter.send({
+              chatId: msg.chatId,
+              text: '✅ 升级完成，正在重启...',
+            });
+            // Restart bridge to load new code (exit, daemon manager will restart)
+            setTimeout(() => process.exit(0), 1000);
           } catch (err: any) {
             await send(adapter, presentUpgradeResult(msg.chatId, {
               success: false,
