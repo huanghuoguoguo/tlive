@@ -20,6 +20,10 @@ is_running() {
   [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null
 }
 
+current_bridge_log() {
+  echo "$LOG_DIR/bridge-$(date +%F).log"
+}
+
 start() {
   ensure_dirs
 
@@ -39,7 +43,7 @@ start() {
   echo "Starting Bridge (runtime: ${runtime})..."
   # Pass the launch directory as default workdir so Claude sessions
   # use the user's project directory, not the bridge install path
-  TL_DEFAULT_WORKDIR="${TL_DEFAULT_WORKDIR:-$(pwd)}" TL_RUNTIME="${runtime}" node "$bridge_entry" >> "$LOG_DIR/bridge.log" 2>&1 &
+  TL_DEFAULT_WORKDIR="${TL_DEFAULT_WORKDIR:-$(pwd)}" TL_RUNTIME="${runtime}" node "$bridge_entry" >/dev/null 2>&1 &
   echo $! > "$RUNTIME_DIR/bridge.pid"
   echo "Bridge started (PID $(cat "$RUNTIME_DIR/bridge.pid"))"
 }
@@ -78,7 +82,7 @@ status() {
 logs() {
   local n="${1:-50}"
   echo "=== Bridge (last $n lines) ==="
-  tail -n "$n" "$LOG_DIR/bridge.log" 2>/dev/null || echo "(no log file)"
+  tail -n "$n" "$(current_bridge_log)" 2>/dev/null || echo "(no log file)"
 }
 
 case "${1:-}" in

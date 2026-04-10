@@ -1,5 +1,6 @@
 import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';
+import { CHANNEL_TYPES, PLATFORM_PERMISSION_DECISION_REACTIONS, type ChannelType } from '../utils/constants.js';
 import type { PermissionCoordinator } from './permission-coordinator.js';
 import type { SDKEngine } from './sdk-engine.js';
 import type { SessionStateManager } from './session-state.js';
@@ -68,7 +69,13 @@ export class TextDispatcher {
 
     const chatKey = this.options.state.stateKey(msg.channelType, msg.chatId);
     if (this.options.permissions.tryResolveByText(chatKey, decision)) {
-      const emoji = decision === 'deny' ? 'NO' : decision === 'allow_always' ? 'DONE' : 'OK';
+      const reactions = PLATFORM_PERMISSION_DECISION_REACTIONS[adapter.channelType as ChannelType]
+        ?? PLATFORM_PERMISSION_DECISION_REACTIONS[CHANNEL_TYPES.TELEGRAM];
+      const emoji = decision === 'deny'
+        ? reactions.deny
+        : decision === 'allow_always'
+          ? reactions.allow_always
+          : reactions.allow;
       adapter.addReaction(msg.chatId, msg.messageId, emoji).catch(() => {});
       return true;
     }
