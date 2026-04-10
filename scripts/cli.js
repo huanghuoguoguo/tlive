@@ -3,7 +3,7 @@
 import { execSync, spawn, spawnSync } from 'node:child_process';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, writeFileSync, readFileSync, unlinkSync, mkdirSync, chmodSync, openSync, closeSync, copyFileSync, statSync, readSync } from 'node:fs';
+import { existsSync, writeFileSync, readFileSync, unlinkSync, mkdirSync, chmodSync, openSync, closeSync, copyFileSync, statSync, readSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -12,6 +12,7 @@ const [,, command, ...args] = process.argv;
 const SCRIPTS_DIR = __dirname;
 const PACKAGE_ROOT = join(__dirname, '..');
 const isWindows = process.platform === 'win32';
+const REPO = 'huanghuoguoguo/tlive';
 const TLIVE_HOME = join(homedir(), '.tlive');
 const RUNTIME_DIR = join(TLIVE_HOME, 'runtime');
 const LOG_DIR = join(TLIVE_HOME, 'logs');
@@ -24,6 +25,76 @@ function getVersion() {
   try {
     return JSON.parse(readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf-8')).version;
   } catch { return 'unknown'; }
+}
+
+function getReleaseDownloadUrl(version) {
+  return `https://github.com/${REPO}/releases/download/v${version}/tlive-v${version}.tar.gz`;
+}
+
+async function downloadFile(url, dest) {
+  const resp = await fetch(url, {
+    headers: { 'Accept': 'application/octet-stream' },
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!resp.ok) {
+    throw new Error(`Failed to download release package (${resp.status} ${resp.statusText})`);
+  }
+  writeFileSync(dest, Buffer.from(await resp.arrayBuffer()));
+}
+
+function installProductionDeps(appDir) {
+  try {
+    execSync('npm ci --production --ignore-scripts', { stdio: 'inherit', cwd: appDir });
+  } catch {
+    execSync('npm install --production --ignore-scripts', { stdio: 'inherit', cwd: appDir });
+  }
+}
+
+function runPostinstall(appDir) {
+  const postinstallScript = join(appDir, 'scripts', 'postinstall.js');
+  if (!existsSync(postinstallScript)) return;
+  execSync(`${process.execPath} scripts/postinstall.js`, { stdio: 'inherit', cwd: appDir });
+}
+
+async function upgradeFromRelease(version) {
+  mkdirSync(TLIVE_HOME, { recursive: true });
+  const tempRoot = mkdtempSync(join(TLIVE_HOME, 'upgrade-'));
+  const tarball = join(tempRoot, `tlive-v${version}.tar.gz`);
+  const stagedDir = join(tempRoot, 'app');
+  const backupDir = `${PACKAGE_ROOT}-backup-${Date.now()}`;
+  let movedCurrentInstall = false;
+
+  try {
+    console.log('Downloading release package...');
+    await downloadFile(getReleaseDownloadUrl(version), tarball);
+
+    console.log('Extracting package...');
+    mkdirSync(stagedDir, { recursive: true });
+    execSync(`tar xzf "${tarball}" -C "${stagedDir}"`, { stdio: 'inherit' });
+
+    console.log('Installing production dependencies...');
+    installProductionDeps(stagedDir);
+
+    console.log('Refreshing bundled docs...');
+    runPostinstall(stagedDir);
+
+    if (existsSync(PACKAGE_ROOT)) {
+      renameSync(PACKAGE_ROOT, backupDir);
+      movedCurrentInstall = true;
+    }
+    renameSync(stagedDir, PACKAGE_ROOT);
+    rmSync(tempRoot, { recursive: true, force: true });
+
+    return backupDir;
+  } catch (err) {
+    if (movedCurrentInstall && !existsSync(PACKAGE_ROOT) && existsSync(backupDir)) {
+      try {
+        renameSync(backupDir, PACKAGE_ROOT);
+      } catch {}
+    }
+    rmSync(tempRoot, { recursive: true, force: true });
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -419,9 +490,7 @@ IM Commands (in Telegram/Feishu/QQ Bot):
   /new                       New conversation
   /runtime claude|codex      Switch AI provider
   /perm on|off               Permission prompts
-  /effort low|medium|high|max  Thinking depth
   /stop                      Interrupt execution
-  /verbose 0|1               Detail level (0=quiet, 1=terminal card)
   /sessions                  List recent sessions
   /session <n>               Switch to session
   /help                      Show all commands
@@ -563,13 +632,17 @@ switch (command) {
     // Check latest version from GitHub
     let latest;
     try {
-      const resp = await fetch('https://api.github.com/repos/huanghuoguoguo/tlive/releases/latest', {
+      const resp = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
         headers: { 'Accept': 'application/vnd.github.v3+json' },
         signal: AbortSignal.timeout(10000),
       });
-      if (resp.ok) {
-        const data = await resp.json();
-        latest = data.tag_name?.replace(/^v/, '') || data.name?.replace(/^v/, '');
+      if (!resp.ok) {
+        throw new Error(`GitHub API returned ${resp.status}`);
+      }
+      const data = await resp.json();
+      latest = data.tag_name?.replace(/^v/, '') || data.name?.replace(/^v/, '');
+      if (!latest) {
+        throw new Error('Latest version not found in release metadata');
       }
     } catch (e) {
       console.error('Failed to check latest version. Are you online?');
@@ -590,47 +663,16 @@ switch (command) {
 
     try {
       if (isGitInstall) {
-        // Git install: pull and rebuild
-        console.log('Pulling latest changes...');
-        execSync('git fetch origin', { stdio: 'inherit', cwd: PACKAGE_ROOT });
-        execSync('git reset --hard origin/main', { stdio: 'inherit', cwd: PACKAGE_ROOT });
-        execSync('git pull origin main', { stdio: 'inherit', cwd: PACKAGE_ROOT });
-
-        console.log('Rebuilding bridge...');
-        execSync('npm run build', { stdio: 'inherit', cwd: PACKAGE_ROOT });
+        console.error('\nThis tlive command is running from a git checkout.');
+        console.error('Auto-upgrade now uses GitHub Release packages and will not overwrite a working tree.');
+        console.error(`Update this checkout manually with git, or install the packaged build with:`);
+        console.error(`  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash`);
+        process.exit(1);
       } else {
-        // Non-git install: clone fresh
-        const backupDir = join(homedir(), '.tlive-backup-' + Date.now());
-        const tempDir = join(homedir(), 'tlive-new-' + Date.now());
-
-        console.log('Downloading latest version...');
-        execSync(`git clone --depth 1 https://github.com/huanghuoguoguo/tlive.git "${tempDir}"`, { stdio: 'inherit' });
-
-        // Backup config
-        if (existsSync(TLIVE_HOME)) {
-          console.log('Backing up config...');
-          execSync(isWindows ? `xcopy "${TLIVE_HOME}" "${backupDir}" /E /I /Q` : `cp -r "${TLIVE_HOME}" "${backupDir}"`, { stdio: 'inherit' });
-        }
-
-        // Build new version
-        console.log('Building...');
-        execSync('npm install', { stdio: 'inherit', cwd: tempDir });
-        execSync('npm run build', { stdio: 'inherit', cwd: tempDir });
-
-        // Copy config back
-        if (existsSync(backupDir)) {
-          const configSrc = join(backupDir, 'config.env');
-          if (existsSync(configSrc)) {
-            mkdirSync(TLIVE_HOME, { recursive: true });
-            copyFileSync(configSrc, CONFIG_FILE);
-          }
-        }
-
-        console.log(`\nNew version installed at: ${tempDir}`);
-        console.log('Please update your PATH or alias to point to the new directory.');
-        if (existsSync(backupDir)) {
-          console.log(`Config backed up at: ${backupDir}`);
-        }
+        console.log('Upgrading from GitHub Release package...');
+        const backupDir = await upgradeFromRelease(latest);
+        console.log(`\nNew version installed at: ${PACKAGE_ROOT}`);
+        console.log(`Previous version backed up at: ${backupDir}`);
       }
 
       console.log(`\n✅ Upgraded to ${latest}.`);

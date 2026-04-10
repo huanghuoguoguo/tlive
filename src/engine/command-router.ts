@@ -3,7 +3,6 @@ import type { InboundMessage } from '../channels/types.js';
 import type { SessionStateManager } from './session-state.js';
 import type { ChannelRouter } from './router.js';
 import type { LLMProvider, QueryControls } from '../providers/base.js';
-import type { VerboseLevel } from './session-state.js';
 import { ClaudeSDKProvider } from '../providers/claude-sdk.js';
 import type { ClaudeSettingSource } from '../config.js';
 import type { BridgeStore } from '../store/interface.js';
@@ -19,14 +18,10 @@ import {
   presentApproveUsage,
   presentDirectory,
   presentDirectoryNotFound,
-  presentEffortChanged,
-  presentEffortStatus,
   presentHelp,
   presentHooksChanged,
   presentHooksStatus,
   presentHome,
-  presentModelChanged,
-  presentModelStatus,
   presentNewSession,
   presentNoPairings,
   presentNoSessions,
@@ -47,8 +42,6 @@ import {
   presentStopResult,
   presentUpgradeCommand,
   presentUpgradeResult,
-  presentVerbose,
-  presentVerboseUsage,
   presentVersionCheck,
   presentVersionSkipped,
   presentVersionUnskipped,
@@ -143,16 +136,6 @@ export class CommandRouter {
         }));
         return true;
       }
-      case '/verbose': {
-        const level = parseInt(parts[1], 10) as VerboseLevel;
-        if ([0, 1].includes(level)) {
-          this.state.setVerboseLevel(msg.channelType, msg.chatId, level);
-          await send(adapter, presentVerbose(msg.chatId, level));
-        } else {
-          await send(adapter, presentVerboseUsage(msg.chatId));
-        }
-        return true;
-      }
       case '/perm': {
         const sub = parts[1]?.toLowerCase();
         if (sub === 'on' || sub === 'off') {
@@ -173,18 +156,6 @@ export class CommandRouter {
           await send(adapter, presentStopResult(msg.chatId, true));
         } else {
           await send(adapter, presentStopResult(msg.chatId, false));
-        }
-        return true;
-      }
-      case '/effort': {
-        const LEVELS = ['low', 'medium', 'high', 'max'] as const;
-        const level = parts[1]?.toLowerCase();
-        if (level && LEVELS.includes(level as typeof LEVELS[number])) {
-          this.state.setEffort(msg.channelType, msg.chatId, level as typeof LEVELS[number]);
-          await send(adapter, presentEffortChanged(msg.chatId, level as typeof LEVELS[number]));
-        } else {
-          const current = this.state.getEffort(msg.channelType, msg.chatId) || 'default';
-          await send(adapter, presentEffortStatus(msg.chatId, current));
         }
         return true;
       }
@@ -332,22 +303,6 @@ export class CommandRouter {
         await send(adapter, presentDirectory(msg.chatId, shortPath(current)));
         return true;
       }
-      case '/model': {
-        const model = parts.slice(1).join(' ').trim();
-        if (model) {
-          if (model === 'reset' || model === 'default') {
-            this.state.setModel(msg.channelType, msg.chatId, undefined);
-            await send(adapter, presentModelChanged(msg.chatId));
-          } else {
-            this.state.setModel(msg.channelType, msg.chatId, model);
-            await send(adapter, presentModelChanged(msg.chatId, model));
-          }
-        } else {
-          const current = this.state.getModel(msg.channelType, msg.chatId) || 'default';
-          await send(adapter, presentModelStatus(msg.chatId, current));
-        }
-        return true;
-      }
       case '/settings': {
         const arg = parts[1]?.toLowerCase();
 
@@ -388,10 +343,7 @@ export class CommandRouter {
             { cmd: 'session <n>', desc: 'Switch to session #n' },
             { cmd: 'cd <path>', desc: 'Change directory' },
             { cmd: 'pwd', desc: 'Show current directory' },
-            { cmd: 'verbose 0|1', desc: 'Detail level' },
             { cmd: 'perm on|off', desc: 'Permission prompts' },
-            { cmd: 'effort low|high|max', desc: 'Thinking depth' },
-            { cmd: 'model <name>', desc: 'Switch model' },
             { cmd: 'stop', desc: 'Interrupt execution' },
             { cmd: 'status', desc: 'Bridge status' },
             { cmd: 'help', desc: 'This message' },
@@ -407,10 +359,7 @@ export class CommandRouter {
             { cmd: 'sessions', desc: 'List sessions' },
             { cmd: 'session <n>', desc: 'Switch session' },
             { cmd: 'cd <path>', desc: 'Change directory' },
-            { cmd: 'verbose 0|1', desc: 'Detail level' },
             { cmd: 'perm on|off', desc: 'Permission prompts' },
-            { cmd: 'effort low|high|max', desc: 'Thinking depth' },
-            { cmd: 'model <name>', desc: 'Switch model' },
             { cmd: 'settings user|full|isolated', desc: 'Claude settings' },
             { cmd: 'stop', desc: 'Interrupt execution' },
             { cmd: 'status', desc: 'Bridge status' },

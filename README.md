@@ -109,7 +109,6 @@ Claude executes and returns results. Key commands:
 | `/sessions` | List sessions in current directory |
 | `/session <n>` | Switch to session #n |
 | `/stop` | Interrupt execution |
-| `/verbose 0\|1` | Detail level (0=concise, 1=show tool calls) |
 | `/perm on\|off` | Toggle permission prompts |
 | `/cd <path>` | Change working directory |
 | `/help` | Show all commands |

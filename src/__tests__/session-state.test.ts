@@ -15,24 +15,6 @@ describe('SessionStateManager', () => {
     });
   });
 
-  describe('verboseLevel', () => {
-    it('defaults to 1', () => {
-      expect(state.getVerboseLevel('telegram', '1')).toBe(1);
-    });
-
-    it('set and get', () => {
-      state.setVerboseLevel('telegram', '1', 0);
-      expect(state.getVerboseLevel('telegram', '1')).toBe(0);
-      state.setVerboseLevel('telegram', '1', 1);
-      expect(state.getVerboseLevel('telegram', '1')).toBe(1);
-    });
-
-    it('isolates per chat', () => {
-      state.setVerboseLevel('telegram', '1', 0);
-      expect(state.getVerboseLevel('telegram', '2')).toBe(1);
-    });
-  });
-
   describe('permMode', () => {
     it('defaults to on', () => {
       expect(state.getPermMode('feishu', '1')).toBe('on');
@@ -41,17 +23,6 @@ describe('SessionStateManager', () => {
     it('set and get', () => {
       state.setPermMode('feishu', '1', 'off');
       expect(state.getPermMode('feishu', '1')).toBe('off');
-    });
-  });
-
-  describe('effort', () => {
-    it('defaults to undefined', () => {
-      expect(state.getEffort('telegram', '1')).toBeUndefined();
-    });
-
-    it('set and get', () => {
-      state.setEffort('telegram', '1', 'high');
-      expect(state.getEffort('telegram', '1')).toBe('high');
     });
   });
 
@@ -89,15 +60,12 @@ describe('SessionStateManager', () => {
     it('returns full SessionMode with defaults', () => {
       const mode = state.getSessionMode('telegram', '1');
       expect(mode.permissionMode).toBe('default');
-      expect(mode.effort).toBeUndefined();
     });
 
-    it('accumulates settings into single SessionMode', () => {
+    it('stores permission mode changes in SessionMode', () => {
       state.setPermMode('telegram', '1', 'off');
-      state.setEffort('telegram', '1', 'high');
       const mode = state.getSessionMode('telegram', '1');
       expect(mode.permissionMode).toBe('bypassPermissions');
-      expect(mode.effort).toBe('high');
     });
   });
 

@@ -43,18 +43,6 @@ export interface SimpleTextData {
   text: string;
 }
 
-export function presentVerbose(chatId: string, level: 0 | 1): { chatId: string; text: string } {
-  const labels = ['🤫 quiet', '📝 terminal card'];
-  const detail = level === 0
-    ? '只在等待权限、等待回答、完成、失败时发消息'
-    : '执行中会持续展示状态卡和进度摘要';
-  return { chatId, text: `Verbose: ${labels[level]}\n${detail}` };
-}
-
-export function presentVerboseUsage(chatId: string): { chatId: string; text: string } {
-  return { chatId, text: 'Usage: `/verbose 0|1`\n0=quiet，只在关键节点发消息\n1=terminal card，显示执行中状态卡' };
-}
-
 export function presentPermissionModeChanged(chatId: string, mode: 'on' | 'off'): { chatId: string; text: string } {
   const text = mode === 'on'
     ? '🔐 Permission prompts: ON — dangerous tools will ask for confirmation'
@@ -69,15 +57,6 @@ export function presentPermissionModeStatus(chatId: string, current: string): { 
 
 export function presentStopResult(chatId: string, interrupted: boolean): { chatId: string; text: string } {
   return { chatId, text: interrupted ? '⏹ Interrupted current execution' : '⚠️ No active execution to stop' };
-}
-
-export function presentEffortChanged(chatId: string, level: 'low' | 'medium' | 'high' | 'max'): { chatId: string; text: string } {
-  const icons = { low: '⚡', medium: '🧠', high: '💪', max: '🔥' };
-  return { chatId, text: `${icons[level]} Effort: **${level}**` };
-}
-
-export function presentEffortStatus(chatId: string, current: string): { chatId: string; text: string } {
-  return { chatId, text: `🧠 Effort: **${current}**\nUsage: \`/effort low|medium|high|max\`\nlow = fast · medium = balanced · high = thorough · max = maximum` };
 }
 
 export function presentHooksStatus(chatId: string, paused: boolean): { chatId: string; text: string } {
@@ -110,14 +89,6 @@ export function presentDirectory(chatId: string, cwd: string, withIcon = false):
 
 export function presentDirectoryNotFound(chatId: string, path: string): { chatId: string; text: string } {
   return { chatId, text: `❌ Directory not found: ${path}` };
-}
-
-export function presentModelChanged(chatId: string, model?: string): { chatId: string; text: string } {
-  return { chatId, text: model ? `🤖 Model: **${model}**` : '🤖 Model: reset to default' };
-}
-
-export function presentModelStatus(chatId: string, current: string): { chatId: string; text: string } {
-  return { chatId, text: `🤖 Model: **${current}**\nUsage: \`/model <name>\` or \`/model reset\`\nExamples: \`claude-sonnet-4-6\`, \`claude-opus-4-6\`` };
 }
 
 export function presentSettingsUnavailable(chatId: string): { chatId: string; text: string } {
