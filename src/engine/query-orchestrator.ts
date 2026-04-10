@@ -38,6 +38,20 @@ interface QueryOrchestratorOptions {
 export class QueryOrchestrator {
   constructor(private options: QueryOrchestratorOptions) {}
 
+  private shouldSplitFeishuCompletion(state: {
+    totalTools: number;
+    thinkingText: string;
+    timeline: Array<{ kind: 'thinking' | 'text' | 'tool' }>;
+    responseText: string;
+  }): boolean {
+    const thinkingCount = state.timeline.filter(entry => entry.kind === 'thinking').length;
+    const toolCount = state.timeline.filter(entry => entry.kind === 'tool').length;
+    const hasLongTrace = state.thinkingText.trim().length > 80 || state.timeline.length >= 4;
+    const hasMeaningfulTooling = toolCount >= 2 || (toolCount >= 1 && thinkingCount >= 1);
+    const hasLongAnswer = state.responseText.trim().length > 200;
+    return hasMeaningfulTooling || hasLongTrace || (toolCount >= 1 && hasLongAnswer);
+  }
+
   async run(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
     const expired = this.options.state.checkAndUpdateLastActive(msg.channelType, msg.chatId);
     if (expired) {
@@ -137,6 +151,49 @@ export class QueryOrchestrator {
               ? buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
               : undefined,
           };
+
+          if (
+            adapter.channelType === 'feishu'
+            && state.phase === 'completed'
+            && this.shouldSplitFeishuCompletion({
+              totalTools: state.totalTools,
+              thinkingText: state.thinkingText,
+              timeline: state.timeline,
+              responseText: state.responseText,
+            })
+          ) {
+            const traceMsg = adapter.format({
+              type: 'progress',
+              chatId: msg.chatId,
+              data: {
+                ...progressData,
+                renderedText: '',
+                footerLine: undefined,
+                completedTraceOnly: true,
+              },
+            });
+            if (isEdit) {
+              await adapter.editMessage(msg.chatId, renderer.messageId!, traceMsg);
+            } else {
+              const traceResult = await adapter.send(traceMsg);
+              clearInterval(typingInterval);
+              void traceResult;
+            }
+
+            const finalLines: string[] = [];
+            if (state.responseText.trim()) {
+              finalLines.push(state.responseText.trimEnd());
+            } else {
+              finalLines.push('✅ 已完成');
+            }
+            if (state.footerLine) {
+              finalLines.push('───────────────');
+              finalLines.push(state.footerLine);
+            }
+            await adapter.send(adapter.formatContent(msg.chatId, finalLines.join('\n')));
+            return;
+          }
+
           outMsg = adapter.format({ type: 'progress', chatId: msg.chatId, data: progressData });
         } else {
           const castButtons = buttons?.length

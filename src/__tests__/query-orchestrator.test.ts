@@ -3,20 +3,23 @@ import type { BaseChannelAdapter } from '../channels/base.js';
 import { initBridgeContext } from '../context.js';
 import { QueryOrchestrator } from '../engine/query-orchestrator.js';
 import { SessionStateManager } from '../engine/session-state.js';
+import { FeishuFormatter } from '../formatting/feishu-formatter.js';
 import { TelegramFormatter } from '../formatting/telegram-formatter.js';
 
 const telegramFormatter = new TelegramFormatter('en');
+const feishuFormatter = new FeishuFormatter('zh');
 
 function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
+  const formatter = channelType === 'feishu' ? feishuFormatter : telegramFormatter;
   return {
     channelType,
     send: vi.fn().mockResolvedValue({ messageId: 'out-1', success: true }),
     editMessage: vi.fn().mockResolvedValue(undefined),
     sendTyping: vi.fn().mockResolvedValue(undefined),
     addReaction: vi.fn().mockResolvedValue(undefined),
-    format: (msg: any) => telegramFormatter.format(msg),
-    formatContent: (chatId: string, content: string, buttons?: any[]) => telegramFormatter.formatContent(chatId, content, buttons),
-    supportsRichCards: () => telegramFormatter.hasRichCardSupport(),
+    format: (msg: any) => formatter.format(msg),
+    formatContent: (chatId: string, content: string, buttons?: any[]) => formatter.formatContent(chatId, content, buttons),
+    supportsRichCards: () => formatter.hasRichCardSupport(),
     editCardResolution: vi.fn().mockResolvedValue(undefined),
   } as unknown as BaseChannelAdapter;
 }
@@ -116,5 +119,147 @@ describe('QueryOrchestrator', () => {
     expect(adapter.sendTyping).toHaveBeenCalledWith('chat-1');
     expect(adapter.addReaction).toHaveBeenCalledWith('chat-1', 'msg-1', expect.any(String));
     expect(adapter.send).toHaveBeenCalledWith(expect.objectContaining({ html: expect.stringContaining('hello') }));
+  });
+
+  it('splits Feishu completion into trace edit plus a separate result bubble', async () => {
+    const state = new SessionStateManager();
+    const engine = {
+      processMessage: vi.fn().mockImplementation(async (params) => {
+        params.onThinkingDelta?.('先检查代码');
+        params.onToolStart?.({ name: 'Read', input: { file_path: 'src/main.ts' }, id: 'tool-1' });
+        params.onToolResult?.({ toolUseId: 'tool-1', content: 'ok', isError: false });
+        params.onTextDelta?.('最终答案');
+        await params.onQueryResult?.({
+          sessionId: 'sdk-2',
+          isError: false,
+          usage: { inputTokens: 10, outputTokens: 5, costUsd: 0.01 },
+        });
+      }),
+    } as any;
+    const router = {
+      resolve: vi.fn().mockResolvedValue({ ...binding, channelType: 'feishu' }),
+      rebind: vi.fn(),
+    } as any;
+    const permissions = {
+      clearSessionWhitelist: vi.fn(),
+      getGateway: vi.fn().mockReturnValue({
+        waitFor: vi.fn(),
+        resolve: vi.fn(),
+      }),
+      setPendingSdkPerm: vi.fn(),
+      clearPendingSdkPerm: vi.fn(),
+      isToolAllowed: vi.fn().mockReturnValue(false),
+      storeQuestionData: vi.fn(),
+      trackPermissionMessage: vi.fn(),
+    } as any;
+    const sdkEngine = {
+      getQuestionState: vi.fn().mockReturnValue({
+        sdkQuestionData: new Map(),
+        sdkQuestionAnswers: new Map(),
+        sdkQuestionTextAnswers: new Map(),
+      }),
+      setControlsForChat: vi.fn(),
+      setActiveMessageId: vi.fn(),
+      closeSession: vi.fn(),
+      getOrCreateSession: vi.fn().mockReturnValue(undefined),
+    } as any;
+    const adapter = createAdapter('feishu');
+    const llm = {} as any;
+
+    const orchestrator = new QueryOrchestrator({
+      engine,
+      llm,
+      router,
+      state,
+      permissions,
+      sdkEngine,
+      store: mockStore,
+      defaultWorkdir: '/tmp/project',
+      port: 8080,
+    });
+
+    await orchestrator.run(adapter, {
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      text: 'hello',
+      messageId: 'msg-1',
+    });
+
+    expect(adapter.send).toHaveBeenCalledTimes(2);
+    const traceMessage = (adapter.send as any).mock.calls[0][0];
+    expect(traceMessage.feishuHeader.title).toContain('已完成');
+    const finalMessage = (adapter.send as any).mock.calls[1][0];
+    expect(finalMessage.text).toContain('最终答案');
+    expect(adapter.editMessage).not.toHaveBeenCalled();
+  });
+
+  it('keeps short Feishu replies in a single bubble when there is no meaningful trace', async () => {
+    const state = new SessionStateManager();
+    const engine = {
+      processMessage: vi.fn().mockImplementation(async (params) => {
+        params.onTextDelta?.('简短答复');
+        await params.onQueryResult?.({
+          sessionId: 'sdk-2',
+          isError: false,
+          usage: { inputTokens: 10, outputTokens: 5, costUsd: 0.01 },
+        });
+      }),
+    } as any;
+    const router = {
+      resolve: vi.fn().mockResolvedValue({ ...binding, channelType: 'feishu' }),
+      rebind: vi.fn(),
+    } as any;
+    const permissions = {
+      clearSessionWhitelist: vi.fn(),
+      getGateway: vi.fn().mockReturnValue({
+        waitFor: vi.fn(),
+        resolve: vi.fn(),
+      }),
+      setPendingSdkPerm: vi.fn(),
+      clearPendingSdkPerm: vi.fn(),
+      isToolAllowed: vi.fn().mockReturnValue(false),
+      storeQuestionData: vi.fn(),
+      trackPermissionMessage: vi.fn(),
+    } as any;
+    const sdkEngine = {
+      getQuestionState: vi.fn().mockReturnValue({
+        sdkQuestionData: new Map(),
+        sdkQuestionAnswers: new Map(),
+        sdkQuestionTextAnswers: new Map(),
+      }),
+      setControlsForChat: vi.fn(),
+      setActiveMessageId: vi.fn(),
+      closeSession: vi.fn(),
+      getOrCreateSession: vi.fn().mockReturnValue(undefined),
+    } as any;
+    const adapter = createAdapter('feishu');
+    const llm = {} as any;
+
+    const orchestrator = new QueryOrchestrator({
+      engine,
+      llm,
+      router,
+      state,
+      permissions,
+      sdkEngine,
+      store: mockStore,
+      defaultWorkdir: '/tmp/project',
+      port: 8080,
+    });
+
+    await orchestrator.run(adapter, {
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      text: 'hello',
+      messageId: 'msg-1',
+    });
+
+    expect(adapter.send).toHaveBeenCalledTimes(1);
+    const onlyMessage = (adapter.send as any).mock.calls[0][0];
+    const content = (onlyMessage.feishuElements ?? []).map((e: any) => e.content || '').join('\n');
+    expect(content).toContain('简短答复');
+    expect(adapter.editMessage).not.toHaveBeenCalled();
   });
 });

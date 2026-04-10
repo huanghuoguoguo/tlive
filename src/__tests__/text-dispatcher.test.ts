@@ -60,7 +60,45 @@ describe('TextDispatcher', () => {
     const handled = await dispatcher.handle(adapter, createMessage('allow'));
 
     expect(handled).toBe(true);
-    expect(adapter.addReaction).toHaveBeenCalledWith('chat-1', 'msg-1', 'OK');
+    expect(adapter.addReaction).toHaveBeenCalledWith('chat-1', 'msg-1', '👍');
+  });
+
+  it('uses Feishu-supported reaction identifiers for text-based permissions', async () => {
+    const gateway = {
+      isPending: vi.fn().mockReturnValue(false),
+      resolve: vi.fn(),
+    };
+    const permissions = {
+      parsePermissionText: vi.fn().mockReturnValue('deny'),
+      tryResolveByText: vi.fn().mockReturnValue(true),
+      pendingPermissionCount: vi.fn().mockReturnValue(0),
+      findHookPermission: vi.fn(),
+      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
+      isHookMessage: vi.fn().mockReturnValue(false),
+      getGateway: vi.fn().mockReturnValue(gateway),
+    } as any;
+    const sdkEngine = {
+      getQuestionState: vi.fn().mockReturnValue({
+        sdkQuestionData: new Map(),
+        sdkQuestionAnswers: new Map(),
+        sdkQuestionTextAnswers: new Map(),
+      }),
+    } as any;
+
+    const dispatcher = new TextDispatcher({
+      permissions,
+      sdkEngine,
+      state: new SessionStateManager(),
+    });
+    const adapter = createAdapter('feishu');
+
+    const handled = await dispatcher.handle(
+      adapter,
+      createMessage('deny', { channelType: 'feishu' }),
+    );
+
+    expect(handled).toBe(true);
+    expect(adapter.addReaction).toHaveBeenCalledWith('chat-1', 'msg-1', 'No');
   });
 
   it('routes numeric replies into pending SDK AskUserQuestion state', async () => {

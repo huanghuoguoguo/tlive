@@ -31,6 +31,27 @@ type TimelineToolDisplay = {
   isError?: boolean;
 };
 
+type TimelineOperationDisplay = {
+  thinkingContent: string;
+  textEntries: string[];
+  toolEntries: TimelineToolDisplay[];
+};
+
+function summarizeOperationText(text: string): string {
+  const cleaned = text
+    .replace(/[*_`>#-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return '';
+
+  const sentence = cleaned
+    .split(/[。！？.!?\n]/)
+    .map(part => part.trim())
+    .find(Boolean) || cleaned;
+
+  return truncate(sentence, 20);
+}
+
 export class FeishuFormatter extends MessageFormatter {
   constructor(locale: MessageLocale = 'zh') {
     super(locale);
@@ -76,31 +97,53 @@ export class FeishuFormatter extends MessageFormatter {
     return { tag: 'markdown', content: downgradeHeadings(content) };
   }
 
-  private collectTimelineDisplay(data: ProgressData): {
-    thinkingContent: string;
-    textEntries: string[];
-    toolEntries: TimelineToolDisplay[];
-  } {
-    const thinkingParts: string[] = [];
-    const textEntries: string[] = [];
-    const toolEntries: TimelineToolDisplay[] = [];
-    const toolByKey = new Map<string, TimelineToolDisplay>();
+  private collectTimelineOperations(data: ProgressData): TimelineOperationDisplay[] {
+    const operations: TimelineOperationDisplay[] = [];
+    let current: TimelineOperationDisplay | undefined;
+    let currentToolByKey: Map<string, TimelineToolDisplay> | undefined;
+
+    const ensureCurrent = (): TimelineOperationDisplay => {
+      if (!current) {
+        current = { thinkingContent: '', textEntries: [], toolEntries: [] };
+        currentToolByKey = new Map<string, TimelineToolDisplay>();
+      }
+      return current;
+    };
+
+    const flushCurrent = (): void => {
+      if (!current) return;
+      if (current.thinkingContent.trim() || current.textEntries.length > 0 || current.toolEntries.length > 0) {
+        operations.push(current);
+      }
+      current = undefined;
+      currentToolByKey = undefined;
+    };
 
     for (const entry of data.timeline ?? []) {
       if (entry.kind === 'thinking' && entry.text?.trim()) {
-        thinkingParts.push(entry.text.trim());
+        const currentOp = current;
+        if (currentOp && (currentOp.toolEntries.length > 0 || currentOp.textEntries.length > 0)) {
+          flushCurrent();
+        }
+        const op = ensureCurrent();
+        op.thinkingContent = op.thinkingContent
+          ? `${op.thinkingContent}\n\n${entry.text.trim()}`
+          : entry.text.trim();
         continue;
       }
 
       if (entry.kind === 'text' && entry.text?.trim()) {
-        textEntries.push(entry.text.trim());
+        ensureCurrent().textEntries.push(entry.text.trim());
         continue;
       }
 
       if (entry.kind === 'tool' && entry.toolName) {
+        const op = ensureCurrent();
+        const toolMap = currentToolByKey ?? new Map<string, TimelineToolDisplay>();
+        currentToolByKey = toolMap;
         const toolInput = entry.toolInput || '(no input)';
         const key = `${entry.toolName}\u0000${toolInput}`;
-        const existing = toolByKey.get(key);
+        const existing = toolMap.get(key);
         if (existing) {
           if (entry.toolResult !== undefined) {
             existing.toolResult = entry.toolResult;
@@ -117,16 +160,13 @@ export class FeishuFormatter extends MessageFormatter {
           toolResult: entry.toolResult,
           isError: entry.isError,
         };
-        toolByKey.set(key, toolEntry);
-        toolEntries.push(toolEntry);
+        toolMap.set(key, toolEntry);
+        op.toolEntries.push(toolEntry);
       }
     }
 
-    return {
-      thinkingContent: thinkingParts.join('\n\n'),
-      textEntries,
-      toolEntries,
-    };
+    flushCurrent();
+    return operations;
   }
 
   private extractCompletedBody(data: ProgressData): string {
@@ -143,6 +183,53 @@ export class FeishuFormatter extends MessageFormatter {
     }
 
     return body;
+  }
+
+  private buildOperationHeader(operation: TimelineOperationDisplay, isExpanded: boolean): string {
+    const summarySource = operation.thinkingContent.trim()
+      || operation.textEntries.find(text => text.trim())
+      || '';
+    const summary = summarizeOperationText(summarySource);
+    const toolNames = [...new Set(operation.toolEntries.map(tool => tool.toolName))];
+    const toolSuffix = toolNames.length > 0
+      ? toolNames.length === 1
+        ? `${toolNames[0]}×${operation.toolEntries.length}`
+        : `${toolNames.slice(0, 2).join('/')} 等`
+      : '';
+    const title = summary
+      ? toolSuffix
+        ? `${summary} · ${toolSuffix}`
+        : summary
+      : toolNames.length > 0
+        ? toolNames.slice(0, 3).join(' · ')
+        : '思考';
+    const hasPendingTool = operation.toolEntries.some(tool => tool.toolResult === undefined && !tool.isError);
+    const hasError = operation.toolEntries.some(tool => tool.isError);
+    const icon = hasError ? '❌' : hasPendingTool ? '⏳' : isExpanded ? '🔄' : '✅';
+    return `${icon} ${title}`;
+  }
+
+  private buildOperationContent(operation: TimelineOperationDisplay, includeTextEntries: boolean): string {
+    const sections: string[] = [];
+
+    if (operation.thinkingContent.trim()) {
+      sections.push(`**思考**\n${operation.thinkingContent.trim()}`);
+    }
+
+    if (includeTextEntries && operation.textEntries.length > 0) {
+      sections.push(`**说明**\n${operation.textEntries.join('\n\n')}`);
+    }
+
+    if (operation.toolEntries.length > 0) {
+      const toolLines = operation.toolEntries.map(tool => {
+        const status = tool.isError ? '❌' : tool.toolResult !== undefined ? '✅' : '⏳';
+        const resultLine = tool.toolResult ? `\n→ ${truncate(tool.toolResult, 120)}` : '';
+        return `${status} **${tool.toolName}**\n${truncate(tool.toolInput, 200)}${resultLine}`;
+      });
+      sections.push(`**工具调用**\n${toolLines.join('\n\n')}`);
+    }
+
+    return sections.join('\n\n');
   }
 
   // --- Override all formatting methods for Feishu Card format ---
@@ -351,41 +438,25 @@ export class FeishuFormatter extends MessageFormatter {
 
     const elements: FeishuElement[] = [];
     const isDone = data.phase === 'completed' || data.phase === 'failed';
-    const display = this.collectTimelineDisplay(data);
+    const operations = this.collectTimelineOperations(data);
 
-    // Timeline: thinking, text, and tool call panels (shown for ALL phases)
-    if (data.timeline?.length) {
+    // Timeline: group one reasoning step + subsequent tool calls into one operation panel
+    if (operations.length > 0) {
       let budget = 3000;
-      if (display.thinkingContent && budget > 0) {
-        const content = truncate(display.thinkingContent, Math.min(budget, 1500));
-        budget -= content.length;
-        elements.push({
-          tag: 'collapsible_panel',
-          expanded: false,
-          header: { title: { tag: 'plain_text', content: '💭 思考过程' } },
-          elements: [{ tag: 'markdown', content }],
-        });
-      }
-
-      if (!isDone) {
-        for (const textEntry of display.textEntries) {
-          if (budget <= 0) break;
-          const content = truncate(downgradeHeadings(textEntry), Math.min(budget, 1500));
-          budget -= content.length;
-          elements.push(this.md(content));
-        }
-      }
-
-      for (const toolEntry of display.toolEntries) {
+      const expandedIndex = isDone ? -1 : operations.length - 1;
+      for (let i = 0; i < operations.length; i++) {
         if (budget <= 0) break;
-        const icon = toolEntry.isError ? '❌' : toolEntry.toolResult !== undefined ? '✅' : '⏳';
-        const resultLine = toolEntry.toolResult ? `\n→ ${truncate(toolEntry.toolResult, 120)}` : '';
-        const content = `${truncate(toolEntry.toolInput, 200)}${resultLine}`;
+        const operation = operations[i];
+        const isExpanded = i === expandedIndex;
+        const content = truncate(
+          downgradeHeadings(this.buildOperationContent(operation, !isDone)),
+          Math.min(budget, isExpanded ? 1800 : 1200),
+        );
         budget -= content.length;
         elements.push({
           tag: 'collapsible_panel',
-          expanded: !isDone,
-          header: { title: { tag: 'plain_text', content: `${icon} ${toolEntry.toolName}` } },
+          expanded: isExpanded,
+          header: { title: { tag: 'plain_text', content: this.buildOperationHeader(operation, isExpanded) } },
           elements: [{ tag: 'markdown', content }],
         });
       }
@@ -417,13 +488,14 @@ export class FeishuFormatter extends MessageFormatter {
 
     // Main content area (after timeline panels)
     if (isDone) {
-      // Completed/failed: response text below the decision trail
-      const completedBody = this.extractCompletedBody(data);
-      if (completedBody) {
-        elements.push(this.md(downgradeHeadings(truncate(completedBody, 3000))));
-      }
-      if (data.footerLine) {
-        elements.push(this.md(`<font color='grey'>${data.footerLine}</font>`));
+      if (!data.completedTraceOnly) {
+        const completedBody = this.extractCompletedBody(data);
+        if (completedBody) {
+          elements.push(this.md(downgradeHeadings(truncate(completedBody, 3000))));
+        }
+        if (data.footerLine) {
+          elements.push(this.md(`<font color='grey'>${data.footerLine}</font>`));
+        }
       }
     } else if (data.phase === 'waiting_permission' && data.permission) {
       const extraQueue = data.permission.queueLength > 1 ? `\n待处理审批：${data.permission.queueLength} 个` : '';
@@ -431,7 +503,7 @@ export class FeishuFormatter extends MessageFormatter {
         `**当前等待**\n${data.permission.toolName}\n\`\`\`\n${truncate(data.permission.input, 260)}\n\`\`\`${extraQueue}`
       ));
       elements.push(this.md(`**运行时长** ${data.elapsedSeconds}s`));
-    } else if (!data.timeline?.length) {
+    } else if (!operations.length) {
       // In-progress fallback when no timeline
       if (data.currentTool?.input) {
         const currentElapsed = data.currentTool.elapsed > 0 ? ` · ${data.currentTool.elapsed}s` : '';
@@ -441,7 +513,7 @@ export class FeishuFormatter extends MessageFormatter {
     }
 
     // Status line for in-progress cards with timeline
-    if (!isDone && data.timeline?.length) {
+    if (!isDone && operations.length > 0) {
       const statusParts: string[] = [];
       if (data.totalTools > 0) statusParts.push(`${data.totalTools} tools`);
       statusParts.push(`${data.elapsedSeconds}s`);

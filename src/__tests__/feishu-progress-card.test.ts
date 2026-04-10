@@ -111,12 +111,12 @@ describe('FeishuFormatter.formatProgress', () => {
   });
 
   describe('collapsible_panel — correct structure per Feishu Card 2.0 docs', () => {
-    it('keeps thinking and tool panels above the final response in completed cards', () => {
+    it('groups one thinking step and its tools into a single operation panel', () => {
       const msg = formatter.formatProgress('chat1', createProgressData({
         phase: 'completed',
         renderedText: 'Final answer',
         timeline: [
-          { kind: 'thinking', text: 'Plan the change' },
+          { kind: 'thinking', text: '评估当前改动内容。接着确认变更点。' },
           { kind: 'tool', toolName: 'Read', toolInput: 'src/main.ts', toolResult: 'ok' },
           { kind: 'text', text: 'intermediate text that should be skipped in completed mode' },
         ],
@@ -124,14 +124,15 @@ describe('FeishuFormatter.formatProgress', () => {
 
       const elements = getElements(msg);
       expect(elements[0].tag).toBe('collapsible_panel');
-      expect(elements[0].header.title.content).toContain('思考');
-      expect(elements[1].tag).toBe('collapsible_panel');
-      expect(elements[1].header.title.content).toContain('Read');
-      expect(elements[2].tag).toBe('markdown');
-      expect(elements[2].content).toContain('Final answer');
+      expect(elements[0].header.title.content).toContain('评估当前改动内容');
+      expect(elements[0].header.title.content).toContain('Read×1');
+      expect(elements[0].elements[0].content).toContain('评估当前改动内容');
+      expect(elements[0].elements[0].content).toContain('src/main.ts');
+      expect(elements[1].tag).toBe('markdown');
+      expect(elements[1].content).toContain('Final answer');
     });
 
-    it('merges repeated thinking blocks and duplicate tool panels in completed cards', () => {
+    it('starts a new operation panel when a new thinking step appears after tools', () => {
       const msg = formatter.formatProgress('chat1', createProgressData({
         phase: 'completed',
         renderedText: 'Final answer\n───────────────\n🖥️ Bash ×2 (2 total)\n[glm-5] │ ~/workspace/tlive │ #ea22',
@@ -149,14 +150,15 @@ describe('FeishuFormatter.formatProgress', () => {
       const panels = findByTag(elements, 'collapsible_panel');
       expect(panels).toHaveLength(2);
 
-      const thinkingPanel = panels[0];
-      expect(thinkingPanel.header.title.content).toContain('思考');
-      expect(thinkingPanel.elements[0].content).toContain('用户想查看磁盘使用情况。');
-      expect(thinkingPanel.elements[0].content).toContain('显示磁盘使用情况表格。');
+      const firstPanel = panels[0];
+      expect(firstPanel.header.title.content).toContain('用户想查看磁盘使用情况');
+      expect(firstPanel.header.title.content).toContain('Bash×1');
+      expect(firstPanel.elements[0].content).toContain('用户想查看磁盘使用情况。');
+      expect(firstPanel.elements[0].content).toContain('Filesystem');
 
-      const bashPanel = panels[1];
-      expect(bashPanel.header.title.content).toContain('Bash');
-      expect(bashPanel.elements[0].content).toContain('Filesystem');
+      const secondPanel = panels[1];
+      expect(secondPanel.header.title.content).toContain('显示磁盘使用情况表格');
+      expect(secondPanel.elements[0].content).toContain('显示磁盘使用情况表格。');
 
       const markdowns = findByTag(elements, 'markdown').map(e => e.content).join('\n');
       expect(markdowns).toContain('Final answer');
@@ -242,6 +244,25 @@ describe('FeishuFormatter.formatProgress', () => {
       const elements = getElements(msg);
       const panels = findByTag(elements, 'collapsible_panel');
       expect(panels).toHaveLength(0);
+    });
+
+    it('omits completed body when trace-only mode is enabled', () => {
+      const msg = formatter.formatProgress('chat1', createProgressData({
+        phase: 'completed',
+        renderedText: 'Final answer\n───────────────\n[glm-5] │ ~/workspace/tlive │ #ea22',
+        footerLine: '[glm-5] │ ~/workspace/tlive │ #ea22',
+        completedTraceOnly: true,
+        timeline: [
+          { kind: 'thinking', text: 'Read files first' },
+          { kind: 'tool', toolName: 'Read', toolInput: 'src/main.ts', toolResult: 'ok' },
+        ],
+      }));
+
+      const elements = getElements(msg);
+      const markdowns = findByTag(elements, 'markdown').map(e => e.content).join('\n');
+      expect(markdowns).not.toContain('Final answer');
+      expect(markdowns).not.toContain('~/workspace/tlive');
+      expect(findByTag(elements, 'collapsible_panel')).toHaveLength(1);
     });
   });
 

@@ -95,6 +95,7 @@ async function main() {
     join(tliveHome, 'logs', 'bridge.log'),
     [config.token, config.telegram.botToken, config.feishu.appSecret].filter(Boolean)
   );
+  logger.installConsoleInterception();
 
   logger.info('TLive Bridge starting...');
   logger.info(`Enabled channels: ${config.enabledChannels.join(', ') || 'none'}`);

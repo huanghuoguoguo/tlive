@@ -101,9 +101,6 @@ function daemonStart() {
 
   console.log(`Starting Bridge (runtime: ${runtime})...`);
 
-  const logFile = join(LOG_DIR, 'bridge.log');
-  const logFd = openSync(logFile, 'a');
-
   const env = {
     ...process.env,
     ...config,
@@ -114,13 +111,12 @@ function daemonStart() {
   const child = spawn(process.execPath, [BRIDGE_ENTRY], {
     detached: true,
     windowsHide: true,
-    stdio: ['ignore', logFd, logFd],
+    stdio: 'ignore',
     env,
   });
 
   writeFileSync(BRIDGE_PID, String(child.pid));
   child.unref();
-  closeSync(logFd);
 
   console.log(`Bridge started (PID ${child.pid})`);
 
@@ -194,7 +190,7 @@ async function daemonStatus() {
 }
 
 function daemonLogs(n = 50) {
-  const logFile = join(LOG_DIR, 'bridge.log');
+  const logFile = getDailyLogPath('bridge');
   console.log(`=== Bridge (last ${n} lines) ===`);
   if (!existsSync(logFile)) {
     console.log('(no log file)');
@@ -222,6 +218,13 @@ function daemonLogs(n = 50) {
   } catch {
     console.log('(no log file)');
   }
+}
+
+function getDailyLogPath(baseName, date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return join(LOG_DIR, `${baseName}-${year}-${month}-${day}.log`);
 }
 
 // ---------------------------------------------------------------------------
