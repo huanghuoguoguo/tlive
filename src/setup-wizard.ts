@@ -87,6 +87,7 @@ function printNextSteps(platforms: string[]): void {
     console.log('  1. Confirm the bot is available in your target chat');
     console.log('  2. Run /tlive or tlive start');
     console.log('  3. Send a real task and confirm the reply reaches QQ');
+    console.log('  4. If a permission prompt appears, reply allow / deny / always in text');
   }
 }
 

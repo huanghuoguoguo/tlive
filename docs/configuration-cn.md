@@ -48,12 +48,21 @@ TL_FS_ALLOWED_USERS=ou_xxx,xxx
 ## Claude 设置
 
 ```env
-# 设置范围（user=仅认证信息, full=加载 CLAUDE.md/MCP/skills）
-TL_CLAUDE_SETTINGS=user
+# 新 chat 默认加载的 Claude 设置来源
+# user    = ~/.claude/settings.json
+# project = .claude/settings.json + CLAUDE.md + MCP + skills
+# local   = .claude/settings.local.json
+TL_CLAUDE_SETTINGS=user,project,local
 
 # 默认工作目录
 TL_DEFAULT_WORKDIR=/home/user/projects
 ```
+
+可通过 `/settings user|full|isolated` 仅覆盖当前 chat 的 Claude 设置：
+
+- `user`：只加载全局认证和模型配置
+- `full`：加载 user + project + local
+- `isolated`：当前 chat 不加载外部 settings
 
 ## 代理
 

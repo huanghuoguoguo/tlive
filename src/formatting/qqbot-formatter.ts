@@ -5,7 +5,7 @@
 
 import { MessageFormatter, type MessageLocale } from './message-formatter.js';
 import { markdownToQQBot } from '../markdown/qqbot.js';
-import type { OutboundMessage, Button } from '../channels/types.js';
+import type { OutboundMessage } from '../channels/types.js';
 
 export class QQBotFormatter extends MessageFormatter {
   constructor(locale: MessageLocale = 'zh') {
@@ -17,17 +17,13 @@ export class QQBotFormatter extends MessageFormatter {
   }
 
   protected supportsButtons(): boolean {
-    return true;
+    return false;
   }
 
-  protected createMessage(chatId: string, text: string, buttons?: Button[]): OutboundMessage {
-    const msg: OutboundMessage = {
+  protected createMessage(chatId: string, text: string): OutboundMessage {
+    return {
       chatId,
       text,
     };
-    if (buttons) {
-      msg.buttons = buttons;
-    }
-    return msg;
   }
 }

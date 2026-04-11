@@ -109,8 +109,16 @@ export function presentSettingsChanged(chatId: string, label: string): { chatId:
   return { chatId, text: `⚙️ Settings: ${label}` };
 }
 
-export function presentSettingsStatus(chatId: string, preset: string, current: string[]): { chatId: string; text: string } {
-  return { chatId, text: `⚙️ Settings: **${preset}** (${current.join(', ') || 'none'})\nUsage: \`/settings user|full|isolated\`\n  user — ~/.claude/settings.json (auth, model)\n  full — + CLAUDE.md, MCP servers, skills\n  isolated — no external settings` };
+export function presentSettingsStatus(
+  chatId: string,
+  preset: string,
+  current: string[],
+  scope: 'default' | 'chat override' = 'default',
+): { chatId: string; text: string } {
+  return {
+    chatId,
+    text: `⚙️ Settings (${scope}): **${preset}** (${current.join(', ') || 'none'})\nUsage: \`/settings user|full|isolated\`\n  user — ~/.claude/settings.json (auth, model)\n  full — + CLAUDE.md, MCP servers, skills\n  isolated — no external settings`,
+  };
 }
 
 export function presentApproveUsage(chatId: string): { chatId: string; text: string } {

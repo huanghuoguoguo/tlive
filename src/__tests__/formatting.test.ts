@@ -37,7 +37,7 @@ describe('formatPermissionCard', () => {
     const msg = formatPermissionCard(baseData, 'qqbot');
     expect(msg.text).toContain('Permission Required');
     expect(msg.text).toContain('Bash');
-    expect(msg.buttons).toHaveLength(3);
+    expect(msg.buttons).toBeUndefined();
   });
 
   it('truncates long tool input', () => {

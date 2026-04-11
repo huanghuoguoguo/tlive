@@ -17,6 +17,7 @@ import { truncate } from '../utils/string.js';
 import { shortPath } from '../utils/path.js';
 import { scanClaudeSessions } from '../session-scanner.js';
 import type { BridgeStore } from '../store/interface.js';
+import type { ClaudeSettingSource } from '../config.js';
 const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
 import type { LLMProvider, LiveSession } from '../providers/base.js';
 
@@ -29,6 +30,7 @@ interface QueryOrchestratorOptions {
   sdkEngine: SDKEngine;
   store: BridgeStore;
   defaultWorkdir: string;
+  defaultClaudeSettingSources: ClaudeSettingSource[];
   port: number;
 }
 
@@ -95,6 +97,7 @@ export class QueryOrchestrator {
       previousSessionPreview = sessions.find(s => s.sdkSessionId === previousBinding?.sdkSessionId)?.preview;
       await this.options.router.rebind(msg.channelType, msg.chatId, generateSessionId(), {
         cwd: previousBinding?.cwd,
+        claudeSettingSources: previousBinding?.claudeSettingSources,
       });
       this.options.state.clearThread(msg.channelType, msg.chatId);
     }
@@ -435,6 +438,7 @@ export class QueryOrchestrator {
     try {
       // Get or create a LiveSession for this chat
       const workdir = binding.cwd || this.options.defaultWorkdir;
+      const settingSources = binding.claudeSettingSources ?? this.options.defaultClaudeSettingSources;
       const chatKey = this.options.state.stateKey(msg.channelType, msg.chatId);
       const sessionKey = `${msg.channelType}:${msg.chatId}:${workdir}`;
       let liveSession: LiveSession | undefined;
@@ -448,6 +452,7 @@ export class QueryOrchestrator {
           workdir,
           {
             sessionId: binding.sdkSessionId,
+            settingSources,
           },
         );
       } catch (err) {
@@ -466,6 +471,7 @@ export class QueryOrchestrator {
       await this.options.engine.processMessage({
         sdkSessionId: binding.sdkSessionId,
         workingDirectory: workdir,
+        settingSources,
         text: msg.text,
         attachments: msg.attachments,
         // When using LiveSession, streamResult bypasses streamChat;

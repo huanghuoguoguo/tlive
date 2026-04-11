@@ -103,6 +103,7 @@ export class BridgeManager {
       llm,
       this.sdkEngine.getActiveControls(),
       this.permissions,
+      config.claudeSettingSources,
       (channelType, chatId) => this.sdkEngine.closeSession(channelType, chatId),
     );
     this.loop = new MessageLoopCoordinator({
@@ -126,6 +127,7 @@ export class BridgeManager {
       sdkEngine: this.sdkEngine,
       store,
       defaultWorkdir,
+      defaultClaudeSettingSources: config.claudeSettingSources,
       port: this.port,
     });
     this.notifications = new HookNotificationDispatcher({

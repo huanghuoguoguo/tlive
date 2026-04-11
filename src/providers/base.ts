@@ -1,5 +1,6 @@
 import type { CanonicalEvent } from '../messages/schema.js';
 import type { FileAttachment, PermissionRequestHandler, QueryControls } from '../messages/types.js';
+import type { ClaudeSettingSource } from '../config.js';
 import type { EffortLevel } from '../utils/types.js';
 
 export type { FileAttachment, PermissionRequestHandler, QueryControls };
@@ -31,6 +32,8 @@ export interface StreamChatParams {
   onAskUserQuestion?: AskUserQuestionHandler;
   /** Controls Claude's thinking depth */
   effort?: EffortLevel;
+  /** Claude Code settings sources for this turn */
+  settingSources?: ClaudeSettingSource[];
 }
 
 export interface StreamChatResult {
@@ -97,5 +100,11 @@ export interface LLMProvider {
   /** Declare provider capabilities */
   capabilities(): ProviderCapabilities;
   /** Create a long-lived session. Returns undefined if not supported. */
-  createSession?(params: { workingDirectory: string; sessionId?: string; effort?: EffortLevel; model?: string }): LiveSession;
+  createSession?(params: {
+    workingDirectory: string;
+    sessionId?: string;
+    effort?: EffortLevel;
+    model?: string;
+    settingSources?: ClaudeSettingSource[];
+  }): LiveSession;
 }

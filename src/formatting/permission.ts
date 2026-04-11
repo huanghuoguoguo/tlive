@@ -6,7 +6,7 @@ import { truncate } from '../utils/string.js';
 interface PermissionMessage {
   text?: string;
   html?: string;
-  buttons: OutboundMessage['buttons'];
+  buttons?: OutboundMessage['buttons'];
   feishuElements?: OutboundMessage['feishuElements'];
   /** Feishu card header (caller passes to buildFeishuCard) */
   feishuHeader?: { template: string; title: string };
@@ -83,10 +83,9 @@ export function formatPermissionCard(data: PermissionCardData, channelType: Chan
       if (data.terminalUrl) {
         parts.push(`\uD83D\uDD17 [Open Terminal](${data.terminalUrl})`);
       }
-      parts.push('', '💬 回复 **allow** / **deny** / **always** 或点击按钮');
+      parts.push('', '💬 回复 **allow** / **deny** / **always**');
       return {
         text: parts.join('\n'),
-        buttons,
       };
     }
   }

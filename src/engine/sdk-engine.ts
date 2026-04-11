@@ -8,6 +8,7 @@
  */
 
 import type { QueryControls, LiveSession, LLMProvider, MessagePriority } from '../providers/base.js';
+import type { ClaudeSettingSource } from '../config.js';
 import type { SessionStateManager } from './session-state.js';
 import type { ChannelRouter } from './router.js';
 import type { EffortLevel } from '../utils/types.js';
@@ -57,7 +58,7 @@ export class SDKEngine {
   onSessionPruned?: (sessionKey: string) => void;
 
   constructor(
-    private state: SessionStateManager,
+    _state: SessionStateManager,
     _router: ChannelRouter,
   ) {}
 
@@ -147,7 +148,7 @@ export class SDKEngine {
     channelType: string,
     chatId: string,
     workdir: string,
-    options?: { sessionId?: string; effort?: EffortLevel; model?: string },
+    options?: { sessionId?: string; effort?: EffortLevel; model?: string; settingSources?: ClaudeSettingSource[] },
   ): LiveSession | undefined {
     if (!llm.createSession) return undefined;
 
@@ -174,6 +175,7 @@ export class SDKEngine {
       sessionId: options?.sessionId,
       effort: options?.effort,
       model: options?.model,
+      settingSources: options?.settingSources,
     });
 
     this.registry.set(key, { session, workdir, lastActiveAt: Date.now() });
@@ -311,7 +313,7 @@ export class SDKEngine {
   }
 
   /** Track progress bubble messageId → sessionKey mapping */
-  setActiveMessageId(chatKey: string, messageId: string | undefined, sessionKey?: string): void {
+  setActiveMessageId(_chatKey: string, messageId: string | undefined, sessionKey?: string): void {
     if (messageId && sessionKey) {
       this.linkBubble(messageId, sessionKey);
     }

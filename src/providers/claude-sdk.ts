@@ -12,7 +12,7 @@ import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { ClaudeAdapter } from '../messages/claude-adapter.js';
 import type { CanonicalEvent } from '../messages/schema.js';
 import type { LLMProvider, StreamChatParams, StreamChatResult, QueryControls, ProviderCapabilities, LiveSession, EffortLevel } from './base.js';
-import type { ClaudeSettingSource } from '../config.js';
+import { DEFAULT_CLAUDE_SETTING_SOURCES, type ClaudeSettingSource } from '../config.js';
 import { ClaudeLiveSession } from './claude-live-session.js';
 import { buildSubprocessEnv, type PermissionTimeoutCallback } from './claude-shared.js';
 
@@ -113,13 +113,15 @@ interface StreamState {
 
 export class ClaudeSDKProvider implements LLMProvider {
   private cliPath: string | undefined;
-  private settingSources: ClaudeSettingSource[];
+  private defaultSettingSources: ClaudeSettingSource[];
 
   /** Called when a permission request times out — set by main.ts to send IM notifications */
   onPermissionTimeout?: PermissionTimeoutCallback;
 
   constructor(settingSources?: ClaudeSettingSource[]) {
-    this.settingSources = settingSources?.length ? [...settingSources] : ['user'];
+    this.defaultSettingSources = settingSources?.length
+      ? [...settingSources]
+      : [...DEFAULT_CLAUDE_SETTING_SOURCES];
 
     // Preflight check
     this.cliPath = findClaudeCli();
@@ -134,18 +136,14 @@ export class ClaudeSDKProvider implements LLMProvider {
       console.warn('[claude-sdk] Claude CLI not found — SDK will use default resolution');
     }
 
-    const srcLabel = this.settingSources.length > 0 ? this.settingSources.join(', ') : 'none (isolation mode)';
+    const srcLabel = this.defaultSettingSources.length > 0
+      ? this.defaultSettingSources.join(', ')
+      : 'none (isolation mode)';
     console.log(`[claude-sdk] Settings sources: ${srcLabel}`);
   }
 
-  getSettingSources(): ClaudeSettingSource[] {
-    return [...this.settingSources];
-  }
-
-  setSettingSources(sources: ClaudeSettingSource[]): void {
-    this.settingSources = [...sources];
-    const label = sources.length > 0 ? sources.join(', ') : 'none (isolation mode)';
-    console.log(`[claude-sdk] Settings sources changed: ${label}`);
+  getDefaultSettingSources(): ClaudeSettingSource[] {
+    return [...this.defaultSettingSources];
   }
 
   capabilities(): ProviderCapabilities {
@@ -160,12 +158,18 @@ export class ClaudeSDKProvider implements LLMProvider {
     };
   }
 
-  createSession(params: { workingDirectory: string; sessionId?: string; effort?: EffortLevel; model?: string }): LiveSession {
+  createSession(params: {
+    workingDirectory: string;
+    sessionId?: string;
+    effort?: EffortLevel;
+    model?: string;
+    settingSources?: ClaudeSettingSource[];
+  }): LiveSession {
     return new ClaudeLiveSession({
       workingDirectory: params.workingDirectory,
       sessionId: params.sessionId,
       cliPath: this.cliPath,
-      settingSources: this.settingSources,
+      settingSources: params.settingSources ?? this.defaultSettingSources,
       effort: params.effort,
       model: params.model,
     });
@@ -173,7 +177,7 @@ export class ClaudeSDKProvider implements LLMProvider {
 
   streamChat(params: StreamChatParams): StreamChatResult {
     const cliPath = this.cliPath;
-    const settingSources = this.settingSources;
+    const settingSources = params.settingSources ?? this.defaultSettingSources;
 
     // Query controls exposed for interrupt/stopTask
     let controls: QueryControls | undefined;
@@ -223,11 +227,9 @@ export class ClaudeSDKProvider implements LLMProvider {
               agentProgressSummaries: true,
               // Enable prompt suggestions (predicted next user prompt after each turn)
               promptSuggestions: true,
-              // Controls which Claude Code settings files to load.
-              // Default ['user'] loads ~/.claude/settings.json (auth, model).
-              // Add 'project' for CLAUDE.md, MCP, skills; 'local' for dev overrides.
+              // Controls which Claude Code settings files to load for this turn.
+              // Default is TL_CLAUDE_SETTINGS or user,project,local.
               // Empty array = full isolation (SDK default).
-              // Configured via TL_CLAUDE_SETTINGS env var.
               settingSources,
               // Use Claude Code's native permission rules for fine-grained control.
               // Safe read-only tools + safe Bash patterns are pre-approved.

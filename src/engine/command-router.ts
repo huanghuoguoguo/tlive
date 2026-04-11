@@ -4,7 +4,10 @@ import type { SessionStateManager } from './session-state.js';
 import type { ChannelRouter } from './router.js';
 import type { LLMProvider, QueryControls } from '../providers/base.js';
 import { ClaudeSDKProvider } from '../providers/claude-sdk.js';
-import type { ClaudeSettingSource } from '../config.js';
+import {
+  DEFAULT_CLAUDE_SETTING_SOURCES,
+  type ClaudeSettingSource,
+} from '../config.js';
 import type { BridgeStore } from '../store/interface.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -91,8 +94,18 @@ export class CommandRouter {
         lastDecision?: { toolName: string; decision: 'allow' | 'allow_always' | 'deny' | 'cancelled' };
       };
     },
-    private onNewSession?: (channelType: string, chatId: string) => void,
+    private defaultClaudeSettingSources: ClaudeSettingSource[] = DEFAULT_CLAUDE_SETTING_SOURCES,
+    private closeChatSessions?: (channelType: string, chatId: string) => void,
   ) {}
+
+  private getSettingsPreset(sources: ClaudeSettingSource[]): string {
+    if (sources.length === 0) return 'isolated';
+    if (sources.length === 1 && sources[0] === 'user') return 'user';
+    if (sources.length === 3 && sources[0] === 'user' && sources[1] === 'project' && sources[2] === 'local') {
+      return 'full';
+    }
+    return sources.join(',');
+  }
 
   private async buildHomePayload(channelType: string, chatId: string): Promise<HomeData> {
     const binding = await this.store.getBinding(channelType, chatId);
@@ -139,13 +152,14 @@ export class CommandRouter {
       }
       case '/new': {
         // Close any active LiveSession(s) for this chat before creating new session
-        this.onNewSession?.(msg.channelType, msg.chatId);
+        this.closeChatSessions?.(msg.channelType, msg.chatId);
         // Just clear session, keep current cwd
         const binding = await this.store.getBinding(msg.channelType, msg.chatId);
 
         const newSessionId = generateSessionId();
         await this.router.rebind(msg.channelType, msg.chatId, newSessionId, {
           cwd: binding?.cwd,
+          claudeSettingSources: binding?.claudeSettingSources,
         });
 
         this.state.clearLastActive(msg.channelType, msg.chatId);
@@ -263,6 +277,7 @@ export class CommandRouter {
         await this.router.rebind(msg.channelType, msg.chatId, newBindingId, {
           sdkSessionId: target.sdkSessionId,
           cwd: target.cwd, // update cwd to session's directory
+          claudeSettingSources: binding?.claudeSettingSources,
         });
 
         this.state.clearLastActive(msg.channelType, msg.chatId);
@@ -357,20 +372,31 @@ export class CommandRouter {
         };
 
         if (arg && arg in PRESETS) {
-          this.llm.setSettingSources(PRESETS[arg]);
+          const binding = await this.router.resolve(msg.channelType, msg.chatId);
+          binding.claudeSettingSources = [...PRESETS[arg]];
+          binding.sdkSessionId = undefined;
+          await this.store.saveBinding(binding);
+          this.closeChatSessions?.(msg.channelType, msg.chatId);
+          this.permissions.clearSessionWhitelist(binding.sessionId);
           const labels: Record<string, string> = {
-            user: '👤 user — auth & model only',
-            full: '📦 full — auth, CLAUDE.md, MCP, skills',
-            isolated: '🔒 isolated — no external settings',
+            user: '👤 user — current chat uses global auth/model only',
+            full: '📦 full — current chat loads project rules, MCP, and skills',
+            isolated: '🔒 isolated — current chat ignores external settings',
           };
           await send(adapter, presentSettingsChanged(msg.chatId, labels[arg]));
         } else {
-          const current = this.llm.getSettingSources();
-          const preset = current.length === 0 ? 'isolated'
-            : current.length === 1 && current[0] === 'user' ? 'user'
-            : current.includes('project') ? 'full'
-            : current.join(',');
-          await send(adapter, presentSettingsStatus(msg.chatId, preset, current));
+          const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+          const current = binding?.claudeSettingSources ?? this.defaultClaudeSettingSources;
+          const preset = this.getSettingsPreset(current);
+          await send(
+            adapter,
+            presentSettingsStatus(
+              msg.chatId,
+              preset,
+              current,
+              binding?.claudeSettingSources ? 'chat override' : 'default',
+            ),
+          );
         }
         return true;
       }

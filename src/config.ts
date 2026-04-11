@@ -2,12 +2,14 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
+export type ClaudeSettingSource = 'user' | 'project' | 'local';
+export const DEFAULT_CLAUDE_SETTING_SOURCES: ClaudeSettingSource[] = ['user', 'project', 'local'];
+
 /** Which Claude Code filesystem settings to load in bridge mode.
  *  - 'user'    → ~/.claude/settings.json (auth, model overrides)
  *  - 'project' → .claude/settings.json + CLAUDE.md (project rules, MCP, skills)
  *  - 'local'   → .claude/settings.local.json (developer overrides)
- *  Default: ['user'] — only global auth/model config. */
-export type ClaudeSettingSource = 'user' | 'project' | 'local';
+ *  Default: ['user', 'project', 'local'] — global config plus project context. */
 
 export interface Config {
   port: number;
@@ -15,7 +17,7 @@ export interface Config {
   enabledChannels: string[];
   defaultWorkdir: string;
   defaultModel: string;
-  /** Claude Code settings sources to load (default: ['user']) */
+  /** Claude Code settings sources to load (default: ['user', 'project', 'local']) */
   claudeSettingSources: ClaudeSettingSource[];
   /** Global proxy URL (e.g., http://127.0.0.1:7890, socks5://127.0.0.1:1080) */
   proxy: string;
@@ -110,7 +112,9 @@ export function loadConfig(): Config {
     port,
     token: get('TL_TOKEN'),
     enabledChannels: parseList(get('TL_ENABLED_CHANNELS')),
-    claudeSettingSources: parseList(get('TL_CLAUDE_SETTINGS', 'user')) as ClaudeSettingSource[],
+    claudeSettingSources: parseList(
+      get('TL_CLAUDE_SETTINGS', DEFAULT_CLAUDE_SETTING_SOURCES.join(',')),
+    ) as ClaudeSettingSource[],
     proxy: globalProxy,
     defaultWorkdir: get('TL_DEFAULT_WORKDIR', process.cwd()),
     defaultModel: get('TL_DEFAULT_MODEL'),

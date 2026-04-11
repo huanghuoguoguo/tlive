@@ -48,12 +48,21 @@ See [Feishu Setup Guide](setup-feishu.md)
 ## Claude Settings
 
 ```env
-# Settings scope (user=auth only, full=load CLAUDE.md/MCP/skills)
-TL_CLAUDE_SETTINGS=user
+# Settings sources loaded by default for new chats
+# user    = ~/.claude/settings.json
+# project = .claude/settings.json + CLAUDE.md + MCP + skills
+# local   = .claude/settings.local.json
+TL_CLAUDE_SETTINGS=user,project,local
 
 # Default working directory
 TL_DEFAULT_WORKDIR=/home/user/projects
 ```
+
+Use `/settings user|full|isolated` to override Claude settings for the current chat only:
+
+- `user`: auth/model config only
+- `full`: user + project + local settings
+- `isolated`: ignore external settings for this chat
 
 ## Proxy
 

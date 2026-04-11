@@ -45,8 +45,6 @@ export class SessionStateManager {
   }
 
   getPermMode(channelType: string, chatId: string): 'on' | 'off' {
-    // QQ Bot doesn't support interactive buttons → default to auto-approve
-    if (channelType === 'qqbot') return 'off';
     const mode = this.modes.get(this.stateKey(channelType, chatId));
     if (!mode) return 'on';
     return mode.permissionMode === 'bypassPermissions' ? 'off' : 'on';

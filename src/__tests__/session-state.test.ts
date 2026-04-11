@@ -20,6 +20,10 @@ describe('SessionStateManager', () => {
       expect(state.getPermMode('feishu', '1')).toBe('on');
     });
 
+    it('qqbot also defaults to on for text-based approvals', () => {
+      expect(state.getPermMode('qqbot', '1')).toBe('on');
+    });
+
     it('set and get', () => {
       state.setPermMode('feishu', '1', 'off');
       expect(state.getPermMode('feishu', '1')).toBe('off');

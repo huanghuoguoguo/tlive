@@ -1,3 +1,4 @@
+import type { ClaudeSettingSource } from '../config.js';
 import type { BridgeStore } from '../store/interface.js';
 import type { ChannelBinding } from '../store/interface.js';
 import { generateSessionId } from '../utils/id.js';
@@ -20,13 +21,19 @@ export class ChannelRouter {
     return binding;
   }
 
-  async rebind(channelType: string, chatId: string, sessionId: string, opts?: { sdkSessionId?: string; cwd?: string }): Promise<ChannelBinding> {
+  async rebind(
+    channelType: string,
+    chatId: string,
+    sessionId: string,
+    opts?: { sdkSessionId?: string; cwd?: string; claudeSettingSources?: ClaudeSettingSource[] },
+  ): Promise<ChannelBinding> {
     const binding: ChannelBinding = {
       channelType,
       chatId,
       sessionId,
       sdkSessionId: opts?.sdkSessionId,
       cwd: opts?.cwd,
+      claudeSettingSources: opts?.claudeSettingSources,
       createdAt: new Date().toISOString(),
     };
     await this.store.saveBinding(binding);
