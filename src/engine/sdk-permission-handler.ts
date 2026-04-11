@@ -10,13 +10,14 @@ import type { SessionStateManager } from './session-state.js';
 import type { MessageRenderer } from './message-renderer.js';
 import { getToolCommand } from './tool-registry.js';
 import type { ChannelRouter } from './router.js';
+import type { ChannelBinding } from '../store/interface.js';
 import { generateId } from '../utils/id.js';
 import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../utils/constants.js';
 
 interface SDKPermissionHandlerContext {
   adapter: BaseChannelAdapter;
   msg: InboundMessage;
-  binding: { sessionId: string; sdkSessionId?: string; cwd?: string };
+  binding: ChannelBinding;
   permissions: PermissionCoordinator;
   state: SessionStateManager;
   router: ChannelRouter;

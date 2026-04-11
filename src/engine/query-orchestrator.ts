@@ -12,7 +12,7 @@ import { generateSessionId } from '../utils/id.js';
 import { truncate } from '../utils/string.js';
 import { shortPath } from '../utils/path.js';
 import { scanClaudeSessions } from '../session-scanner.js';
-import type { BridgeStore } from '../store/interface.js';
+import type { BridgeStore, ChannelBinding } from '../store/interface.js';
 import type { ClaudeSettingSource } from '../config.js';
 import type { LLMProvider, LiveSession } from '../providers/base.js';
 import { QueryExecutionPresenter } from './query-execution-presenter.js';
@@ -138,7 +138,7 @@ export class QueryOrchestrator {
     adapter: BaseChannelAdapter,
     msg: InboundMessage,
   ): Promise<{
-    binding: { sessionId: string; sdkSessionId?: string; cwd?: string; claudeSettingSources?: ClaudeSettingSource[] };
+    binding: ChannelBinding;
     expired: boolean;
     previousSessionPreview?: string;
   }> {
@@ -218,7 +218,7 @@ export class QueryOrchestrator {
   private async executeQuery(
     adapter: BaseChannelAdapter,
     msg: InboundMessage,
-    binding: { sessionId: string; sdkSessionId?: string; cwd?: string; claudeSettingSources?: ClaudeSettingSource[] },
+    binding: ChannelBinding,
     renderer: MessageRenderer,
     costTracker: CostTracker,
     sdkPermissionHandler: (toolName: string, toolInput: Record<string, unknown>, promptSentence: string, signal?: AbortSignal) => Promise<'allow' | 'allow_always' | 'deny'>,
