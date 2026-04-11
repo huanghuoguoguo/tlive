@@ -21,6 +21,17 @@ export interface Config {
   claudeSettingSources: ClaudeSettingSource[];
   /** Global proxy URL (e.g., http://127.0.0.1:7890, socks5://127.0.0.1:1080) */
   proxy: string;
+  /** Webhook configuration for automation entry */
+  webhook: {
+    /** Enable webhook endpoint (default: false) */
+    enabled: boolean;
+    /** Token for webhook authentication (must match request Authorization: Bearer <token>) */
+    token: string;
+    /** Webhook listen port (default: 8081, separate from main port) */
+    port: number;
+    /** Webhook path (default: /webhook) */
+    path: string;
+  };
   telegram: {
     botToken: string;
     chatId: string;
@@ -118,6 +129,12 @@ export function loadConfig(): Config {
     proxy: globalProxy,
     defaultWorkdir: get('TL_DEFAULT_WORKDIR', process.cwd()),
     defaultModel: get('TL_DEFAULT_MODEL'),
+    webhook: {
+      enabled: get('TL_WEBHOOK_ENABLED', 'false') === 'true',
+      token: get('TL_WEBHOOK_TOKEN'),
+      port: parseInt(get('TL_WEBHOOK_PORT', '8081'), 10),
+      path: get('TL_WEBHOOK_PATH', '/webhook'),
+    },
     telegram: {
       botToken: get('TL_TG_BOT_TOKEN'),
       chatId: get('TL_TG_CHAT_ID'),

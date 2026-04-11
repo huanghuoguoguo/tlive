@@ -12,6 +12,7 @@ import { WorkspaceStateManager } from './workspace-state.js';
 import { PermissionCoordinator } from './permission-coordinator.js';
 import { CommandRouter } from './command-router.js';
 import { SDKEngine } from './sdk-engine.js';
+import { WebhookServer } from './webhook-server.js';
 import { networkInterfaces } from 'node:os';
 import { handleCallbackMessage } from './callback-dispatcher.js';
 import { IngressCoordinator } from './ingress-coordinator.js';
@@ -79,6 +80,8 @@ export class BridgeManager {
   private text: TextDispatcher;
   private query: QueryOrchestrator;
   private notifications: HookNotificationDispatcher;
+  /** Webhook server for automation entry */
+  private webhookServer: WebhookServer | null = null;
 
   private commands: CommandRouter;
   /** Cleanup timer for SDK question data */
@@ -140,6 +143,15 @@ export class BridgeManager {
       permissions: this.permissions,
       buildTerminalUrl: (sessionId) => `http://${getLocalIP()}:${this.port}/terminal.html?id=${sessionId}`,
     });
+    // Initialize webhook server if enabled
+    if (config.webhook.enabled && config.webhook.token) {
+      this.webhookServer = new WebhookServer({
+        token: config.webhook.token,
+        port: config.webhook.port,
+        path: config.webhook.path,
+        bridge: this,
+      });
+    }
   }
 
   
@@ -250,6 +262,10 @@ export class BridgeManager {
       this.sdkEngine.getInteractionState().pruneResolvedSdkQuestions(this.permissions.getGateway());
       this.ingress.pruneStaleState();
     }, 5 * 60 * 1000);
+    // Start webhook server if configured
+    if (this.webhookServer) {
+      this.webhookServer.start();
+    }
   }
 
   async stop(): Promise<void> {
@@ -262,6 +278,10 @@ export class BridgeManager {
     this.permissions.stopPruning();
     this.sdkEngine.stopSessionPruning();
     this.permissions.getGateway().denyAll();
+    // Stop webhook server
+    if (this.webhookServer) {
+      this.webhookServer.stop();
+    }
     for (const adapter of this.adapters.values()) {
       await adapter.stop();
     }
