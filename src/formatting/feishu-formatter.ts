@@ -482,7 +482,6 @@ export class FeishuFormatter extends MessageFormatter {
   }
 
   override formatPermissionStatus(chatId: string, data: PermissionStatusData): OutboundMessage {
-    const rememberedCount = data.rememberedTools + data.rememberedBashPrefixes;
     const decisionLabel = data.lastDecision
       ? {
           allow: '允许一次',

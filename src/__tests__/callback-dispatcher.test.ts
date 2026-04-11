@@ -36,6 +36,20 @@ function createDeps() {
         getGateway: () => ({ resolve }),
       },
       sdkEngine: {
+        getInteractionState: () => ({
+          getSdkQuestion: (permId: string) => sdkQuestionData.get(permId),
+          setSdkQuestionOptionAnswer: (permId: string, optionIndex: number) => {
+            sdkQuestionAnswers.set(permId, optionIndex);
+          },
+          setSdkQuestionTextAnswer: (permId: string, text: string) => {
+            sdkQuestionTextAnswers.set(permId, text);
+          },
+          cleanupSdkQuestion: (permId: string) => {
+            sdkQuestionData.delete(permId);
+            sdkQuestionAnswers.delete(permId);
+            sdkQuestionTextAnswers.delete(permId);
+          },
+        }),
         getQuestionState: () => ({
           sdkQuestionData,
           sdkQuestionAnswers,

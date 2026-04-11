@@ -253,7 +253,7 @@
 
 - ⏳ `QueryOrchestrator` 深拆
 - ⏳ `BridgeManager` 继续收敛
-- ⏳ Interaction State 正式抽象
+- ✅ Interaction State 正式抽象（`src/engine/interaction-state.ts`）
 
 ---
 

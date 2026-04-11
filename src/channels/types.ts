@@ -56,6 +56,12 @@ export interface SendResult {
   success: boolean;
 }
 
+export interface StreamingCardSession {
+  start(initialText?: string): Promise<string>;
+  update(fullText: string): Promise<void>;
+  close(finalText?: string): Promise<void>;
+}
+
 export interface Button {
   label: string;
   callbackData: string;

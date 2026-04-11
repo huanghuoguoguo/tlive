@@ -1,11 +1,8 @@
 import type { BaseChannelAdapter } from '../channels/base.js';
-import type { InboundMessage, OutboundMessage } from '../channels/types.js';
-import type { ProgressData } from '../formatting/message-types.js';
-import { downgradeHeadings } from '../markdown/feishu.js';
+import type { InboundMessage } from '../channels/types.js';
 import { MessageRenderer } from './message-renderer.js';
 import { getToolCommand } from './tool-registry.js';
 import { CostTracker } from './cost-tracker.js';
-import { chunkByParagraph } from '../delivery/delivery.js';
 import type { ConversationEngine } from './conversation.js';
 import type { ChannelRouter } from './router.js';
 import type { SessionStateManager } from './session-state.js';
@@ -20,6 +17,7 @@ import type { BridgeStore } from '../store/interface.js';
 import type { ClaudeSettingSource } from '../config.js';
 const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
 import type { LLMProvider, LiveSession } from '../providers/base.js';
+import { QueryExecutionPresenter } from './query-execution-presenter.js';
 
 interface QueryOrchestratorOptions {
   engine: ConversationEngine;
@@ -41,50 +39,6 @@ interface QueryOrchestratorOptions {
  */
 export class QueryOrchestrator {
   constructor(private options: QueryOrchestratorOptions) {}
-
-  private buildTaskSummary(state: {
-    responseText: string;
-    renderedText: string;
-    toolLogs: Array<{ name: string; input: string }>;
-    permissionRequests: number;
-    errorMessage?: string;
-  }): import('../formatting/message-types.js').TaskSummaryData {
-    const summarySource = (state.responseText || state.renderedText || '').trim();
-    const summary = truncate(summarySource || '任务已完成', 280);
-    const changedFileKeys = new Set(
-      state.toolLogs
-        .filter(log => ['Edit', 'Write', 'MultiEdit'].includes(log.name) && log.input.trim())
-        .map(log => log.input.trim()),
-    );
-    const hasError = !!state.errorMessage;
-    const nextStep = hasError
-      ? '查看失败原因后继续追问，或重新发起一个更小的修改任务。'
-      : changedFileKeys.size > 0
-        ? '如果结果符合预期，可以继续追问、测试变更，或切回最近会话继续处理。'
-        : '可以继续追问细节，或切回最近会话处理下一步任务。';
-
-    return {
-      summary,
-      changedFiles: changedFileKeys.size,
-      permissionRequests: state.permissionRequests,
-      hasError,
-      nextStep,
-    };
-  }
-
-  private shouldSplitFeishuCompletion(state: {
-    totalTools: number;
-    thinkingText: string;
-    timeline: Array<{ kind: 'thinking' | 'text' | 'tool' }>;
-    responseText: string;
-  }): boolean {
-    const thinkingCount = state.timeline.filter(entry => entry.kind === 'thinking').length;
-    const toolCount = state.timeline.filter(entry => entry.kind === 'tool').length;
-    const hasLongTrace = state.thinkingText.trim().length > 80 || state.timeline.length >= 4;
-    const hasMeaningfulTooling = toolCount >= 2 || (toolCount >= 1 && thinkingCount >= 1);
-    const hasLongAnswer = state.responseText.trim().length > 200;
-    return hasMeaningfulTooling || hasLongTrace || (toolCount >= 1 && hasLongAnswer);
-  }
 
   async run(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
     const expired = this.options.state.checkAndUpdateLastActive(msg.channelType, msg.chatId);
@@ -131,9 +85,17 @@ export class QueryOrchestrator {
     const reactions = PLATFORM_REACTIONS[adapter.channelType as ChannelType] ?? PLATFORM_REACTIONS[CHANNEL_TYPES.TELEGRAM];
     adapter.addReaction(reactionChatId, msg.messageId, reactions.processing).catch(() => {});
 
-    let feishuSession: import('../channels/feishu-streaming.js').FeishuStreamingSession | null = null;
     let stalledReactionAdded = false;
-    const renderer = new MessageRenderer({
+    let renderer!: MessageRenderer;
+    const getProgressMessageId = (): string | undefined => renderer?.messageId;
+    const presenter = new QueryExecutionPresenter({
+      adapter,
+      inbound: msg,
+      platformLimit: PLATFORM_LIMITS[adapter.channelType as ChannelType] ?? 4096,
+      clearTyping: () => clearInterval(typingInterval),
+      getMessageId: getProgressMessageId,
+    });
+    renderer = new MessageRenderer({
       platformLimit: PLATFORM_LIMITS[adapter.channelType as ChannelType] ?? 4096,
       throttleMs: 300,
       cwd: binding.cwd || this.options.defaultWorkdir,
@@ -169,121 +131,7 @@ export class QueryOrchestrator {
           adapter.addReaction(msg.chatId, progressMsgId, reactions.processing).catch(() => {});
         }
       },
-      flushCallback: async (content, isEdit, buttons, state) => {
-        if (
-          adapter.channelType === 'qqbot'
-          && state
-          && (state.phase === 'starting' || state.phase === 'executing')
-        ) {
-          return;
-        }
-
-        if (feishuSession && !buttons?.length) {
-          if (!isEdit) {
-            try {
-              const messageId = await feishuSession.start(downgradeHeadings(content));
-              clearInterval(typingInterval);
-              return messageId;
-            } catch {
-              feishuSession = null;
-            }
-          } else {
-            feishuSession.update(downgradeHeadings(content)).catch(() => {});
-            return;
-          }
-        }
-
-        let outMsg: OutboundMessage;
-        if (state) {
-          const progressData: ProgressData = {
-            phase: state.phase,
-            renderedText: content,
-            taskSummary: msg.text || '继续当前任务',
-            elapsedSeconds: state.elapsedSeconds,
-            totalTools: state.totalTools,
-            toolSummary: state.toolSummary,
-            footerLine: state.footerLine,
-            currentTool: state.currentTool,
-            permission: state.permission,
-            permissionRequests: state.permissionRequests,
-            todoItems: state.todoItems,
-            thinkingText: state.thinkingText,
-            toolLogs: state.toolLogs,
-            timeline: state.timeline,
-            isContinuation: state.isContinuation,
-            actionButtons: buttons?.length
-              ? buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
-              : undefined,
-          };
-
-          if (
-            adapter.channelType === 'feishu'
-            && state.phase === 'completed'
-            && this.shouldSplitFeishuCompletion({
-              totalTools: state.totalTools,
-              thinkingText: state.thinkingText,
-              timeline: state.timeline,
-              responseText: state.responseText,
-            })
-          ) {
-            const traceMsg = adapter.format({
-              type: 'progress',
-              chatId: msg.chatId,
-              data: {
-                ...progressData,
-                renderedText: '',
-                footerLine: undefined,
-                completedTraceOnly: true,
-              },
-            });
-            if (isEdit) {
-              await adapter.editMessage(msg.chatId, renderer.messageId!, traceMsg);
-            } else {
-              const traceResult = await adapter.send(traceMsg);
-              clearInterval(typingInterval);
-              void traceResult;
-            }
-
-            const summaryMsg = adapter.format({
-              type: 'taskSummary',
-              chatId: msg.chatId,
-              data: this.buildTaskSummary({
-                responseText: state.responseText,
-                renderedText: content,
-                toolLogs: state.toolLogs,
-                permissionRequests: state.permissionRequests,
-                errorMessage: state.errorMessage,
-              }),
-            });
-            await adapter.send(summaryMsg);
-            return;
-          }
-
-          outMsg = adapter.format({ type: 'progress', chatId: msg.chatId, data: progressData });
-        } else {
-          const castButtons = buttons?.length
-            ? buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
-            : undefined;
-          outMsg = adapter.formatContent(msg.chatId, content, castButtons);
-        }
-
-        if (!isEdit) {
-          const result = await adapter.send(outMsg);
-          clearInterval(typingInterval);
-          return result.messageId;
-        }
-
-        const limit = PLATFORM_LIMITS[adapter.channelType as ChannelType] ?? 4096;
-        if (content.length > limit) {
-          const chunks = chunkByParagraph(content, limit);
-          await adapter.editMessage(msg.chatId, renderer.messageId!, adapter.formatContent(msg.chatId, chunks[0]));
-          for (let i = 1; i < chunks.length; i++) {
-            await adapter.send(adapter.formatContent(msg.chatId, chunks[i]));
-          }
-        } else {
-          await adapter.editMessage(msg.chatId, renderer.messageId!, outMsg);
-        }
-      },
+      flushCallback: (content, isEdit, buttons, state) => presenter.flush(content, isEdit, buttons, state),
     });
 
     let askQuestionApproved = false;
@@ -327,6 +175,7 @@ export class QueryOrchestrator {
           this.options.permissions.notePermissionPending(chatKey, permId, binding.sessionId, toolName, inputStr);
           const buttons: Array<{ label: string; callbackData: string; style: string }> = [
             { label: '✅ Allow', callbackData: `perm:allow:${permId}`, style: 'primary' },
+            { label: '📌 Always in Session', callbackData: `perm:allow_session:${permId}`, style: 'default' },
             { label: '❌ Deny', callbackData: `perm:deny:${permId}`, style: 'danger' },
           ];
           renderer.onPermissionNeeded(toolName, inputStr, permId, buttons);
@@ -362,85 +211,88 @@ export class QueryOrchestrator {
       signal?: AbortSignal,
     ): Promise<Record<string, string>> => {
       if (!questions.length) return {};
-      const q = questions[0];
-      const permId = `askq-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const answers: Record<string, string> = {};
+      const interactionState = this.options.sdkEngine.getInteractionState();
 
-      const isMulti = q.multiSelect;
+      for (const q of questions) {
+        const permId = `askq-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const isMulti = q.multiSelect;
+        interactionState.beginSdkQuestion(permId, [q], msg.chatId);
+        if (isMulti) {
+          this.options.permissions.storeQuestionData(permId, [q]);
+        }
 
-      const { sdkQuestionData } = this.options.sdkEngine.getQuestionState();
-      sdkQuestionData.set(permId, { questions, chatId: msg.chatId });
-      if (isMulti) {
-        this.options.permissions.storeQuestionData(permId, questions);
-      }
+        const abortCleanup = () => {
+          this.options.permissions.getGateway().resolve(permId, 'deny', 'Cancelled');
+          interactionState.cleanupSdkQuestion(permId);
+          this.options.permissions.cleanupQuestion(permId);
+        };
+        if (signal?.aborted) {
+          abortCleanup();
+          throw new Error('Cancelled');
+        }
+        signal?.addEventListener('abort', abortCleanup, { once: true });
+        const waitPromise = this.options.permissions.getGateway().waitFor(permId, {
+          timeoutMs: 5 * 60 * 1000,
+          onTimeout: () => {
+            interactionState.cleanupSdkQuestion(permId);
+            this.options.permissions.cleanupQuestion(permId);
+          },
+        });
 
-      const abortCleanup = () => {
-        this.options.permissions.getGateway().resolve(permId, 'deny', 'Cancelled');
-        sdkQuestionData.delete(permId);
-      };
-      if (signal?.aborted) {
-        abortCleanup();
-        throw new Error('Cancelled');
-      }
-      signal?.addEventListener('abort', abortCleanup, { once: true });
-      const waitPromise = this.options.permissions.getGateway().waitFor(permId, {
-        timeoutMs: 5 * 60 * 1000,
-        onTimeout: () => {
-          sdkQuestionData.delete(permId);
-        },
-      });
+        const outMsg = adapter.format({
+          type: 'question',
+          chatId: msg.chatId,
+          data: {
+            question: q.question,
+            header: q.header,
+            options: q.options,
+            multiSelect: isMulti,
+            permId,
+            sessionId: 'sdk',
+          },
+        });
+        const sendResult = await adapter.send(outMsg);
+        this.options.permissions.trackPermissionMessage(sendResult.messageId, permId, binding.sessionId, msg.channelType);
 
-      const outMsg = adapter.format({
-        type: 'question',
-        chatId: msg.chatId,
-        data: {
-          question: q.question,
-          header: q.header,
-          options: q.options,
-          multiSelect: isMulti,
-          permId,
-          sessionId: 'sdk',
-        },
-      });
-      const sendResult = await adapter.send(outMsg);
-      this.options.permissions.trackPermissionMessage(sendResult.messageId, permId, binding.sessionId, msg.channelType);
+        const result = await waitPromise;
+        signal?.removeEventListener('abort', abortCleanup);
 
-      const result = await waitPromise;
-      signal?.removeEventListener('abort', abortCleanup);
+        if (result.behavior === 'deny') {
+          interactionState.cleanupSdkQuestion(permId);
+          this.options.permissions.cleanupQuestion(permId);
+          adapter.editCardResolution(msg.chatId, sendResult.messageId, {
+            resolution: 'skipped', label: '⏭ Skipped',
+          }).catch(() => {});
+          throw new Error('User skipped question');
+        }
 
-      if (result.behavior === 'deny') {
-        sdkQuestionData.delete(permId);
-        adapter.editCardResolution(msg.chatId, sendResult.messageId, {
-          resolution: 'skipped', label: '⏭ Skipped',
-        }).catch(() => {});
-        throw new Error('User skipped question');
+        const { textAnswer, optionIndex } = interactionState.consumeSdkQuestionAnswer(permId);
+        interactionState.cleanupSdkQuestion(permId);
+        this.options.permissions.cleanupQuestion(permId);
+
+        if (textAnswer !== undefined) {
+          adapter.editCardResolution(msg.chatId, sendResult.messageId, {
+            resolution: 'answered', label: `✅ Answer: ${truncate(textAnswer, 50)}`,
+          }).catch(() => {});
+          answers[q.question] = textAnswer;
+          continue;
+        }
+
+        const selected = optionIndex !== undefined ? q.options[optionIndex] : undefined;
+        const answerLabel = selected?.label ?? '';
+
+        if (!selected) {
+          adapter.editCardResolution(msg.chatId, sendResult.messageId, {
+            resolution: 'answered', label: '✅ Answered',
+          }).catch(() => {});
+        }
+
+        answers[q.question] = answerLabel;
       }
 
       askQuestionApproved = true;
-
-      const { sdkQuestionTextAnswers, sdkQuestionAnswers } = this.options.sdkEngine.getQuestionState();
-      const textAnswer = sdkQuestionTextAnswers.get(permId);
-      sdkQuestionTextAnswers.delete(permId);
-      sdkQuestionData.delete(permId);
-
-      if (textAnswer !== undefined) {
-        adapter.editCardResolution(msg.chatId, sendResult.messageId, {
-          resolution: 'answered', label: `✅ Answer: ${truncate(textAnswer, 50)}`,
-        }).catch(() => {});
-        return { [q.question]: textAnswer };
-      }
-
-      const optionIndex = sdkQuestionAnswers.get(permId);
-      sdkQuestionAnswers.delete(permId);
-      const selected = optionIndex !== undefined ? q.options[optionIndex] : undefined;
-      const answerLabel = selected?.label ?? '';
-
-      if (!selected) {
-        adapter.editCardResolution(msg.chatId, sendResult.messageId, {
-          resolution: 'answered', label: '✅ Answered',
-        }).catch(() => {});
-      }
-
-      return { [q.question]: answerLabel };
+      return answers;
     };
 
     try {
@@ -597,8 +449,8 @@ export class QueryOrchestrator {
     } finally {
       clearInterval(typingInterval);
       renderer.dispose();
+      await presenter.dispose();
       this.options.sdkEngine.setControlsForChat(this.options.state.stateKey(msg.channelType, msg.chatId), undefined);
-      // if (feishuSession) { feishuSession.close().catch(() => {}); }
     }
 
     return true;

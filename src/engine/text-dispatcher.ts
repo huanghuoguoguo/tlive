@@ -52,13 +52,9 @@ export class TextDispatcher {
   }
 
   private findPendingSdkQuestion(chatId: string): PendingSdkQuestion | null {
-    const { sdkQuestionData } = this.options.sdkEngine.getQuestionState();
-    for (const [permId, data] of sdkQuestionData) {
-      if (data.chatId === chatId && this.options.permissions.getGateway().isPending(permId)) {
-        return { permId };
-      }
-    }
-    return null;
+    return this.options.sdkEngine
+      .getInteractionState()
+      .findPendingSdkQuestion(chatId, this.options.permissions.getGateway());
   }
 
   private async handlePermissionText(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
@@ -128,8 +124,10 @@ export class TextDispatcher {
       }
 
       if (pendingSdkQuestion) {
-        const { sdkQuestionAnswers } = this.options.sdkEngine.getQuestionState();
-        sdkQuestionAnswers.set(pendingSdkQuestion.permId, optionIndex);
+        this.options.sdkEngine.getInteractionState().setSdkQuestionOptionAnswer(
+          pendingSdkQuestion.permId,
+          optionIndex,
+        );
         this.options.permissions.getGateway().resolve(pendingSdkQuestion.permId, 'allow');
         return true;
       }
@@ -148,8 +146,10 @@ export class TextDispatcher {
     }
 
     if (pendingSdkQuestion) {
-      const { sdkQuestionTextAnswers } = this.options.sdkEngine.getQuestionState();
-      sdkQuestionTextAnswers.set(pendingSdkQuestion.permId, trimmed);
+      this.options.sdkEngine.getInteractionState().setSdkQuestionTextAnswer(
+        pendingSdkQuestion.permId,
+        trimmed,
+      );
       this.options.permissions.getGateway().resolve(pendingSdkQuestion.permId, 'allow');
       return true;
     }
@@ -172,11 +172,11 @@ export class TextDispatcher {
       return null;
     }
 
-    const { sdkQuestionData } = this.options.sdkEngine.getQuestionState();
+    const interactionState = this.options.sdkEngine.getInteractionState();
     const questionData = pendingHookQuestion
       ? this.options.permissions.getQuestionData(pendingHookQuestion.hookId)
       : pendingSdkQuestion
-        ? sdkQuestionData.get(pendingSdkQuestion.permId)
+        ? interactionState.getSdkQuestion(pendingSdkQuestion.permId)
         : null;
 
     const optionsCount = questionData?.questions?.[0]?.options?.length ?? 0;

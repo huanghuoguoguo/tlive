@@ -242,7 +242,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
         const formValue = event?.action?.form_value;
         if (formValue && Object.keys(formValue).length > 0) {
           // Form submission — extract interactionId and answers
-          const interactionId = formValue['_interaction_id'] || '';
+          const interactionId = formValue._interaction_id || '';
           const userId = event?.operator?.user_id || event?.operator?.open_id || '';
           const chatId = event?.context?.chat_id || event?.context?.open_chat_id || '';
           const messageId = event?.context?.open_message_id || '';
