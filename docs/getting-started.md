@@ -148,7 +148,7 @@ tlive logs 50
 
 **Common issues:**
 
-- **"Go Core not found"** — The binary didn't download correctly. Re-run: `curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash`
+- **"Binary not found"** — Installation incomplete. Re-run: `curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash`
 - **"Bridge not starting"** — Check that `~/.tlive/config.env` exists and has valid credentials. Run `tlive doctor` for details.
 - **"No IM messages"** — Verify your bot token is correct and the bot has been added to the right chat. See the platform-specific troubleshooting in the setup guides above.
 - **Hook not firing** — Make sure you ran `tlive install skills`. Check `tlive hooks` for current hook status.
