@@ -8,6 +8,8 @@ import type { InboundMessage } from '../channels/types.js';
 import type { PermissionCoordinator } from './permission-coordinator.js';
 import type { InteractionState } from './interaction-state.js';
 import { truncate } from '../utils/string.js';
+import { generateId } from '../utils/id.js';
+import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../utils/constants.js';
 
 interface SDKAskQuestionHandlerContext {
   adapter: BaseChannelAdapter;
@@ -46,7 +48,7 @@ export class SDKAskQuestionHandler {
     const { adapter, msg, binding, permissions, interactionState } = this.context;
 
     for (const q of questions) {
-      const permId = `askq-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const permId = generateId('askq');
       const isMulti = q.multiSelect;
       interactionState.beginSdkQuestion(permId, [q], msg.chatId);
       if (isMulti) {
@@ -65,7 +67,7 @@ export class SDKAskQuestionHandler {
       signal?.addEventListener('abort', abortCleanup, { once: true });
 
       const waitPromise = permissions.getGateway().waitFor(permId, {
-        timeoutMs: 5 * 60 * 1000,
+        timeoutMs: DEFAULT_PERMISSION_TIMEOUT_MS,
         onTimeout: () => {
           interactionState.cleanupSdkQuestion(permId);
           permissions.cleanupQuestion(permId);

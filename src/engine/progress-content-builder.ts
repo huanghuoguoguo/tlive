@@ -93,10 +93,10 @@ export class ProgressContentBuilder {
       errorMessage: input.errorMessage,
       permissionRequests: input.permissionRequests,
       currentTool: input.currentTool,
-      todoItems: [...input.todoItems],
+      todoItems: input.todoItems,
       thinkingText: input.thinkingText,
-      toolLogs: [...input.toolLogs],
-      timeline: input.timeline.map(e => ({ ...e })),
+      toolLogs: input.toolLogs,
+      timeline: input.timeline,
       permission: currentPermission
         ? {
             toolName: currentPermission.toolName,

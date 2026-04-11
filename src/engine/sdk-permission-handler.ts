@@ -10,7 +10,8 @@ import type { SessionStateManager } from './session-state.js';
 import type { MessageRenderer } from './message-renderer.js';
 import { getToolCommand } from './tool-registry.js';
 import type { ChannelRouter } from './router.js';
-import type { ChannelType } from '../utils/constants.js';
+import { generateId } from '../utils/id.js';
+import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../utils/constants.js';
 
 interface SDKPermissionHandlerContext {
   adapter: BaseChannelAdapter;
@@ -63,7 +64,7 @@ export class SDKPermissionHandler {
       return 'allow' as const;
     }
 
-    const permId = `sdk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const permId = generateId('sdk');
     const chatKey = state.stateKey(msg.channelType, msg.chatId);
     permissions.setPendingSdkPerm(chatKey, permId);
     console.log(`[bridge] Permission request: ${toolName} (${permId}) for ${chatKey}`);
@@ -91,7 +92,7 @@ export class SDKPermissionHandler {
     renderer.onPermissionNeeded(toolName, inputStr, permId, buttons);
 
     const result = await permissions.getGateway().waitFor(permId, {
-      timeoutMs: 5 * 60 * 1000,
+      timeoutMs: DEFAULT_PERMISSION_TIMEOUT_MS,
       onTimeout: () => {
         permissions.clearPendingSdkPerm(chatKey);
         permissions.clearPendingPermissionSnapshot(chatKey, permId);

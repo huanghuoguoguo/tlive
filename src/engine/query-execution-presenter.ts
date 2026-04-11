@@ -179,8 +179,13 @@ export class QueryExecutionPresenter {
     timeline: Array<{ kind: 'thinking' | 'text' | 'tool' }>;
     responseText: string;
   }): boolean {
-    const thinkingCount = state.timeline.filter(entry => entry.kind === 'thinking').length;
-    const toolCount = state.timeline.filter(entry => entry.kind === 'tool').length;
+    // Single pass counting instead of triple filter
+    let thinkingCount = 0;
+    let toolCount = 0;
+    for (const entry of state.timeline) {
+      if (entry.kind === 'thinking') thinkingCount++;
+      else if (entry.kind === 'tool') toolCount++;
+    }
     const hasLongTrace = state.thinkingText.trim().length > 80 || state.timeline.length >= 4;
     const hasMeaningfulTooling = toolCount >= 2 || (toolCount >= 1 && thinkingCount >= 1);
     const hasLongAnswer = state.responseText.trim().length > 200;

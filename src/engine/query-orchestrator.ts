@@ -72,7 +72,6 @@ export class QueryOrchestrator {
     const { renderer, presenter } = this.createRendererAndPresenter(adapter, msg, binding, reactions, typingInterval);
 
     // Create SDK handlers
-    let askQuestionApproved = false;
     const permissionHandler = new SDKPermissionHandler({
       adapter,
       msg,
@@ -93,18 +92,8 @@ export class QueryOrchestrator {
       interactionState: this.options.sdkEngine.getInteractionState(),
     });
 
-    // Wire up askQuestionApproved flag
-    askQuestionHandler.setOnApproved(() => {
-      askQuestionApproved = true;
-      permissionHandler.setAskQuestionApproved(true);
-    });
-    // Sync flag back from permission handler
-    const syncFlag = () => {
-      if (askQuestionApproved) {
-        permissionHandler.setAskQuestionApproved(false);
-        askQuestionApproved = false;
-      }
-    };
+    // Wire up askQuestionApproved: when AskUserQuestion approved, auto-allow next tool
+    askQuestionHandler.setOnApproved(() => permissionHandler.setAskQuestionApproved(true));
 
     const sdkPermissionHandler = permissionHandler.handle.bind(permissionHandler);
     const sdkAskQuestionHandler = askQuestionHandler.handle.bind(askQuestionHandler);
