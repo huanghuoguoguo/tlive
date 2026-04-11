@@ -803,12 +803,17 @@ export class MessageRenderer {
         this._messageId = result;
       }
 
-      // Handle bubble split after successful flush
-      if (this.splitPending) {
+      // Ignore deferred split once the task has already finished, otherwise
+      // completion/error flushes can spawn an extra empty continuation bubble.
+      if (this.splitPending && (this.completed || this.errorMessage)) {
         this.splitPending = false;
+      } else if (this.splitPending) {
+        this.splitPending = false;
+        const toolsAtSplit = this.bubbleToolCount;
+        const timelineAtSplit = this.bubbleTimelineCount;
         this.resetBubbleState();
         this.pendingFlush = true; // Trigger new message
-        console.log(`[renderer] Bubble split after ${this.bubbleToolCount} tools, ${this.bubbleTimelineCount} timeline entries`);
+        console.log(`[renderer] Bubble split after ${toolsAtSplit} tools, ${timelineAtSplit} timeline entries`);
       }
     } finally {
       this.flushing = false;

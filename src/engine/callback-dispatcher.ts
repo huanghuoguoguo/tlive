@@ -2,6 +2,7 @@ import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';
 import type { PermissionCoordinator } from './permission-coordinator.js';
 import type { SDKEngine } from './sdk-engine.js';
+import { truncate } from '../utils/string.js';
 import {
   CALLBACK_PREFIXES,
 } from '../utils/constants.js';
@@ -141,32 +142,46 @@ export async function handleCallbackMessage(
     if (qData) {
       const q = qData.questions[0];
       // Check for text input (form_input)
-      const textAnswer = formData['_text_answer'] || formData['text'] || '';
+      const textAnswer = (formData._text_answer || formData.text || '').trim();
       if (textAnswer) {
         sdkQuestionTextAnswers.set(permId, textAnswer);
         adapter.editCardResolution(msg.chatId, msg.messageId, {
           resolution: 'answered',
-          label: `✅ Answer: ${textAnswer.slice(0, 50)}`,
+          label: `✅ Answer: ${truncate(textAnswer, 50)}`,
         }).catch(() => {});
-      } else {
-        // Check for select option (form_select)
-        const selectValue = formData['_select'] || '';
-        if (selectValue) {
-          // Find the option index by matching the value
-          const optionIndex = q.options.findIndex(opt => opt.label === selectValue);
-          if (optionIndex >= 0) {
-            sdkQuestionAnswers.set(permId, optionIndex);
-            adapter.editCardResolution(msg.chatId, msg.messageId, {
-              resolution: 'selected',
-              label: `✅ ${selectValue}`,
-            }).catch(() => {});
-          }
-        }
+        deps.permissions.cleanupQuestion(permId);
+        deps.permissions.getGateway().resolve(permId, 'allow');
+        return true;
       }
-    }
 
-    deps.permissions.cleanupQuestion(permId);
-    deps.permissions.getGateway().resolve(permId, 'allow');
+      // Check for select option (form_select)
+      const selectValue = (formData._select || '').trim();
+      if (selectValue) {
+        // Find the option index by matching the value
+        const optionIndex = q.options.findIndex(opt => opt.label === selectValue);
+        if (optionIndex >= 0) {
+          sdkQuestionAnswers.set(permId, optionIndex);
+          adapter.editCardResolution(msg.chatId, msg.messageId, {
+            resolution: 'selected',
+            label: `✅ ${selectValue}`,
+          }).catch(() => {});
+          deps.permissions.cleanupQuestion(permId);
+          deps.permissions.getGateway().resolve(permId, 'allow');
+          return true;
+        }
+
+        if (msg.chatId) {
+          await adapter.send({ chatId: msg.chatId, text: '⚠️ Invalid selection, please try again.' });
+        }
+        return true;
+      }
+
+      if (msg.chatId) {
+        await adapter.send({ chatId: msg.chatId, text: '⚠️ Please enter an answer or choose an option before submitting.' });
+      }
+    } else {
+      console.warn(`[bridge] Form submission for unknown question: ${permId}`);
+    }
     return true;
   }
 

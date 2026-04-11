@@ -626,6 +626,38 @@ describe('MessageRenderer', () => {
       r.dispose();
     });
 
+    it('does not reset the bubble after completion when a split is pending', async () => {
+      const messageIds: string[] = [];
+      flushCallback.mockImplementation((content: string, isEdit: boolean) => {
+        if (!isEdit) {
+          const id = `msg-${messageIds.length + 1}`;
+          messageIds.push(id);
+          return Promise.resolve(id);
+        }
+        return Promise.resolve();
+      });
+
+      const r = createRenderer(4096, 300);
+      r.onToolStart('Bash');
+      await advance(300);
+
+      for (let i = 0; i < 11; i++) {
+        r.onToolStart('Read');
+      }
+
+      r.onTextDelta('Final answer');
+      r.onComplete();
+      await advance(0);
+
+      expect(messageIds).toEqual(['msg-1']);
+      const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
+      expect(content).toContain('Final answer');
+      expect(content).toContain('12 total');
+      expect(content).not.toContain('继续执行');
+      expect(flushCallback).toHaveBeenCalledTimes(2);
+      r.dispose();
+    });
+
     it('dispose clears timers', async () => {
       const r = createRenderer();
       r.onToolStart('Bash');

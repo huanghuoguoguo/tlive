@@ -91,6 +91,9 @@ export class BridgeManager {
     this.permissions = new PermissionCoordinator(gateway, broker);
     this.engine = new ConversationEngine(store, llm);
     this.sdkEngine = new SDKEngine(this.state, this.router);
+    this.sdkEngine.onSessionPruned = (sessionKey) => {
+      this.permissions.clearSessionWhitelist(sessionKey);
+    };
     this.commands = new CommandRouter(
       this.state,
       () => this.adapters,
@@ -290,17 +293,8 @@ export class BridgeManager {
         console.log(`[${adapter.channelType}] Menu event: fallback to user's last chat ${userLastChat.chatId}`);
         msg = { ...msg, chatId: userLastChat.chatId };
       } else {
-        // No recent chat for this user — send guidance message
-        console.log(`[${adapter.channelType}] Menu event: no recent chat for user ${msg.userId}`);
-        // Try to get a fallback chatId from channel's last active record
-        const fallbackChatId = this.ingress.getLastChatId(adapter.channelType);
-        if (fallbackChatId) {
-          msg = { ...msg, chatId: fallbackChatId };
-        } else {
-          // Cannot send message — skip this menu event
-          console.warn(`[${adapter.channelType}] Menu event dropped: no chat context available`);
-          return false;
-        }
+        console.warn(`[${adapter.channelType}] Menu event dropped: no recent chat for user ${msg.userId}`);
+        return false;
       }
     }
 
