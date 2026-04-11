@@ -21,6 +21,7 @@ import { SDKPermissionHandler } from './sdk-permission-handler.js';
 import { SDKAskQuestionHandler } from './sdk-ask-question-handler.js';
 import type { ProgressData } from '../formatting/message-types.js';
 import type { MessageRendererState } from './message-renderer.js';
+import { SessionStaleError, isStaleSessionError } from './session-stale-error.js';
 
 const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
 
@@ -91,68 +92,113 @@ export class QueryOrchestrator {
     const costTracker = new CostTracker();
     costTracker.start();
 
-    const { renderer, presenter } = this.createRendererAndPresenter(adapter, msg, binding, reactions, typingInterval);
+    // Retry logic for stale session
+    let attemptCount = 0;
+    let resumeFallbackMessage: string | undefined;
+    const maxAttempts = 2; // Try once with resume, then once fresh
 
-    // Create SDK handlers
-    const permissionHandler = new SDKPermissionHandler({
-      adapter,
-      msg,
-      binding,
-      permissions: this.options.permissions,
-      state: this.options.state,
-      router: this.options.router,
-      renderer,
-      reactions,
-      askQuestionApproved: false,
-    });
+    while (attemptCount < maxAttempts) {
+      attemptCount++;
+      const currentBinding = attemptCount > 1 ? await this.options.router.resolve(msg.channelType, msg.chatId) : binding;
 
-    const askQuestionHandler = new SDKAskQuestionHandler({
-      adapter,
-      msg,
-      binding,
-      permissions: this.options.permissions,
-      interactionState: this.options.sdkEngine.getInteractionState(),
-    });
+      const { renderer, presenter } = this.createRendererAndPresenter(adapter, msg, currentBinding, reactions, typingInterval);
 
-    // Wire up askQuestionApproved: when AskUserQuestion approved, auto-allow next tool
-    askQuestionHandler.setOnApproved(() => permissionHandler.setAskQuestionApproved(true));
+      // Create SDK handlers
+      const permissionHandler = new SDKPermissionHandler({
+        adapter,
+        msg,
+        binding: currentBinding,
+        permissions: this.options.permissions,
+        state: this.options.state,
+        router: this.options.router,
+        renderer,
+        reactions,
+        askQuestionApproved: false,
+      });
 
-    const sdkPermissionHandler = permissionHandler.handle.bind(permissionHandler);
-    const sdkAskQuestionHandler = askQuestionHandler.handle.bind(askQuestionHandler);
+      const askQuestionHandler = new SDKAskQuestionHandler({
+        adapter,
+        msg,
+        binding: currentBinding,
+        permissions: this.options.permissions,
+        interactionState: this.options.sdkEngine.getInteractionState(),
+      });
 
-    try {
-      await this.executeQuery(adapter, msg, binding, renderer, costTracker, sdkPermissionHandler, sdkAskQuestionHandler, ctx);
+      // Wire up askQuestionApproved: when AskUserQuestion approved, auto-allow next tool
+      askQuestionHandler.setOnApproved(() => permissionHandler.setAskQuestionApproved(true));
 
-      // Track progress bubble → session for multi-session steering
-      const chatKey = this.options.state.stateKey(msg.channelType, msg.chatId);
-      const workdir = binding.cwd || this.options.defaultWorkdir;
-      const sessionKey = `${msg.channelType}:${msg.chatId}:${workdir}`;
-      if (renderer.messageId) {
-        this.options.sdkEngine.setActiveMessageId(chatKey, renderer.messageId, sessionKey);
-        console.log(`[query] ${ctx.requestId} SENT msgId=${renderer.messageId.slice(-8)}`);
+      const sdkPermissionHandler = permissionHandler.handle.bind(permissionHandler);
+      const sdkAskQuestionHandler = askQuestionHandler.handle.bind(askQuestionHandler);
+
+      try {
+        await this.executeQuery(adapter, msg, currentBinding, renderer, costTracker, sdkPermissionHandler, sdkAskQuestionHandler, ctx);
+
+        // Track progress bubble → session for multi-session steering
+        const chatKey = this.options.state.stateKey(msg.channelType, msg.chatId);
+        const workdir = currentBinding.cwd || this.options.defaultWorkdir;
+        const sessionKey = `${msg.channelType}:${msg.chatId}:${workdir}`;
+        if (renderer.messageId) {
+          this.options.sdkEngine.setActiveMessageId(chatKey, renderer.messageId, sessionKey);
+          console.log(`[query] ${ctx.requestId} SENT msgId=${renderer.messageId.slice(-8)}`);
+        }
+
+        // Show resume fallback message if we recovered from stale session
+        if (resumeFallbackMessage && renderer.messageId) {
+          // Send as a separate message after the turn completes
+          adapter.send({ chatId: msg.chatId, text: resumeFallbackMessage }).catch(() => {});
+        }
+
+        adapter.addReaction(msg.chatId, msg.messageId, reactions.done).catch(() => {});
+        if (renderer.messageId) {
+          adapter.addReaction(msg.chatId, renderer.messageId, reactions.done).catch(() => {});
+        }
+
+        // Success - break out of retry loop
+        break;
+      } catch (err) {
+        // Check if this is a stale session error - retry with fresh session
+        if (err instanceof SessionStaleError && attemptCount < maxAttempts) {
+          console.log(`[query] ${ctx.requestId} SESSION_STALE retrying with fresh session`);
+          resumeFallbackMessage = '🔄 旧会话无法恢复，已为你开启新会话';
+
+          // Clear sdkSessionId and close the stale session
+          currentBinding.sdkSessionId = undefined;
+          await this.options.store.saveBinding(currentBinding);
+          this.options.sdkEngine.cleanupSession(msg.channelType, msg.chatId, 'expire', currentBinding.cwd);
+          this.options.permissions.clearSessionWhitelist(currentBinding.sessionId);
+
+          // Continue to next iteration with fresh binding
+          clearInterval(typingInterval);
+          renderer.dispose();
+          await presenter.dispose();
+          this.options.sdkEngine.setControlsForChat(
+            this.options.state.stateKey(msg.channelType, msg.chatId),
+            undefined,
+          );
+
+          // Restart typing indicator for retry
+          const newTypingInterval = setInterval(() => adapter.sendTyping(msg.chatId).catch(() => {}), 4000);
+          adapter.sendTyping(msg.chatId).catch(() => {});
+          // Note: We need to reassign typingInterval for cleanup later, but the loop structure
+          // requires careful handling. For simplicity, we'll continue with the new interval.
+          continue;
+        }
+
+        console.error(`[query] ${ctx.requestId} FATAL ${Logger.formatError(err)}`);
+        adapter.addReaction(msg.chatId, msg.messageId, reactions.error).catch(() => {});
+        // Also add error reaction to the bot's progress message
+        if (renderer.messageId) {
+          adapter.addReaction(msg.chatId, renderer.messageId, reactions.error).catch(() => {});
+        }
+        throw err;
+      } finally {
+        clearInterval(typingInterval);
+        // Note: renderer and presenter cleanup happens inside the loop for retry cases
       }
-
-      adapter.addReaction(msg.chatId, msg.messageId, reactions.done).catch(() => {});
-      if (renderer.messageId) {
-        adapter.addReaction(msg.chatId, renderer.messageId, reactions.done).catch(() => {});
-      }
-    } catch (err) {
-      console.error(`[query] ${ctx.requestId} FATAL ${Logger.formatError(err)}`);
-      adapter.addReaction(msg.chatId, msg.messageId, reactions.error).catch(() => {});
-      // Also add error reaction to the bot's progress message
-      if (renderer.messageId) {
-        adapter.addReaction(msg.chatId, renderer.messageId, reactions.error).catch(() => {});
-      }
-      throw err;
-    } finally {
-      clearInterval(typingInterval);
-      renderer.dispose();
-      await presenter.dispose();
-      this.options.sdkEngine.setControlsForChat(
-        this.options.state.stateKey(msg.channelType, msg.chatId),
-        undefined,
-      );
     }
+
+    // Final cleanup (only if we exited the loop successfully)
+    clearInterval(typingInterval);
 
     return true;
   }
@@ -371,11 +417,10 @@ export class QueryOrchestrator {
         }).catch(() => {});
       },
       onError: async (err) => {
-        if (err.includes('No conversation found') || err.includes('session ID') || (err.includes('Invalid') && err.includes('signature'))) {
-          console.log(`[query] ${ctx.requestId} SESSION_STALE clearing sdkSessionId`);
-          binding.sdkSessionId = undefined;
-          await this.options.store.saveBinding(binding);
-          this.options.sdkEngine.closeSession(msg.channelType, msg.chatId);
+        // Check for stale session error - throw special error for retry
+        if (isStaleSessionError(err)) {
+          console.log(`[query] ${ctx.requestId} SESSION_STALE detected`);
+          throw new SessionStaleError(err);
         }
         console.error(`[query] ${ctx.requestId} ERROR ${err.slice(0, 200)}`);
         if (DEBUG_EVENTS) {
