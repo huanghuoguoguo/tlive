@@ -25,6 +25,8 @@ export class SessionStateManager {
   /** User's last active chat: userId -> { channelType, chatId, timestamp } */
   private userLastChats = new Map<string, { channelType: string; chatId: string; timestamp: number }>();
   private persistPath: string | undefined;
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly SAVE_DEBOUNCE_MS = 2000;
 
   constructor(runtimeDir?: string) {
     if (runtimeDir) {
@@ -118,13 +120,17 @@ export class SessionStateManager {
    * This is used for menu events (which don't have chat context) to fallback.
    */
   setUserLastChat(userId: string, channelType: string, chatId: string): void {
+    const existing = this.userLastChats.get(userId);
+    if (existing?.channelType === channelType && existing?.chatId === chatId) {
+      existing.timestamp = Date.now();
+      return; // Same chat — skip persist, just update timestamp in memory
+    }
     this.userLastChats.set(userId, {
       channelType,
       chatId,
       timestamp: Date.now(),
     });
-    // Persist to disk (debounced by savePersisted)
-    this.savePersisted();
+    this.debouncedSave();
   }
 
   /**
@@ -148,10 +154,18 @@ export class SessionStateManager {
    */
   clearUserLastChat(userId: string): void {
     this.userLastChats.delete(userId);
-    this.savePersisted();
+    this.debouncedSave();
   }
 
   // --- Persistence ---
+
+  private debouncedSave(): void {
+    if (this.saveTimer) return;
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      this.savePersisted();
+    }, SessionStateManager.SAVE_DEBOUNCE_MS);
+  }
 
   private loadPersisted(): void {
     if (!this.persistPath) return;

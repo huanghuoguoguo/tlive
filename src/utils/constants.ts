@@ -22,6 +22,7 @@ export const CALLBACK_PREFIXES = {
   PERM_ALLOW_TOOL: 'perm:allow_tool:',
   PERM_ALLOW_BASH: 'perm:allow_bash:',
   PERM_ALLOW: 'perm:allow:',
+  PERM_ALLOW_SESSION: 'perm:allow_session:',
   PERM_DENY: 'perm:deny:',
 } as const;
 

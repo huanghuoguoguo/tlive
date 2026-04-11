@@ -281,6 +281,12 @@ export class PermissionCoordinator {
     for (const [id, entry] of this.permissionMessages) {
       if (entry.timestamp < cutoff24h) this.permissionMessages.delete(id);
     }
+    // Prune stale permission snapshots (>1h with no pending)
+    for (const [chatKey, snapshot] of this.permissionSnapshotsByChat) {
+      if (!snapshot.pending && !snapshot.lastDecision) {
+        this.permissionSnapshotsByChat.delete(chatKey);
+      }
+    }
   }
 
   // --- Hook permission resolution (text-based) ---

@@ -168,30 +168,21 @@ export class CommandRouter {
       }
       case '/perm': {
         const sub = parts[1]?.toLowerCase();
+        const mode = (sub === 'on' || sub === 'off') ? sub : this.state.getPermMode(msg.channelType, msg.chatId);
         if (sub === 'on' || sub === 'off') {
           this.state.setPermMode(msg.channelType, msg.chatId, sub);
-          if (adapter.supportsRichCards()) {
-            const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-            const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
-            await send(adapter, presentPermissionStatus(msg.chatId, {
-              mode: sub,
-              ...this.permissions.getPermissionStatus(chatKey, binding?.sessionId),
-            }));
-          } else {
-            await send(adapter, presentPermissionModeChanged(msg.chatId, sub));
-          }
+        }
+        if (adapter.supportsRichCards()) {
+          const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+          const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
+          await send(adapter, presentPermissionStatus(msg.chatId, {
+            mode,
+            ...this.permissions.getPermissionStatus(chatKey, binding?.sessionId),
+          }));
+        } else if (sub === 'on' || sub === 'off') {
+          await send(adapter, presentPermissionModeChanged(msg.chatId, mode));
         } else {
-          if (adapter.supportsRichCards()) {
-            const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-            const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
-            await send(adapter, presentPermissionStatus(msg.chatId, {
-              mode: this.state.getPermMode(msg.channelType, msg.chatId),
-              ...this.permissions.getPermissionStatus(chatKey, binding?.sessionId),
-            }));
-          } else {
-            const current = this.state.getPermMode(msg.channelType, msg.chatId);
-            await send(adapter, presentPermissionModeStatus(msg.chatId, current));
-          }
+          await send(adapter, presentPermissionModeStatus(msg.chatId, mode));
         }
         return true;
       }

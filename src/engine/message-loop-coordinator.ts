@@ -56,7 +56,6 @@ export class MessageLoopCoordinator {
 
     this.options.state.setProcessing(chatKey, true);
     handleMessage(adapter, coalesced)
-      .then(() => this.drainQueue(adapter, coalesced.channelType, coalesced.chatId, handleMessage, onError))
       .catch(onError)
       .finally(() => this.options.state.setProcessing(chatKey, false));
   }
@@ -83,16 +82,5 @@ export class MessageLoopCoordinator {
 
     // No session found — prompt user
     await adapter.send({ chatId: msg.chatId, text: '⚠️ No active session — please start a task first' }).catch(() => {});
-  }
-
-  private async drainQueue(
-    adapter: BaseChannelAdapter,
-    channelType: string,
-    chatId: string,
-    handleMessage: (adapter: BaseChannelAdapter, msg: InboundMessage) => Promise<unknown>,
-    onError: (err: unknown) => void,
-  ): Promise<void> {
-    // SDK handles queue internally — no manual drain needed
-    // This method is kept for backwards compatibility but does nothing
   }
 }

@@ -40,6 +40,10 @@ export class SDKEngine {
   private activeSessionByChat = new Map<string, string>();
   /** Progress bubble → session: messageId → sessionKey (for multi-session steering) */
   private bubbleToSession = new Map<string, string>();
+  /** Reverse index: sessionKey → Set<messageId> (for O(1) cleanup) */
+  private sessionToBubbles = new Map<string, Set<string>>();
+  /** Max bubble mappings to keep (prevents unbounded growth) */
+  private static MAX_BUBBLE_MAPPINGS = 200;
 
   // SDK AskUserQuestion state — shared with CallbackRouter via SdkQuestionState interface
   sdkQuestionData = new Map<string, { questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string; preview?: string }>; multiSelect: boolean }>; chatId: string }>();
@@ -49,6 +53,8 @@ export class SDKEngine {
   /** Idle timeout for LiveSessions (30 minutes) */
   private static SESSION_IDLE_MS = 30 * 60 * 1000;
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
+  /** Optional callback to clean up permission whitelist when session is pruned */
+  onSessionPruned?: (sessionKey: string) => void;
 
   constructor(
     private state: SessionStateManager,
@@ -79,16 +85,19 @@ export class SDKEngine {
         managed.session.close();
         this.registry.delete(key);
         this.cleanupBubblesForSession(key);
+        this.onSessionPruned?.(key);
       }
     }
   }
 
   /** Clean up bubble → session mappings when session is closed */
   private cleanupBubblesForSession(sessionKey: string): void {
-    for (const [bubbleId, mappedKey] of this.bubbleToSession) {
-      if (mappedKey === sessionKey) {
+    const bubbles = this.sessionToBubbles.get(sessionKey);
+    if (bubbles) {
+      for (const bubbleId of bubbles) {
         this.bubbleToSession.delete(bubbleId);
       }
+      this.sessionToBubbles.delete(sessionKey);
     }
   }
 
@@ -174,12 +183,24 @@ export class SDKEngine {
 
   // ── Steer / Queue ──
 
-  /**
-   * Track a progress bubble's associated session.
-   * Called when sending a progress card to link messageId → sessionKey.
-   */
-  trackBubbleSession(messageId: string, sessionKey: string): void {
+  /** Internal: link bubble messageId to session, maintaining reverse index and cap */
+  private linkBubble(messageId: string, sessionKey: string): void {
+    // Evict oldest entries if at cap
+    if (this.bubbleToSession.size >= SDKEngine.MAX_BUBBLE_MAPPINGS) {
+      const oldest = this.bubbleToSession.keys().next().value;
+      if (oldest) {
+        const oldSession = this.bubbleToSession.get(oldest);
+        this.bubbleToSession.delete(oldest);
+        if (oldSession) this.sessionToBubbles.get(oldSession)?.delete(oldest);
+      }
+    }
     this.bubbleToSession.set(messageId, sessionKey);
+    let bubbles = this.sessionToBubbles.get(sessionKey);
+    if (!bubbles) {
+      bubbles = new Set();
+      this.sessionToBubbles.set(sessionKey, bubbles);
+    }
+    bubbles.add(messageId);
   }
 
   /**
@@ -193,6 +214,7 @@ export class SDKEngine {
     if (!managed?.session.isAlive) {
       // Clean up stale mapping
       this.bubbleToSession.delete(messageId);
+      this.sessionToBubbles.get(sessionKey)?.delete(messageId);
       return undefined;
     }
     return sessionKey;
@@ -219,21 +241,6 @@ export class SDKEngine {
     return (managed?.session.isAlive && managed?.session.isTurnActive) ?? false;
   }
 
-  /** Check if there's an active session with active turn for steer (uses active session) */
-  canSteer(channelType: string, chatId: string): boolean {
-    const sessionKey = this.activeSessionByChat.get(`${channelType}:${chatId}`);
-    if (!sessionKey) return false;
-    return this.canSteerSession(sessionKey);
-  }
-
-  /** Check if there's an alive session (may or may not have active turn) */
-  hasActiveSession(channelType: string, chatId: string): boolean {
-    const sessionKey = this.activeSessionByChat.get(`${channelType}:${chatId}`);
-    if (!sessionKey) return false;
-    const managed = this.registry.get(sessionKey);
-    return managed?.session.isAlive ?? false;
-  }
-
   /** Send message to a specific session with SDK native priority */
   async sendToSession(sessionKey: string, text: string, priority: MessagePriority): Promise<boolean> {
     const managed = this.registry.get(sessionKey);
@@ -245,30 +252,6 @@ export class SDKEngine {
       console.error(`[tlive:engine] sendToSession error:`, err);
       return false;
     }
-  }
-
-  /** Steer to specific session (priority='now') */
-  async steerSession(sessionKey: string, text: string): Promise<boolean> {
-    return this.sendToSession(sessionKey, text, 'now');
-  }
-
-  /** Queue to specific session (priority='later') */
-  async queueSession(sessionKey: string, text: string): Promise<boolean> {
-    return this.sendToSession(sessionKey, text, 'later');
-  }
-
-  /** Steer the active session (uses activeSessionByChat) */
-  async steer(channelType: string, chatId: string, text: string): Promise<boolean> {
-    const sessionKey = this.resolveTargetSession(channelType, chatId);
-    if (!sessionKey) return false;
-    return this.sendToSession(sessionKey, text, 'now');
-  }
-
-  /** Queue to the active session (uses activeSessionByChat) */
-  async queue(channelType: string, chatId: string, text: string): Promise<boolean> {
-    const sessionKey = this.resolveTargetSession(channelType, chatId);
-    if (!sessionKey) return false;
-    return this.sendToSession(sessionKey, text, 'later');
   }
 
   /**
@@ -330,10 +313,8 @@ export class SDKEngine {
   /** Track progress bubble messageId → sessionKey mapping */
   setActiveMessageId(chatKey: string, messageId: string | undefined, sessionKey?: string): void {
     if (messageId && sessionKey) {
-      this.bubbleToSession.set(messageId, sessionKey);
+      this.linkBubble(messageId, sessionKey);
     }
-    // Note: chatKey no longer needed for single-messageId tracking
-    // bubbleToSession handles multi-session scenarios
   }
 
 }
