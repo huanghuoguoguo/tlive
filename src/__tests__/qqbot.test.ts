@@ -125,13 +125,13 @@ describe('QQBotAdapter', () => {
         phase: 'executing',
         taskSummary: '你好',
         elapsedSeconds: 0,
-        renderedText: '你好',
+        renderedText: '我是 TLive，通过 Claude Code 帮你处理任务。',
         todoItems: [],
         totalTools: 0,
       },
     });
 
-    expect(msg.text).toContain('你好');
+    expect(msg.text).toContain('我是 TLive');
     expect(msg.buttons).toBeUndefined();
   });
 });
