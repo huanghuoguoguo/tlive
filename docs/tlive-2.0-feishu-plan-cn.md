@@ -246,7 +246,7 @@
 
 - ✅ 统一状态总览卡片（增强 /home 卡片，整合权限、任务、会话状态）
 - ✅ 飞书菜单上下文完善（用户活跃 chat 回落机制）
-- ⏳ CardKit streaming 稳定接入（已覆盖 starting/executing，completed 阶段待优化）
+- ✅ CardKit streaming 稳定接入（覆盖 starting/executing/completed，completed 阶段直接关闭卡片并更新 header）
 - ✅ Presenter 进一步独立（`ProgressContentBuilder` 从 `MessageRenderer` 拆分）
 
 ### P3
