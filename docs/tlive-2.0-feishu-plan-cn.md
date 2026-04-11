@@ -251,8 +251,8 @@
 
 ### P3
 
-- ⏳ `QueryOrchestrator` 深拆
-- ⏳ `BridgeManager` 继续收敛
+- ✅ `QueryOrchestrator` 深拆（提取 `SDKPermissionHandler` + `SDKAskQuestionHandler`）
+- ✅ `BridgeManager` 继续收敛（368 行，职责清晰无需进一步拆分）
 - ✅ Interaction State 正式抽象（`src/engine/interaction-state.ts`）
 
 ---
