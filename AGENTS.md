@@ -7,8 +7,8 @@
 Use Node.js 20+; CI runs on Node 20.x and 22.x.
 
 - `npm run build` bundles the bridge into `dist/main.mjs` with esbuild.
-- `npm run dev` rebuilds on `src/**/*.ts` changes.
-- `npm run dev:hot` rebuilds and starts the local bridge with `nodemon`.
+- `npm run build:watch` rebuilds on `src/**/*.ts` changes.
+- `npm run dev` rebuilds and starts the local bridge with `nodemon` (recommended for development).
 - `npm start` builds, then runs the bridge with `TL_RUNTIME=claude`.
 - `npm run typecheck` runs strict TypeScript checks.
 - `npm run lint` runs Biome linting.
