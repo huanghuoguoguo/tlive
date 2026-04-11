@@ -6,6 +6,15 @@ import { downgradeHeadings } from '../markdown/feishu.js';
 import type { MessageRendererState } from './message-renderer.js';
 import { truncate } from '../utils/string.js';
 
+type ButtonStyle = 'primary' | 'danger' | 'default';
+type RawButton = { label: string; callbackData: string; style: string };
+type CastedButton = { label: string; callbackData: string; style: ButtonStyle };
+
+/** Cast button style from string to typed union */
+function castButtons(buttons?: RawButton[]): CastedButton[] | undefined {
+  return buttons?.map(b => ({ ...b, style: b.style as ButtonStyle }));
+}
+
 interface QueryExecutionPresenterOptions {
   adapter: BaseChannelAdapter;
   inbound: InboundMessage;
@@ -73,9 +82,7 @@ export class QueryExecutionPresenter {
         toolLogs: state.toolLogs,
         timeline: state.timeline,
         isContinuation: state.isContinuation,
-        actionButtons: buttons?.length
-          ? buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
-          : undefined,
+        actionButtons: castButtons(buttons),
       };
 
       if (
@@ -112,10 +119,7 @@ export class QueryExecutionPresenter {
 
       outMsg = this.adapter.format({ type: 'progress', chatId: this.inbound.chatId, data: progressData });
     } else {
-      const castButtons = buttons?.length
-        ? buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
-        : undefined;
-      outMsg = this.adapter.formatContent(this.inbound.chatId, content, castButtons);
+      outMsg = this.adapter.formatContent(this.inbound.chatId, content, castButtons(buttons));
     }
 
     if (!isEdit) {
