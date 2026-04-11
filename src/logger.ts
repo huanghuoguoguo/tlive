@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { format } from 'node:util';
+import { randomUUID } from 'node:crypto';
 
 type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'DEBUG';
 type ConsoleMethod = 'info' | 'warn' | 'error' | 'debug';
@@ -13,6 +14,21 @@ type RawConsole = {
   debug: typeof console.debug;
 };
 
+/** Log context for request tracing */
+export interface LogContext {
+  /** Short request ID (8 chars) for tracing a message lifecycle */
+  requestId?: string;
+  /** Chat/conversation ID */
+  chatId?: string;
+  /** Session ID (last 4 chars shown) */
+  sessionId?: string;
+}
+
+/** Generate a short request ID for log tracing */
+export function generateRequestId(): string {
+  return randomUUID().slice(0, 8);
+}
+
 export class Logger {
   private logDir: string;
   private logBase: string;
@@ -21,6 +37,8 @@ export class Logger {
   private closed = false;
   private mirrorToConsole: boolean;
   private rawConsole: RawConsole;
+  /** Bound context for child loggers */
+  private context?: LogContext;
 
   constructor(logPath: string, secrets: string[], mirrorToConsole = process.stdout.isTTY || process.stderr.isTTY) {
     this.logDir = dirname(logPath);
@@ -38,11 +56,44 @@ export class Logger {
     mkdirSync(this.logDir, { recursive: true });
   }
 
+  /** Create a child logger with bound context (requestId, chatId, sessionId) */
+  child(context: LogContext): Logger {
+    const childLogger = new Logger(join(this.logDir, this.logBase + this.logExt), this.secrets, this.mirrorToConsole);
+    childLogger.context = context;
+    childLogger.rawConsole = this.rawConsole;
+    return childLogger;
+  }
+
   info(msg: string): void { this.write('INFO', msg); }
   warn(msg: string): void { this.write('WARN', msg); }
   error(msg: string): void { this.write('ERROR', msg); }
   debug(msg: string): void { this.write('DEBUG', msg); }
   close(): void { this.closed = true; }
+
+  /** Log INFO with context prefix */
+  infoCtx(ctx: LogContext, msg: string): void { this.writeCtx('INFO', ctx, msg); }
+  /** Log WARN with context prefix */
+  warnCtx(ctx: LogContext, msg: string): void { this.writeCtx('WARN', ctx, msg); }
+  /** Log ERROR with context prefix */
+  errorCtx(ctx: LogContext, msg: string): void { this.writeCtx('ERROR', ctx, msg); }
+  /** Log DEBUG with context prefix */
+  debugCtx(ctx: LogContext, msg: string): void { this.writeCtx('DEBUG', ctx, msg); }
+
+  /** Format an error with stack trace for logging */
+  static formatError(err: unknown): string {
+    if (err instanceof Error) {
+      const stackLines = err.stack?.split('\n').slice(0, 5).join('\n') ?? err.message;
+      return `${err.message}\n${stackLines}`;
+    }
+    if (typeof err === 'object' && err !== null) {
+      try {
+        return JSON.stringify(err);
+      } catch {
+        return String(err);
+      }
+    }
+    return String(err);
+  }
 
   installConsoleInterception(): void {
     console.log = (...args: unknown[]) => this.write('INFO', format(...args));
@@ -68,6 +119,31 @@ export class Logger {
       const consoleLine = `${this.getTimeStamp(date)} [${parsed.module}] ${level}: ${parsed.message}`;
       this.getConsoleMethod(level)(consoleLine);
     }
+  }
+
+  /** Write with context prefix (requestId, chatId, sessionId) */
+  private writeCtx(level: LogLevel, ctx: LogContext, msg: string): void {
+    // Merge passed context with bound context
+    const mergedCtx = { ...this.context, ...ctx };
+    const prefix = this.formatContextPrefix(mergedCtx);
+    this.write(level, prefix + msg);
+  }
+
+  /** Format context as log prefix: rid=xxx chat=yyy sid=zzz */
+  private formatContextPrefix(ctx: LogContext): string {
+    const parts: string[] = [];
+    if (ctx.requestId) parts.push(`rid=${ctx.requestId}`);
+    if (ctx.chatId) {
+      // Truncate chatId to last 8 chars for readability
+      const shortChat = ctx.chatId.length > 12 ? `…${ctx.chatId.slice(-8)}` : ctx.chatId;
+      parts.push(`chat=${shortChat}`);
+    }
+    if (ctx.sessionId) {
+      // Show last 4 chars of sessionId
+      const shortSid = ctx.sessionId.length > 4 ? ctx.sessionId.slice(-4) : ctx.sessionId;
+      parts.push(`sid=${shortSid}`);
+    }
+    return parts.length ? parts.join(' ') + ' ' : '';
   }
 
   private getDailyPath(dateStamp: string, suffix?: 'error'): string {

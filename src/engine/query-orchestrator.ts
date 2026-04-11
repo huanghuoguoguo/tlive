@@ -18,6 +18,7 @@ import { shortPath } from '../utils/path.js';
 import { scanClaudeSessions } from '../session-scanner.js';
 import type { BridgeStore } from '../store/interface.js';
 import type { ClaudeSettingSource } from '../config.js';
+import { Logger, type LogContext } from '../logger.js';
 const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
 import type { LLMProvider, LiveSession } from '../providers/base.js';
 
@@ -86,12 +87,14 @@ export class QueryOrchestrator {
     return hasMeaningfulTooling || hasLongTrace || (toolCount >= 1 && hasLongAnswer);
   }
 
-  async run(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
+  async run(adapter: BaseChannelAdapter, msg: InboundMessage, requestId?: string): Promise<boolean> {
+    const ctx: LogContext = { requestId, chatId: msg.chatId };
     const expired = this.options.state.checkAndUpdateLastActive(msg.channelType, msg.chatId);
     let previousSessionPreview: string | undefined;
     if (expired) {
       const previousBinding = await this.options.store.getBinding(msg.channelType, msg.chatId);
       this.options.permissions.clearSessionWhitelist(previousBinding?.sessionId);
+      console.log(`[query] ${ctx.requestId} SESSION_EXPIRED sid=${previousBinding?.sessionId?.slice(-4) || '?'}`);
       // Get preview of previous session before rebind
       const sessions = scanClaudeSessions(3, previousBinding?.cwd || this.options.defaultWorkdir);
       previousSessionPreview = sessions.find(s => s.sdkSessionId === previousBinding?.sdkSessionId)?.preview;
@@ -103,6 +106,8 @@ export class QueryOrchestrator {
     }
 
     const binding = await this.options.router.resolve(msg.channelType, msg.chatId);
+    ctx.sessionId = binding.sessionId;
+    console.log(`[query] ${ctx.requestId} START session=${binding.sessionId.slice(-4)} cwd=${shortPath(binding.cwd || this.options.defaultWorkdir)}`);
 
     // Send task start notification card for session reset (Feishu rich cards only)
     if (expired && adapter.supportsRichCards()) {
@@ -295,23 +300,23 @@ export class QueryOrchestrator {
           }
 
           if (this.options.permissions.isToolAllowed(binding.sessionId, toolName, toolInput)) {
-            console.log(`[bridge] Auto-allowed ${toolName} via session whitelist`);
+            console.log(`[perm] ${ctx.requestId} AUTO_ALLOW ${toolName} (whitelist)`);
             return 'allow' as const;
           }
 
           if (askQuestionApproved) {
             askQuestionApproved = false;
-            console.log(`[bridge] Auto-allowed ${toolName} after AskUserQuestion approval`);
+            console.log(`[perm] ${ctx.requestId} AUTO_ALLOW ${toolName} (AskUserQuestion approved)`);
             return 'allow' as const;
           }
 
           const permId = `sdk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
           const chatKey = this.options.state.stateKey(msg.channelType, msg.chatId);
           this.options.permissions.setPendingSdkPerm(chatKey, permId);
-          console.log(`[bridge] Permission request: ${toolName} (${permId}) for ${chatKey}`);
+          console.log(`[perm] ${ctx.requestId} REQUEST ${toolName} permId=${permId.slice(-6)}`);
 
           const abortCleanup = () => {
-            console.log(`[bridge] Permission cancelled by SDK: ${toolName} (${permId})`);
+            console.log(`[perm] ${ctx.requestId} CANCEL ${toolName} permId=${permId.slice(-6)} (SDK abort)`);
             this.options.permissions.getGateway().resolve(permId, 'deny', 'Cancelled by SDK');
             this.options.permissions.clearPendingSdkPerm(chatKey);
             this.options.permissions.notePermissionResolved(chatKey, binding.sessionId, toolName, 'cancelled', permId);
@@ -336,7 +341,7 @@ export class QueryOrchestrator {
             onTimeout: () => {
               this.options.permissions.clearPendingSdkPerm(chatKey);
               this.options.permissions.clearPendingPermissionSnapshot(chatKey, permId);
-              console.warn(`[bridge] Permission timeout: ${toolName} (${permId})`);
+              console.warn(`[perm] ${ctx.requestId} TIMEOUT ${toolName} permId=${permId.slice(-6)}`);
             },
           });
           signal?.removeEventListener('abort', abortCleanup);
@@ -353,7 +358,7 @@ export class QueryOrchestrator {
             result.behavior === 'deny' && signal?.aborted ? 'cancelled' : result.behavior,
             permId,
           );
-          console.log(`[bridge] Permission resolved: ${toolName} (${permId}) → ${result.behavior}`);
+          console.log(`[perm] ${ctx.requestId} RESOLVED ${toolName} permId=${permId.slice(-6)} → ${result.behavior}`);
           return result.behavior as 'allow' | 'allow_always' | 'deny';
         };
 
@@ -539,7 +544,7 @@ export class QueryOrchestrator {
         },
         onQueryResult: async (event) => {
           if (event.permissionDenials?.length) {
-            console.warn(`[bridge] Permission denials: ${event.permissionDenials.map(denial => denial.toolName).join(', ')}`);
+            console.warn(`[query] ${ctx.requestId} DENIALS ${event.permissionDenials.map(denial => denial.toolName).join(', ')}`);
           }
           const usage = {
             input_tokens: event.usage.inputTokens,
@@ -547,10 +552,7 @@ export class QueryOrchestrator {
             cost_usd: event.usage.costUsd,
           };
           costTracker.finish(usage);
-          if (DEBUG_EVENTS) {
-            const state = renderer.getDebugSnapshot();
-            console.log(`[bridge] final timeline: thinking=${state.thinkingEntries} text=${state.textEntries} tool=${state.toolEntries}`);
-          }
+          console.log(`[query] ${ctx.requestId} COMPLETE tokens=${event.usage.inputTokens}+${event.usage.outputTokens} cost=${event.usage.costUsd?.toFixed(4) || '?'}$`);
           await renderer.onComplete();
         },
         onPromptSuggestion: (suggestion) => {
@@ -564,15 +566,12 @@ export class QueryOrchestrator {
         onError: async (err) => {
           // Check for session expiry / stale thinking signature — clear sdkSessionId and kill LiveSession
           if (err.includes('No conversation found') || err.includes('session ID') || err.includes('Invalid') && err.includes('signature')) {
-            console.log(`[bridge] Session expired or stale, clearing for ${msg.channelType}:${msg.chatId}`);
+            console.log(`[query] ${ctx.requestId} SESSION_STALE clearing sdkSessionId`);
             binding.sdkSessionId = undefined;
             await this.options.store.saveBinding(binding);
             this.options.sdkEngine.closeSession(msg.channelType, msg.chatId);
           }
-          if (DEBUG_EVENTS) {
-            const state = renderer.getDebugSnapshot();
-            console.log(`[bridge] error timeline: thinking=${state.thinkingEntries} text=${state.textEntries} tool=${state.toolEntries}`);
-          }
+          console.error(`[query] ${ctx.requestId} ERROR ${err.slice(0, 200)}`);
           await renderer.onError(err);
         },
       });
@@ -580,6 +579,7 @@ export class QueryOrchestrator {
       // Track progress bubble → session for multi-session steering
       if (renderer.messageId) {
         this.options.sdkEngine.setActiveMessageId(chatKey, renderer.messageId, sessionKey);
+        console.log(`[query] ${ctx.requestId} SENT msgId=${renderer.messageId.slice(-8)}`);
       }
 
       adapter.addReaction(reactionChatId, msg.messageId, reactions.done).catch(() => {});
@@ -588,6 +588,7 @@ export class QueryOrchestrator {
         adapter.addReaction(msg.chatId, renderer.messageId, reactions.done).catch(() => {});
       }
     } catch (err) {
+      console.error(`[query] ${ctx.requestId} FATAL ${Logger.formatError(err)}`);
       adapter.addReaction(reactionChatId, msg.messageId, reactions.error).catch(() => {});
       // Also add error reaction to the bot's progress message
       if (renderer.messageId) {
