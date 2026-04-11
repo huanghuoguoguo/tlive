@@ -6,7 +6,7 @@ import { ClaudeSDKProvider } from './providers/claude-sdk.js';
 import { BridgeManager } from './engine/bridge-manager.js';
 import { createAdapter, loadAdapters } from './channels/index.js';
 import type { ChannelType } from './channels/types.js';
-import { checkForUpdates, getCurrentVersion } from './engine/version-checker.js';
+import { checkForUpdates, getCurrentVersion, isVersionNotified, markVersionNotified } from './engine/version-checker.js';
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync, readFileSync, unlinkSync, existsSync } from 'node:fs';
 import { getTliveHome, getTliveRuntimeDir } from './utils/index.js';
@@ -148,11 +148,13 @@ async function main() {
     };
   }
 
-  // Version check: startup + every 6 hours
+  // Version check: startup + periodic
+  // Each version is only notified once automatically (stored in notified-versions.json)
+
   const checkAndNotifyUpdate = async () => {
     try {
       const info = await checkForUpdates();
-      if (info?.hasUpdate) {
+      if (info?.hasUpdate && !isVersionNotified(info.latest)) {
         logger.info(`New version available: v${info.latest} (current: v${info.current})`);
         await manager.broadcastFormatted({
           type: 'versionUpdate',
@@ -162,6 +164,8 @@ async function main() {
             publishedAt: info.publishedAt,
           },
         }).catch(() => {});
+        // Mark as notified after successful broadcast
+        markVersionNotified(info.latest);
       }
     } catch (err) {
       logger.warn(`Version check failed: ${err}`);
@@ -169,9 +173,9 @@ async function main() {
   };
 
   // Check on startup (after 30s delay to let things settle)
-  setTimeout(checkAndNotifyUpdate, 30_000);
+  setTimeout(() => checkAndNotifyUpdate(), 30_000);
   // Check every 6 hours
-  const versionCheckInterval = setInterval(checkAndNotifyUpdate, 6 * 60 * 60 * 1000);
+  const versionCheckInterval = setInterval(() => checkAndNotifyUpdate(), 6 * 60 * 60 * 1000);
 
   logger.info(`TLive Bridge v${getCurrentVersion()} started`);
 
