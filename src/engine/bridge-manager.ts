@@ -21,6 +21,8 @@ import { ConversationEngine } from './conversation.js';
 import { HookNotificationDispatcher, type HookNotificationData } from './hook-notification-dispatcher.js';
 import type { BridgeStore } from '../store/interface.js';
 import type { LLMProvider } from '../providers/base.js';
+import { generateRequestId, Logger, type LogContext } from '../logger.js';
+import { truncate } from '../utils/string.js';
 
 /** Bridge commands handled synchronously (don't block adapter loop) */
 const QUICK_COMMANDS = new Set(['/new', '/home', '/status', '/hooks', '/sessions', '/session', '/sessioninfo', '/help', '/help-cli', '/perm', '/stop', '/approve', '/pairings', '/settings', '/cd', '/pwd', '/upgrade', '/restart']);
@@ -266,36 +268,42 @@ export class BridgeManager {
     while (this.running) {
       const msg = await this.ingress.getNextMessage(adapter);
       if (!msg) { await new Promise(r => setTimeout(r, 100)); continue; }
-      console.log(`[${adapter.channelType}] Message from ${msg.userId}: ${msg.text || '(callback)'}`);
+      const requestId = generateRequestId();
+      const ctx: LogContext = { requestId, chatId: msg.chatId };
+      const textPreview = msg.text ? truncate(msg.text, 50) : '(callback)';
+      console.log(`[${adapter.channelType}] ${ctx.requestId} RECV user=${msg.userId} chat=${msg.chatId?.slice(-8) || '?'}: ${textPreview}`);
       if (this.loop.isQuickMessage(adapter, msg)) {
         try {
-          await this.handleInboundMessage(adapter, msg);
+          await this.handleInboundMessage(adapter, msg, requestId);
         } catch (err) {
-          console.error(`[${adapter.channelType}] Error handling message:`, err);
+          console.error(`[${adapter.channelType}] ${ctx.requestId} ERROR: ${Logger.formatError(err)}`);
         }
       } else {
         await this.loop.dispatchSlowMessage({
           adapter,
           msg,
+          requestId,
           coalesceMessage: (dispatchAdapter, dispatchMsg) => this.ingress.coalesceMessages(dispatchAdapter, dispatchMsg),
-          handleMessage: (dispatchAdapter, dispatchMsg) => this.handleInboundMessage(dispatchAdapter, dispatchMsg),
-          onError: (err) => {
-            console.error(`[${adapter.channelType}] Error handling message:`, err);
+          handleMessage: (dispatchAdapter, dispatchMsg, rid) => this.handleInboundMessage(dispatchAdapter, dispatchMsg, rid),
+          onError: (err, rid) => {
+            console.error(`[${adapter.channelType}] ${rid} ERROR: ${Logger.formatError(err)}`);
           },
         });
       }
     }
   }
 
-  async handleInboundMessage(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
+  async handleInboundMessage(adapter: BaseChannelAdapter, msg: InboundMessage, requestId?: string): Promise<boolean> {
+    const ctx: LogContext = { requestId: requestId || generateRequestId(), chatId: msg.chatId };
     // Menu events: fallback to user's last active chat
     if (!msg.chatId && msg.userId) {
       const userLastChat = this.state.getUserLastChat(msg.userId);
       if (userLastChat && userLastChat.channelType === adapter.channelType) {
-        console.log(`[${adapter.channelType}] Menu event: fallback to user's last chat ${userLastChat.chatId}`);
+        console.log(`[${adapter.channelType}] ${ctx.requestId} MENU fallback to user's last chat ${userLastChat.chatId.slice(-8)}`);
         msg = { ...msg, chatId: userLastChat.chatId };
+        ctx.chatId = msg.chatId;
       } else {
-        console.warn(`[${adapter.channelType}] Menu event dropped: no recent chat for user ${msg.userId}`);
+        console.warn(`[${adapter.channelType}] ${ctx.requestId} MENU dropped: no recent chat for user ${msg.userId}`);
         return false;
       }
     }
@@ -304,8 +312,9 @@ export class BridgeManager {
     if (msg.callbackData && !msg.chatId) {
       const fallbackChatId = this.ingress.getLastChatId(adapter.channelType);
       if (fallbackChatId) {
-        console.warn(`[${adapter.channelType}] Callback missing chatId, fallback to last active chat ${fallbackChatId}`);
+        console.warn(`[${adapter.channelType}] ${ctx.requestId} CALLBACK fallback to last chat ${fallbackChatId.slice(-8)}`);
         msg = { ...msg, chatId: fallbackChatId };
+        ctx.chatId = msg.chatId;
       }
     }
 
@@ -358,18 +367,21 @@ export class BridgeManager {
       return handleCallbackMessage(adapter, msg, {
         permissions: this.permissions,
         sdkEngine: this.sdkEngine,
-        replayMessage: (replayAdapter, replayMsg) => this.handleInboundMessage(replayAdapter, replayMsg),
+        replayMessage: (replayAdapter, replayMsg) => this.handleInboundMessage(replayAdapter, replayMsg, ctx.requestId),
       });
     }
 
     // Bridge commands — only intercept known commands, pass others to Claude Code
     if (msg.text.startsWith('/')) {
       const handled = await this.commands.handle(adapter, msg);
-      if (handled) return true;
+      if (handled) {
+        console.log(`[bridge] ${ctx.requestId} CMD ${msg.text.split(' ')[0]}`);
+        return true;
+      }
       // Unrecognized slash command → fall through to Claude Code
     }
 
-    return this.query.run(adapter, msg);
+    return this.query.run(adapter, msg, ctx.requestId);
   }
 
 }
