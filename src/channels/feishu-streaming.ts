@@ -127,28 +127,42 @@ export class FeishuStreamingSession {
     await this.updateQueue;
   }
 
-  /** Close streaming mode and set final summary. */
-  async close(finalText?: string): Promise<void> {
+  /** Close streaming mode and optionally update header. */
+  async close(options?: {
+    finalText?: string;
+    header?: { template: string; title: string };
+  }): Promise<void> {
     if (!this.cardId) return;
+
+    const finalText = options?.finalText;
+    const newHeader = options?.header;
 
     // Final content update if provided
     if (finalText && finalText !== this.lastContent) {
       await this.update(finalText);
     }
 
-    // Close streaming
+    // Close streaming + optionally update header
     this.sequence++;
     const summary = (this.lastContent || '').slice(0, 50);
     try {
+      const settingsData: Record<string, unknown> = {
+        streaming_mode: false,
+        summary: { content: summary || 'Done' },
+      };
+
+      // Update header if provided
+      if (newHeader) {
+        settingsData.header = {
+          title: { tag: 'plain_text', content: newHeader.title },
+          template: newHeader.template,
+        };
+      }
+
       await this.client.cardkit.v1.card.settings({
         path: { card_id: this.cardId },
         data: {
-          settings: JSON.stringify({
-            config: {
-              streaming_mode: false,
-              summary: { content: summary || 'Done' },
-            },
-          }),
+          settings: JSON.stringify({ config: settingsData }),
           sequence: this.sequence,
           uuid: `c_${this.cardId}_${this.sequence}`,
         },

@@ -91,6 +91,59 @@ gh release create v0.x.x
 - 运行时数据：`~/.tlive/runtime/`
 - 日志：`~/.tlive/logs/`
 
+## 日志与排查
+
+### 日志位置
+```
+~/.tlive/logs/
+├── bridge-YYYY-MM-DD.log      # 当日全量日志
+├── bridge-YYYY-MM-DD-error.log # 当日错误日志（WARN/ERROR）
+└── core.log                    # daemon 启动日志
+```
+
+### 日志格式
+每条日志包含时间戳、模块名、级别、消息：
+```
+2026-04-11T06:17:58Z [feishu] INFO: a1b2c3d4 RECV user=xxx chat=…abcd: hello
+```
+
+**关键追踪字段**：
+- `rid=xxx` — 8 字符请求 ID，追踪一条消息的完整生命周期
+- `chat=…xxxx` — chatId 后 8 位
+- `sid=xxxx` — sessionId 后 4 位
+
+### 排查方法
+
+**追踪特定消息**：
+```bash
+grep "rid=abc123" ~/.tlive/logs/bridge-*.log
+```
+
+**查看错误日志**：
+```bash
+cat ~/.tlive/logs/bridge-*-error.log
+```
+
+**实时查看日志**：
+```bash
+tail -f ~/.tlive/logs/bridge-$(date +%Y-%m-%d).log
+```
+
+**查找权限问题**：
+```bash
+grep "\[perm\]" ~/.tlive/logs/bridge-*.log
+```
+
+### 日志模块说明
+| 模块 | 职责 |
+|------|------|
+| `[feishu]` `[qqbot]` `[telegram]` | IM 平台适配器，消息接收/发送 |
+| `[bridge]` | 消息分发、命令处理 |
+| `[query]` | Claude 查询生命周期 |
+| `[perm]` | 权限请求/响应 |
+| `[gateway]` | 权限等待队列 |
+| `[sdk]` | Claude SDK/LiveSession |
+
 ## 常用命令
 
 ```bash

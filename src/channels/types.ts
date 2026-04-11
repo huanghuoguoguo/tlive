@@ -56,6 +56,14 @@ export interface SendResult {
   success: boolean;
 }
 
+export interface StreamingCardSession {
+  start(initialText?: string): Promise<string>;
+  update(fullText: string): Promise<void>;
+  close(options?: { finalText?: string; header?: { template: string; title: string } }): Promise<void>;
+  /** Current message ID (for Feishu streaming cards) */
+  currentMessageId?: string;
+}
+
 export interface Button {
   label: string;
   callbackData: string;

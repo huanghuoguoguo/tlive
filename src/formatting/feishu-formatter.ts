@@ -482,7 +482,6 @@ export class FeishuFormatter extends MessageFormatter {
   }
 
   override formatPermissionStatus(chatId: string, data: PermissionStatusData): OutboundMessage {
-    const rememberedCount = data.rememberedTools + data.rememberedBashPrefixes;
     const decisionLabel = data.lastDecision
       ? {
           allow: '允许一次',
@@ -783,7 +782,6 @@ export class FeishuFormatter extends MessageFormatter {
 
     const buttons: Button[] = [
       { label: '⬆️ 立即升级', callbackData: `cmd:upgrade confirm:${data.latest}`, style: 'primary' },
-      { label: '⏭️ 不再提示', callbackData: `cmd:upgrade skip:${data.latest}`, style: 'default' },
     ];
 
     return this.createCardMessage(chatId,

@@ -46,3 +46,6 @@ export const PLATFORM_PERMISSION_DECISION_REACTIONS: Record<ChannelType, { allow
   [CHANNEL_TYPES.FEISHU]: { allow: 'OK', allow_always: 'DONE', deny: 'No' },
   [CHANNEL_TYPES.QQBOT]: { allow: '\u{1F44D}', allow_always: '\u{1F44C}', deny: '\u{1F44E}' },
 };
+
+/** Default permission/question timeout (5 minutes) */
+export const DEFAULT_PERMISSION_TIMEOUT_MS = 5 * 60 * 1000;

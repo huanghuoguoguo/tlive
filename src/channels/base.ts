@@ -1,4 +1,11 @@
-import type { Button, ChannelType, InboundMessage, OutboundMessage, SendResult } from './types.js';
+import type {
+  Button,
+  ChannelType,
+  InboundMessage,
+  OutboundMessage,
+  SendResult,
+  StreamingCardSession,
+} from './types.js';
 import type { CardResolutionData, FormattableMessage } from '../formatting/message-types.js';
 import type { MessageFormatter } from '../formatting/message-formatter.js';
 
@@ -21,6 +28,16 @@ export abstract class BaseChannelAdapter {
 
   /** Remove all bot reactions from a message. */
   async removeReaction(_chatId: string, _messageId: string): Promise<void> {}
+
+  /** Create a streaming card/message session when the platform supports it. */
+  createStreamingSession(
+    _chatId: string,
+    _receiveIdType?: string,
+    _replyToMessageId?: string,
+    _header?: { template: string; title: string },
+  ): StreamingCardSession | null {
+    return null;
+  }
 
   // --- Formatting support ---
 

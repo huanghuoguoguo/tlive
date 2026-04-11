@@ -6,68 +6,58 @@ Check [open issues](https://github.com/huanghuoguoguo/tlive/issues) for things t
 
 ## Development Setup
 
-**Prerequisites:** Go 1.24+, Node.js 18+, npm
+**Prerequisites:** Node.js 20+, npm
 
 ```bash
 git clone https://github.com/huanghuoguoguo/tlive.git
 cd tlive
-```
-
-**Build Go Core:**
-
-```bash
-cd core
-go build -o tlive ./cmd/tlive/
-```
-
-**Build Node.js Bridge:**
-
-```bash
-cd bridge
 npm ci
-npm run build
 ```
 
 ## Project Structure
 
 | Directory   | Description                                |
 |-------------|--------------------------------------------|
-| `core/`     | Go core — main application binary          |
-| `bridge/`   | Node.js bridge — TypeScript, built with npm |
+| `src/`      | TypeScript source — Bridge service, IM adapters |
 | `scripts/`  | CLI entry point + hook scripts (Node.js)   |
+| `docs/`     | User documentation                         |
+| `.claude/`  | Claude Code skills and references          |
 | `.github/`  | CI workflows (GitHub Actions)              |
 
 ## Running Tests
 
-**Go Core:**
-
 ```bash
-cd core
-go test ./...
+npm test
 ```
 
-**Node.js Bridge:**
+## Build
 
 ```bash
-cd bridge
-npm test
+npm run build
+```
+
+## Development
+
+```bash
+npm run dev        # Watch mode, auto-rebuild
+npm run dev:hot    # Hot reload: rebuild + auto-restart
+npm start          # Build and start bridge (for manual testing)
 ```
 
 ## Code Style
 
-- **Go:** Use `gofmt`. No additional linter configuration needed.
-- **TypeScript (Bridge):** Follow existing patterns in the codebase. No special formatter is enforced beyond what the project already uses.
+- **TypeScript:** Follow existing patterns in the codebase
+- Use conventional commit messages: `type(scope): message`
+  - Types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`
+  - Scope: `bridge`, `feishu`, `telegram`, `qqbot`, `scripts`, or omit for cross-cutting changes
+  - Example: `fix(feishu): handle card callback timeout`
 
 ## Submitting Changes
 
 1. Fork the repo and create a branch from `main`.
 2. Make your changes and add tests if applicable.
-3. Use conventional commit messages: `type(scope): message`
-   - Types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`
-   - Scope: `core`, `bridge`, `scripts`, or omit for cross-cutting changes
-   - Example: `fix(bridge): handle empty response from core`
-4. Open a pull request against `main`. Describe what changed and why.
-5. Ensure CI passes before requesting review.
+3. Open a pull request against `main`. Describe what changed and why.
+4. Ensure CI passes before requesting review.
 
 ## Reporting Bugs
 
@@ -75,7 +65,8 @@ Open an issue using the bug report template. Include:
 
 - Steps to reproduce
 - Expected vs actual behavior
-- OS, Go version, Node.js version
+- OS, Node.js version
+- Relevant log output (`tlive logs`)
 
 ## Feature Requests
 

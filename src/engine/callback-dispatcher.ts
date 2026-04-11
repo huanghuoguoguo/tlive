@@ -111,8 +111,8 @@ export async function handleCallbackMessage(
       await adapter.send({ chatId: msg.chatId, text: '⚠️ No options selected' });
       return true;
     }
-    const { sdkQuestionData, sdkQuestionTextAnswers } = deps.sdkEngine.getQuestionState();
-    const qData = sdkQuestionData.get(permId);
+    const interactionState = deps.sdkEngine.getInteractionState();
+    const qData = interactionState.getSdkQuestion(permId);
     if (qData) {
       const q = qData.questions[0];
       const selectedLabels = [...selected]
@@ -120,7 +120,7 @@ export async function handleCallbackMessage(
         .map(i => q.options[i]?.label)
         .filter(Boolean);
       const answerText = selectedLabels.join(',');
-      sdkQuestionTextAnswers.set(permId, answerText);
+      interactionState.setSdkQuestionTextAnswer(permId, answerText);
       adapter.editCardResolution(msg.chatId, msg.messageId, {
         resolution: 'answered',
         label: `✅ Selected: ${selectedLabels.join(', ')}`,
@@ -136,15 +136,15 @@ export async function handleCallbackMessage(
   if (formParsed) {
     const { interactionId, formData } = formParsed;
     const permId = interactionId;
-    const { sdkQuestionData, sdkQuestionTextAnswers, sdkQuestionAnswers } = deps.sdkEngine.getQuestionState();
-    const qData = sdkQuestionData.get(permId);
+    const interactionState = deps.sdkEngine.getInteractionState();
+    const qData = interactionState.getSdkQuestion(permId);
 
     if (qData) {
       const q = qData.questions[0];
       // Check for text input (form_input)
       const textAnswer = (formData._text_answer || formData.text || '').trim();
       if (textAnswer) {
-        sdkQuestionTextAnswers.set(permId, textAnswer);
+        interactionState.setSdkQuestionTextAnswer(permId, textAnswer);
         adapter.editCardResolution(msg.chatId, msg.messageId, {
           resolution: 'answered',
           label: `✅ Answer: ${truncate(textAnswer, 50)}`,
@@ -160,7 +160,7 @@ export async function handleCallbackMessage(
         // Find the option index by matching the value
         const optionIndex = q.options.findIndex(opt => opt.label === selectValue);
         if (optionIndex >= 0) {
-          sdkQuestionAnswers.set(permId, optionIndex);
+          interactionState.setSdkQuestionOptionAnswer(permId, optionIndex);
           adapter.editCardResolution(msg.chatId, msg.messageId, {
             resolution: 'selected',
             label: `✅ ${selectValue}`,
@@ -248,12 +248,12 @@ export async function handleCallbackMessage(
     if (askqIdx >= 0) {
       const permId = parts.slice(2, askqIdx).join(':');
       const optionIndex = parseInt(parts[askqIdx + 1], 10);
-      const { sdkQuestionData, sdkQuestionAnswers } = deps.sdkEngine.getQuestionState();
-      const qData = sdkQuestionData.get(permId);
+      const interactionState = deps.sdkEngine.getInteractionState();
+      const qData = interactionState.getSdkQuestion(permId);
       const selected = qData?.questions?.[0]?.options?.[optionIndex];
       if (!selected) return true;
 
-      sdkQuestionAnswers.set(permId, optionIndex);
+      interactionState.setSdkQuestionOptionAnswer(permId, optionIndex);
       deps.permissions.getGateway().resolve(permId, 'allow');
       adapter.editCardResolution(msg.chatId, msg.messageId, {
         resolution: 'selected',
@@ -269,6 +269,7 @@ export async function handleCallbackMessage(
     if (skipIdx >= 0) {
       const permId = parts.slice(2, skipIdx).join(':');
       deps.permissions.getGateway().resolve(permId, 'deny', 'Skipped');
+      deps.sdkEngine.getInteractionState().cleanupSdkQuestion(permId);
       adapter.editCardResolution(msg.chatId, msg.messageId, {
         resolution: 'skipped',
         label: '⏭ Skipped',

@@ -198,9 +198,7 @@ export function readSessionTranscriptPreview(
           if (!message) continue;
           messages.push(message);
           if (messages.length >= maxMessages) break;
-        } catch {
-          continue;
-        }
+        } catch {}
       }
 
       return messages.reverse();
