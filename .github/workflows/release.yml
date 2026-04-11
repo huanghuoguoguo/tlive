@@ -65,8 +65,6 @@ jobs:
             package-lock.json \
             dist/ \
             scripts/ \
-            SKILL.md \
-            references/ \
             config.env.example \
             install.sh
 
