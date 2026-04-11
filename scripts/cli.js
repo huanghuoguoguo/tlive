@@ -236,28 +236,78 @@ async function daemonStatus() {
   const runtime = process.env.TL_RUNTIME || config.TL_RUNTIME || 'claude';
   const pid = getBridgePid();
 
+  // Read status.json for bridge details
+  const statusFile = join(RUNTIME_DIR, 'status.json');
+  let statusData = null;
+  try {
+    statusData = JSON.parse(readFileSync(statusFile, 'utf-8'));
+  } catch { /* ignore */ }
+
+  // Read bindings.json for active sessions
+  const bindingsFile = join(TLIVE_HOME, 'data', 'bindings.json');
+  let bindings = null;
+  try {
+    bindings = JSON.parse(readFileSync(bindingsFile, 'utf-8'));
+  } catch { /* ignore */ }
+
   if (pid) {
+    const version = statusData?.version || 'unknown';
+    const startedAt = statusData?.startedAt;
+    const uptime = startedAt ? formatUptime(new Date(startedAt)) : 'unknown';
+    const channels = statusData?.channels || [];
     console.log(`Bridge:       running (PID ${pid}, runtime: ${runtime})`);
+    console.log(`Version:      ${version}`);
+    console.log(`Uptime:       ${uptime}`);
+    console.log(`Channels:     ${channels.join(', ') || 'none'}`);
   } else {
     console.log('Bridge:       not running');
+    if (statusData?.exitedAt) {
+      console.log(`Last exit:    ${statusData.exitedAt} (${statusData.exitReason || 'unknown'})`);
+    }
+    return; // No need to show sessions if not running
   }
 
-  // Check Go Core web terminal
-  const port = process.env.TL_PORT || config.TL_PORT || '8080';
-  const token = process.env.TL_TOKEN || config.TL_TOKEN || '';
-  try {
-    const resp = await fetch(`http://localhost:${port}/api/status`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(3000),
-    });
-    if (resp.ok) {
-      console.log(`Web terminal: running at http://localhost:${port}`);
-    } else {
-      console.log('Web terminal: not running (start with: tlive <cmd>)');
+  // Show active sessions from bindings
+  if (bindings && Object.keys(bindings).length > 0) {
+    console.log('');
+    console.log('=== Active Sessions ===');
+    for (const [key, binding] of Object.entries(bindings)) {
+      const { channelType, chatId, cwd, createdAt } = binding;
+      const channelIcon = channelType === 'telegram' ? '📱' : channelType === 'feishu' ? '🚀' : channelType === 'qqbot' ? '💬' : '❓';
+      const workdir = cwd ? ` (${cwd})` : '';
+      const age = createdAt ? formatAge(new Date(createdAt)) : 'unknown';
+      console.log(`${channelIcon} ${channelType}:${chatId.slice(-8)}${workdir} — ${age}`);
     }
-  } catch {
-    console.log('Web terminal: not running (start with: tlive <cmd>)');
+  } else {
+    console.log('');
+    console.log('Sessions:     none');
   }
+}
+
+function formatUptime(startDate) {
+  const now = new Date();
+  const diffMs = now - startDate;
+  const hours = Math.floor(diffMs / 3600000);
+  const minutes = Math.floor((diffMs % 3600000) / 60000);
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+}
+
+function formatAge(date) {
+  const now = new Date();
+  const diffMs = now - date;
+  const days = Math.floor(diffMs / 86400000);
+  const hours = Math.floor((diffMs % 86400000) / 3600000);
+  if (days > 0) {
+    return `${days}d ${hours}h ago`;
+  }
+  if (hours > 0) {
+    return `${hours}h ago`;
+  }
+  const minutes = Math.floor(diffMs / 60000);
+  return `${minutes}m ago`;
 }
 
 function daemonLogs(n = 50) {
@@ -400,26 +450,14 @@ async function runDoctor() {
   const bridgePid = getBridgePid();
   console.log(bridgePid ? `  Bridge:   running (PID ${bridgePid})` : '  Bridge:   not running');
 
-  console.log('');
-
-  // API check
-  const config = existsSync(CONFIG_FILE) ? loadConfigEnv() : {};
-  const port = process.env.TL_PORT || config.TL_PORT || '8080';
-  const token = process.env.TL_TOKEN || config.TL_TOKEN || '';
+  // Show active sessions count
+  const bindingsFile = join(TLIVE_HOME, 'data', 'bindings.json');
   try {
-    const resp = await fetch(`http://localhost:${port}/api/status`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(3000),
-    });
-    if (resp.ok) {
-      const body = await resp.text();
-      console.log('API:');
-      console.log(body);
-    } else {
-      console.log(`API: unreachable (port ${port})`);
-    }
+    const bindings = JSON.parse(readFileSync(bindingsFile, 'utf-8'));
+    const count = Object.keys(bindings).length;
+    console.log(count > 0 ? `  Sessions: ${count} active` : '  Sessions: none');
   } catch {
-    console.log(`API: unreachable (port ${port})`);
+    console.log('  Sessions: (no data)');
   }
 
   console.log('');
