@@ -17,12 +17,17 @@ function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
     : channelType === 'qqbot'
       ? qqbotFormatter
       : telegramFormatter;
+  let sendCount = 0;
   return {
     channelType,
-    send: vi.fn().mockResolvedValue({ messageId: 'out-1', success: true }),
+    send: vi.fn().mockImplementation(async () => {
+      sendCount += 1;
+      return { messageId: `out-${sendCount}`, success: true };
+    }),
     editMessage: vi.fn().mockResolvedValue(undefined),
     sendTyping: vi.fn().mockResolvedValue(undefined),
     addReaction: vi.fn().mockResolvedValue(undefined),
+    createStreamingSession: vi.fn().mockReturnValue(null),
     format: (msg: any) => formatter.format(msg),
     formatContent: (chatId: string, content: string, buttons?: any[]) => formatter.formatContent(chatId, content, buttons),
     supportsRichCards: () => formatter.hasRichCardSupport(),
@@ -92,6 +97,11 @@ describe('QueryOrchestrator', () => {
       trackPermissionMessage: vi.fn(),
     } as any;
     const sdkEngine = {
+      getInteractionState: vi.fn().mockReturnValue({
+        beginSdkQuestion: vi.fn(),
+        cleanupSdkQuestion: vi.fn(),
+        consumeSdkQuestionAnswer: vi.fn().mockReturnValue({}),
+      }),
       getQuestionState: vi.fn().mockReturnValue({
         sdkQuestionData: new Map(),
         sdkQuestionAnswers: new Map(),
@@ -168,6 +178,11 @@ describe('QueryOrchestrator', () => {
       trackPermissionMessage: vi.fn(),
     } as any;
     const sdkEngine = {
+      getInteractionState: vi.fn().mockReturnValue({
+        beginSdkQuestion: vi.fn(),
+        cleanupSdkQuestion: vi.fn(),
+        consumeSdkQuestionAnswer: vi.fn().mockReturnValue({}),
+      }),
       getQuestionState: vi.fn().mockReturnValue({
         sdkQuestionData: new Map(),
         sdkQuestionAnswers: new Map(),
@@ -245,6 +260,11 @@ describe('QueryOrchestrator', () => {
       trackPermissionMessage: vi.fn(),
     } as any;
     const sdkEngine = {
+      getInteractionState: vi.fn().mockReturnValue({
+        beginSdkQuestion: vi.fn(),
+        cleanupSdkQuestion: vi.fn(),
+        consumeSdkQuestionAnswer: vi.fn().mockReturnValue({}),
+      }),
       getQuestionState: vi.fn().mockReturnValue({
         sdkQuestionData: new Map(),
         sdkQuestionAnswers: new Map(),
@@ -286,6 +306,99 @@ describe('QueryOrchestrator', () => {
     expect(adapter.editMessage).not.toHaveBeenCalled();
   });
 
+  it('uses Feishu streaming cards during execution and closes them on completion', async () => {
+    const state = new SessionStateManager();
+    const engine = {
+      processMessage: vi.fn().mockImplementation(async (params) => {
+        params.onTextDelta?.('第一段');
+        await new Promise(resolve => setTimeout(resolve, 10));
+        params.onTextDelta?.('第二段');
+        await new Promise(resolve => setTimeout(resolve, 10));
+        await params.onQueryResult?.({
+          sessionId: 'sdk-2',
+          isError: false,
+          usage: { inputTokens: 10, outputTokens: 5, costUsd: 0.01 },
+        });
+      }),
+    } as any;
+    const router = {
+      resolve: vi.fn().mockResolvedValue({ ...binding, channelType: 'feishu' }),
+      rebind: vi.fn(),
+    } as any;
+    const permissions = {
+      clearSessionWhitelist: vi.fn(),
+      getGateway: vi.fn().mockReturnValue({
+        waitFor: vi.fn(),
+        resolve: vi.fn(),
+      }),
+      setPendingSdkPerm: vi.fn(),
+      clearPendingSdkPerm: vi.fn(),
+      notePermissionPending: vi.fn(),
+      notePermissionResolved: vi.fn(),
+      clearPendingPermissionSnapshot: vi.fn(),
+      isToolAllowed: vi.fn().mockReturnValue(false),
+      rememberSessionAllowance: vi.fn(),
+      storeQuestionData: vi.fn(),
+      trackPermissionMessage: vi.fn(),
+    } as any;
+    const sdkEngine = {
+      getInteractionState: vi.fn().mockReturnValue({
+        beginSdkQuestion: vi.fn(),
+        cleanupSdkQuestion: vi.fn(),
+        consumeSdkQuestionAnswer: vi.fn().mockReturnValue({}),
+      }),
+      getQuestionState: vi.fn().mockReturnValue({
+        sdkQuestionData: new Map(),
+        sdkQuestionAnswers: new Map(),
+        sdkQuestionTextAnswers: new Map(),
+      }),
+      setControlsForChat: vi.fn(),
+      setActiveMessageId: vi.fn(),
+      closeSession: vi.fn(),
+      getOrCreateSession: vi.fn().mockReturnValue(undefined),
+    } as any;
+    const adapter = createAdapter('feishu');
+    const streamingSession = {
+      start: vi.fn().mockResolvedValue('stream-1'),
+      update: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    (adapter.createStreamingSession as any).mockReturnValue(streamingSession);
+
+    const orchestrator = new QueryOrchestrator({
+      engine,
+      llm: {} as any,
+      router,
+      state,
+      permissions,
+      sdkEngine,
+      store: mockStore,
+      defaultWorkdir: '/tmp/project',
+      defaultClaudeSettingSources: ['user', 'project', 'local'],
+      port: 8080,
+    });
+
+    await orchestrator.run(adapter, {
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      text: 'hello',
+      messageId: 'msg-1',
+    });
+
+    expect(adapter.createStreamingSession).toHaveBeenCalledTimes(1);
+    expect(streamingSession.start).toHaveBeenCalledTimes(1);
+    expect(streamingSession.close).toHaveBeenCalledTimes(1);
+    // Close is called with completion header
+    expect(streamingSession.close).toHaveBeenCalledWith(
+      expect.objectContaining({
+        header: { template: 'green', title: '✅ 已完成' },
+      })
+    );
+    // editMessage is NOT called because we close streaming card directly
+    expect(adapter.editMessage).not.toHaveBeenCalled();
+  });
+
   it('remembers allow_always approvals within the current bridge session', async () => {
     const state = new SessionStateManager();
     const engine = {
@@ -319,6 +432,11 @@ describe('QueryOrchestrator', () => {
       trackPermissionMessage: vi.fn(),
     } as any;
     const sdkEngine = {
+      getInteractionState: vi.fn().mockReturnValue({
+        beginSdkQuestion: vi.fn(),
+        cleanupSdkQuestion: vi.fn(),
+        consumeSdkQuestionAnswer: vi.fn().mockReturnValue({}),
+      }),
       getQuestionState: vi.fn().mockReturnValue({
         sdkQuestionData: new Map(),
         sdkQuestionAnswers: new Map(),
@@ -359,6 +477,133 @@ describe('QueryOrchestrator', () => {
     );
   });
 
+  it('asks SDK questions sequentially and returns answers for all prompts', async () => {
+    const state = new SessionStateManager();
+    const sdkQuestionData = new Map();
+    const sdkQuestionAnswers = new Map();
+    const sdkQuestionTextAnswers = new Map();
+    let questionCount = 0;
+    const gateway = {
+      waitFor: vi.fn().mockImplementation(async () => {
+        questionCount += 1;
+        const permId = Array.from(sdkQuestionData.keys()).at(-1) as string;
+        if (questionCount === 1) {
+          sdkQuestionAnswers.set(permId, 1);
+        } else {
+          sdkQuestionTextAnswers.set(permId, '因为要兼容老接口');
+        }
+        return { behavior: 'allow' };
+      }),
+      resolve: vi.fn(),
+    };
+    const engine = {
+      processMessage: vi.fn().mockImplementation(async (params) => {
+        const answers = await params.sdkAskQuestionHandler?.([
+          {
+            question: '使用哪个方案？',
+            header: '方案选择',
+            options: [
+              { label: '方案 A' },
+              { label: '方案 B' },
+            ],
+            multiSelect: false,
+          },
+          {
+            question: '为什么这样做？',
+            header: '补充说明',
+            options: [],
+            multiSelect: false,
+          },
+        ]);
+        expect(answers).toEqual({
+          '使用哪个方案？': '方案 B',
+          '为什么这样做？': '因为要兼容老接口',
+        });
+        await params.onQueryResult?.({
+          sessionId: 'sdk-2',
+          isError: false,
+          usage: { inputTokens: 2, outputTokens: 2, costUsd: 0.01 },
+        });
+      }),
+    } as any;
+    const router = {
+      resolve: vi.fn().mockResolvedValue({ ...binding }),
+      rebind: vi.fn(),
+    } as any;
+    const permissions = {
+      clearSessionWhitelist: vi.fn(),
+      getGateway: vi.fn().mockReturnValue(gateway),
+      setPendingSdkPerm: vi.fn(),
+      clearPendingSdkPerm: vi.fn(),
+      notePermissionPending: vi.fn(),
+      notePermissionResolved: vi.fn(),
+      clearPendingPermissionSnapshot: vi.fn(),
+      isToolAllowed: vi.fn().mockReturnValue(false),
+      rememberSessionAllowance: vi.fn(),
+      storeQuestionData: vi.fn(),
+      trackPermissionMessage: vi.fn(),
+      cleanupQuestion: vi.fn(),
+    } as any;
+    const sdkEngine = {
+      getInteractionState: vi.fn().mockReturnValue({
+        beginSdkQuestion: (permId: string, questions: any, chatId: string) => {
+          sdkQuestionData.set(permId, { questions, chatId });
+        },
+        consumeSdkQuestionAnswer: (permId: string) => {
+          const textAnswer = sdkQuestionTextAnswers.get(permId);
+          const optionIndex = sdkQuestionAnswers.get(permId);
+          sdkQuestionTextAnswers.delete(permId);
+          sdkQuestionAnswers.delete(permId);
+          return { textAnswer, optionIndex };
+        },
+        cleanupSdkQuestion: (permId: string) => {
+          sdkQuestionData.delete(permId);
+          sdkQuestionAnswers.delete(permId);
+          sdkQuestionTextAnswers.delete(permId);
+        },
+      }),
+      getQuestionState: vi.fn().mockReturnValue({
+        sdkQuestionData,
+        sdkQuestionAnswers,
+        sdkQuestionTextAnswers,
+      }),
+      setControlsForChat: vi.fn(),
+      setActiveMessageId: vi.fn(),
+      closeSession: vi.fn(),
+      getOrCreateSession: vi.fn().mockReturnValue(undefined),
+    } as any;
+    const adapter = createAdapter('feishu');
+
+    const orchestrator = new QueryOrchestrator({
+      engine,
+      llm: {} as any,
+      router,
+      state,
+      permissions,
+      sdkEngine,
+      store: mockStore,
+      defaultWorkdir: '/tmp/project',
+      defaultClaudeSettingSources: ['user', 'project', 'local'],
+      port: 8080,
+    });
+
+    await orchestrator.run(adapter, {
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      text: 'hello',
+      messageId: 'msg-1',
+    });
+
+    expect(gateway.waitFor).toHaveBeenCalledTimes(2);
+    expect(permissions.trackPermissionMessage).toHaveBeenCalledTimes(2);
+    expect(permissions.cleanupQuestion).toHaveBeenCalledTimes(2);
+    const questionCards = (adapter.send as any).mock.calls
+      .map((call: any[]) => call[0])
+      .filter((message: any) => message.feishuHeader?.title?.includes('等待回答'));
+    expect(questionCards).toHaveLength(2);
+  });
+
   it('uses binding setting sources instead of the default fallback', async () => {
     const state = new SessionStateManager();
     const engine = {
@@ -389,6 +634,11 @@ describe('QueryOrchestrator', () => {
       trackPermissionMessage: vi.fn(),
     } as any;
     const sdkEngine = {
+      getInteractionState: vi.fn().mockReturnValue({
+        beginSdkQuestion: vi.fn(),
+        cleanupSdkQuestion: vi.fn(),
+        consumeSdkQuestionAnswer: vi.fn().mockReturnValue({}),
+      }),
       getQuestionState: vi.fn().mockReturnValue({
         sdkQuestionData: new Map(),
         sdkQuestionAnswers: new Map(),
@@ -464,6 +714,11 @@ describe('QueryOrchestrator', () => {
       trackPermissionMessage: vi.fn(),
     } as any;
     const sdkEngine = {
+      getInteractionState: vi.fn().mockReturnValue({
+        beginSdkQuestion: vi.fn(),
+        cleanupSdkQuestion: vi.fn(),
+        consumeSdkQuestionAnswer: vi.fn().mockReturnValue({}),
+      }),
       getQuestionState: vi.fn().mockReturnValue({
         sdkQuestionData: new Map(),
         sdkQuestionAnswers: new Map(),

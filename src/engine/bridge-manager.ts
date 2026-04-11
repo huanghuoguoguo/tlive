@@ -92,7 +92,7 @@ export class BridgeManager {
     this.router = new ChannelRouter(store);
     this.permissions = new PermissionCoordinator(gateway, broker);
     this.engine = new ConversationEngine(store, llm);
-    this.sdkEngine = new SDKEngine(this.state, this.router);
+    this.sdkEngine = new SDKEngine();
     this.sdkEngine.onSessionPruned = (sessionKey) => {
       this.permissions.clearSessionWhitelist(sessionKey);
     };
@@ -232,14 +232,7 @@ export class BridgeManager {
     // Periodic cleanup of SDK question data (5 minute TTL) and stale attachments
     // Use 5-minute interval to avoid iterating all entries every minute
     this.sdkQuestionCleanupTimer = setInterval(() => {
-      const { sdkQuestionData, sdkQuestionAnswers, sdkQuestionTextAnswers } = this.sdkEngine.getQuestionState();
-      for (const [id] of sdkQuestionData) {
-        if (!this.permissions.getGateway().isPending(id)) {
-          sdkQuestionData.delete(id);
-          sdkQuestionAnswers.delete(id);
-          sdkQuestionTextAnswers.delete(id);
-        }
-      }
+      this.sdkEngine.getInteractionState().pruneResolvedSdkQuestions(this.permissions.getGateway());
       this.ingress.pruneStaleState();
     }, 5 * 60 * 1000);
   }

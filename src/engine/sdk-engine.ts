@@ -9,16 +9,8 @@
 
 import type { QueryControls, LiveSession, LLMProvider, MessagePriority } from '../providers/base.js';
 import type { ClaudeSettingSource } from '../config.js';
-import type { SessionStateManager } from './session-state.js';
-import type { ChannelRouter } from './router.js';
 import type { EffortLevel } from '../utils/types.js';
-
-/** Shared SDK question state — owned by SDKEngine, read/written by CallbackRouter */
-export interface SdkQuestionState {
-  sdkQuestionData: Map<string, { questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string; preview?: string }>; multiSelect: boolean }>; chatId: string }>;
-  sdkQuestionAnswers: Map<string, number>;
-  sdkQuestionTextAnswers: Map<string, string>;
-}
+import { InteractionState, type SdkQuestionState } from './interaction-state.js';
 
 /** Managed session — wraps a LiveSession with per-chat metadata */
 interface ManagedSession {
@@ -46,21 +38,14 @@ export class SDKEngine {
   /** Max bubble mappings to keep (prevents unbounded growth) */
   private static MAX_BUBBLE_MAPPINGS = 200;
 
-  // SDK AskUserQuestion state — shared with CallbackRouter via SdkQuestionState interface
-  sdkQuestionData = new Map<string, { questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string; preview?: string }>; multiSelect: boolean }>; chatId: string }>();
-  sdkQuestionAnswers = new Map<string, number>();
-  sdkQuestionTextAnswers = new Map<string, string>();
+  // SDK AskUserQuestion state — shared with routing / callbacks via InteractionState.
+  private interactions = new InteractionState();
 
   /** Idle timeout for LiveSessions (30 minutes) */
   private static SESSION_IDLE_MS = 30 * 60 * 1000;
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
   /** Optional callback to clean up permission whitelist when session is pruned */
   onSessionPruned?: (sessionKey: string) => void;
-
-  constructor(
-    _state: SessionStateManager,
-    _router: ChannelRouter,
-  ) {}
 
   /** Start periodic cleanup of idle LiveSessions */
   startSessionPruning(): void {
@@ -286,11 +271,12 @@ export class SDKEngine {
 
   /** Expose question state for CallbackRouter */
   getQuestionState(): SdkQuestionState {
-    return {
-      sdkQuestionData: this.sdkQuestionData,
-      sdkQuestionAnswers: this.sdkQuestionAnswers,
-      sdkQuestionTextAnswers: this.sdkQuestionTextAnswers,
-    };
+    return this.interactions.snapshot();
+  }
+
+  /** Expose the formal interaction state for SDK AskUserQuestion flows. */
+  getInteractionState(): InteractionState {
+    return this.interactions;
   }
 
   /** Get active controls for a chat (for /stop command) */

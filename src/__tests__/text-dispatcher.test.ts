@@ -43,6 +43,12 @@ describe('TextDispatcher', () => {
       getGateway: vi.fn().mockReturnValue(gateway),
     } as any;
     const sdkEngine = {
+      getInteractionState: vi.fn().mockReturnValue({
+        findPendingSdkQuestion: vi.fn().mockReturnValue(null),
+        setSdkQuestionOptionAnswer: vi.fn(),
+        setSdkQuestionTextAnswer: vi.fn(),
+        getSdkQuestion: vi.fn().mockReturnValue(undefined),
+      }),
       getQuestionState: vi.fn().mockReturnValue({
         sdkQuestionData: new Map(),
         sdkQuestionAnswers: new Map(),
@@ -78,6 +84,12 @@ describe('TextDispatcher', () => {
       getGateway: vi.fn().mockReturnValue(gateway),
     } as any;
     const sdkEngine = {
+      getInteractionState: vi.fn().mockReturnValue({
+        findPendingSdkQuestion: vi.fn().mockReturnValue(null),
+        setSdkQuestionOptionAnswer: vi.fn(),
+        setSdkQuestionTextAnswer: vi.fn(),
+        getSdkQuestion: vi.fn().mockReturnValue(undefined),
+      }),
       getQuestionState: vi.fn().mockReturnValue({
         sdkQuestionData: new Map(),
         sdkQuestionAnswers: new Map(),
@@ -117,6 +129,22 @@ describe('TextDispatcher', () => {
       getGateway: vi.fn().mockReturnValue(gateway),
     } as any;
     const sdkEngine = {
+      getInteractionState: vi.fn().mockReturnValue({
+        findPendingSdkQuestion: vi.fn().mockReturnValue({ permId: 'askq-1' }),
+        setSdkQuestionOptionAnswer: vi.fn((permId: string, optionIndex: number) => {
+          sdkQuestionAnswers.set(permId, optionIndex);
+        }),
+        setSdkQuestionTextAnswer: vi.fn(),
+        getSdkQuestion: vi.fn().mockReturnValue({
+          chatId: 'chat-1',
+          questions: [{
+            question: 'Pick one',
+            header: 'Question',
+            options: [{ label: 'One' }, { label: 'Two' }],
+            multiSelect: false,
+          }],
+        }),
+      }),
       getQuestionState: vi.fn().mockReturnValue({
         sdkQuestionData: new Map([
           ['askq-1', {
@@ -167,6 +195,12 @@ describe('TextDispatcher', () => {
       }),
     } as any;
     const sdkEngine = {
+      getInteractionState: vi.fn().mockReturnValue({
+        findPendingSdkQuestion: vi.fn().mockReturnValue(null),
+        setSdkQuestionOptionAnswer: vi.fn(),
+        setSdkQuestionTextAnswer: vi.fn(),
+        getSdkQuestion: vi.fn().mockReturnValue(undefined),
+      }),
       getQuestionState: vi.fn().mockReturnValue({
         sdkQuestionData: new Map(),
         sdkQuestionAnswers: new Map(),
