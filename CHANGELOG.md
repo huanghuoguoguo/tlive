@@ -336,7 +336,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - `/model <name>` command — switch model per session (works for both Claude and Codex)
 - `/settings user|full|isolated` command — control Claude Code settings scope
-- `TL_CLAUDE_SETTINGS` config — choose which Claude Code settings files to load (default: `user`)
+- `TL_CLAUDE_SETTINGS` config — choose which Claude Code settings files to load (default: `user,project,local`)
 - `TL_ANTHROPIC_API_KEY` / `OPENAI_API_KEY` support in config.env — non-TL_ vars injected into process.env
 - `settingSources` integration — load user's `~/.claude/settings.json` for auth/model config
 - Codex provider: effort mapping (`modelReasoningEffort`), env passthrough, auth error detection
