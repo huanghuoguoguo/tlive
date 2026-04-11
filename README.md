@@ -19,29 +19,14 @@
 
 ## Install
 
-### 方式一：从 Release 安装（推荐）
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash
 ```
 
-### 方式二：本地构建
+Verify:
 
 ```bash
-# 1. Clone the repo
-git clone https://github.com/huanghuoguoguo/tlive.git
-cd tlive
-
-# 2. 构建 Go Core（提供 tlive CLI）
-cd core && make build
-mv tlive /usr/local/bin/
-cd ..
-
-# 3. 构建 Bridge（IM 桥接服务）
-cd bridge && npm install && npm run build
-cd ..
-
-# 4. 配置 ~/.tlive/config.env（见下方 Quick Start）
+tlive --help
 ```
 
 ## Quick Start
@@ -80,18 +65,11 @@ That's it! Claude Code will help you:
 ├─────────────┤     │   Bridge (TS)    │     │  ~/.claude  │
 │   Feishu    │────▶│   IM Adapter     │◀────│   sessions  │
 ├─────────────┤     │                  │     │             │
-│   QQ Bot    │     │   (Required)     │     │  (scanned)  │
+│   QQ Bot    │     │                  │     │  (scanned)  │
 └─────────────┘     └──────────────────┘     └─────────────┘
-
-┌──────────────────┐
-│   Core (Go)      │     Optional: `tlive <cmd>` web terminal
-│   (Optional)     │     Not needed for IM features
-└──────────────────┘
 ```
 
-**Bridge** (Required): Connects IM platforms to Claude Code by scanning session files.
-
-**Core** (Optional): Provides web terminal feature. Not needed for IM chat or permission approvals.
+**Bridge**: TypeScript service that connects IM platforms to Claude Code by scanning session files. Includes built-in `tlive` CLI for web terminal feature.
 
 ## IM Commands
 

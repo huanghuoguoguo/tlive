@@ -21,8 +21,6 @@ tlive logs 100      # 最近 100 行
 
 ### 安装失败
 
-**"Go Core not found"**
-
 二进制文件下载失败。重新运行安装：
 
 ```bash

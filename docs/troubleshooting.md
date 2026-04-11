@@ -21,8 +21,6 @@ Log location: `~/.tlive/logs/bridge.log`
 
 ### Installation Failed
 
-**"Go Core not found"**
-
 Binary download failed. Re-run installation:
 
 ```bash

@@ -170,7 +170,7 @@ tlive logs 50
 
 **常见问题：**
 
-- **"Go Core not found"** — 二进制文件下载不完整，重新运行安装脚本：`curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash`
+- **"二进制文件未找到"** — 安装不完整，重新运行：`curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash`
 - **"Bridge not starting"** — 检查 `~/.tlive/config.env` 是否存在且凭证有效。运行 `tlive doctor` 查看详情。
 - **"No IM messages"** — 确认 bot token 正确，且机器人已加入正确的对话。参考上方各平台的配置指南进行排查。
 - **Hook 没有触发** — 确保已运行 `tlive install skills`。用 `tlive hooks` 查看当前 hook 状态。
