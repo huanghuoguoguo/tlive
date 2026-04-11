@@ -1,9 +1,11 @@
 /**
  * Base message formatter with platform-aware formatting.
  * Adapters can override specific methods for custom rendering.
+ *
+ * @typeParam TRendered - Platform-specific rendered message type
  */
 
-import type { OutboundMessage, Button } from '../channels/types.js';
+import type { Button } from '../ui/types.js';
 import type {
   StatusData,
   PermissionData,
@@ -29,7 +31,7 @@ import { truncate } from '../utils/string.js';
 /** Language preference for messages */
 export type MessageLocale = 'en' | 'zh';
 
-export abstract class MessageFormatter {
+export abstract class MessageFormatter<TRendered extends { chatId: string }> {
   constructor(protected locale: MessageLocale = 'en') {}
 
   // --- Abstract methods that subclasses must implement ---
@@ -40,20 +42,18 @@ export abstract class MessageFormatter {
   /** Check if platform supports native buttons */
   protected abstract supportsButtons(): boolean;
 
+  /** Create a platform-specific message. Subclasses implement to return their type. */
+  protected abstract createMessage(chatId: string, text: string, buttons?: Button[]): TRendered;
+
   /** Public accessor for locale */
   getLocale(): MessageLocale {
     return this.locale;
   }
 
-  /** Whether this platform supports rich card display (buttons, headers, etc.) */
-  hasRichCardSupport(): boolean {
-    return this.supportsButtons();
-  }
-
   // --- Generic format method ---
 
-  /** Format a semantic message into an OutboundMessage */
-  format(msg: FormattableMessage): OutboundMessage {
+  /** Format a semantic message into a platform-specific rendered message */
+  format(msg: FormattableMessage): TRendered {
     const { type, chatId } = msg;
     switch (type) {
       case 'status':
@@ -97,7 +97,7 @@ export abstract class MessageFormatter {
 
   // --- Public formatting methods ---
 
-  formatStatus(chatId: string, data: StatusData): OutboundMessage {
+  formatStatus(chatId: string, data: StatusData): TRendered {
     const status = data.healthy ? '🟢 running' : '🔴 disconnected';
     const channelList = data.channels.join(', ') || 'none';
     const lines = [
@@ -112,7 +112,7 @@ export abstract class MessageFormatter {
     return this.createMessage(chatId, lines.join('\n'));
   }
 
-  formatPermission(chatId: string, data: PermissionData): OutboundMessage {
+  formatPermission(chatId: string, data: PermissionData): TRendered {
     const input = truncate(data.toolInput, 300);
     const expires = data.expiresInMinutes ?? 5;
     const buttons: Button[] = [
@@ -140,7 +140,7 @@ export abstract class MessageFormatter {
     return msg;
   }
 
-  formatQuestion(chatId: string, data: QuestionData): OutboundMessage {
+  formatQuestion(chatId: string, data: QuestionData): TRendered {
     const { question, header, options, multiSelect, permId, sessionId } = data;
 
     const headerLine = header ? `📋 **${header}**\n\n` : '';
@@ -160,7 +160,7 @@ export abstract class MessageFormatter {
     return this.createMessage(chatId, text + hint, buttons);
   }
 
-  formatNotification(chatId: string, data: NotificationData): OutboundMessage {
+  formatNotification(chatId: string, data: NotificationData): TRendered {
     const emojiMap = { stop: '✅', idle_prompt: '⏳', generic: '📢' };
     const emoji = emojiMap[data.type];
     const summary = data.summary ? truncate(data.summary, 3000) : undefined;
@@ -172,7 +172,7 @@ export abstract class MessageFormatter {
     return this.createMessage(chatId, lines.join('\n'));
   }
 
-  formatHome(chatId: string, data: HomeData): OutboundMessage {
+  formatHome(chatId: string, data: HomeData): TRendered {
     const taskStatus = data.hasActiveTask
       ? (this.locale === 'zh' ? '有任务正在执行' : 'Task in progress')
       : (this.locale === 'zh' ? '无执行中任务' : 'No active task');
@@ -212,7 +212,7 @@ export abstract class MessageFormatter {
     return this.createMessage(chatId, lines.join('\n'), buttons);
   }
 
-  formatPermissionStatus(chatId: string, data: PermissionStatusData): OutboundMessage {
+  formatPermissionStatus(chatId: string, data: PermissionStatusData): TRendered {
     const memoryCount = data.rememberedTools + data.rememberedBashPrefixes;
     const lines = this.locale === 'zh'
       ? [
@@ -285,7 +285,7 @@ export abstract class MessageFormatter {
     return this.createMessage(chatId, lines.join('\n'), buttons);
   }
 
-  formatTaskStart(chatId: string, data: TaskStartData): OutboundMessage {
+  formatTaskStart(chatId: string, data: TaskStartData): TRendered {
     const lines = this.locale === 'zh'
       ? [
           data.isNewSession ? '🔄 **会话已重置，开始新任务**' : '🚀 **开始执行**',
@@ -319,7 +319,7 @@ export abstract class MessageFormatter {
     return this.createMessage(chatId, lines.join('\n'), buttons);
   }
 
-  formatSessions(chatId: string, data: SessionsData): OutboundMessage {
+  formatSessions(chatId: string, data: SessionsData): TRendered {
     const lines = [`📋 **Sessions** ${data.filterHint}`, ''];
     for (const s of data.sessions) {
       const marker = s.isCurrent ? ' ◀' : '';
@@ -329,7 +329,7 @@ export abstract class MessageFormatter {
     return this.createMessage(chatId, lines.join('\n') + footer);
   }
 
-  formatSessionDetail(chatId: string, data: SessionDetailData): OutboundMessage {
+  formatSessionDetail(chatId: string, data: SessionDetailData): TRendered {
     const lines = [
       `📋 **Session #${data.index}**`,
       ``,
@@ -349,7 +349,7 @@ export abstract class MessageFormatter {
     return this.createMessage(chatId, lines.join('\n'));
   }
 
-  formatHelp(chatId: string, data: HelpData): OutboundMessage {
+  formatHelp(chatId: string, data: HelpData): TRendered {
     const lines = [`📖 **Commands**`, ''];
     for (const cmd of data.commands) {
       lines.push(`/${cmd.cmd} — ${cmd.desc}`);
@@ -357,7 +357,7 @@ export abstract class MessageFormatter {
     return this.createMessage(chatId, lines.join('\n'));
   }
 
-  formatNewSession(chatId: string, data: NewSessionData): OutboundMessage {
+  formatNewSession(chatId: string, data: NewSessionData): TRendered {
     const cwdLabel = data.cwd ? ` in \`${data.cwd}\`` : '';
     const text = this.locale === 'zh'
       ? `✅ **新会话**${cwdLabel}`
@@ -365,12 +365,12 @@ export abstract class MessageFormatter {
     return this.createMessage(chatId, text);
   }
 
-  formatError(chatId: string, data: ErrorData): OutboundMessage {
+  formatError(chatId: string, data: ErrorData): TRendered {
     const text = `❌ **${data.title}**\n\n${data.message}`;
     return this.createMessage(chatId, text);
   }
 
-  formatProgress(chatId: string, data: ProgressData): OutboundMessage {
+  formatProgress(chatId: string, data: ProgressData): TRendered {
     const phaseEmoji = {
       starting: '⏳',
       executing: '⏳',
@@ -391,7 +391,7 @@ export abstract class MessageFormatter {
     return this.createMessage(chatId, lines.join('\n'), buttons);
   }
 
-  formatTaskSummary(chatId: string, data: TaskSummaryData): OutboundMessage {
+  formatTaskSummary(chatId: string, data: TaskSummaryData): TRendered {
     const lines = this.locale === 'zh'
       ? [
           `✅ **任务摘要**`,
@@ -456,15 +456,15 @@ export abstract class MessageFormatter {
   }
 
   /** Format raw markdown content into a platform-appropriate message. */
-  formatContent(chatId: string, content: string, buttons?: Button[]): OutboundMessage {
+  formatContent(chatId: string, content: string, buttons?: Button[]): TRendered {
     return this.createMessage(chatId, content, buttons);
   }
 
-  formatCardResolution(chatId: string, data: CardResolutionData): OutboundMessage {
+  formatCardResolution(chatId: string, data: CardResolutionData): TRendered {
     return this.createMessage(chatId, data.label, data.buttons);
   }
 
-  formatVersionUpdate(chatId: string, data: VersionUpdateData): OutboundMessage {
+  formatVersionUpdate(chatId: string, data: VersionUpdateData): TRendered {
     const dateStr = data.publishedAt
       ? new Date(data.publishedAt).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
       : '';
@@ -474,7 +474,7 @@ export abstract class MessageFormatter {
     return this.createMessage(chatId, text);
   }
 
-  formatMultiSelectToggle(chatId: string, data: MultiSelectToggleData): OutboundMessage {
+  formatMultiSelectToggle(chatId: string, data: MultiSelectToggleData): TRendered {
     const headerLine = data.header ? `📋 **${data.header}**\n\n` : '';
     const optionsList = data.options
       .map((opt, i) => `${data.selectedIndices.has(i) ? '☑' : '☐'} ${i + 1}. **${opt.label}**${opt.description ? ` — ${opt.description}` : ''}`)
@@ -496,17 +496,6 @@ export abstract class MessageFormatter {
   }
 
   // --- Helper methods ---
-
-  protected createMessage(chatId: string, text: string, buttons?: Button[]): OutboundMessage {
-    const msg: OutboundMessage = {
-      chatId,
-      text,
-    };
-    if (buttons && this.supportsButtons()) {
-      msg.buttons = buttons;
-    }
-    return msg;
-  }
 
   protected buildSingleSelectButtons(permId: string, options: Array<{ label: string }>): Button[] {
     return [

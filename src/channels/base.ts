@@ -1,21 +1,24 @@
 import type {
-  Button,
   ChannelType,
   InboundMessage,
-  OutboundMessage,
+  RenderedMessage,
   SendResult,
   StreamingCardSession,
 } from './types.js';
 import type { CardResolutionData, FormattableMessage } from '../formatting/message-types.js';
 import type { MessageFormatter } from '../formatting/message-formatter.js';
+import type { Button } from '../ui/types.js';
+import type { ProgressPhase, ProgressTraceStats, PermissionDecision } from '../ui/policy.js';
+import type { ChannelPolicy } from '../ui/channel-policy.js';
+import { DEFAULT_CHANNEL_POLICY } from '../ui/channel-policy.js';
 
-export abstract class BaseChannelAdapter {
+export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = RenderedMessage> {
   abstract readonly channelType: ChannelType;
   abstract start(): Promise<void>;
   abstract stop(): Promise<void>;
   abstract consumeOne(): Promise<InboundMessage | null>;
-  abstract send(message: OutboundMessage): Promise<SendResult>;
-  abstract editMessage(chatId: string, messageId: string, message: OutboundMessage): Promise<void>;
+  abstract send(message: TRendered): Promise<SendResult>;
+  abstract editMessage(chatId: string, messageId: string, message: TRendered): Promise<void>;
   abstract sendTyping(chatId: string): Promise<void>;
   abstract validateConfig(): string | null;
   abstract isAuthorized(userId: string, chatId: string): boolean;
@@ -39,31 +42,73 @@ export abstract class BaseChannelAdapter {
     return null;
   }
 
+  /** Whether a rendered progress message should be split into a new bubble on this platform. */
+  shouldSplitProgressMessage(_message: TRendered): boolean {
+    return false;
+  }
+
+  // --- Policy support ---
+
+  /** Platform behavior policy. Default is Telegram-like behavior. */
+  protected policy: ChannelPolicy = DEFAULT_CHANNEL_POLICY;
+
+  /** Set the policy for this adapter. */
+  setPolicy(policy: ChannelPolicy): void {
+    this.policy = policy;
+  }
+
+  /** Get the policy for this adapter. */
+  getPolicy(): ChannelPolicy {
+    return this.policy;
+  }
+
+  /** Whether this platform should render a progress update for the given phase. */
+  shouldRenderProgressPhase(phase: ProgressPhase): boolean {
+    return this.policy.progress.shouldRenderPhase(phase);
+  }
+
+  /** Whether a completed trace should be split into trace + summary cards. */
+  shouldSplitCompletedTrace(stats: ProgressTraceStats): boolean {
+    return this.policy.progress.shouldSplitCompletedTrace(stats);
+  }
+
+  /** Platform reaction set used for lifecycle/status updates. */
+  getLifecycleReactions(): { processing: string; done: string; error: string; stalled: string; permission: string } {
+    const r = this.policy.reactions;
+    return {
+      processing: r.processing,
+      done: r.done,
+      error: r.error,
+      stalled: r.stalled,
+      permission: r.permission,
+    };
+  }
+
+  /** Platform reaction for a text-based permission decision. */
+  getPermissionDecisionReaction(decision: PermissionDecision): string {
+    return this.policy.reactions.getPermissionDecision(decision);
+  }
+
   // --- Formatting support ---
 
   /** Platform-specific message formatter. Override in subclass. */
-  protected formatter!: MessageFormatter;
+  protected formatter!: MessageFormatter<TRendered>;
 
   /** Set the formatter for this adapter */
-  setFormatter(formatter: MessageFormatter): void {
+  setFormatter(formatter: MessageFormatter<TRendered>): void {
     this.formatter = formatter;
   }
 
   /** Get the locale for this adapter */
   getLocale(): 'en' | 'zh' {
-    return this.formatter.getLocale();
-  }
-
-  /** Check if this platform supports rich card display (buttons, headers, etc.) */
-  supportsRichCards(): boolean {
-    return this.formatter.hasRichCardSupport();
+    return this.policy.locale;
   }
 
   /**
    * Format a semantic message for this platform.
    * Uses the platform-specific formatter to render the message.
    */
-  format(msg: FormattableMessage): OutboundMessage {
+  format(msg: FormattableMessage): TRendered {
     return this.formatter.format(msg);
   }
 
@@ -81,7 +126,7 @@ export abstract class BaseChannelAdapter {
   }
 
   /** Format raw markdown content into a platform-appropriate message (HTML for Telegram, text for others). */
-  formatContent(chatId: string, content: string, buttons?: Button[]): OutboundMessage {
+  formatContent(chatId: string, content: string, buttons?: Button[]): TRendered {
     return this.formatter.formatContent(chatId, content, buttons);
   }
 }

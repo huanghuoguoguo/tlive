@@ -166,12 +166,10 @@ export class CommandRouter {
 
         await send(adapter, presentNewSession(msg.chatId, { cwd: binding?.cwd }));
 
-        // Send home screen for platforms with rich card support
-        if (adapter.supportsRichCards()) {
-          const homeData = await this.buildHomePayload(msg.channelType, msg.chatId);
-          homeData.hasActiveTask = false;
-          await send(adapter, presentHome(msg.chatId, homeData));
-        }
+        // Send home screen after session reset
+        const homeData = await this.buildHomePayload(msg.channelType, msg.chatId);
+        homeData.hasActiveTask = false;
+        await send(adapter, presentHome(msg.chatId, homeData));
         return true;
       }
       case '/home': {
@@ -184,18 +182,13 @@ export class CommandRouter {
         if (sub === 'on' || sub === 'off') {
           this.state.setPermMode(msg.channelType, msg.chatId, sub);
         }
-        if (adapter.supportsRichCards()) {
-          const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-          const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
-          await send(adapter, presentPermissionStatus(msg.chatId, {
-            mode,
-            ...this.permissions.getPermissionStatus(chatKey, binding?.sessionId),
-          }));
-        } else if (sub === 'on' || sub === 'off') {
-          await send(adapter, presentPermissionModeChanged(msg.chatId, mode));
-        } else {
-          await send(adapter, presentPermissionModeStatus(msg.chatId, mode));
-        }
+        // Always send permission status card; formatter handles platform fallback
+        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+        const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
+        await send(adapter, presentPermissionStatus(msg.chatId, {
+          mode,
+          ...this.permissions.getPermissionStatus(chatKey, binding?.sessionId),
+        }));
         return true;
       }
       case '/stop': {

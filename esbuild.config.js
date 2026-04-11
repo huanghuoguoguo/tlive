@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 // Read version from package.json for build-time injection
 const packageJson = JSON.parse(readFileSync('package.json', 'utf-8'));
 
-mkdirSync('dist/channels', { recursive: true });
+mkdirSync('dist/platforms', { recursive: true });
 
 const common = {
   bundle: true,
@@ -30,9 +30,9 @@ const common = {
 
 const entryPoints = [
   { entry: 'src/main.ts', outfile: 'dist/main.mjs' },
-  { entry: 'src/channels/telegram.ts', outfile: 'dist/channels/telegram.mjs' },
-  { entry: 'src/channels/feishu.ts', outfile: 'dist/channels/feishu.mjs' },
-  { entry: 'src/channels/qqbot.ts', outfile: 'dist/channels/qqbot.mjs' },
+  { entry: 'src/platforms/telegram/adapter.ts', outfile: 'dist/platforms/telegram.mjs' },
+  { entry: 'src/platforms/feishu/adapter.ts', outfile: 'dist/platforms/feishu.mjs' },
+  { entry: 'src/platforms/qqbot/adapter.ts', outfile: 'dist/platforms/qqbot.mjs' },
   { entry: 'src/setup-wizard.ts', outfile: 'dist/setup.mjs' },
 ];
 

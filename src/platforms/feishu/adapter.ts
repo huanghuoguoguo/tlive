@@ -1,13 +1,16 @@
 import { Client, WSClient, EventDispatcher } from '@larksuiteoapi/node-sdk';
-import { BaseChannelAdapter, registerAdapterFactory } from './base.js';
-import type { InboundMessage, OutboundMessage, SendResult, FileAttachment } from './types.js';
-import { loadConfig } from '../config.js';
-import { classifyError } from './errors.js';
-import { markdownToFeishu, downgradeHeadings } from '../markdown/feishu.js';
-import { buildFeishuCard, buildFeishuButtonElements } from '../formatting/feishu-card.js';
-import { FeishuStreamingSession } from './feishu-streaming.js';
-import { FeishuFormatter } from '../formatting/feishu-formatter.js';
+import { BaseChannelAdapter, registerAdapterFactory } from '../../channels/base.js';
+import type { InboundMessage, SendResult, FileAttachment } from '../../channels/types.js';
+import { loadConfig } from '../../config.js';
+import { classifyError } from '../../channels/errors.js';
+import { markdownToFeishu, downgradeHeadings } from './markdown.js';
+import { buildFeishuCard, buildFeishuButtonElements } from './card-builder.js';
+import { FeishuStreamingSession } from './streaming.js';
+import { FeishuFormatter } from './formatter.js';
+import { FEISHU_POLICY } from './policy.js';
 import type { Readable } from 'node:stream';
+import type { FeishuRenderedMessage } from './types.js';
+import type { FeishuCardElement } from './card-builder.js';
 
 /**
  * Read a Feishu SDK response into a Buffer.
@@ -72,9 +75,6 @@ async function readFeishuBuffer(resp: unknown): Promise<Buffer | null> {
   return null;
 }
 
-/** Feishu interactive card element – now imported from shared types */
-type FeishuCardElement = import('../formatting/types.js').FeishuCardElement;
-
 /** Shape of the Feishu message.create API response */
 interface FeishuCreateMessageResult {
   code?: number;
@@ -98,8 +98,9 @@ const FEISHU_MENU_EVENT_TO_COMMAND: Record<string, string> = {
   tlive_stop: '/stop',
   tlive_help: '/help',
 };
+const FEISHU_PROGRESS_SPLIT_BYTES = 27 * 1024;
 
-export class FeishuAdapter extends BaseChannelAdapter {
+export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
   readonly channelType = 'feishu' as const;
   private client: Client | null = null;
   private wsClient: WSClient | null = null;
@@ -109,8 +110,9 @@ export class FeishuAdapter extends BaseChannelAdapter {
   constructor(config: FeishuConfig) {
     super();
     this.config = config;
-    // Set platform-specific formatter (Chinese locale for Feishu)
+    // Set platform-specific formatter and policy (Chinese locale for Feishu)
     this.formatter = new FeishuFormatter('zh');
+    this.setPolicy(FEISHU_POLICY);
   }
 
   async start(): Promise<void> {
@@ -183,7 +185,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
               channelType: 'feishu',
               chatId: msg.chat_id,
               userId,
-  
+
               text: '',
               messageId: msg.message_id,
               replyToMessageId: msg.parent_id || msg.root_id || undefined,
@@ -217,7 +219,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
               channelType: 'feishu',
               chatId: msg.chat_id,
               userId,
-  
+
               text: '',
               messageId: msg.message_id,
               replyToMessageId: msg.parent_id || msg.root_id || undefined,
@@ -340,7 +342,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
     return this.messageQueue.shift() ?? null;
   }
 
-  private buildCard(text: string, buttons?: OutboundMessage['buttons'], header?: { template: string; title: string }): string {
+  private buildCard(text: string, buttons?: FeishuRenderedMessage['buttons'], header?: { template: string; title: string }): string {
     const elements: FeishuCardElement[] = [
       { tag: 'markdown', content: downgradeHeadings(text) },
     ];
@@ -352,7 +354,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
     });
   }
 
-  async send(message: OutboundMessage): Promise<SendResult> {
+  async send(message: FeishuRenderedMessage): Promise<SendResult> {
     if (!this.client) throw new Error('Feishu client not started');
 
     // Prefer raw text (markdown) over HTML — schema 2.0 cards render markdown natively
@@ -488,7 +490,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
     }
   }
 
-  async editMessage(_chatId: string, messageId: string, message: OutboundMessage): Promise<void> {
+  async editMessage(_chatId: string, messageId: string, message: FeishuRenderedMessage): Promise<void> {
     if (!this.client) return;
     const text = message.text
       ? message.text
@@ -530,6 +532,20 @@ export class FeishuAdapter extends BaseChannelAdapter {
       replyToMessageId,
       header,
     });
+  }
+
+  override shouldSplitProgressMessage(message: FeishuRenderedMessage): boolean {
+    if (!message.feishuElements) {
+      return false;
+    }
+    const cardJson = buildFeishuCard({
+      header: message.feishuHeader as { template: any; title: string } | undefined,
+      elements: [
+        ...(message.feishuElements as any),
+        ...buildFeishuButtonElements(message.feishuButtons ?? message.buttons),
+      ],
+    });
+    return Buffer.byteLength(cardJson, 'utf8') >= FEISHU_PROGRESS_SPLIT_BYTES;
   }
 
   async sendTyping(_chatId: string): Promise<void> {

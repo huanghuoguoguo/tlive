@@ -25,14 +25,23 @@ function mockAdapter(channelType = 'telegram'): BaseChannelAdapter {
     sendTyping: vi.fn().mockResolvedValue(undefined),
     addReaction: vi.fn().mockResolvedValue(undefined),
     removeReaction: vi.fn().mockResolvedValue(undefined),
+    getLifecycleReactions: vi.fn().mockImplementation(() => channelType === 'feishu'
+      ? { processing: 'Typing', done: 'OK', error: 'FACEPALM', stalled: 'OneSecond', permission: 'Pin' }
+      : { processing: '🤔', done: '👍', error: '😱', stalled: '⏳', permission: '🔐' }),
+    getPermissionDecisionReaction: vi.fn().mockImplementation((decision: string) => channelType === 'feishu'
+      ? decision === 'deny' ? 'No' : decision === 'allow_always' ? 'DONE' : 'OK'
+      : decision === 'deny' ? '👎' : decision === 'allow_always' ? '👌' : '👍'),
+    shouldRenderProgressPhase: vi.fn().mockImplementation((phase: string) =>
+      channelType === 'qqbot' ? phase !== 'starting' && phase !== 'executing' : true
+    ),
+    shouldSplitCompletedTrace: vi.fn().mockImplementation(() => channelType === 'feishu'),
+    shouldSplitProgressMessage: vi.fn().mockReturnValue(false),
     validateConfig: vi.fn().mockReturnValue(null),
     isAuthorized: vi.fn().mockReturnValue(true),
     _pushMessage: (msg: any) => messageQueue.push(msg),
     // Use real formatter
     format: (msg: FormattableMessage): OutboundMessage => formatter.format(msg),
     sendFormatted: async (msg: FormattableMessage) => send(formatter.format(msg)),
-    getLocale: () => formatter.getLocale(),
-    supportsRichCards: () => formatter.hasRichCardSupport(),
     editCardResolution: async (chatId: string, messageId: string, data: any) => {
       const outMsg = formatter.format({ type: 'cardResolution', chatId, data });
       return editMessage(chatId, messageId, outMsg);

@@ -1,12 +1,14 @@
 import WebSocket from 'ws';
-import { BaseChannelAdapter, registerAdapterFactory } from './base.js';
-import type { InboundMessage, OutboundMessage, SendResult, FileAttachment } from './types.js';
-import { loadConfig } from '../config.js';
-import { markdownToQQBot } from '../markdown/qqbot.js';
-import { chunkMarkdown } from '../delivery/delivery.js';
-import { classifyError } from './errors.js';
-import { maskProxyUrl } from '../proxy.js';
-import { QQBotFormatter } from '../formatting/qqbot-formatter.js';
+import { BaseChannelAdapter, registerAdapterFactory } from '../../channels/base.js';
+import type { InboundMessage, SendResult, FileAttachment } from '../../channels/types.js';
+import { loadConfig } from '../../config.js';
+import { markdownToQQBot } from './markdown.js';
+import { chunkMarkdown } from '../../delivery/delivery.js';
+import { classifyError } from '../../channels/errors.js';
+import { maskProxyUrl } from '../../proxy.js';
+import { QQBotFormatter } from './formatter.js';
+import { QQBOT_POLICY } from './policy.js';
+import type { QQBotRenderedMessage } from './types.js';
 
 interface QQBotConfig {
   appId: string;
@@ -113,7 +115,7 @@ interface TokenCache {
   expiresAt: number;
 }
 
-export class QQBotAdapter extends BaseChannelAdapter {
+export class QQBotAdapter extends BaseChannelAdapter<QQBotRenderedMessage> {
   readonly channelType = 'qqbot' as const;
   private config: QQBotConfig;
   private messageQueue: Array<InboundMessage | Promise<InboundMessage>> = [];
@@ -143,8 +145,9 @@ export class QQBotAdapter extends BaseChannelAdapter {
   constructor(config: QQBotConfig) {
     super();
     this.config = config;
-    // Set platform-specific formatter (Chinese locale for QQBot)
+    // Set platform-specific formatter and policy (Chinese locale for QQBot)
     this.formatter = new QQBotFormatter('zh');
+    this.setPolicy(QQBOT_POLICY);
   }
 
   private async getAccessToken(): Promise<string> {
@@ -625,7 +628,7 @@ export class QQBotAdapter extends BaseChannelAdapter {
     return await next;
   }
 
-  async send(message: OutboundMessage): Promise<SendResult> {
+  async send(message: QQBotRenderedMessage): Promise<SendResult> {
     const content = markdownToQQBot(message.text ?? message.html ?? '');
     const chunks = chunkMarkdown(content, 2000);
 
@@ -719,7 +722,7 @@ export class QQBotAdapter extends BaseChannelAdapter {
   }
 
   /** Build QQ Bot keyboard from tlive buttons */
-  private buildKeyboard(buttons: NonNullable<OutboundMessage['buttons']>): { content: { rows: Array<{ buttons: unknown[] }> } } {
+  private buildKeyboard(buttons: NonNullable<QQBotRenderedMessage['buttons']>): { content: { rows: Array<{ buttons: unknown[] }> } } {
     const rows: Array<{ buttons: unknown[] }> = [];
     let currentRow: unknown[] = [];
 
@@ -752,7 +755,7 @@ export class QQBotAdapter extends BaseChannelAdapter {
     return { content: { rows } };
   }
 
-  async editMessage(_chatId: string, _messageId: string, message: OutboundMessage): Promise<void> {
+  async editMessage(_chatId: string, _messageId: string, message: QQBotRenderedMessage): Promise<void> {
     const text = message.text ?? '';
     const isProgressUpdate = text.includes('⏳') && !text.includes('───────────────');
     const hasButtons = message.buttons?.length;

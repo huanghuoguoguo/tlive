@@ -26,7 +26,6 @@ describe('CommandRouter /settings', () => {
       channelType: 'telegram',
       send: vi.fn().mockResolvedValue(undefined),
       sendFormatted: vi.fn().mockResolvedValue(undefined),
-      supportsRichCards: vi.fn().mockReturnValue(false),
     };
 
     router = new CommandRouter(

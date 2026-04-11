@@ -1,9 +1,10 @@
 import type { PendingPermissions } from '../permissions/gateway.js';
 import type { PermissionBroker } from '../permissions/broker.js';
 import type { BaseChannelAdapter } from '../channels/base.js';
+import type { PermissionDecision as TextPermissionDecision } from '../ui/policy.js';
 import { truncate } from '../utils/string.js';
 
-type PermissionDecision = 'allow' | 'allow_always' | 'deny' | 'cancelled';
+type PermissionDecision = TextPermissionDecision | 'cancelled';
 
 interface PermissionSnapshotState {
   pending?: {
@@ -164,7 +165,7 @@ export class PermissionCoordinator {
   // --- Parse permission text ---
 
   /** Parse text as a permission decision */
-  parsePermissionText(text: string): string | null {
+  parsePermissionText(text: string): TextPermissionDecision | null {
     const t = text.trim().toLowerCase();
     if (['allow', 'a', 'yes', 'y', '允许', '通过'].includes(t)) return 'allow';
     if (['deny', 'd', 'no', 'n', '拒绝', '否'].includes(t)) return 'deny';
@@ -175,7 +176,7 @@ export class PermissionCoordinator {
   // --- SDK permission resolution ---
 
   /** Try to resolve an SDK permission via gateway for a given chat. Returns true if resolved. */
-  tryResolveByText(chatKey: string, decision: string): boolean {
+  tryResolveByText(chatKey: string, decision: TextPermissionDecision): boolean {
     const pendingPermId = this.pendingSdkPerms.get(chatKey);
     if (!pendingPermId) return false;
     const gwDecision = decision === 'deny' ? 'deny' as const

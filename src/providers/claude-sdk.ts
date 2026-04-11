@@ -334,11 +334,34 @@ export class ClaudeSDKProvider implements LLMProvider {
             };
 
             const adapter = new ClaudeAdapter();
+            let pendingStreamEventCount = 0;
+            const pendingStreamEventSubtypes = new Map<string, number>();
+            const flushPendingStreamEventLog = () => {
+              if (pendingStreamEventCount === 0) {
+                return;
+              }
+              const subtypeSummary = [...pendingStreamEventSubtypes.entries()]
+                .filter(([_, count]) => count > 0)
+                .map(([subtype, count]) => subtype ? `${subtype}×${count}` : `plain×${count}`)
+                .join(', ');
+              const suffix = subtypeSummary && pendingStreamEventSubtypes.size > 1
+                ? ` (${subtypeSummary})`
+                : '';
+              console.log(`[claude-sdk] msg: stream_event ×${pendingStreamEventCount}${suffix}`);
+              pendingStreamEventCount = 0;
+              pendingStreamEventSubtypes.clear();
+            };
 
             for await (const msg of q) {
               const sub = 'subtype' in msg ? `.${msg.subtype}` : '';
               const turns = 'num_turns' in msg ? ` turns=${msg.num_turns}` : '';
-              console.log(`[claude-sdk] msg: ${msg.type}${sub}${turns}`);
+              if (msg.type === 'stream_event') {
+                pendingStreamEventCount++;
+                pendingStreamEventSubtypes.set(sub, (pendingStreamEventSubtypes.get(sub) ?? 0) + 1);
+              } else {
+                flushPendingStreamEventLog();
+                console.log(`[claude-sdk] msg: ${msg.type}${sub}${turns}`);
+              }
 
               const events = adapter.mapMessage(msg as any);
               if (DEBUG_EVENTS && events.length > 0) {
@@ -374,6 +397,7 @@ export class ClaudeSDKProvider implements LLMProvider {
               }
             }
 
+            flushPendingStreamEventLog();
             console.log(`[claude-sdk] query ended. streamed=${state.hasStreamedText} text_len=${state.lastAssistantText.length}`);
             controller.close();
           } catch (err) {

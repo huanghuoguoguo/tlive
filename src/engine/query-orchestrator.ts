@@ -7,7 +7,7 @@ import type { ChannelRouter } from './router.js';
 import type { SessionStateManager } from './session-state.js';
 import type { PermissionCoordinator } from './permission-coordinator.js';
 import type { SDKEngine } from './sdk-engine.js';
-import { CHANNEL_TYPES, PLATFORM_LIMITS, PLATFORM_REACTIONS, type ChannelType } from '../utils/constants.js';
+import { PLATFORM_LIMITS, type ChannelType } from '../utils/constants.js';
 import { generateSessionId } from '../utils/id.js';
 import { truncate } from '../utils/string.js';
 import { shortPath } from '../utils/path.js';
@@ -19,6 +19,8 @@ import type { LLMProvider, LiveSession } from '../providers/base.js';
 import { QueryExecutionPresenter } from './query-execution-presenter.js';
 import { SDKPermissionHandler } from './sdk-permission-handler.js';
 import { SDKAskQuestionHandler } from './sdk-ask-question-handler.js';
+import type { ProgressData } from '../formatting/message-types.js';
+import type { MessageRendererState } from './message-renderer.js';
 
 const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
 
@@ -65,8 +67,8 @@ export class QueryOrchestrator {
     ctx.sessionId = binding.sessionId;
     console.log(`[query] ${ctx.requestId} START session=${binding.sessionId.slice(-4)} cwd=${shortPath(binding.cwd || this.options.defaultWorkdir)}`);
 
-    // Send task start notification card for session reset (Feishu rich cards only)
-    if (expired && adapter.supportsRichCards()) {
+    // Send task start notification card for session reset
+    if (expired) {
       const taskStartMsg = adapter.format({
         type: 'taskStart',
         chatId: msg.chatId,
@@ -80,7 +82,7 @@ export class QueryOrchestrator {
       await adapter.send(taskStartMsg);
     }
 
-    const reactions = PLATFORM_REACTIONS[adapter.channelType as ChannelType] ?? PLATFORM_REACTIONS[CHANNEL_TYPES.TELEGRAM];
+    const reactions = adapter.getLifecycleReactions();
     adapter.addReaction(msg.chatId, msg.messageId, reactions.processing).catch(() => {});
 
     const typingInterval = setInterval(() => adapter.sendTyping(msg.chatId).catch(() => {}), 4000);
@@ -206,6 +208,7 @@ export class QueryOrchestrator {
     });
 
     renderer = new MessageRenderer({
+      shouldSplitState: (state) => this.shouldSplitProgressBubble(adapter, msg, state),
       platformLimit: PLATFORM_LIMITS[adapter.channelType as ChannelType] ?? 4096,
       throttleMs: 300,
       cwd: binding.cwd || this.options.defaultWorkdir,
@@ -236,6 +239,32 @@ export class QueryOrchestrator {
     });
 
     return { renderer, presenter };
+  }
+
+  private shouldSplitProgressBubble(
+    adapter: BaseChannelAdapter,
+    inbound: InboundMessage,
+    state: MessageRendererState,
+  ): boolean {
+    const progressData: ProgressData = {
+      phase: state.phase,
+      renderedText: state.renderedText,
+      taskSummary: inbound.text || '继续当前任务',
+      elapsedSeconds: state.elapsedSeconds,
+      totalTools: state.totalTools,
+      toolSummary: state.toolSummary,
+      footerLine: state.footerLine,
+      currentTool: state.currentTool,
+      permission: state.permission,
+      permissionRequests: state.permissionRequests,
+      todoItems: state.todoItems,
+      thinkingText: state.thinkingText,
+      toolLogs: state.toolLogs,
+      timeline: state.timeline,
+      isContinuation: state.isContinuation,
+    };
+    const outMsg = adapter.format({ type: 'progress', chatId: inbound.chatId, data: progressData });
+    return adapter.shouldSplitProgressMessage(outMsg);
   }
 
   private async executeQuery(

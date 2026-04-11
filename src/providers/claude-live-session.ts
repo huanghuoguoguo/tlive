@@ -41,6 +41,8 @@ export class ClaudeLiveSession implements LiveSession {
   private _isAlive = true;
   private _isTurnActive = false;
   private currentTurnController: ReadableStreamDefaultController<CanonicalEvent> | null = null;
+  private pendingStreamEventCount = 0;
+  private pendingStreamEventSubtypes = new Map<string, number>();
 
   // Message generator coordination
   private messageWaiter: ((msg: string | null) => void) | null = null;
@@ -158,9 +160,7 @@ export class ClaudeLiveSession implements LiveSession {
     try {
       for await (const msg of this._query) {
         if (!this._isAlive) break;
-
-        const sub = 'subtype' in msg ? `.${(msg as any).subtype}` : '';
-        console.log(`[tlive:session] msg: ${msg.type}${sub}`);
+        this.logSdkMessage(msg as { type: string; subtype?: string });
 
         const events = this.adapter.mapMessage(msg as any);
         if (DEBUG_EVENTS && events.length > 0) {
@@ -201,6 +201,7 @@ export class ClaudeLiveSession implements LiveSession {
         }
       }
     } catch (err) {
+      this.flushPendingStreamEventLog();
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[tlive:session] query ended with error: ${message}`);
       this.adapter.reset();
@@ -212,6 +213,7 @@ export class ClaudeLiveSession implements LiveSession {
         } catch { /* controller may already be closed */ }
       }
     } finally {
+      this.flushPendingStreamEventLog();
       this._isAlive = false;
       this._isTurnActive = false;
       this.currentTurnController = null;
@@ -279,6 +281,7 @@ export class ClaudeLiveSession implements LiveSession {
   }
 
   close(): void {
+    this.flushPendingStreamEventLog();
     this._isAlive = false;
     this._isTurnActive = false;
     // Signal generator to stop
@@ -312,5 +315,33 @@ export class ClaudeLiveSession implements LiveSession {
       return Promise.resolve(null);
     }
     return new Promise(resolve => { this.messageWaiter = resolve; });
+  }
+
+  private logSdkMessage(msg: { type: string; subtype?: string }): void {
+    const subtype = msg.subtype ? `.${msg.subtype}` : '';
+    if (msg.type === 'stream_event') {
+      this.pendingStreamEventCount++;
+      const key = subtype;
+      this.pendingStreamEventSubtypes.set(key, (this.pendingStreamEventSubtypes.get(key) ?? 0) + 1);
+      return;
+    }
+    this.flushPendingStreamEventLog();
+    console.log(`[tlive:session] msg: ${msg.type}${subtype}`);
+  }
+
+  private flushPendingStreamEventLog(): void {
+    if (this.pendingStreamEventCount === 0) {
+      return;
+    }
+    const subtypeSummary = [...this.pendingStreamEventSubtypes.entries()]
+      .filter(([_, count]) => count > 0)
+      .map(([subtype, count]) => subtype ? `${subtype}×${count}` : `plain×${count}`)
+      .join(', ');
+    const suffix = subtypeSummary && this.pendingStreamEventSubtypes.size > 1
+      ? ` (${subtypeSummary})`
+      : '';
+    console.log(`[tlive:session] msg: stream_event ×${this.pendingStreamEventCount}${suffix}`);
+    this.pendingStreamEventCount = 0;
+    this.pendingStreamEventSubtypes.clear();
   }
 }

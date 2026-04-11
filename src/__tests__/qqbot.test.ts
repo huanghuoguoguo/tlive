@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { QQBotAdapter } from '../channels/qqbot.js';
+import { QQBotAdapter } from '../platforms/qqbot/adapter.js';
 
 describe('QQBotAdapter', () => {
   const defaultConfig = {

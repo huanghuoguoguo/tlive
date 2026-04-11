@@ -1,5 +1,5 @@
 import type { BaseChannelAdapter } from '../channels/base.js';
-import type { OutboundMessage } from '../channels/types.js';
+import type { RenderedMessage } from '../channels/types.js';
 import { BridgeError, RateLimitError } from '../channels/errors.js';
 import { ChatRateLimiter } from './rate-limiter.js';
 
@@ -174,7 +174,7 @@ export class DeliveryLayer {
 
   private async sendWithRetry(
     adapter: BaseChannelAdapter,
-    message: OutboundMessage,
+    message: RenderedMessage,
     maxRetries: number
   ): Promise<void> {
     let lastError: Error | null = null;

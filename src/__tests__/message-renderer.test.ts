@@ -16,8 +16,16 @@ describe('MessageRenderer', () => {
     vi.useRealTimers();
   });
 
-  function createRenderer(platformLimit = 4096, throttleMs = 300, cwd?: string, model?: string, verboseLevel: 0 | 1 = 1) {
+  function createRenderer(
+    platformLimit = 4096,
+    throttleMs = 300,
+    cwd?: string,
+    model?: string,
+    verboseLevel: 0 | 1 = 1,
+    shouldSplitState?: (state: any) => boolean,
+  ) {
     return new MessageRenderer({
+      shouldSplitState,
       platformLimit,
       throttleMs,
       cwd,
@@ -701,6 +709,46 @@ describe('MessageRenderer', () => {
       // Advance more time — no more flushes
       await advance(5000);
       expect(flushCallback.mock.calls.length).toBe(callsAfterComplete);
+      r.dispose();
+    });
+
+    it('splits Feishu bubbles by content budget instead of low tool count', async () => {
+      const messageIds: string[] = [];
+      flushCallback.mockImplementation((_content: string, isEdit: boolean) => {
+        if (!isEdit) {
+          const id = `msg-${messageIds.length + 1}`;
+          messageIds.push(id);
+          return Promise.resolve(id);
+        }
+        return Promise.resolve();
+      });
+
+      const largeThought = '正在整理当前上下文并继续执行。'.repeat(500);
+      const r = createRenderer(
+        30000,
+        300,
+        undefined,
+        undefined,
+        1,
+        (state) => state.thinkingText.length >= largeThought.length * 2,
+      );
+
+      r.onToolStart('Bash', { command: 'pwd' });
+      await advance(300);
+      expect(messageIds).toEqual(['msg-1']);
+
+      for (let i = 0; i < 20; i++) {
+        r.onToolStart('Read', { file_path: `src/file-${i}.ts` });
+        await advance(300);
+      }
+      expect(messageIds).toEqual(['msg-1']);
+
+      for (let i = 0; i < 3; i++) {
+        r.onThinkingDelta(largeThought);
+        await advance(300);
+      }
+
+      expect(messageIds.length).toBeGreaterThan(1);
       r.dispose();
     });
   });

@@ -2,12 +2,12 @@
  * Telegram message formatter - uses HTML formatting.
  */
 
-import { MessageFormatter, type MessageLocale } from './message-formatter.js';
-import { markdownToTelegram } from '../platforms/telegram/markdown.js';
-import type { TelegramRenderedMessage } from '../platforms/telegram/types.js';
-import type { NotificationData, HomeData, SessionsData, ProgressData } from './message-types.js';
-import type { Button } from '../ui/types.js';
-import { truncate } from '../utils/string.js';
+import { MessageFormatter, type MessageLocale } from '../../formatting/message-formatter.js';
+import { markdownToTelegram } from './markdown.js';
+import type { TelegramRenderedMessage } from './types.js';
+import type { NotificationData, HomeData, SessionsData, ProgressData } from '../../formatting/message-types.js';
+import type { Button } from '../../ui/types.js';
+import { truncate } from '../../utils/string.js';
 
 export class TelegramFormatter extends MessageFormatter<TelegramRenderedMessage> {
   constructor(locale: MessageLocale = 'en') {
