@@ -389,13 +389,14 @@ describe('QueryOrchestrator', () => {
     expect(adapter.createStreamingSession).toHaveBeenCalledTimes(1);
     expect(streamingSession.start).toHaveBeenCalledTimes(1);
     expect(streamingSession.close).toHaveBeenCalledTimes(1);
-    expect(adapter.editMessage).toHaveBeenCalledWith(
-      'chat-1',
-      'stream-1',
+    // Close is called with completion header
+    expect(streamingSession.close).toHaveBeenCalledWith(
       expect.objectContaining({
-        feishuHeader: expect.objectContaining({ title: expect.stringContaining('已完成') }),
-      }),
+        header: { template: 'green', title: '✅ 已完成' },
+      })
     );
+    // editMessage is NOT called because we close streaming card directly
+    expect(adapter.editMessage).not.toHaveBeenCalled();
   });
 
   it('remembers allow_always approvals within the current bridge session', async () => {

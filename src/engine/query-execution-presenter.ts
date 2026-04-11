@@ -46,6 +46,10 @@ export class QueryExecutionPresenter {
     }
 
     if (this.shouldUseStreamingCard(state, buttons)) {
+      // For completed phase via streaming, close with header update
+      if (state?.phase === 'completed') {
+        return this.closeStreamingCardWithCompletion(content, state);
+      }
       return this.flushStreamingCard(content, isEdit, state!);
     }
 
@@ -191,6 +195,10 @@ export class QueryExecutionPresenter {
     if (this.adapter.channelType !== 'feishu') return false;
     if (!state) return false;
     if (buttons?.length) return false;
+    // For completed phase, only use streaming if we already have an active session
+    if (state.phase === 'completed') {
+      return this.streamingSession !== null;
+    }
     return state.phase === 'starting' || state.phase === 'executing';
   }
 
@@ -212,6 +220,40 @@ export class QueryExecutionPresenter {
     }
     await session.update(markdown);
     return;
+  }
+
+  /** Close streaming card with completion header, optionally send summary. */
+  private async closeStreamingCardWithCompletion(
+    content: string,
+    state: MessageRendererState,
+  ): Promise<string | undefined> {
+    const session = this.streamingSession;
+    if (!session) {
+      // No streaming session existed, fall back to regular card
+      this.streamingRetired = true;
+      return undefined;
+    }
+
+    const markdown = downgradeHeadings(content);
+
+    // Close streaming with updated header
+    const completionHeader = { template: 'green', title: '✅ 已完成' };
+    await session.close({ finalText: markdown, header: completionHeader });
+
+    this.streamingSession = null;
+    this.streamingRetired = true;
+
+    // Optionally send summary card if meaningful tooling occurred
+    if (this.shouldSplitFeishuCompletion(state)) {
+      const summaryMsg = this.adapter.format({
+        type: 'taskSummary',
+        chatId: this.inbound.chatId,
+        data: this.buildTaskSummary(state),
+      });
+      await this.adapter.send(summaryMsg);
+    }
+
+    return session.currentMessageId;
   }
 
   private getOrCreateStreamingCard(
