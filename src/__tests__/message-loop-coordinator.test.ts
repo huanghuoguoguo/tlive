@@ -3,6 +3,7 @@ import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';
 import { MessageLoopCoordinator } from '../engine/message-loop-coordinator.js';
 import { SessionStateManager } from '../engine/session-state.js';
+import type { SendWithContextResult } from '../engine/sdk-engine.js';
 
 function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
   return {
@@ -27,6 +28,7 @@ describe('MessageLoopCoordinator', () => {
     const state = new SessionStateManager();
     const sdkEngine = {
       sendWithContext: vi.fn().mockResolvedValue({ sent: false, mode: 'none' }),
+      MAX_QUEUE_DEPTH: 3,
     } as any;
     const permissions = {
       getLatestPendingQuestion: vi.fn().mockReturnValue(null),
@@ -54,6 +56,7 @@ describe('MessageLoopCoordinator', () => {
 
     const sdkEngine = {
       sendWithContext: vi.fn().mockResolvedValue({ sent: true, mode: 'steer', sessionKey: 'session-1' }),
+      MAX_QUEUE_DEPTH: 3,
     } as any;
     const permissions = {
       getLatestPendingQuestion: vi.fn().mockReturnValue(null),
@@ -79,7 +82,7 @@ describe('MessageLoopCoordinator', () => {
 
     expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('telegram', 'chat-1', 'follow-up', undefined);
     expect(adapter.send).toHaveBeenCalledWith(
-      expect.objectContaining({ text: '💬 Message injected into active session' }),
+      expect.objectContaining({ text: '💬 已插入当前会话' }),
     );
   });
 
@@ -89,7 +92,8 @@ describe('MessageLoopCoordinator', () => {
     state.setProcessing(chatKey, true);
 
     const sdkEngine = {
-      sendWithContext: vi.fn().mockResolvedValue({ sent: true, mode: 'queue', sessionKey: 'session-1' }),
+      sendWithContext: vi.fn().mockResolvedValue({ sent: true, mode: 'queue', sessionKey: 'session-1', queuePosition: 1 }),
+      MAX_QUEUE_DEPTH: 3,
     } as any;
     const permissions = {
       getLatestPendingQuestion: vi.fn().mockReturnValue(null),
@@ -115,7 +119,81 @@ describe('MessageLoopCoordinator', () => {
 
     expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('telegram', 'chat-1', 'queued follow-up', undefined);
     expect(adapter.send).toHaveBeenCalledWith(
-      expect.objectContaining({ text: '📥 Queued — will process after current task' }),
+      expect.objectContaining({ text: '📥 已排队（位置 1/3），当前任务结束后继续处理' }),
+    );
+  });
+
+  it('shows queue position for subsequent queued messages', async () => {
+    const state = new SessionStateManager();
+    const chatKey = state.stateKey('telegram', 'chat-1');
+    state.setProcessing(chatKey, true);
+
+    const sdkEngine = {
+      sendWithContext: vi.fn().mockResolvedValue({ sent: true, mode: 'queue', sessionKey: 'session-1', queuePosition: 2 }),
+      MAX_QUEUE_DEPTH: 3,
+    } as any;
+    const permissions = {
+      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
+      parsePermissionText: vi.fn().mockReturnValue(null),
+    } as any;
+
+    const coordinator = new MessageLoopCoordinator({
+      state,
+      sdkEngine,
+      permissions,
+      quickCommands: new Set(),
+      hasPendingSdkQuestion: () => false,
+    });
+    const adapter = createAdapter();
+
+    await coordinator.dispatchSlowMessage({
+      adapter,
+      msg: createMessage('second queued message'),
+      coalesceMessage: async (_adapter, msg) => msg,
+      handleMessage: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('telegram', 'chat-1', 'second queued message', undefined);
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '📥 已排队（位置 2/3），当前任务结束后继续处理' }),
+    );
+  });
+
+  it('rejects message when queue is full', async () => {
+    const state = new SessionStateManager();
+    const chatKey = state.stateKey('telegram', 'chat-1');
+    state.setProcessing(chatKey, true);
+
+    const sdkEngine = {
+      sendWithContext: vi.fn().mockResolvedValue({ sent: false, mode: 'queue', sessionKey: 'session-1', queueFull: true }),
+      MAX_QUEUE_DEPTH: 3,
+    } as any;
+    const permissions = {
+      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
+      parsePermissionText: vi.fn().mockReturnValue(null),
+    } as any;
+
+    const coordinator = new MessageLoopCoordinator({
+      state,
+      sdkEngine,
+      permissions,
+      quickCommands: new Set(),
+      hasPendingSdkQuestion: () => false,
+    });
+    const adapter = createAdapter();
+
+    await coordinator.dispatchSlowMessage({
+      adapter,
+      msg: createMessage('message when queue full'),
+      coalesceMessage: async (_adapter, msg) => msg,
+      handleMessage: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('telegram', 'chat-1', 'message when queue full', undefined);
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '⚠️ 排队已满，请稍后再发' }),
     );
   });
 
@@ -126,6 +204,7 @@ describe('MessageLoopCoordinator', () => {
 
     const sdkEngine = {
       sendWithContext: vi.fn().mockResolvedValue({ sent: true, mode: 'steer', sessionKey: 'session-2' }),
+      MAX_QUEUE_DEPTH: 3,
     } as any;
     const permissions = {
       getLatestPendingQuestion: vi.fn().mockReturnValue(null),
@@ -151,7 +230,7 @@ describe('MessageLoopCoordinator', () => {
 
     expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('telegram', 'chat-1', 'reply to bubble', 'bubble-1');
     expect(adapter.send).toHaveBeenCalledWith(
-      expect.objectContaining({ text: '💬 Message injected into active session' }),
+      expect.objectContaining({ text: '💬 已插入当前会话' }),
     );
   });
 
@@ -162,6 +241,7 @@ describe('MessageLoopCoordinator', () => {
 
     const sdkEngine = {
       sendWithContext: vi.fn().mockResolvedValue({ sent: false, mode: 'none' }),
+      MAX_QUEUE_DEPTH: 3,
     } as any;
     const permissions = {
       getLatestPendingQuestion: vi.fn().mockReturnValue(null),
@@ -186,7 +266,7 @@ describe('MessageLoopCoordinator', () => {
     });
 
     expect(adapter.send).toHaveBeenCalledWith(
-      expect.objectContaining({ text: '⚠️ No active session — please start a task first' }),
+      expect.objectContaining({ text: '⚠️ 无活跃会话，请先开始任务' }),
     );
   });
 });

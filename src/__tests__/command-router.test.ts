@@ -8,24 +8,31 @@ import { ChannelRouter } from '../engine/router.js';
 import { JsonFileStore } from '../store/json-file.js';
 import { ClaudeSDKProvider } from '../providers/claude-sdk.js';
 import type { ClaudeSettingSource } from '../config.js';
+import type { SDKEngine } from '../engine/sdk-engine.js';
 
 describe('CommandRouter /settings', () => {
   let tmpDir: string;
   let store: JsonFileStore;
   let router: CommandRouter;
-  let closeChatSessions: (channelType: string, chatId: string) => void;
+  let sdkEngine: Partial<SDKEngine>;
   let clearSessionWhitelist: (sessionId?: string) => void;
   let adapter: any;
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'tlive-command-router-'));
     store = new JsonFileStore(tmpDir);
-    closeChatSessions = vi.fn<(channelType: string, chatId: string) => void>();
     clearSessionWhitelist = vi.fn<(sessionId?: string) => void>();
     adapter = {
       channelType: 'telegram',
       send: vi.fn().mockResolvedValue(undefined),
       sendFormatted: vi.fn().mockResolvedValue(undefined),
+    };
+
+    // Mock SDKEngine with cleanupSession method
+    sdkEngine = {
+      cleanupSession: vi.fn<(channelType: string, chatId: string, reason: 'new' | 'switch' | 'cd' | 'settings' | 'expire', workdir?: string) => boolean>()
+        .mockReturnValue(false),
+      getActiveControls: vi.fn().mockReturnValue(new Map()),
     };
 
     router = new CommandRouter(
@@ -44,7 +51,7 @@ describe('CommandRouter /settings', () => {
         }),
       },
       ['user', 'project', 'local'],
-      closeChatSessions,
+      sdkEngine as SDKEngine,
     );
   });
 
@@ -72,7 +79,7 @@ describe('CommandRouter /settings', () => {
     const binding = await store.getBinding('telegram', 'c1');
     expect(binding?.claudeSettingSources).toEqual([]);
     expect(binding?.sdkSessionId).toBeUndefined();
-    expect(closeChatSessions).toHaveBeenCalledWith('telegram', 'c1');
+    expect(sdkEngine.cleanupSession).toHaveBeenCalledWith('telegram', 'c1', 'settings', undefined);
     expect(clearSessionWhitelist).toHaveBeenCalledWith('binding-1');
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({ text: expect.stringContaining('isolated') }),
@@ -110,6 +117,7 @@ describe('CommandRouter /settings', () => {
       sessionId: 'binding-1',
       sdkSessionId: 'sdk-1',
       claudeSettingSources: ['user'] as ClaudeSettingSource[],
+      cwd: '/tmp/project',
       createdAt: '',
     });
 

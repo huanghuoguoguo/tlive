@@ -107,7 +107,7 @@ export class BridgeManager {
       this.sdkEngine.getActiveControls(),
       this.permissions,
       config.claudeSettingSources,
-      (channelType, chatId) => this.sdkEngine.closeSession(channelType, chatId),
+      this.sdkEngine,
     );
     this.loop = new MessageLoopCoordinator({
       state: this.state,

@@ -5,6 +5,7 @@
  * - Session registry: manage LiveSessions per chat+workdir
  * - Steer/Queue: inject messages into active turns or queue for later using SDK native priority
  * - Bubble tracking: map progress bubble messageId to session for multi-session steering
+ * - Queue depth tracking: limit queued messages and provide user feedback
  */
 
 import type { QueryControls, LiveSession, LLMProvider, MessagePriority } from '../providers/base.js';
@@ -17,6 +18,17 @@ interface ManagedSession {
   session: LiveSession;
   workdir: string;
   lastActiveAt: number;
+}
+
+/** Result of sendWithContext operation */
+export interface SendWithContextResult {
+  sent: boolean;
+  mode: 'steer' | 'queue' | 'none';
+  sessionKey?: string;
+  /** Queue position (1-based) when mode is 'queue', undefined otherwise */
+  queuePosition?: number;
+  /** Whether the queue was full (only set when sent is false and mode is 'queue') */
+  queueFull?: boolean;
 }
 
 /**
@@ -37,6 +49,11 @@ export class SDKEngine {
   private sessionToBubbles = new Map<string, Set<string>>();
   /** Max bubble mappings to keep (prevents unbounded growth) */
   private static MAX_BUBBLE_MAPPINGS = 200;
+
+  /** Queue depth per session: sessionKey → depth count */
+  private queueDepthBySession = new Map<string, number>();
+  /** Maximum queued messages per session */
+  static readonly MAX_QUEUE_DEPTH = 3;
 
   // SDK AskUserQuestion state — shared with routing / callbacks via InteractionState.
   private interactions = new InteractionState();
@@ -64,6 +81,7 @@ export class SDKEngine {
       if (!managed.session.isAlive) {
         this.registry.delete(key);
         this.cleanupBubblesForSession(key);
+        this.cleanupQueueForSession(key);
         continue;
       }
       if (!managed.session.isTurnActive && (now - managed.lastActiveAt) > SDKEngine.SESSION_IDLE_MS) {
@@ -71,6 +89,7 @@ export class SDKEngine {
         managed.session.close();
         this.registry.delete(key);
         this.cleanupBubblesForSession(key);
+        this.cleanupQueueForSession(key);
         this.onSessionPruned?.(key);
       }
     }
@@ -85,6 +104,11 @@ export class SDKEngine {
       }
       this.sessionToBubbles.delete(sessionKey);
     }
+  }
+
+  /** Clean up queue depth when session is closed */
+  private cleanupQueueForSession(sessionKey: string): void {
+    this.queueDepthBySession.delete(sessionKey);
   }
 
   // ── Session Registry ──
@@ -104,6 +128,7 @@ export class SDKEngine {
         managed.session.close();
         this.registry.delete(key);
         this.cleanupBubblesForSession(key);
+        this.cleanupQueueForSession(key);
         if (this.activeSessionByChat.get(chatKey) === key) {
           this.activeSessionByChat.delete(chatKey);
         }
@@ -117,11 +142,74 @@ export class SDKEngine {
           managed.session.close();
           this.registry.delete(key);
           this.cleanupBubblesForSession(key);
+          this.cleanupQueueForSession(key);
           console.log(`[tlive:engine] Closed LiveSession for ${key}`);
         }
       }
       this.activeSessionByChat.delete(chatKey);
     }
+  }
+
+  /**
+   * Unified session cleanup with reason logging.
+   * Called on /new, session switch, directory change, settings change.
+   * Returns true if a session was actually closed.
+   */
+  cleanupSession(channelType: string, chatId: string, reason: 'new' | 'switch' | 'cd' | 'settings' | 'expire', workdir?: string): boolean {
+    const chatKey = `${channelType}:${chatId}`;
+    let closed = false;
+
+    if (workdir) {
+      // Close specific session
+      const key = this.sessionKey(channelType, chatId, workdir);
+      const managed = this.registry.get(key);
+      if (managed) {
+        managed.session.close();
+        this.registry.delete(key);
+        this.cleanupBubblesForSession(key);
+        this.cleanupQueueForSession(key);
+        if (this.activeSessionByChat.get(chatKey) === key) {
+          this.activeSessionByChat.delete(chatKey);
+        }
+        console.log(`[tlive:engine] Session cleanup (${reason}): ${key}`);
+        closed = true;
+      }
+    } else {
+      // Close ALL sessions for this chat
+      const prefix = `${channelType}:${chatId}:`;
+      for (const [key, managed] of this.registry) {
+        if (key.startsWith(prefix)) {
+          managed.session.close();
+          this.registry.delete(key);
+          this.cleanupBubblesForSession(key);
+          this.cleanupQueueForSession(key);
+          console.log(`[tlive:engine] Session cleanup (${reason}): ${key}`);
+          closed = true;
+        }
+      }
+      if (closed) {
+        this.activeSessionByChat.delete(chatKey);
+      }
+    }
+
+    return closed;
+  }
+
+  /**
+   * Check if a session exists and is alive for the given chat/workdir.
+   */
+  hasActiveSession(channelType: string, chatId: string, workdir?: string): boolean {
+    if (workdir) {
+      const key = this.sessionKey(channelType, chatId, workdir);
+      const managed = this.registry.get(key);
+      return managed?.session.isAlive ?? false;
+    }
+    // Check if any session exists for this chat
+    const chatKey = `${channelType}:${chatId}`;
+    const sessionKey = this.activeSessionByChat.get(chatKey);
+    if (!sessionKey) return false;
+    const managed = this.registry.get(sessionKey);
+    return managed?.session.isAlive ?? false;
   }
 
   /**
@@ -166,6 +254,56 @@ export class SDKEngine {
     this.registry.set(key, { session, workdir, lastActiveAt: Date.now() });
     this.activeSessionByChat.set(chatKey, key);
     return session;
+  }
+
+  // ── Queue Depth Management ──
+
+  /** Get current queue depth for a session */
+  getQueueDepth(sessionKey: string): number {
+    return this.queueDepthBySession.get(sessionKey) ?? 0;
+  }
+
+  /** Check if queue is full for a session */
+  isQueueFull(sessionKey: string): boolean {
+    return this.getQueueDepth(sessionKey) >= SDKEngine.MAX_QUEUE_DEPTH;
+  }
+
+  /** Increment queue depth after successful queue operation */
+  private incrementQueueDepth(sessionKey: string): number {
+    const current = this.getQueueDepth(sessionKey);
+    const newDepth = current + 1;
+    this.queueDepthBySession.set(sessionKey, newDepth);
+    console.log(`[tlive:engine] Queue depth for ${sessionKey}: ${newDepth}`);
+    return newDepth;
+  }
+
+  /**
+   * Decrement queue depth when a queued message is consumed.
+   * Called when a new turn starts or when we detect queue consumption.
+   */
+  decrementQueueDepth(sessionKey: string): void {
+    const current = this.getQueueDepth(sessionKey);
+    if (current > 0) {
+      const newDepth = current - 1;
+      if (newDepth === 0) {
+        this.queueDepthBySession.delete(sessionKey);
+      } else {
+        this.queueDepthBySession.set(sessionKey, newDepth);
+      }
+      console.log(`[tlive:engine] Queue depth for ${sessionKey}: ${newDepth}`);
+    }
+  }
+
+  /**
+   * Reset queue depth when a turn starts fresh (clears all pending queued messages).
+   * This should be called when detecting that queued messages have been consumed.
+   */
+  resetQueueDepth(sessionKey: string): void {
+    const current = this.getQueueDepth(sessionKey);
+    if (current > 0) {
+      this.queueDepthBySession.delete(sessionKey);
+      console.log(`[tlive:engine] Queue depth reset for ${sessionKey} (was ${current})`);
+    }
   }
 
   // ── Steer / Queue ──
@@ -245,26 +383,38 @@ export class SDKEngine {
    * Steer or queue based on reply context.
    * - If replyToMessageId → steer/queue to that bubble's session
    * - Otherwise → steer/queue to active session
+   * - Tracks queue depth and rejects when queue is full
    */
   async sendWithContext(
     channelType: string,
     chatId: string,
     text: string,
     replyToMessageId?: string,
-  ): Promise<{ sent: boolean; mode: 'steer' | 'queue' | 'none'; sessionKey?: string }> {
+  ): Promise<SendWithContextResult> {
     const sessionKey = this.resolveTargetSession(channelType, chatId, replyToMessageId);
     if (!sessionKey) {
       return { sent: false, mode: 'none' };
     }
 
-    // Steer if turn active, queue otherwise
+    // Steer if turn active
     if (this.canSteerSession(sessionKey)) {
       const sent = await this.sendToSession(sessionKey, text, 'now');
-      return { sent, mode: 'steer', sessionKey };
-    } else {
-      const sent = await this.sendToSession(sessionKey, text, 'later');
-      return { sent, mode: 'queue', sessionKey };
+      return { sent, mode: sent ? 'steer' : 'none', sessionKey };
     }
+
+    // Check queue depth before queueing
+    if (this.isQueueFull(sessionKey)) {
+      console.log(`[tlive:engine] Queue full for ${sessionKey}, rejecting message`);
+      return { sent: false, mode: 'queue', sessionKey, queueFull: true };
+    }
+
+    // Queue the message
+    const sent = await this.sendToSession(sessionKey, text, 'later');
+    if (sent) {
+      const queuePosition = this.incrementQueueDepth(sessionKey);
+      return { sent: true, mode: 'queue', sessionKey, queuePosition };
+    }
+    return { sent: false, mode: 'none' };
   }
 
   // ── Shared State (CallbackRouter, /stop) ──

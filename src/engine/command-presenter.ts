@@ -89,12 +89,19 @@ export function presentSessionNotFound(chatId: string, idx: number): { chatId: s
   return { chatId, text: `Session ${idx} not found. Use /sessions to list.` };
 }
 
-export function presentSessionSwitched(chatId: string, idx: number, cwd: string, preview: string): { chatId: string; text: string } {
-  return { chatId, text: `🔄 Switched to session ${idx}\n${cwd} · ${preview}` };
+export function presentSessionSwitched(chatId: string, idx: number, cwd: string, preview: string, feedbackText?: string): { chatId: string; text: string } {
+  const lines = [];
+  if (feedbackText) lines.push(feedbackText);
+  lines.push(`🔄 Switched to session ${idx}`);
+  lines.push(`${cwd} · ${preview}`);
+  return { chatId, text: lines.join('\n') };
 }
 
-export function presentDirectory(chatId: string, cwd: string, withIcon = false): { chatId: string; text: string } {
-  return { chatId, text: withIcon ? `📂 ${cwd}` : cwd };
+export function presentDirectory(chatId: string, cwd: string, withIcon = false, feedbackText?: string): { chatId: string; text: string } {
+  const lines = [];
+  if (feedbackText) lines.push(feedbackText);
+  lines.push(withIcon ? `📂 ${cwd}` : cwd);
+  return { chatId, text: lines.join('\n') };
 }
 
 export function presentDirectoryNotFound(chatId: string, path: string): { chatId: string; text: string } {

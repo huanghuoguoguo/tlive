@@ -126,6 +126,8 @@ export interface HelpData {
 /** New session confirmation */
 export interface NewSessionData {
   cwd?: string;
+  /** Optional feedback text (e.g., "已关闭旧会话") */
+  feedbackText?: string;
 }
 
 /** Error message */

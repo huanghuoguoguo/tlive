@@ -3,6 +3,7 @@ import type { InboundMessage } from '../channels/types.js';
 import type { SessionStateManager } from './session-state.js';
 import type { ChannelRouter } from './router.js';
 import type { LLMProvider, QueryControls } from '../providers/base.js';
+import type { SDKEngine } from './sdk-engine.js';
 import { ClaudeSDKProvider } from '../providers/claude-sdk.js';
 import {
   DEFAULT_CLAUDE_SETTING_SOURCES,
@@ -15,6 +16,7 @@ import { homedir } from 'node:os';
 import { readSessionTranscriptPreview, scanClaudeSessions } from '../session-scanner.js';
 import { generateSessionId } from '../utils/id.js';
 import { shortPath } from '../utils/path.js';
+import { isSameRepoRoot } from '../utils/repo.js';
 import {
   presentApproveFailure,
   presentApproveSuccess,
@@ -93,7 +95,7 @@ export class CommandRouter {
       };
     },
     private defaultClaudeSettingSources: ClaudeSettingSource[] = DEFAULT_CLAUDE_SETTING_SOURCES,
-    private closeChatSessions?: (channelType: string, chatId: string) => void,
+    private sdkEngine?: SDKEngine,
   ) {}
 
   private getSettingsPreset(sources: ClaudeSettingSource[]): string {
@@ -149,22 +151,29 @@ export class CommandRouter {
         return true;
       }
       case '/new': {
-        // Close any active LiveSession(s) for this chat before creating new session
-        this.closeChatSessions?.(msg.channelType, msg.chatId);
-        // Just clear session, keep current cwd
-        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+        // Unified session cleanup before creating new session
+        const previousBinding = await this.store.getBinding(msg.channelType, msg.chatId);
+        const hadActiveSession = this.sdkEngine?.cleanupSession(
+          msg.channelType,
+          msg.chatId,
+          'new',
+          previousBinding?.cwd,
+        ) ?? false;
 
         const newSessionId = generateSessionId();
         await this.router.rebind(msg.channelType, msg.chatId, newSessionId, {
-          cwd: binding?.cwd,
-          claudeSettingSources: binding?.claudeSettingSources,
+          cwd: previousBinding?.cwd,
+          claudeSettingSources: previousBinding?.claudeSettingSources,
         });
 
         this.state.clearLastActive(msg.channelType, msg.chatId);
         this.state.clearThread(msg.channelType, msg.chatId);
-        this.permissions.clearSessionWhitelist(binding?.sessionId);
+        this.permissions.clearSessionWhitelist(previousBinding?.sessionId);
 
-        await send(adapter, presentNewSession(msg.chatId, { cwd: binding?.cwd }));
+        const feedbackText = hadActiveSession
+          ? `🔄 已关闭旧会话，开启新会话`
+          : undefined;
+        await send(adapter, presentNewSession(msg.chatId, { cwd: previousBinding?.cwd, feedbackText }));
 
         // Send home screen after session reset
         const homeData = await this.buildHomePayload(msg.channelType, msg.chatId);
@@ -264,6 +273,14 @@ export class CommandRouter {
 
         const target = sessions[idx - 1];
 
+        // Close old SDK session if switching to a different workdir
+        const hadActiveSession = this.sdkEngine?.cleanupSession(
+          msg.channelType,
+          msg.chatId,
+          'switch',
+          currentCwd,
+        ) ?? false;
+
         const newBindingId = generateSessionId();
         await this.router.rebind(msg.channelType, msg.chatId, newBindingId, {
           sdkSessionId: target.sdkSessionId,
@@ -272,8 +289,12 @@ export class CommandRouter {
         });
 
         this.state.clearLastActive(msg.channelType, msg.chatId);
+        this.permissions.clearSessionWhitelist(binding?.sessionId);
 
-        await send(adapter, presentSessionSwitched(msg.chatId, idx, shortPath(target.cwd), target.preview));
+        const feedbackText = hadActiveSession && !isSameRepoRoot(currentCwd, target.cwd)
+          ? `🔄 已关闭旧工作区的活跃会话`
+          : undefined;
+        await send(adapter, presentSessionSwitched(msg.chatId, idx, shortPath(target.cwd), target.preview, feedbackText));
         return true;
       }
       case '/sessioninfo': {
@@ -331,15 +352,36 @@ export class CommandRouter {
           return true;
         }
 
+        // Close SDK session if switching to a different repo root
+        const hadActiveSession = this.sdkEngine?.cleanupSession(
+          msg.channelType,
+          msg.chatId,
+          'cd',
+          baseCwd,
+        ) ?? false;
+        const switchedRepo = !isSameRepoRoot(baseCwd, resolvedPath);
+
         // Update binding
         if (binding) {
           binding.cwd = resolvedPath;
+          // Clear sdkSessionId when switching repo to avoid mismatch
+          if (switchedRepo) {
+            binding.sdkSessionId = undefined;
+          }
           await this.store.saveBinding(binding);
         } else {
           await this.router.rebind(msg.channelType, msg.chatId, generateSessionId(), { cwd: resolvedPath });
         }
 
-        await send(adapter, presentDirectory(msg.chatId, shortPath(resolvedPath), true));
+        // Clear permission whitelist when switching repo
+        if (switchedRepo) {
+          this.permissions.clearSessionWhitelist(binding?.sessionId);
+        }
+
+        const feedbackText = hadActiveSession && switchedRepo
+          ? `🔄 已关闭旧仓库的活跃会话`
+          : undefined;
+        await send(adapter, presentDirectory(msg.chatId, shortPath(resolvedPath), true, feedbackText));
         return true;
       }
       case '/pwd': {
@@ -364,10 +406,11 @@ export class CommandRouter {
 
         if (arg && arg in PRESETS) {
           const binding = await this.router.resolve(msg.channelType, msg.chatId);
+          const previousBinding = await this.store.getBinding(msg.channelType, msg.chatId);
           binding.claudeSettingSources = [...PRESETS[arg]];
           binding.sdkSessionId = undefined;
           await this.store.saveBinding(binding);
-          this.closeChatSessions?.(msg.channelType, msg.chatId);
+          this.sdkEngine?.cleanupSession(msg.channelType, msg.chatId, 'settings', previousBinding?.cwd);
           this.permissions.clearSessionWhitelist(binding.sessionId);
           const labels: Record<string, string> = {
             user: '👤 user — current chat uses global auth/model only',

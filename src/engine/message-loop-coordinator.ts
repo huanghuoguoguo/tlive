@@ -2,7 +2,7 @@ import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';
 import type { PermissionCoordinator } from './permission-coordinator.js';
 import type { SessionStateManager } from './session-state.js';
-import type { SDKEngine } from './sdk-engine.js';
+import type { SDKEngine, SendWithContextResult } from './sdk-engine.js';
 
 interface MessageLoopCoordinatorOptions {
   state: SessionStateManager;
@@ -65,7 +65,6 @@ export class MessageLoopCoordinator {
   private async handleBusyChat(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<void> {
     if (!msg.text) return;
 
-    // Use sendWithContext to handle reply-to-bubble or fallback to active session
     const result = await this.options.sdkEngine.sendWithContext(
       msg.channelType,
       msg.chatId,
@@ -73,16 +72,40 @@ export class MessageLoopCoordinator {
       msg.replyToMessageId,
     );
 
-    if (result.sent) {
-      if (result.mode === 'steer') {
-        await adapter.send({ chatId: msg.chatId, text: '💬 Message injected into active session' }).catch(() => {});
-      } else {
-        await adapter.send({ chatId: msg.chatId, text: '📥 Queued — will process after current task' }).catch(() => {});
+    const feedbackText = this.formatQueueFeedback(result);
+    if (feedbackText) {
+      await adapter.send({ chatId: msg.chatId, text: feedbackText }).catch(() => {});
+    }
+  }
+
+  /**
+   * Format user feedback based on sendWithContext result.
+   * - Steer: "已插入当前会话"
+   * - Queue with position: "已排队（位置 X/Y）"
+   * - Queue full: "排队已满，请稍后再发"
+   * - No session: "无活跃会话，请先开始任务"
+   */
+  private formatQueueFeedback(result: SendWithContextResult): string | null {
+    if (!result.sent) {
+      if (result.mode === 'none') {
+        return '⚠️ 无活跃会话，请先开始任务';
       }
-      return;
+      if (result.queueFull) {
+        return '⚠️ 排队已满，请稍后再发';
+      }
+      // Send failed for other reason - no feedback needed
+      return null;
     }
 
-    // No session found — prompt user
-    await adapter.send({ chatId: msg.chatId, text: '⚠️ No active session — please start a task first' }).catch(() => {});
+    if (result.mode === 'steer') {
+      return '💬 已插入当前会话';
+    }
+
+    if (result.mode === 'queue' && result.queuePosition !== undefined) {
+      const maxDepth = this.options.sdkEngine.MAX_QUEUE_DEPTH;
+      return `📥 已排队（位置 ${result.queuePosition}/${maxDepth}），当前任务结束后继续处理`;
+    }
+
+    return null;
   }
 }
