@@ -47,8 +47,6 @@ import {
   presentUpgradeCommand,
   presentUpgradeResult,
   presentVersionCheck,
-  presentVersionSkipped,
-  presentVersionUnskipped,
 } from './command-presenter.js';
 import { areHooksPaused, pauseHooks, resumeHooks } from './hooks-state.js';
 import type { FormattableMessage, HomeData } from '../formatting/message-types.js';
@@ -492,24 +490,6 @@ export class CommandRouter {
           return true;
         }
 
-        if (subCmd?.startsWith('skip')) {
-          // Extract version from skip:VERSION format
-          const version = subCmd.split(':')[1];
-          if (version) {
-            const { skipVersion } = await import('./version-checker.js');
-            skipVersion(version);
-            await send(adapter, presentVersionSkipped(msg.chatId, version));
-          }
-          return true;
-        }
-
-        if (subCmd === 'unskip') {
-          const { clearSkippedVersion } = await import('./version-checker.js');
-          clearSkippedVersion();
-          await send(adapter, presentVersionUnskipped(msg.chatId));
-          return true;
-        }
-
         if (subCmd === 'cmd' || subCmd === 'command') {
           await send(adapter, presentUpgradeCommand(msg.chatId));
           return true;
@@ -524,9 +504,9 @@ export class CommandRouter {
           return true;
         }
 
-        // Check for updates (ignore skip to always show when manually checking)
+        // Check for updates
         const { checkForUpdates } = await import('./version-checker.js');
-        const info = await checkForUpdates({ ignoreSkip: true });
+        const info = await checkForUpdates();
         if (info) {
           await send(adapter, presentVersionCheck(msg.chatId, info));
         } else {

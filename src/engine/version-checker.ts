@@ -1,6 +1,7 @@
 /**
  * Version checker for tlive upgrades.
  * Checks GitHub Releases API for new versions.
+ * Each version is only notified once automatically.
  */
 
 import { homedir } from 'node:os';
@@ -12,7 +13,7 @@ declare const process: { env: { npm_package_version: string } };
 
 const REPO = 'huanghuoguoguo/tlive';
 const GITHUB_API = `https://api.github.com/repos/${REPO}/releases/latest`;
-const SKIP_VERSION_FILE = join(homedir(), '.tlive', 'data', 'skipped-version.json');
+const NOTIFIED_FILE = join(homedir(), '.tlive', 'data', 'notified-versions.json');
 
 export interface VersionInfo {
   current: string;
@@ -51,40 +52,38 @@ function compareVersions(a: string, b: string): number {
 }
 
 /**
- * Get skipped version from file
+ * Get list of versions that have already been notified
  */
-export function getSkippedVersion(): string | null {
+function getNotifiedVersions(): string[] {
   try {
-    if (existsSync(SKIP_VERSION_FILE)) {
-      const data = JSON.parse(readFileSync(SKIP_VERSION_FILE, 'utf-8'));
-      return data.skippedVersion || null;
+    if (existsSync(NOTIFIED_FILE)) {
+      const data = JSON.parse(readFileSync(NOTIFIED_FILE, 'utf-8'));
+      return data.versions || [];
     }
   } catch {
     // Ignore errors
   }
-  return null;
+  return [];
 }
 
 /**
- * Skip a specific version (won't notify again for this version)
+ * Check if a version has already been notified
  */
-export function skipVersion(version: string): void {
+export function isVersionNotified(version: string): boolean {
+  return getNotifiedVersions().includes(version);
+}
+
+/**
+ * Mark a version as notified (won't notify again for this version)
+ */
+export function markVersionNotified(version: string): void {
   try {
     const dir = join(homedir(), '.tlive', 'data');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(SKIP_VERSION_FILE, JSON.stringify({ skippedVersion: version, skippedAt: new Date().toISOString() }));
-  } catch {
-    // Ignore errors
-  }
-}
-
-/**
- * Clear skipped version (re-enable notifications)
- */
-export function clearSkippedVersion(): void {
-  try {
-    if (existsSync(SKIP_VERSION_FILE)) {
-      writeFileSync(SKIP_VERSION_FILE, JSON.stringify({ skippedVersion: null }));
+    const versions = getNotifiedVersions();
+    if (!versions.includes(version)) {
+      versions.push(version);
+      writeFileSync(NOTIFIED_FILE, JSON.stringify({ versions }));
     }
   } catch {
     // Ignore errors
@@ -93,9 +92,10 @@ export function clearSkippedVersion(): void {
 
 /**
  * Check for updates by querying GitHub Releases API.
- * Returns null if check fails or version was skipped.
+ * Always returns version info (for manual checks).
+ * Use isVersionNotified() to check if should notify.
  */
-export async function checkForUpdates(options?: { ignoreSkip?: boolean }): Promise<VersionInfo | null> {
+export async function checkForUpdates(): Promise<VersionInfo | null> {
   const current = getCurrentVersion();
 
   try {
@@ -126,15 +126,6 @@ export async function checkForUpdates(options?: { ignoreSkip?: boolean }): Promi
     }
 
     const hasUpdate = compareVersions(current, latest) < 0;
-
-    // Check if this version was skipped
-    if (hasUpdate && !options?.ignoreSkip) {
-      const skipped = getSkippedVersion();
-      if (skipped === latest) {
-        console.log(`[version-checker] Version ${latest} was skipped, not notifying`);
-        return null;
-      }
-    }
 
     return {
       current,
