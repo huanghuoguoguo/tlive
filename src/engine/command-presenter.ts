@@ -12,6 +12,10 @@ import type {
   SessionDetailData,
   HelpData,
   NewSessionData,
+  ProjectListData,
+  ProjectInfoData,
+  QueueStatusData,
+  DiagnoseData,
   FormattableMessage,
 } from '../formatting/message-types.js';
 
@@ -45,6 +49,14 @@ export function presentSessionDetail(chatId: string, data: SessionDetailData): F
 
 export function presentHelp(chatId: string, data: HelpData): FormattableMessage {
   return { type: 'help', chatId, data };
+}
+
+export function presentProjectList(chatId: string, data: ProjectListData): FormattableMessage {
+  return { type: 'projectList', chatId, data };
+}
+
+export function presentProjectInfo(chatId: string, data: ProjectInfoData): FormattableMessage {
+  return { type: 'projectInfo', chatId, data };
 }
 
 // --- Simple text messages (no platform-specific formatting needed) ---
@@ -235,4 +247,69 @@ export function presentUpgradeCommand(chatId: string): { chatId: string; text: s
 
 export function presentRestartResult(chatId: string): { chatId: string; text: string } {
   return { chatId, text: '🔄 Restarting... The service will reconnect in a few seconds.' };
+}
+
+// --- Project messages ---
+
+export interface ProjectSwitchedData {
+  projectName: string;
+  workdir: string;
+  feedbackText?: string;
+}
+
+export interface ProjectInfoExtendedData {
+  projectName: string;
+  workdir: string;
+  isImplicit: boolean;
+  workspaceBinding?: string;
+  isValidProject?: boolean;
+}
+
+export function presentProjectUsage(chatId: string): { chatId: string; text: string } {
+  return { chatId, text: 'Usage: /project [list|use <name>|info]\nUse /project list to see all projects.' };
+}
+
+export function presentProjectNotFound(chatId: string, name: string): { chatId: string; text: string } {
+  return { chatId, text: `❌ Project "${name}" not found. Use /project list to see all projects.` };
+}
+
+export function presentProjectSwitched(chatId: string, data: ProjectSwitchedData): { chatId: string; text: string } {
+  const lines = [];
+  if (data.feedbackText) lines.push(data.feedbackText);
+  lines.push(`📦 已切换到项目 "${data.projectName}"`);
+  lines.push(`📂 ${data.workdir}`);
+  return { chatId, text: lines.join('\n') };
+}
+
+export function presentNoProjects(chatId: string): { chatId: string; text: string } {
+  return { chatId, text: '⚠️ No projects configured.\nCreate ~/.tlive/projects.json to enable multi-project mode.' };
+}
+
+export function presentProjectInfoExtended(chatId: string, data: ProjectInfoExtendedData): { chatId: string; text: string } {
+  const lines = [`📦 项目：${data.projectName}`];
+  lines.push(`📂 工作区：${data.workdir}`);
+
+  if (data.workspaceBinding && data.workspaceBinding !== data.workdir) {
+    lines.push(`🏠 绑定：${data.workspaceBinding}`);
+  }
+
+  if (data.isImplicit) {
+    lines.push(`💡 当前使用隐式项目（无 projects.json 配置）`);
+  }
+
+  if (data.isValidProject === false) {
+    lines.push(`⚠️ 项目配置无效或已被删除`);
+  }
+
+  return { chatId, text: lines.join('\n') };
+}
+
+// --- Queue/Diagnose messages (Phase 3) ---
+
+export function presentQueueStatus(chatId: string, data: QueueStatusData): FormattableMessage {
+  return { type: 'queueStatus', chatId, data };
+}
+
+export function presentDiagnose(chatId: string, data: DiagnoseData): FormattableMessage {
+  return { type: 'diagnose', chatId, data };
 }

@@ -99,5 +99,51 @@ describe('SessionStateManager', () => {
       // After clear, next call should return false (like first call)
       expect(state.checkAndUpdateLastActive('telegram', '1')).toBe(false);
     });
+
+    it('getLastActiveTime returns undefined before any activity', () => {
+      expect(state.getLastActiveTime('telegram', '1')).toBeUndefined();
+    });
+
+    it('getLastActiveTime returns timestamp after activity', () => {
+      const before = Date.now();
+      state.checkAndUpdateLastActive('telegram', '1');
+      const after = Date.now();
+      const lastActive = state.getLastActiveTime('telegram', '1');
+      expect(lastActive).toBeDefined();
+      expect(lastActive!).toBeGreaterThanOrEqual(before);
+      expect(lastActive!).toBeLessThanOrEqual(after);
+    });
+
+    it('getSessionAge returns undefined before any activity', () => {
+      expect(state.getSessionAge('telegram', '1')).toBeUndefined();
+    });
+
+    it('getSessionAge returns elapsed time since last activity', () => {
+      state.checkAndUpdateLastActive('telegram', '1');
+      const age = state.getSessionAge('telegram', '1');
+      expect(age).toBeDefined();
+      expect(age!).toBeLessThan(1000); // Should be very small right after activity
+    });
+
+    it('getSessionAge increases over time', () => {
+      state.checkAndUpdateLastActive('telegram', '1');
+      const age1 = state.getSessionAge('telegram', '1');
+
+      // Fast-forward 1 minute
+      const realNow = Date.now;
+      const start = realNow.call(Date);
+      vi.spyOn(Date, 'now').mockReturnValue(start + 60 * 1000);
+      const age2 = state.getSessionAge('telegram', '1');
+      vi.restoreAllMocks();
+
+      expect(age2!).toBeGreaterThan(age1!);
+      expect(age2! - age1!).toBeGreaterThanOrEqual(60 * 1000);
+    });
+
+    it('clearLastActive makes getSessionAge return undefined', () => {
+      state.checkAndUpdateLastActive('telegram', '1');
+      state.clearLastActive('telegram', '1');
+      expect(state.getSessionAge('telegram', '1')).toBeUndefined();
+    });
   });
 });

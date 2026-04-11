@@ -35,6 +35,9 @@ describe('CommandRouter /settings', () => {
       cleanupSession: vi.fn<(channelType: string, chatId: string, reason: 'new' | 'switch' | 'cd' | 'settings' | 'expire', workdir?: string) => boolean>()
         .mockReturnValue(false),
       getActiveControls: vi.fn().mockReturnValue(new Map()),
+      getActiveSessionKey: vi.fn().mockReturnValue(undefined),
+      getQueueInfo: vi.fn().mockReturnValue(undefined),
+      isChatSessionStale: vi.fn().mockReturnValue(false),
     };
 
     // Create WorkspaceStateManager (no persistence for tests)

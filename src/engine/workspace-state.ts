@@ -10,6 +10,8 @@ export interface WorkspaceState {
   history: string[];
   /** Long-term workspace binding (repo this chat primarily serves) */
   binding?: string;
+  /** Project binding (name of the project this chat is associated with) */
+  projectName?: string;
 }
 
 /**
@@ -112,6 +114,39 @@ export class WorkspaceStateManager {
   }
 
   /**
+   * Set the project binding (name of the project this chat is associated with).
+   */
+  setProjectName(channelType: string, chatId: string, projectName: string): void {
+    const key = this.chatKey(channelType, chatId);
+    const state = this.stateByChat.get(key) || { history: [] };
+    state.projectName = projectName;
+    this.stateByChat.set(key, state);
+    this.debouncedSave();
+  }
+
+  /**
+   * Get the project binding.
+   */
+  getProjectName(channelType: string, chatId: string): string | undefined {
+    const key = this.chatKey(channelType, chatId);
+    const state = this.stateByChat.get(key);
+    return state?.projectName;
+  }
+
+  /**
+   * Clear project binding.
+   */
+  clearProjectName(channelType: string, chatId: string): void {
+    const key = this.chatKey(channelType, chatId);
+    const state = this.stateByChat.get(key);
+    if (state) {
+      state.projectName = undefined;
+      this.stateByChat.set(key, state);
+      this.debouncedSave();
+    }
+  }
+
+  /**
    * Clear workspace state for a chat (on /new or explicit unbind).
    */
   clear(channelType: string, chatId: string): void {
@@ -140,6 +175,7 @@ export class WorkspaceStateManager {
           this.stateByChat.set(key, {
             history: state.history.slice(0, WorkspaceStateManager.MAX_HISTORY_SIZE),
             binding: state.binding,
+            projectName: state.projectName,
           });
         }
       }

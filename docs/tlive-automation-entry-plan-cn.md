@@ -214,3 +214,107 @@ cron 建议作为 webhook 之后的第二阶段能力。
 - 默认安全边界清晰
 - 不破坏现有人工 IM 使用流程
 
+---
+
+## Phase 3 实现详情
+
+### Cron 调度器
+
+Phase 3 实现了 cron 调度器的基础框架：
+
+**数据结构**：
+```typescript
+interface CronJob {
+  id: string;           // 唯一 ID
+  name: string;         // 任务名称
+  schedule: string;     // cron 表达式
+  channelType?: string; // 目标 channel
+  chatId?: string;      // 目标 chat
+  projectName?: string; // 项目路由
+  prompt: string;       // 发送的 prompt
+  event?: string;       // 显示的事件名
+  enabled: boolean;     // 是否启用
+  lastRun?: number;     // 上次运行时间
+  nextRun?: number;     // 下次运行时间
+  lastResult?: 'success' | 'failed' | 'skipped';
+}
+```
+
+**实现要点**：
+- 简化的 cron 表达式解析器（支持基本 5 字段格式）
+- JSON 文件持久化（`~/.tlive/runtime/cron-jobs.json`）
+- 1 分钟间隔的 tick 调度
+- 任务失败记录但不自动重试
+- 配置开关：`TL_CRON_ENABLED=true` 启用
+
+**配置项**：
+```env
+TL_CRON_ENABLED=false      # 启用 cron 调度器（默认关闭）
+TL_CRON_TIMEZONE=          # 时区（Phase 3 未实现）
+TL_CRON_MAX_CONCURRENCY=3  # 最大并发任务数
+```
+
+**已知限制**：
+- 不支持 cron 范围表达式（如 `1-5`）
+- 不支持时区设置
+- 实际 prompt 执行依赖 session 路由策略（Phase 4 完善）
+
+### Exec 评估
+
+**安全考量**：
+
+Phase 3 明确决定 **不实现 exec 功能**，原因如下：
+
+1. **安全风险**：
+   - 远程执行命令可能被滥用
+   - 命令注入风险
+   - 系统资源消耗不可控
+
+2. **替代方案**：
+   - 使用 prompt 让 Claude 执行任务更安全
+   - Claude 有权限审批机制
+   - 所有操作在 IM 内可见
+
+3. **如果未来启用 exec**，必须满足：
+   - 显式开关（默认关闭）
+   - 命令白名单（只允许预定义命令）
+   - 超时限制（默认 30 秒）
+   - 完整日志记录
+   - IM 内反馈（用户可见）
+
+**配置预留**（Phase 3 禁用）：
+```env
+TL_EXEC_ENABLED=false                  # 禁用（硬编码）
+TL_EXEC_ALLOWED_COMMANDS=              # 命令白名单
+TL_EXEC_TIMEOUT=30000                  # 超时（毫秒）
+TL_EXEC_LOG=true                       # 记录日志
+```
+
+### 使用示例
+
+**添加定时任务**（通过代码）：
+```typescript
+const scheduler = new CronScheduler({ enabled: true, ... });
+scheduler.addJob({
+  name: 'Daily review',
+  schedule: '0 9 * * 1-5',  // 工作日 9am
+  channelType: 'telegram',
+  chatId: 'your-chat-id',
+  prompt: 'Review yesterday\'s commits and summarize progress',
+  event: 'daily-review',
+  enabled: true,
+});
+```
+
+**项目路由**：
+```typescript
+scheduler.addJob({
+  name: 'CI failure analysis',
+  schedule: '*/5 * * * *',  // 每 5 分钟
+  projectName: 'my-project',  // 使用项目默认 chat
+  prompt: 'Check CI status and alert if failing',
+  event: 'ci-check',
+  enabled: true,
+});
+```
+

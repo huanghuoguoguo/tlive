@@ -5,10 +5,15 @@ import type { WorkspaceStateManager } from './workspace-state.js';
 import type { ChannelRouter } from './router.js';
 import type { LLMProvider, QueryControls } from '../providers/base.js';
 import type { SDKEngine } from './sdk-engine.js';
+import type { ProjectConfig } from '../store/interface.js';
+import { basename } from 'node:path';
 import { ClaudeSDKProvider } from '../providers/claude-sdk.js';
 import {
   DEFAULT_CLAUDE_SETTING_SOURCES,
   type ClaudeSettingSource,
+  type ProjectsValidationResult,
+  getProjectByName,
+  loadProjectsConfig,
 } from '../config.js';
 import type { BridgeStore } from '../store/interface.js';
 import { existsSync } from 'node:fs';
@@ -22,7 +27,9 @@ import {
   presentApproveFailure,
   presentApproveSuccess,
   presentApproveUsage,
+  presentDiagnose,
   presentDirectory,
+  presentDirectoryHistory,
   presentDirectoryNotFound,
   presentHelp,
   presentHooksChanged,
@@ -30,12 +37,19 @@ import {
   presentHome,
   presentNewSession,
   presentNoPairings,
+  presentNoProjects,
   presentNoSessions,
   presentPairingUnavailable,
   presentPairings,
   presentPermissionModeChanged,
   presentPermissionModeStatus,
   presentPermissionStatus,
+  presentProjectInfoExtended,
+  presentProjectList,
+  presentProjectNotFound,
+  presentProjectSwitched,
+  presentProjectUsage,
+  presentQueueStatus,
   presentRestartResult,
   presentSessionNotFound,
   presentSessionDetail,
@@ -52,7 +66,8 @@ import {
   presentVersionCheck,
 } from './command-presenter.js';
 import { areHooksPaused, pauseHooks, resumeHooks } from './hooks-state.js';
-import type { FormattableMessage, HomeData } from '../formatting/message-types.js';
+import type { FormattableMessage, HomeData, ProjectListData, ProjectInfoData, QueueStatusData, DiagnoseData } from '../formatting/message-types.js';
+import { SESSION_STALE_THRESHOLD_MS } from '../utils/constants.js';
 
 /** Format file size in human-readable format */
 function formatSize(bytes: number): string {
@@ -63,6 +78,21 @@ function formatSize(bytes: number): string {
 
 function formatSessionDate(mtime: number): string {
   return new Date(mtime).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+/** Format relative time (e.g., "2小时前", "刚刚") */
+function formatRelativeTime(timestamp: number): string {
+  const now = Date.now();
+  const diffMs = now - timestamp;
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHour = Math.floor(diffMs / 3600000);
+  const diffDay = Math.floor(diffMs / 86400000);
+
+  if (diffMin < 1) return '刚刚';
+  if (diffMin < 60) return `${diffMin}分钟前`;
+  if (diffHour < 24) return `${diffHour}小时前`;
+  if (diffDay < 7) return `${diffDay}天前`;
+  return new Date(timestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 }
 
 /** Helper to send either a formatted message or simple text */
@@ -119,8 +149,24 @@ export class CommandRouter {
     const permStatus = this.permissions.getPermissionStatus(chatKey, binding?.sessionId);
     const activeChannels = Array.from(this.getAdapters().keys());
 
+    // Get workspace binding (long-term repo attribution)
+    const workspaceBinding = this.workspace.getBinding(channelType, chatId);
+
+    // Get project name from workspace state
+    const projectName = this.workspace.getProjectName(channelType, chatId);
+
+    // Get last active time from SessionStateManager
+    const lastActiveTime = this.state.getLastActiveTime(channelType, chatId);
+
+    // Get queue info and stale status from SDKEngine
+    const activeSessionKey = this.sdkEngine?.getActiveSessionKey(channelType, chatId);
+    const queueInfo = activeSessionKey ? this.sdkEngine?.getQueueInfo(activeSessionKey) : undefined;
+    const sessionStale = this.sdkEngine?.isChatSessionStale(channelType, chatId) ?? false;
+
     return {
       cwd: shortPath(currentCwd),
+      workspaceBinding: workspaceBinding ? shortPath(workspaceBinding) : undefined,
+      currentProject: projectName,
       hasActiveTask: this.activeControls.has(chatKey),
       permissionMode: this.state.getPermMode(channelType, chatId),
       recentSummary: recentSessions[0]?.preview,
@@ -136,6 +182,10 @@ export class CommandRouter {
       sessionWhitelistCount: permStatus.rememberedTools + permStatus.rememberedBashPrefixes,
       bridgeHealthy: activeChannels.length > 0,
       activeChannels,
+      // Phase 2: Session governance fields
+      lastActiveAt: lastActiveTime ? formatRelativeTime(lastActiveTime) : undefined,
+      queueInfo,
+      sessionStale,
     };
   }
 
@@ -235,12 +285,17 @@ export class CommandRouter {
         const sessions = scanClaudeSessions(10, showAll ? undefined : currentCwd);
         const currentSdkId = binding?.sdkSessionId;
 
+        // Get workspace binding for display
+        const workspaceBinding = this.workspace.getBinding(msg.channelType, msg.chatId);
+
         if (sessions.length === 0) {
           const hint = showAll ? '' : ` in ${shortPath(currentCwd)}\nUse /sessions --all to see all projects.`;
           await send(adapter, presentNoSessions(msg.chatId, hint));
           return true;
         }
 
+        // Check stale status for each session (based on mtime)
+        const now = Date.now();
         const sessionData = sessions.map((s, i) => ({
           index: i + 1,
           date: formatSessionDate(s.mtime),
@@ -248,10 +303,13 @@ export class CommandRouter {
           size: formatSize(s.size),
           preview: s.preview,
           isCurrent: currentSdkId === s.sdkSessionId,
+          // Mark as stale if inactive for more than SESSION_STALE_THRESHOLD_MS
+          isStale: (now - s.mtime) > SESSION_STALE_THRESHOLD_MS,
         }));
 
         const filterHint = showAll ? ' (all projects)' : ` (${shortPath(currentCwd)})`;
         await send(adapter, presentSessions(msg.chatId, {
+          workspaceBinding: workspaceBinding ? shortPath(workspaceBinding) : undefined,
           sessions: sessionData,
           filterHint,
         }));
@@ -626,6 +684,218 @@ export class CommandRouter {
         setTimeout(() => {
           process.exit(0); // Exit cleanly, external process manager should restart
         }, 1000);
+        return true;
+      }
+      case '/queue': {
+        const sub = parts[1]?.toLowerCase();
+
+        // Get active session key
+        const activeSessionKey = this.sdkEngine?.getActiveSessionKey(msg.channelType, msg.chatId);
+
+        if (!activeSessionKey) {
+          await send(adapter, { chatId: msg.chatId, text: '⚠️ 无活跃会话，队列不可用' });
+          return true;
+        }
+
+        // /queue clear - clear the queue
+        if (sub === 'clear') {
+          const cleared = this.sdkEngine?.clearQueue(activeSessionKey) ?? 0;
+          if (cleared > 0) {
+            await send(adapter, { chatId: msg.chatId, text: `✅ 已清空队列 (${cleared} 条消息)` });
+          } else {
+            await send(adapter, { chatId: msg.chatId, text: '队列已为空' });
+          }
+          return true;
+        }
+
+        // /queue depth <n> - set max queue depth
+        if (sub === 'depth') {
+          const depth = parseInt(parts[2], 10);
+          if (Number.isNaN(depth) || depth < 1 || depth > 10) {
+            await send(adapter, { chatId: msg.chatId, text: '⚠️ 队列深度需为 1-10 的整数' });
+            return true;
+          }
+          this.sdkEngine?.setMaxQueueDepth(depth);
+          await send(adapter, { chatId: msg.chatId, text: `✅ 已设置队列深度为 ${depth}` });
+          return true;
+        }
+
+        // /queue or /queue status - show queue status
+        const queueDepth = this.sdkEngine?.getQueueDepth(activeSessionKey) ?? 0;
+        const maxDepth = this.sdkEngine?.getMaxQueueDepth() ?? 3;
+        const queuedMessages = this.sdkEngine?.getQueuedMessages(activeSessionKey) ?? [];
+
+        await send(adapter, presentQueueStatus(msg.chatId, {
+          sessionKey: activeSessionKey,
+          depth: queueDepth,
+          maxDepth,
+          queuedMessages,
+        }));
+        return true;
+      }
+      case '/diagnose': {
+        // Collect system diagnostics
+        const activeSessions = this.sdkEngine?.getActiveSessionCount() ?? 0;
+        const idleSessions = this.sdkEngine?.getIdleSessionCount() ?? 0;
+        const totalBubbleMappings = this.sdkEngine?.getTotalBubbleMappings() ?? 0;
+        const queueStats = this.sdkEngine?.getAllQueueStats() ?? [];
+        const totalQueuedMessages = this.sdkEngine?.getTotalQueuedMessages() ?? 0;
+
+        // Get processing chats count
+        let processingChats = 0;
+        for (const chatKey of this.activeControls.keys()) {
+          if (this.state.isProcessing(chatKey)) processingChats++;
+        }
+
+        // Get memory usage
+        const memUsage = process.memoryUsage();
+        const memoryUsage = `${formatSize(memUsage.heapUsed)} / ${formatSize(memUsage.heapTotal)}`;
+
+        await send(adapter, presentDiagnose(msg.chatId, {
+          activeSessions,
+          totalBubbleMappings,
+          queueStats,
+          totalQueuedMessages,
+          memoryUsage,
+          processingChats,
+          idleSessions,
+        }));
+        return true;
+      }
+      case '/project': {
+        const sub = parts[1]?.toLowerCase();
+
+        // Load projects config
+        const projectsConfig = loadProjectsConfig();
+
+        if (!projectsConfig || projectsConfig.valid.length === 0) {
+          await send(adapter, presentNoProjects(msg.chatId));
+          return true;
+        }
+
+        // /project or /project list - show all projects
+        if (!sub || sub === 'list') {
+          const currentProjectName = this.workspace.getProjectName(msg.channelType, msg.chatId);
+          const projects: ProjectListData['projects'] = projectsConfig.valid.map(p => ({
+            name: p.name,
+            workdir: shortPath(p.workdir),
+            isCurrent: p.name === currentProjectName,
+            isDefault: p.name === projectsConfig.defaultProject,
+          }));
+
+          await send(adapter, presentProjectList(msg.chatId, {
+            projects,
+            defaultProject: projectsConfig.defaultProject,
+            currentProject: currentProjectName,
+          }));
+          return true;
+        }
+
+        // /project use <name> - switch to a project
+        if (sub === 'use') {
+          const projectName = parts[2]?.trim();
+          if (!projectName) {
+            await send(adapter, presentProjectUsage(msg.chatId));
+            return true;
+          }
+
+          const project = getProjectByName(projectsConfig.valid, projectName);
+          if (!project) {
+            await send(adapter, presentProjectNotFound(msg.chatId, projectName));
+            return true;
+          }
+
+          // Get current binding
+          const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+          const currentCwd = binding?.cwd || this.defaultWorkdir;
+          const previousProjectName = this.workspace.getProjectName(msg.channelType, msg.chatId);
+
+          // Track directory history before switching
+          this.workspace.pushHistory(msg.channelType, msg.chatId, currentCwd);
+
+          // Close SDK session if switching to a different workdir
+          const hadActiveSession = this.sdkEngine?.cleanupSession(
+            msg.channelType,
+            msg.chatId,
+            'cd',
+            currentCwd,
+          ) ?? false;
+          const switchedRepo = !isSameRepoRoot(currentCwd, project.workdir);
+
+          // Update binding with new workdir
+          if (binding) {
+            binding.cwd = project.workdir;
+            binding.projectName = project.name;
+            if (switchedRepo) {
+              binding.sdkSessionId = undefined;
+            }
+            await this.store.saveBinding(binding);
+          } else {
+            await this.router.rebind(msg.channelType, msg.chatId, generateSessionId(), {
+              cwd: project.workdir,
+              projectName: project.name,
+            });
+          }
+
+          // Update workspace state
+          this.workspace.setProjectName(msg.channelType, msg.chatId, project.name);
+          this.workspace.setBinding(msg.channelType, msg.chatId, project.workdir);
+
+          // Clear permission whitelist when switching repo
+          if (switchedRepo) {
+            this.permissions.clearSessionWhitelist(binding?.sessionId);
+          }
+
+          const feedbackParts: string[] = [];
+          if (previousProjectName && previousProjectName !== project.name) {
+            feedbackParts.push(`已从项目 ${previousProjectName} 切换`);
+          } else {
+            feedbackParts.push(`已切换到项目 ${project.name}`);
+          }
+          feedbackParts.push(`工作区更新为 ${shortPath(project.workdir)}`);
+          if (hadActiveSession && switchedRepo) {
+            feedbackParts.push('已关闭旧项目的活跃会话');
+          }
+
+          await send(adapter, presentProjectSwitched(msg.chatId, {
+            projectName: project.name,
+            workdir: shortPath(project.workdir),
+            feedbackText: feedbackParts.join('，'),
+          }));
+          return true;
+        }
+
+        // /project status - show current project status
+        if (sub === 'status' || sub === 'info') {
+          const currentProjectName = this.workspace.getProjectName(msg.channelType, msg.chatId);
+          const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+          const currentCwd = binding?.cwd || this.defaultWorkdir;
+          const workspaceBinding = this.workspace.getBinding(msg.channelType, msg.chatId);
+
+          if (!currentProjectName) {
+            // No project bound - show implicit project info
+            const implicitName = basename(currentCwd);
+            await send(adapter, presentProjectInfoExtended(msg.chatId, {
+              projectName: implicitName,
+              workdir: shortPath(currentCwd),
+              isImplicit: true,
+              workspaceBinding: workspaceBinding ? shortPath(workspaceBinding) : undefined,
+            }));
+          } else {
+            const project = getProjectByName(projectsConfig.valid, currentProjectName);
+            await send(adapter, presentProjectInfoExtended(msg.chatId, {
+              projectName: currentProjectName,
+              workdir: project ? shortPath(project.workdir) : shortPath(currentCwd),
+              isImplicit: false,
+              workspaceBinding: workspaceBinding ? shortPath(workspaceBinding) : undefined,
+              isValidProject: !!project,
+            }));
+          }
+          return true;
+        }
+
+        // Unknown subcommand
+        await send(adapter, presentProjectUsage(msg.chatId));
         return true;
       }
       default:

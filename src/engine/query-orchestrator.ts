@@ -78,6 +78,7 @@ export class QueryOrchestrator {
           permissionMode: this.options.state.getPermMode(msg.channelType, msg.chatId),
           isNewSession: true,
           previousSessionPreview,
+          reason: 'idle',
         },
       });
       await adapter.send(taskStartMsg);
@@ -166,6 +167,19 @@ export class QueryOrchestrator {
           await this.options.store.saveBinding(currentBinding);
           this.options.sdkEngine.cleanupSession(msg.channelType, msg.chatId, 'expire', currentBinding.cwd);
           this.options.permissions.clearSessionWhitelist(currentBinding.sessionId);
+
+          // Send task start notification card for stale session recovery
+          const staleTaskStartMsg = adapter.format({
+            type: 'taskStart',
+            chatId: msg.chatId,
+            data: {
+              cwd: shortPath(currentBinding.cwd || this.options.defaultWorkdir),
+              permissionMode: this.options.state.getPermMode(msg.channelType, msg.chatId),
+              isNewSession: true,
+              reason: 'stale',
+            },
+          });
+          await adapter.send(staleTaskStartMsg);
 
           // Continue to next iteration with fresh binding
           clearInterval(typingInterval);

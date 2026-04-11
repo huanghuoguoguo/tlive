@@ -182,8 +182,15 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
       ``,
       `**Status:** ${taskStatus}`,
       `**Directory:** \`${data.cwd}\``,
-      `**Permissions:** ${data.permissionMode}`,
     ];
+
+    // Show workspace binding if different from current cwd
+    if (data.workspaceBinding && data.workspaceBinding !== data.cwd) {
+      const label = this.locale === 'zh' ? '工作区绑定' : 'Workspace binding';
+      lines.push(`**${label}:** \`${data.workspaceBinding}\``);
+    }
+
+    lines.push(`**Permissions:** ${data.permissionMode}`);
     if (data.recentSummary) {
       lines.push(``, `**Recent:** ${truncate(data.recentSummary, 100)}`);
     }
@@ -321,6 +328,13 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
 
   formatSessions(chatId: string, data: SessionsData): TRendered {
     const lines = [`📋 **Sessions** ${data.filterHint}`, ''];
+
+    // Show workspace binding if available
+    if (data.workspaceBinding) {
+      const label = this.locale === 'zh' ? '工作区绑定' : 'Workspace binding';
+      lines.push(`🏠 **${label}:** \`${data.workspaceBinding}\``, '');
+    }
+
     for (const s of data.sessions) {
       const marker = s.isCurrent ? ' ◀' : '';
       lines.push(`${s.index}. ${s.date} · ${s.cwd} · ${s.size} · ${s.preview}${marker}`);

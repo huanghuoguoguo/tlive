@@ -45,8 +45,12 @@ export interface NotificationData {
 /** Home screen for /home command */
 export interface HomeData {
   cwd: string;
+  /** Workspace binding (long-term repo attribution) */
+  workspaceBinding?: string;
   hasActiveTask: boolean;
   permissionMode: 'on' | 'off';
+  /** Current project name (if multi-project mode) */
+  currentProject?: string;
   recentSummary?: string;
   recentSessions?: Array<{
     index: number;
@@ -70,6 +74,12 @@ export interface HomeData {
   bridgeHealthy?: boolean;
   /** Active channels */
   activeChannels?: string[];
+  /** Last active time (formatted string, e.g. "2小时前") */
+  lastActiveAt?: string;
+  /** Queue info for active session */
+  queueInfo?: { depth: number; max: number };
+  /** Whether the current session is stale (inactive for too long) */
+  sessionStale?: boolean;
 }
 
 /** Permission status card for /perm command */
@@ -93,10 +103,14 @@ export interface TaskStartData {
   permissionMode: 'on' | 'off';
   isNewSession: boolean;
   previousSessionPreview?: string;
+  /** Reason for new session: 'idle' (auto-reset after inactivity), 'manual' (/new command), 'stale' (resume failed) */
+  reason?: 'idle' | 'manual' | 'stale';
 }
 
 /** Session list for /sessions command */
 export interface SessionsData {
+  /** Current workspace binding for this chat */
+  workspaceBinding?: string;
   sessions: Array<{
     index: number;
     date: string;
@@ -104,6 +118,8 @@ export interface SessionsData {
     size: string;
     preview: string;
     isCurrent: boolean;
+    /** Whether this session is stale (inactive for too long) */
+    isStale?: boolean;
   }>;
   filterHint: string;
 }
@@ -203,6 +219,62 @@ export interface MultiSelectToggleData {
   sessionId: string;
 }
 
+/** Queue status for /queue command */
+export interface QueueStatusData {
+  sessionKey: string;
+  depth: number;
+  maxDepth: number;
+  /** Preview of queued messages (if available) */
+  queuedMessages?: Array<{ preview: string; timestamp: number }>;
+  /** Estimated wait time in seconds (if calculable) */
+  estimatedWaitSeconds?: number;
+}
+
+/** Diagnose system status for /diagnose command */
+export interface DiagnoseData {
+  activeSessions: number;
+  totalBubbleMappings: number;
+  /** Queue statistics per session */
+  queueStats: Array<{ sessionKey: string; depth: number; maxDepth: number }>;
+  /** Total queued messages across all sessions */
+  totalQueuedMessages: number;
+  /** Memory usage (if available) */
+  memoryUsage?: string;
+  /** Processing chats count */
+  processingChats: number;
+  /** Idle sessions count */
+  idleSessions: number;
+}
+
+/** Project list for /project command */
+export interface ProjectListData {
+  projects: Array<{
+    name: string;
+    workdir: string;
+    isDefault: boolean;
+    isCurrent: boolean;
+  }>;
+  defaultProject?: string;
+  currentProject?: string;
+  hasMultipleProjects?: boolean;
+}
+
+/** Project info for /project info command */
+export interface ProjectInfoData {
+  projectName: string;
+  workdir: string;
+  /** If true, this is an implicit project (derived from cwd, not from projects.json) */
+  isImplicit?: boolean;
+  /** Workspace binding (long-term repo attribution) */
+  workspaceBinding?: string;
+  /** If false, the project name is bound but the project config is missing */
+  isValidProject?: boolean;
+  channels?: string[];
+  claudeSettingSources?: string[];
+  isDefault?: boolean;
+  isCurrent?: boolean;
+}
+
 /** Union type of all formattable messages */
 export type FormattableMessage =
   | { type: 'status'; chatId: string; data: StatusData }
@@ -221,4 +293,8 @@ export type FormattableMessage =
   | { type: 'taskSummary'; chatId: string; data: TaskSummaryData }
   | { type: 'cardResolution'; chatId: string; data: CardResolutionData }
   | { type: 'versionUpdate'; chatId: string; data: VersionUpdateData }
-  | { type: 'multiSelectToggle'; chatId: string; data: MultiSelectToggleData };
+  | { type: 'multiSelectToggle'; chatId: string; data: MultiSelectToggleData }
+  | { type: 'queueStatus'; chatId: string; data: QueueStatusData }
+  | { type: 'diagnose'; chatId: string; data: DiagnoseData }
+  | { type: 'projectList'; chatId: string; data: ProjectListData }
+  | { type: 'projectInfo'; chatId: string; data: ProjectInfoData };

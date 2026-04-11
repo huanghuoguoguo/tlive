@@ -6,13 +6,14 @@ import { getBridgeContext } from '../context.js';
 import { ChannelRouter } from './router.js';
 import { PermissionBroker } from '../permissions/broker.js';
 import { PendingPermissions } from '../permissions/gateway.js';
-import { loadConfig, type Config } from '../config.js';
+import { loadConfig, loadProjectsConfig, type Config } from '../config.js';
 import { SessionStateManager } from './session-state.js';
 import { WorkspaceStateManager } from './workspace-state.js';
 import { PermissionCoordinator } from './permission-coordinator.js';
 import { CommandRouter } from './command-router.js';
 import { SDKEngine } from './sdk-engine.js';
 import { WebhookServer } from './webhook-server.js';
+import { CronScheduler } from './cron-scheduler.js';
 import { networkInterfaces } from 'node:os';
 import { handleCallbackMessage } from './callback-dispatcher.js';
 import { IngressCoordinator } from './ingress-coordinator.js';
@@ -82,6 +83,8 @@ export class BridgeManager {
   private notifications: HookNotificationDispatcher;
   /** Webhook server for automation entry */
   private webhookServer: WebhookServer | null = null;
+  /** Cron scheduler for scheduled tasks (Phase 3) */
+  private cronScheduler: CronScheduler | null = null;
 
   private commands: CommandRouter;
   /** Cleanup timer for SDK question data */
@@ -145,11 +148,24 @@ export class BridgeManager {
     });
     // Initialize webhook server if enabled
     if (config.webhook.enabled && config.webhook.token) {
+      const projectsResult = loadProjectsConfig();
       this.webhookServer = new WebhookServer({
         token: config.webhook.token,
         port: config.webhook.port,
         path: config.webhook.path,
         bridge: this,
+        sessionStrategy: config.webhook.sessionStrategy,
+        callbackUrl: config.webhook.callbackUrl,
+        projects: projectsResult?.valid,
+        defaultProject: projectsResult?.defaultProject,
+      });
+    }
+    // Initialize cron scheduler if enabled (Phase 3)
+    if (config.cron.enabled) {
+      this.cronScheduler = new CronScheduler({
+        runtimeDir: getTliveRuntimeDir(),
+        bridge: this,
+        enabled: config.cron.enabled,
       });
     }
   }
@@ -266,6 +282,10 @@ export class BridgeManager {
     if (this.webhookServer) {
       this.webhookServer.start();
     }
+    // Start cron scheduler if configured (Phase 3)
+    if (this.cronScheduler) {
+      this.cronScheduler.start();
+    }
   }
 
   async stop(): Promise<void> {
@@ -281,6 +301,10 @@ export class BridgeManager {
     // Stop webhook server
     if (this.webhookServer) {
       this.webhookServer.stop();
+    }
+    // Stop cron scheduler (Phase 3)
+    if (this.cronScheduler) {
+      this.cronScheduler.stop();
     }
     for (const adapter of this.adapters.values()) {
       await adapter.stop();

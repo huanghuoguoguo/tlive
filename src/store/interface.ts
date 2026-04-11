@@ -1,6 +1,14 @@
 /** Claude settings source types */
 export type ClaudeSettingSource = 'user' | 'project' | 'local';
 
+/** Webhook default chat configuration */
+export interface WebhookDefaultChat {
+  /** Channel type (e.g., 'telegram', 'feishu') */
+  channelType: string;
+  /** Chat ID to route webhook messages to */
+  chatId: string;
+}
+
 /** Project configuration for multi-repo support */
 export interface ProjectConfig {
   /** Project name (unique identifier) */
@@ -11,6 +19,8 @@ export interface ProjectConfig {
   channels?: string[];
   /** Claude settings sources for this project */
   claudeSettingSources?: ClaudeSettingSource[];
+  /** Default chat for webhook routing (optional) */
+  webhookDefaultChat?: WebhookDefaultChat;
 }
 
 export interface ChannelBinding {

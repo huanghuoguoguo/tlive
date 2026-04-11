@@ -95,6 +95,24 @@ export class SessionStateManager {
   }
 
   /**
+   * Get the last active timestamp for a chat.
+   * Returns undefined if no activity recorded, or the timestamp in milliseconds.
+   */
+  getLastActiveTime(channelType: string, chatId: string): number | undefined {
+    return this.lastActive.get(this.stateKey(channelType, chatId));
+  }
+
+  /**
+   * Get session age in milliseconds (time since last activity).
+   * Returns undefined if no activity recorded, or the age in milliseconds.
+   */
+  getSessionAge(channelType: string, chatId: string): number | undefined {
+    const last = this.lastActive.get(this.stateKey(channelType, chatId));
+    if (!last) return undefined;
+    return Date.now() - last;
+  }
+
+  /**
    * Check if session expired (>30 min inactivity) and update last-active timestamp.
    * Returns true if expired, false otherwise (including first call).
    */
