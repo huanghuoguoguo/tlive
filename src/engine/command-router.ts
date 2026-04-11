@@ -1,6 +1,7 @@
 import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';
 import type { SessionStateManager } from './session-state.js';
+import type { WorkspaceStateManager } from './workspace-state.js';
 import type { ChannelRouter } from './router.js';
 import type { LLMProvider, QueryControls } from '../providers/base.js';
 import type { SDKEngine } from './sdk-engine.js';
@@ -16,7 +17,7 @@ import { homedir } from 'node:os';
 import { readSessionTranscriptPreview, scanClaudeSessions } from '../session-scanner.js';
 import { generateSessionId } from '../utils/id.js';
 import { shortPath } from '../utils/path.js';
-import { isSameRepoRoot } from '../utils/repo.js';
+import { isSameRepoRoot, findGitRoot } from '../utils/repo.js';
 import {
   presentApproveFailure,
   presentApproveSuccess,
@@ -79,6 +80,7 @@ async function send(
 export class CommandRouter {
   constructor(
     private state: SessionStateManager,
+    private workspace: WorkspaceStateManager,
     private getAdapters: () => Map<string, BaseChannelAdapter>,
     private router: ChannelRouter,
     private store: BridgeStore,
@@ -332,10 +334,53 @@ export class CommandRouter {
         const path = parts.slice(1).join(' ').trim();
 
         if (!path) {
-          // Show current directory
+          // Show current directory and history
           const binding = await this.store.getBinding(msg.channelType, msg.chatId);
           const current = binding?.cwd || this.defaultWorkdir;
-          await send(adapter, presentDirectory(msg.chatId, shortPath(current), true));
+          const history = this.workspace.getHistory(msg.channelType, msg.chatId);
+          const workspaceBinding = this.workspace.getBinding(msg.channelType, msg.chatId);
+          await send(adapter, presentDirectoryHistory(msg.chatId, shortPath(current), history.map(shortPath), workspaceBinding ? shortPath(workspaceBinding) : undefined));
+          return true;
+        }
+
+        // Handle /cd - (back to previous directory)
+        if (path === '-') {
+          const previousDir = this.workspace.getPreviousDirectory(msg.channelType, msg.chatId);
+          if (!previousDir) {
+            await send(adapter, { chatId: msg.chatId, text: '⚠️ 没有历史目录可返回' });
+            return true;
+          }
+
+          // Switch to previous directory
+          const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+          const currentCwd = binding?.cwd || this.defaultWorkdir;
+
+          // Close SDK session if switching repo
+          const hadActiveSession = this.sdkEngine?.cleanupSession(
+            msg.channelType,
+            msg.chatId,
+            'cd',
+            currentCwd,
+          ) ?? false;
+          const switchedRepo = !isSameRepoRoot(currentCwd, previousDir);
+
+          // Update binding
+          if (binding) {
+            binding.cwd = previousDir;
+            if (switchedRepo) {
+              binding.sdkSessionId = undefined;
+            }
+            await this.store.saveBinding(binding);
+          } else {
+            await this.router.rebind(msg.channelType, msg.chatId, generateSessionId(), { cwd: previousDir });
+          }
+
+          if (switchedRepo) {
+            this.permissions.clearSessionWhitelist(binding?.sessionId);
+          }
+
+          const feedbackText = `🔙 已切换到上一目录`;
+          await send(adapter, presentDirectory(msg.chatId, shortPath(previousDir), true, feedbackText));
           return true;
         }
 
@@ -351,6 +396,9 @@ export class CommandRouter {
           await send(adapter, presentDirectoryNotFound(msg.chatId, shortPath(resolvedPath)));
           return true;
         }
+
+        // Track directory history before switching
+        this.workspace.pushHistory(msg.channelType, msg.chatId, baseCwd);
 
         // Close SDK session if switching to a different repo root
         const hadActiveSession = this.sdkEngine?.cleanupSession(
@@ -373,6 +421,12 @@ export class CommandRouter {
           await this.router.rebind(msg.channelType, msg.chatId, generateSessionId(), { cwd: resolvedPath });
         }
 
+        // Set workspace binding if switching to a git repo root
+        const gitRoot = findGitRoot(resolvedPath);
+        if (gitRoot) {
+          this.workspace.setBinding(msg.channelType, msg.chatId, gitRoot);
+        }
+
         // Clear permission whitelist when switching repo
         if (switchedRepo) {
           this.permissions.clearSessionWhitelist(binding?.sessionId);
@@ -387,7 +441,20 @@ export class CommandRouter {
       case '/pwd': {
         const binding = await this.store.getBinding(msg.channelType, msg.chatId);
         const current = binding?.cwd || this.defaultWorkdir;
-        await send(adapter, presentDirectory(msg.chatId, shortPath(current)));
+        const history = this.workspace.getHistory(msg.channelType, msg.chatId);
+        const workspaceBinding = this.workspace.getBinding(msg.channelType, msg.chatId);
+
+        // Enhanced display: show current, history, and workspace binding
+        if (history.length > 1 || workspaceBinding) {
+          await send(adapter, presentDirectoryHistory(
+            msg.chatId,
+            shortPath(current),
+            history.map(shortPath),
+            workspaceBinding ? shortPath(workspaceBinding) : undefined,
+          ));
+        } else {
+          await send(adapter, presentDirectory(msg.chatId, shortPath(current)));
+        }
         return true;
       }
       case '/settings': {

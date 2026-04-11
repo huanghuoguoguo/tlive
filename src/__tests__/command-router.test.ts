@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { CommandRouter } from '../engine/command-router.js';
 import { SessionStateManager } from '../engine/session-state.js';
+import { WorkspaceStateManager } from '../engine/workspace-state.js';
 import { ChannelRouter } from '../engine/router.js';
 import { JsonFileStore } from '../store/json-file.js';
 import { ClaudeSDKProvider } from '../providers/claude-sdk.js';
@@ -15,6 +16,7 @@ describe('CommandRouter /settings', () => {
   let store: JsonFileStore;
   let router: CommandRouter;
   let sdkEngine: Partial<SDKEngine>;
+  let workspace: WorkspaceStateManager;
   let clearSessionWhitelist: (sessionId?: string) => void;
   let adapter: any;
 
@@ -35,8 +37,12 @@ describe('CommandRouter /settings', () => {
       getActiveControls: vi.fn().mockReturnValue(new Map()),
     };
 
+    // Create WorkspaceStateManager (no persistence for tests)
+    workspace = new WorkspaceStateManager();
+
     router = new CommandRouter(
       new SessionStateManager(),
+      workspace,
       () => new Map(),
       new ChannelRouter(store),
       store,

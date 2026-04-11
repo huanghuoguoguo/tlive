@@ -104,6 +104,35 @@ export function presentDirectory(chatId: string, cwd: string, withIcon = false, 
   return { chatId, text: lines.join('\n') };
 }
 
+export function presentDirectoryHistory(
+  chatId: string,
+  current: string,
+  history: string[],
+  workspaceBinding?: string,
+): { chatId: string; text: string } {
+  const lines = [`📂 当前目录：${current}`];
+
+  if (workspaceBinding && workspaceBinding !== current) {
+    lines.push(`🏠 工作区绑定：${workspaceBinding}`);
+  }
+
+  if (history.length > 1) {
+    lines.push('');
+    lines.push('📋 目录历史：');
+    history.slice(0, 5).forEach((dir, i) => {
+      const marker = i === 0 ? '●' : `${i}.`;
+      lines.push(`  ${marker} ${dir}`);
+    });
+    if (history.length > 5) {
+      lines.push(`  ... 共 ${history.length} 个`);
+    }
+    lines.push('');
+    lines.push('💡 使用 /cd - 返回上一目录');
+  }
+
+  return { chatId, text: lines.join('\n') };
+}
+
 export function presentDirectoryNotFound(chatId: string, path: string): { chatId: string; text: string } {
   return { chatId, text: `❌ Directory not found: ${path}` };
 }

@@ -8,6 +8,7 @@ import { PermissionBroker } from '../permissions/broker.js';
 import { PendingPermissions } from '../permissions/gateway.js';
 import { loadConfig, type Config } from '../config.js';
 import { SessionStateManager } from './session-state.js';
+import { WorkspaceStateManager } from './workspace-state.js';
 import { PermissionCoordinator } from './permission-coordinator.js';
 import { CommandRouter } from './command-router.js';
 import { SDKEngine } from './sdk-engine.js';
@@ -69,6 +70,7 @@ export class BridgeManager {
   private router: ChannelRouter;
   private port: number;
   private state = new SessionStateManager(getTliveRuntimeDir());
+  private workspace = new WorkspaceStateManager(getTliveRuntimeDir());
   private permissions: PermissionCoordinator;
   /** SDK Engine for LiveSession management */
   private sdkEngine: SDKEngine;
@@ -99,6 +101,7 @@ export class BridgeManager {
     };
     this.commands = new CommandRouter(
       this.state,
+      this.workspace,
       () => this.adapters,
       this.router,
       store,
