@@ -1,9 +1,14 @@
+/**
+ * Message renderer — collects state and coordinates flush for progress display.
+ * Rendering logic delegated to ProgressContentBuilder.
+ */
+
 import { redactSensitiveContent } from './content-filter.js';
-import { getToolIcon } from './tool-registry.js';
 import { truncate } from '../utils/string.js';
 import { shortPath } from '../utils/path.js';
 import type { TodoStatus } from '../utils/types.js';
 import type { VerboseLevel } from './session-state.js';
+import { ProgressContentBuilder, type RenderInput } from './progress-content-builder.js';
 
 export interface MessageRendererOptions {
   platformLimit: number;
@@ -39,8 +44,6 @@ const HIDDEN_TOOLS = new Set([
   'TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet',
   'TaskStop', 'TaskOutput', 'ToolSearch', 'TodoRead',
 ]);
-
-const SEPARATOR = '───────────────';
 
 /** Timeout constants */
 const PERMISSION_TIMEOUT_MS = 60_000;
@@ -177,6 +180,9 @@ export class MessageRenderer {
   private lastFlushTime = 0;
   /** Minimum interval between elapsed-only updates (ms) */
   private readonly elapsedUpdateInterval = 3000;
+
+  /** Content builder — handles rendering logic */
+  private contentBuilder = new ProgressContentBuilder();
 
   get messageId(): string | undefined {
     return this._messageId;
@@ -469,16 +475,16 @@ export class MessageRenderer {
 
   onComplete(): Promise<void> {
     this.completed = true;
-    this.footerLine = this.buildFooter();
+    this.footerLine = this.contentBuilder.buildFooter(this.getRenderInput());
     this.stopTimers();
-    const content = this.render();
+    const content = this.contentBuilder.render(this.getRenderInput());
     return this.doFlush(content);
   }
 
   onError(error: string): Promise<void> {
     this.errorMessage = error;
     this.stopTimers();
-    const content = this.render();
+    const content = this.contentBuilder.render(this.getRenderInput());
     return this.doFlush(content);
   }
 
@@ -504,32 +510,7 @@ export class MessageRenderer {
 
   // --- Internal ---
 
-  private render(): string {
-    // Error without tools
-    if (this.errorMessage && this.totalTools === 0) {
-      return this.applyPlatformLimit(redactSensitiveContent(`❌ ${this.errorMessage}`));
-    }
-
-    // Permission phase — show queue head, full command (user needs to assess risk)
-    if (this.permissionQueue.length > 0) {
-      const p = this.permissionQueue[0];
-      const queueHint = this.permissionQueue.length > 1
-        ? `\n⏳ +${this.permissionQueue.length - 1} more pending`
-        : '';
-      return this.applyPlatformLimit(redactSensitiveContent(`🔐 ${p.toolName}: ${p.input}${queueHint}`));
-    }
-
-    // Done phase (completed or error with tools)
-    if (this.completed || this.errorMessage) {
-      return this.renderDone();
-    }
-
-    // Executing phase
-    return this.renderExecuting();
-  }
-
-  private getStateSnapshot(content: string): MessageRendererState {
-    const currentPermission = this.permissionQueue[0];
+  private getRenderInput(): RenderInput {
     return {
       phase: this.permissionQueue.length > 0
         ? 'waiting_permission'
@@ -540,165 +521,26 @@ export class MessageRenderer {
             : this.totalTools === 0 && !this.responseText && this.todoItems.length === 0
               ? 'starting'
               : 'executing',
-      renderedText: content,
       responseText: this.responseText,
+      thinkingText: this.thinkingText,
       elapsedSeconds: this.elapsedSeconds,
       totalTools: this.totalTools,
-      toolSummary: this.renderToolSummary(),
-      footerLine: this.footerLine,
-      errorMessage: this.errorMessage,
-      permissionRequests: this.permissionRequests,
+      toolCounts: this.toolCounts,
+      bubbleToolCount: this.bubbleToolCount,
       currentTool: this.currentTool,
-      todoItems: [...this.todoItems],
-      thinkingText: this.thinkingText,
-      toolLogs: [...this.toolLogs],
-      timeline: this.timeline.map(e => ({ ...e })),
-      permission: currentPermission
-        ? {
-            toolName: currentPermission.toolName,
-            input: currentPermission.input,
-            queueLength: this.permissionQueue.length,
-          }
-        : undefined,
-      isContinuation: this.bubbleToolCount === 0 && this.totalTools > 0,
+      todoItems: this.todoItems,
+      toolLogs: this.toolLogs,
+      timeline: this.timeline,
+      permissionQueue: this.permissionQueue,
+      permissionRequests: this.permissionRequests,
+      errorMessage: this.errorMessage,
+      completed: this.completed,
+      footerLine: this.footerLine,
+      model: this.model,
+      cwd: this.cwd,
+      sessionId: this.sessionId,
+      platformLimit: this.platformLimit,
     };
-  }
-
-  private renderExecuting(): string {
-    // After bubble split: show continuation hint
-    if (this.bubbleToolCount === 0 && this.totalTools > 0) {
-      const lines: string[] = [];
-      lines.push(`🔄 继续执行... (${this.totalTools} 步已完成)`);
-      if (this.todoItems.length > 0) {
-        lines.push('');
-        lines.push(this.renderTodoProgress());
-      }
-      if (this.currentTool?.input) {
-        const elapsed = this.currentTool.elapsed > 0 ? ` (${this.currentTool.elapsed}s)` : '';
-        lines.push(`   └─ ${this.currentTool.name}: ${this.currentTool.input}${elapsed}`);
-      }
-      return this.applyPlatformLimit(redactSensitiveContent(lines.join('\n')));
-    }
-
-    if (this.totalTools === 0 && !this.responseText && this.todoItems.length === 0) {
-      return '⏳ Starting...';
-    }
-    const lines: string[] = [];
-
-    // Show response text above status line if available
-    if (this.responseText.trim()) {
-      lines.push(this.responseText.trim());
-      lines.push('');
-    }
-
-    // Show todo progress
-    if (this.todoItems.length > 0) {
-      lines.push(this.renderTodoProgress());
-      lines.push('');
-    }
-
-    if (this.totalTools > 0) {
-      const toolSummary = this.renderToolSummaryParts();
-      const elapsed = `${this.elapsedSeconds}s`;
-      lines.push(`⏳ ${toolSummary} (${this.totalTools} tools · ${elapsed})`);
-
-      // Show current tool detail if available
-      if (this.currentTool?.input) {
-        const currentElapsed = this.currentTool.elapsed > 0 ? ` (${this.currentTool.elapsed}s)` : '';
-        lines.push(`   └─ ${this.currentTool.name}: ${this.currentTool.input}${currentElapsed}`);
-      }
-    }
-
-    return this.applyPlatformLimit(redactSensitiveContent(lines.join('\n')));
-  }
-
-  private renderToolSummaryParts(): string {
-    const parts: string[] = [];
-    for (const [name, count] of this.toolCounts) {
-      parts.push(`${getToolIcon(name)} ${name} ×${count}`);
-    }
-    return parts.join(' · ');
-  }
-
-  private renderToolSummary(): string {
-    return `${this.renderToolSummaryParts()} (${this.totalTools} total)`;
-  }
-
-  private renderTodoProgress(): string {
-    if (this.todoItems.length === 0) return '';
-    const done = this.todoItems.filter(t => t.status === 'completed').length;
-    const header = `📋 Progress (${done}/${this.todoItems.length})`;
-    const lines = this.todoItems.map(t => {
-      const icon = t.status === 'completed' ? '✅' : t.status === 'in_progress' ? '🔧' : '⬜';
-      return `${icon} ${t.content}`;
-    });
-    return `${header}\n${lines.join('\n')}`;
-  }
-
-  private renderDone(): string {
-    const lines: string[] = [];
-
-    // Error with tools — show partial text + stopped + footer
-    if (this.errorMessage) {
-      if (this.responseText) {
-        lines.push(this.responseText);
-      }
-      lines.push('⚠️ Stopped');
-      lines.push(SEPARATOR);
-      if (this.todoItems.length > 0) {
-        lines.push(this.renderTodoProgress());
-        lines.push('');
-      }
-      if (this.totalTools > 0) {
-        lines.push(this.renderToolSummary());
-      }
-      if (this.footerLine) {
-        lines.push(this.footerLine);
-      }
-      return this.applyPlatformLimit(redactSensitiveContent(lines.join('\n')));
-    }
-
-    // Completed — no platform limit applied here; bridge-manager handles overflow chunking
-    if (this.responseText) {
-      // Ensure text ends cleanly before separator (strip trailing whitespace but keep content)
-      lines.push(this.responseText.trimEnd());
-      lines.push(SEPARATOR);
-    }
-    if (this.todoItems.length > 0) {
-      lines.push(this.renderTodoProgress());
-      lines.push('');
-    }
-    if (this.totalTools > 0) {
-      lines.push(this.renderToolSummary());
-    }
-    if (this.footerLine) {
-      lines.push(this.footerLine);
-    }
-    return redactSensitiveContent(lines.join('\n'));
-  }
-
-  private buildFooter(): string {
-    const parts: string[] = [];
-    if (this.model) {
-      parts.push(`[${this.model}]`);
-    }
-    if (this.cwd) {
-      parts.push(shortPath(this.cwd));
-    }
-    if (this.sessionId) {
-      // Show last 4 chars of session ID
-      const shortId = this.sessionId.length > 4 ? this.sessionId.slice(-4) : this.sessionId;
-      parts.push(`#${shortId}`);
-    }
-    return parts.length > 0 ? parts.join(' │ ') : '';
-  }
-
-  private applyPlatformLimit(content: string): string {
-    if (content.length > this.platformLimit) {
-      const tail = content.slice(-(this.platformLimit - 100));
-      return '...\n' + tail;
-    }
-    return content;
   }
 
   private scheduleFlush(): void {
@@ -708,7 +550,7 @@ export class MessageRenderer {
     const delay = this._messageId ? this.throttleMs : 0;
     this.timer = setTimeout(() => {
       this.timer = null;
-      const content = this.render();
+      const content = this.contentBuilder.render(this.getRenderInput());
       this.doFlush(content);
     }, delay);
   }
@@ -740,7 +582,7 @@ export class MessageRenderer {
 
   private async doFlush(content: string): Promise<void> {
     if (!content) return;
-    const state = this.getStateSnapshot(content);
+    const state = this.contentBuilder.getStateSnapshot(this.getRenderInput(), content);
     if (this.shouldSkipFlush(state)) {
       return;
     }
@@ -819,7 +661,7 @@ export class MessageRenderer {
       this.flushing = false;
       if (this.pendingFlush) {
         this.pendingFlush = false;
-        const retryContent = this.render();
+        const retryContent = this.contentBuilder.render(this.getRenderInput());
         if (retryContent) await this.doFlush(retryContent);
       }
     }
