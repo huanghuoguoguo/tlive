@@ -1,0 +1,216 @@
+# tlive 自动化入口规划
+
+本文聚焦 `tlive` 的自动化入口设计，目标是在保持 IM-first 的前提下，为外部事件提供一个最小但可靠的接入方式。第一优先级是 webhook，cron 只作为后续选项评估。
+
+## 背景与目标
+
+`tlive` 当前擅长：
+
+- 人在 IM 里直接发任务
+- 通过 IM 远程审批
+- 通过 IM 观察执行过程
+
+但有一类高价值场景还没有覆盖：
+
+- Git commit 后自动 review
+- CI 失败后自动发诊断 prompt
+- 文件变化后自动通知 Claude 分析
+- 运维脚本触发总结或检查
+
+这类能力不需要 Web 界面，但需要一个事件入口。
+
+## 为什么优先做 Webhook
+
+相比 cron，webhook 更适合 `tlive` 的第一阶段：
+
+- 实现简单
+- 安全边界清晰
+- 和现有 hook 通知能力天然相关
+- 更适合 Git / CI / shell 脚本集成
+- 不需要引入调度器和持久 job 生命周期
+
+cron 可以等 webhook 稳定后再做。
+
+## 当前 tlive 现状
+
+当前已有的相关基础：
+
+- 有状态文件和运行时 context
+- 有 chat binding / session binding
+- 有 hook notification dispatcher
+- 有 web terminal 链接能力
+
+当前缺少：
+
+- 正式的外部 HTTP 入口
+- 面向 session 的主动 prompt 投递
+- 明确的自动化安全模型
+
+## 从 cc-connect 借鉴什么，不借鉴什么
+
+借鉴：
+
+- 外部系统通过 HTTP 把 prompt 投递到指定 session
+- token 保护
+- prompt 和 exec 分离
+- 支持带事件名和附加 payload
+
+不借鉴：
+
+- 过于完整的管理 API 套件
+- Web 控制台
+- 一上来就做复杂 cron 管理
+
+## 目标能力定义
+
+第一阶段目标：
+
+- 提供一个受 token 保护的 webhook endpoint
+- 支持向指定 chat / session 投递 prompt
+- 支持附加 event 名称
+- 支持附加 JSON payload
+- 支持静默和非静默模式
+
+第一阶段建议不做：
+
+- 完整 cron 系统
+- 任意 shell exec
+- 多租户 webhook
+- 复杂 ACL
+
+是否支持 exec：
+
+- 默认建议不支持
+- 如果支持，也必须是显式开关，且默认关闭
+
+原因：
+
+- `tlive` 当前主线是 Claude + IM，不是远程 shell 编排器
+- prompt 的风险边界更可控
+
+## 请求模型建议
+
+建议最小请求格式：
+
+```json
+{
+  "target": {
+    "channelType": "telegram",
+    "chatId": "123456"
+  },
+  "event": "git:commit",
+  "prompt": "Review the latest commit and summarize risk.",
+  "payload": {
+    "commit": "abc123",
+    "branch": "main"
+  },
+  "silent": false
+}
+```
+
+也可以支持另一种 session-based 路由：
+
+```json
+{
+  "sessionId": "session-xxx",
+  "event": "ci:failed",
+  "prompt": "Analyze the failing build and suggest the smallest fix."
+}
+```
+
+## 路由策略建议
+
+建议按优先级路由：
+
+1. 显式 `sessionId`
+2. 显式 `channelType + chatId`
+3. 显式 `projectName` 加默认 chat
+
+第一阶段最好只做前两种，避免过早引入 project 路由复杂度。
+
+推荐规则：
+
+- 指定 `sessionId` 时，投递到该 session
+- 指定 `channelType + chatId` 时，走该 chat 当前活跃 session
+- 如果没有活跃 session，则可选：
+  - 自动创建新 session
+  - 或返回错误
+
+建议第一阶段做成可配置策略：
+
+- `reject_if_no_session`
+- `create_new_if_no_session`
+
+## IM 反馈建议
+
+自动化入口触发后，用户在 IM 内应该看到明确反馈。
+
+建议文案形态：
+
+- 非静默：显示 `event` 名称和来源
+- 静默：仅在结果阶段体现
+
+例如：
+
+- `Git hook: reviewing latest commit`
+- `CI failed: analyzing logs`
+
+目标不是做“后台系统”，而是保持 IM 内可感知。
+
+## 安全边界
+
+必须具备：
+
+- Bearer token 或等价 token 校验
+- 明确的 enable 开关
+- 输入大小限制
+- 基本频率限制
+- 日志脱敏
+
+建议：
+
+- 默认只允许 `prompt`
+- `exec` 必须显式开启
+- 对 `payload` 做长度和字段数限制
+
+## 与未来 cron 的关系
+
+cron 建议作为 webhook 之后的第二阶段能力。
+
+原因：
+
+- cron 需要持久 job 存储
+- 需要失败处理和重复执行语义
+- 需要 session 生命周期规则
+- 它会依赖更稳定的 project / session 路由模型
+
+因此本篇只要求在结构上为 cron 预留扩展点，不要求现在实现。
+
+## 分阶段落地计划
+
+### Phase 1
+
+- 增加 webhook endpoint
+- token 校验
+- prompt 投递
+- 非静默 IM 反馈
+
+### Phase 2
+
+- 增加 payload 注入格式
+- 增加 session 路由策略配置
+- 增加失败观测
+
+### Phase 3
+
+- 评估 cron
+- 评估是否开放有限 exec
+
+## 验收标准
+
+- 外部系统可以通过 HTTP 把 prompt 发到指定 chat 或 session
+- 用户能在 IM 内看到合理反馈
+- 无需引入 Web 管理面
+- 默认安全边界清晰
+- 不破坏现有人工 IM 使用流程
+
