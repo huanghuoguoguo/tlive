@@ -2,13 +2,14 @@ import { Bot, InputFile, type Api, type RawApi } from 'grammy';
 import { run, type RunnerHandle } from '@grammyjs/runner';
 import { apiThrottler } from '@grammyjs/transformer-throttler';
 import { createServer, type Server } from 'node:http';
-import { BaseChannelAdapter, registerAdapterFactory } from './base.js';
-import type { InboundMessage, OutboundMessage, SendResult, FileAttachment } from './types.js';
-import { loadConfig } from '../config.js';
-import { createNodeAgent, maskProxyUrl } from '../proxy.js';
-import { chunkMarkdown } from '../delivery/delivery.js';
-import { classifyError } from './errors.js';
-import { TelegramFormatter } from '../formatting/telegram-formatter.js';
+import { BaseChannelAdapter, registerAdapterFactory } from '../../channels/base.js';
+import type { InboundMessage, SendResult, FileAttachment } from '../../channels/types.js';
+import { loadConfig } from '../../config.js';
+import { createNodeAgent, maskProxyUrl } from '../../proxy.js';
+import { chunkMarkdown } from '../../delivery/delivery.js';
+import { classifyError } from '../../channels/errors.js';
+import { TelegramFormatter } from './formatter.js';
+import type { TelegramRenderedMessage } from './types.js';
 
 interface TelegramConfig {
   botToken: string;
@@ -30,7 +31,7 @@ interface PairingRequest {
   expiresAt: number;
 }
 
-export class TelegramAdapter extends BaseChannelAdapter {
+export class TelegramAdapter extends BaseChannelAdapter<TelegramRenderedMessage> {
   readonly channelType = 'telegram' as const;
   private bot: Bot | null = null;
   private config: TelegramConfig;
@@ -264,7 +265,7 @@ export class TelegramAdapter extends BaseChannelAdapter {
     return this.bot.api;
   }
 
-  async send(message: OutboundMessage): Promise<SendResult> {
+  async send(message: TelegramRenderedMessage): Promise<SendResult> {
     const api = this.api;
 
     // Media sending
@@ -360,7 +361,7 @@ export class TelegramAdapter extends BaseChannelAdapter {
     }
   }
 
-  async editMessage(chatId: string, messageId: string, message: OutboundMessage): Promise<void> {
+  async editMessage(chatId: string, messageId: string, message: TelegramRenderedMessage): Promise<void> {
     if (!this.bot) return;
     const text = message.html ?? message.text ?? '';
     const opts: Record<string, unknown> = {

@@ -3,10 +3,10 @@
  * Supports rich cards with headers, elements, and structured buttons.
  */
 
-import { MessageFormatter, type MessageLocale } from './message-formatter.js';
-import { downgradeHeadings } from '../platforms/feishu/markdown.js';
-import { buildFeishuButtonElements, type FeishuCardElement } from '../platforms/feishu/card-builder.js';
-import type { FeishuRenderedMessage } from '../platforms/feishu/types.js';
+import { MessageFormatter, type MessageLocale } from '../../formatting/message-formatter.js';
+import { downgradeHeadings } from './markdown.js';
+import { buildFeishuButtonElements, type FeishuCardElement } from './card-builder.js';
+import type { FeishuRenderedMessage } from './types.js';
 import type {
   NotificationData,
   HomeData,
@@ -23,11 +23,10 @@ import type {
   CardResolutionData,
   VersionUpdateData,
   MultiSelectToggleData,
-} from './message-types.js';
-import type { Button } from '../ui/types.js';
-import { truncate } from '../utils/string.js';
+} from '../../formatting/message-types.js';
+import type { Button } from '../../ui/types.js';
+import { truncate } from '../../utils/string.js';
 
-type FeishuElement = { tag: string; [key: string]: unknown };
 type TimelineToolDisplay = {
   toolName: string;
   toolInput: string;
@@ -82,7 +81,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
   protected createCardMessage(
     chatId: string,
     header: { template: string; title: string },
-    elements: FeishuElement[],
+    elements: FeishuCardElement[],
     buttons?: Button[]
   ): FeishuRenderedMessage {
     const allElements = [...elements];
@@ -97,7 +96,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     };
   }
 
-  private md(content: string): FeishuElement {
+  private md(content: string): FeishuCardElement {
     return { tag: 'markdown', content: downgradeHeadings(content) };
   }
 
@@ -244,7 +243,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
   override formatStatus(chatId: string, data: { healthy: boolean; channels: string[]; cwd?: string; sessionId?: string }): FeishuRenderedMessage {
     const status = data.healthy ? '🟢 运行中' : '🔴 已断开';
     const channelList = data.channels.join(', ') || '无';
-    const elements: FeishuElement[] = [
+    const elements: FeishuCardElement[] = [
       this.md(`**状态**\n${status}`),
       this.md(`**通道**\n${channelList}`),
     ];
@@ -260,7 +259,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
   override formatPermission(chatId: string, data: PermissionData): FeishuRenderedMessage {
     const input = truncate(data.toolInput, 300);
     const expires = data.expiresInMinutes ?? 5;
-    const elements: FeishuElement[] = [
+    const elements: FeishuCardElement[] = [
       this.md(`**工具**\n${data.toolName}`),
       this.md(`**输入**\n\`\`\`\n${input}\n\`\`\``),
       this.md(`⏱ ${expires} 分钟内处理`),
@@ -287,7 +286,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     const { question, options, multiSelect, permId, sessionId } = data;
 
     // Build form elements according to Feishu Card 2.0 spec
-    const formElements: FeishuElement[] = [];
+    const formElements: FeishuCardElement[] = [];
 
     // For single-select with many options, use select_static dropdown
     const useSelectDropdown = !multiSelect && options.length > 4;
@@ -303,7 +302,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
           value: opt.label,
         })),
         required: false,
-      } as FeishuElement);
+      } as FeishuCardElement);
     }
 
     // Text input for free-form answers
@@ -312,7 +311,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       name: '_text_answer',
       placeholder: { tag: 'plain_text', content: useSelectDropdown ? '或直接输入文字回答...' : '直接输入文字回答...' },
       required: false,
-    } as FeishuElement);
+    } as FeishuCardElement);
 
     // Hidden interaction ID input
     formElements.push({
@@ -321,7 +320,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       placeholder: { tag: 'plain_text', content: '' },
       required: false,
       default_value: permId,
-    } as FeishuElement);
+    } as FeishuCardElement);
 
     // Buttons based on mode
     const formButtons: Button[] = [];
@@ -355,7 +354,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     }
 
     // Build the card with form container
-    const cardElements: FeishuElement[] = [
+    const cardElements: FeishuCardElement[] = [
       this.md(`**问题**\n${question}`),
     ];
 
@@ -373,13 +372,13 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     }
 
     // Add form container with form elements and buttons
-    const formContainer: FeishuElement = {
+    const formContainer: FeishuCardElement = {
       tag: 'form',
       name: `form_${permId}`,
       elements: [
-        ...formElements,
-        ...buildFeishuButtonElements(formButtons) as unknown as FeishuElement[],
-      ],
+        ...formElements as unknown as { tag: string; content: string }[],
+        ...buildFeishuButtonElements(formButtons) as unknown as { tag: string; content: string }[],
+      ] as unknown as { tag: string; content: string }[],
     };
 
     cardElements.push(formContainer);
@@ -397,7 +396,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     const template = templateMap[data.type];
     const emoji = emojiMap[data.type];
 
-    const elements: FeishuElement[] = [];
+    const elements: FeishuCardElement[] = [];
     if (data.summary) {
       elements.push(this.md(downgradeHeadings(truncate(data.summary, 3000))));
     }
@@ -420,7 +419,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       ? '⏳ 有任务正在执行'
       : '✅ 当前无执行任务';
 
-    const elements: FeishuElement[] = [
+    const elements: FeishuCardElement[] = [
       // Status overview panel
       this.md(`**系统状态**\n${bridgeStatus} · 通道: ${channels}`),
       this.md(`**任务状态**\n${taskStatus}`),
@@ -492,7 +491,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
         }[data.lastDecision.decision]
       : '';
 
-    const elements: FeishuElement[] = [
+    const elements: FeishuCardElement[] = [
       this.md(`**当前模式**\n${data.mode === 'on' ? '开启审批' : '关闭审批'}`),
       this.md(`**本会话记忆**\n工具 ${data.rememberedTools} 项 · Bash 前缀 ${data.rememberedBashPrefixes} 项`),
     ];
@@ -526,7 +525,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
 
   override formatTaskStart(chatId: string, data: TaskStartData): FeishuRenderedMessage {
     const title = data.isNewSession ? '🔄 会话已重置' : '🚀 开始执行';
-    const elements: FeishuElement[] = [
+    const elements: FeishuCardElement[] = [
       this.md(`**当前配置**\n目录：${data.cwd}\n权限：${data.permissionMode === 'on' ? '开启审批' : '关闭审批'}`),
     ];
 
@@ -549,8 +548,9 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
   }
 
   override formatTaskSummary(chatId: string, data: TaskSummaryData): FeishuRenderedMessage {
-    const elements: FeishuElement[] = [
-      this.md(`**结果摘要**\n${truncate(data.summary, 500)}`),
+    // Use full summary (already truncated by presenter to 1500)
+    const elements: FeishuCardElement[] = [
+      this.md(`**结果摘要**\n${data.summary}`),
       this.md(`**执行结果**\n改动文件：${data.changedFiles}\n权限审批：${data.permissionRequests}\n状态：${data.hasError ? '有错误' : '已完成'}`),
       this.md(`**下一步建议**\n${data.nextStep}`),
     ];
@@ -574,7 +574,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       lines.push(`${s.index}. ${s.date} · ${truncate(s.preview, 60)}${marker}`);
     }
 
-    const elements: FeishuElement[] = [
+    const elements: FeishuCardElement[] = [
       this.md(`**最近会话** ${data.filterHint}\n\n${lines.join('\n')}`),
       this.md('💡 点击"继续"恢复会话；长按可查看详情。'),
     ];
@@ -597,7 +597,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
   }
 
   override formatSessionDetail(chatId: string, data: SessionDetailData): FeishuRenderedMessage {
-    const elements: FeishuElement[] = [
+    const elements: FeishuCardElement[] = [
       this.md(`**目录**\n\`${data.cwd}\``),
       this.md(`**时间**\n${data.date}`),
       this.md(`**大小**\n${data.size}`),
@@ -620,7 +620,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
 
   override formatHelp(chatId: string, data: HelpData): FeishuRenderedMessage {
     const lines = data.commands.map(cmd => `/${cmd.cmd} — ${cmd.desc}`);
-    const elements: FeishuElement[] = [
+    const elements: FeishuCardElement[] = [
       this.md(`**命令列表**\n${lines.join('\n')}`),
     ];
 
@@ -655,7 +655,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
             ? { template: 'blue' as const, title: `🔄 继续执行 (${data.totalTools} 步已完成)` }
             : { template: 'blue' as const, title: data.phase === 'starting' ? '⏳ 准备开始' : '⏳ 执行中' };
 
-    const elements: FeishuElement[] = [];
+    const elements: FeishuCardElement[] = [];
     const isDone = data.phase === 'completed' || data.phase === 'failed';
     const operations = this.collectTimelineOperations(data);
 
@@ -784,7 +784,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     };
     const template = templateMap[data.resolution] ?? 'grey';
     const title = data.contextSuffix ? `${data.label}${data.contextSuffix}` : data.label;
-    const elements: FeishuElement[] = data.originalText
+    const elements: FeishuCardElement[] = data.originalText
       ? [this.md(`${data.originalText}\n\n${data.label}`)]
       : [this.md(data.label)];
     return this.createCardMessage(chatId, { template, title }, elements, data.buttons);
@@ -794,7 +794,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     const dateStr = data.publishedAt
       ? new Date(data.publishedAt).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
       : '';
-    const elements: FeishuElement[] = [
+    const elements: FeishuCardElement[] = [
       this.md(`**当前版本**\nv${data.current}`),
       this.md(`**最新版本**\nv${data.latest}`),
     ];
@@ -825,7 +825,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       }
     });
 
-    const elements: FeishuElement[] = [
+    const elements: FeishuCardElement[] = [
       this.md(`**问题**\n${data.question}`),
       this.md(`**选项**\n${optionsList}`),
       this.md('**说明**\n点击选项切换勾选，然后点 Submit；也可以直接回复文字。'),

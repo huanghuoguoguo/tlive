@@ -28,9 +28,31 @@ function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
     sendTyping: vi.fn().mockResolvedValue(undefined),
     addReaction: vi.fn().mockResolvedValue(undefined),
     createStreamingSession: vi.fn().mockReturnValue(null),
+    getLifecycleReactions: vi.fn().mockReturnValue({
+      processing: '🤔',
+      done: '👍',
+      error: '😱',
+      stalled: '⏳',
+      permission: '🔐',
+    }),
+    getPermissionDecisionReaction: vi.fn().mockImplementation((decision: string) =>
+      channelType === 'feishu'
+        ? decision === 'deny' ? 'No' : decision === 'allow_always' ? 'DONE' : 'OK'
+        : decision === 'deny' ? '👎' : decision === 'allow_always' ? '👌' : '👍'
+    ),
+    shouldRenderProgressPhase: vi.fn().mockImplementation((phase: string) =>
+      channelType === 'qqbot' ? phase !== 'starting' && phase !== 'executing' : true
+    ),
+    shouldSplitCompletedTrace: vi.fn().mockImplementation((stats: any) => {
+      if (channelType !== 'feishu') return false;
+      const hasLongTrace = stats.thinkingTextLength > 80 || stats.timelineLength >= 4;
+      const hasMeaningfulTooling = stats.toolEntries >= 2 || (stats.toolEntries >= 1 && stats.thinkingEntries >= 1);
+      const hasLongAnswer = stats.responseTextLength > 200;
+      return hasMeaningfulTooling || hasLongTrace || (stats.toolEntries >= 1 && hasLongAnswer);
+    }),
+    shouldSplitProgressMessage: vi.fn().mockReturnValue(false),
     format: (msg: any) => formatter.format(msg),
     formatContent: (chatId: string, content: string, buttons?: any[]) => formatter.formatContent(chatId, content, buttons),
-    supportsRichCards: () => formatter.hasRichCardSupport(),
     editCardResolution: vi.fn().mockResolvedValue(undefined),
   } as unknown as BaseChannelAdapter;
 }
@@ -306,14 +328,17 @@ describe('QueryOrchestrator', () => {
     expect(adapter.editMessage).not.toHaveBeenCalled();
   });
 
-  it('uses Feishu streaming cards during execution and closes them on completion', async () => {
+  it('edits Feishu progress cards during execution instead of using streaming cards', async () => {
     const state = new SessionStateManager();
     const engine = {
       processMessage: vi.fn().mockImplementation(async (params) => {
+        params.onThinkingDelta?.('先读取相关文件');
+        params.onToolStart?.({ name: 'Read', input: { file_path: 'src/main.ts' }, id: 'tool-1' });
+        await new Promise(resolve => setTimeout(resolve, 10));
+        params.onToolResult?.({ toolUseId: 'tool-1', content: '文件内容', isError: false });
         params.onTextDelta?.('第一段');
         await new Promise(resolve => setTimeout(resolve, 10));
         params.onTextDelta?.('第二段');
-        await new Promise(resolve => setTimeout(resolve, 10));
         await params.onQueryResult?.({
           sessionId: 'sdk-2',
           isError: false,
@@ -358,13 +383,6 @@ describe('QueryOrchestrator', () => {
       getOrCreateSession: vi.fn().mockReturnValue(undefined),
     } as any;
     const adapter = createAdapter('feishu');
-    const streamingSession = {
-      start: vi.fn().mockResolvedValue('stream-1'),
-      update: vi.fn().mockResolvedValue(undefined),
-      close: vi.fn().mockResolvedValue(undefined),
-    };
-    (adapter.createStreamingSession as any).mockReturnValue(streamingSession);
-
     const orchestrator = new QueryOrchestrator({
       engine,
       llm: {} as any,
@@ -386,17 +404,27 @@ describe('QueryOrchestrator', () => {
       messageId: 'msg-1',
     });
 
-    expect(adapter.createStreamingSession).toHaveBeenCalledTimes(1);
-    expect(streamingSession.start).toHaveBeenCalledTimes(1);
-    expect(streamingSession.close).toHaveBeenCalledTimes(1);
-    // Close is called with completion header
-    expect(streamingSession.close).toHaveBeenCalledWith(
-      expect.objectContaining({
-        header: { template: 'green', title: '✅ 已完成' },
-      })
-    );
-    // editMessage is NOT called because we close streaming card directly
-    expect(adapter.editMessage).not.toHaveBeenCalled();
+    expect(adapter.createStreamingSession).not.toHaveBeenCalled();
+    expect(adapter.send).toHaveBeenCalled();
+    expect(adapter.editMessage).toHaveBeenCalled();
+
+    const editedProgressCard = (adapter.editMessage as any).mock.calls
+      .map((call: any[]) => call[2])
+      .find((message: any) => (message?.feishuElements ?? []).some((el: any) => el.tag === 'collapsible_panel'));
+    expect(editedProgressCard).toBeDefined();
+
+    const progressPanels = (editedProgressCard.feishuElements ?? []).filter((el: any) => el.tag === 'collapsible_panel');
+    expect(progressPanels.length).toBeGreaterThan(0);
+
+    const firstPanelContent = progressPanels[0].elements?.[0]?.content ?? '';
+    expect(firstPanelContent).toContain('先读取相关文件');
+    expect(firstPanelContent).toContain('src/main.ts');
+
+    const sentContents = (adapter.send as any).mock.calls
+      .map((call: any[]) => call[0])
+      .flatMap((message: any) => (message?.feishuElements ?? []).map((el: any) => el.content || ''))
+      .join('\n');
+    expect(sentContents).toContain('第一段第二段');
   });
 
   it('remembers allow_always approvals within the current bridge session', async () => {

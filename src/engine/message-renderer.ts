@@ -3,7 +3,6 @@
  * Rendering logic delegated to ProgressContentBuilder.
  */
 
-import { redactSensitiveContent } from './content-filter.js';
 import { truncate } from '../utils/string.js';
 import { shortPath } from '../utils/path.js';
 import type { TodoStatus } from '../utils/types.js';
@@ -11,6 +10,7 @@ import type { VerboseLevel } from './session-state.js';
 import { ProgressContentBuilder, type RenderInput } from './progress-content-builder.js';
 
 export interface MessageRendererOptions {
+  shouldSplitState?: (state: MessageRendererState) => boolean;
   platformLimit: number;
   throttleMs?: number;
   /** Working directory for footer display */
@@ -50,9 +50,9 @@ const PERMISSION_TIMEOUT_MS = 60_000;
 const PROGRESS_TIMEOUT_MS = 30_000;
 const PROGRESS_RESET_THROTTLE_MS = 5000;
 
-/** Bubble split thresholds — send new message when exceeded */
-const SPLIT_TOOL_THRESHOLD = 12;      // Split after N tools in current bubble
-const SPLIT_TIMELINE_THRESHOLD = 18;  // Split after N timeline entries
+/** Coarse fallback split thresholds for platforms without a content-aware splitter. */
+const SPLIT_TOOL_THRESHOLD = 12;
+const SPLIT_TIMELINE_THRESHOLD = 18;
 
 interface PermissionState {
   toolName: string;
@@ -172,6 +172,7 @@ export class MessageRenderer {
   private onProgressResumed?: MessageRendererOptions['onProgressResumed'];
   /** Whether progress is currently stalled (reaction added) */
   private progressStalled = false;
+  private shouldSplitState?: MessageRendererOptions['shouldSplitState'];
   /** Last rendered content - for change detection */
   private lastRenderedContent = '';
   /** Force next flush regardless of content change */
@@ -189,6 +190,7 @@ export class MessageRenderer {
   }
 
   constructor(options: MessageRendererOptions) {
+    this.shouldSplitState = options.shouldSplitState;
     this.platformLimit = options.platformLimit;
     this.throttleMs = options.throttleMs ?? 300;
     this.flushCallback = options.flushCallback;
@@ -214,11 +216,7 @@ export class MessageRenderer {
       this.timeline.push({ kind: 'thinking', text });
     }
     this.lastTimelineIsText = false;
-    // Check for split threshold on thinking entries too
-    if (this._messageId && !this.splitPending && !this.completed &&
-        this.bubbleTimelineCount >= SPLIT_TIMELINE_THRESHOLD) {
-      this.splitPending = true;
-    }
+    this.updateSplitPending();
     // Force flush: plain-text render() doesn't include thinking, but Feishu
     // card uses state.timeline which has changed. Without forceFlush, the
     // change detection sees unchanged plain text and skips the flush.
@@ -278,12 +276,7 @@ export class MessageRenderer {
     this.resumeProgress();
     this.startProgressTimeout();
 
-    // Check for bubble split threshold
-    if (this._messageId && !this.splitPending && !this.completed &&
-        (this.bubbleToolCount >= SPLIT_TOOL_THRESHOLD ||
-         this.bubbleTimelineCount >= SPLIT_TIMELINE_THRESHOLD)) {
-      this.splitPending = true;
-    }
+    this.updateSplitPending();
 
     this.forceFlush = true; // Force update on new tool
     this.scheduleFlush();
@@ -300,6 +293,7 @@ export class MessageRenderer {
 
   onTodoUpdate(todos: Array<{ content: string; status: TodoStatus }>): void {
     this.todoItems = todos;
+    this.updateSplitPending();
     this.scheduleFlush();
   }
 
@@ -359,6 +353,7 @@ export class MessageRenderer {
     }
     // Plain-text render() does not include tool result details, but rich card
     // state does. Force a flush so Feishu cards update as soon as output lands.
+    this.updateSplitPending();
     this.forceFlush = true;
     this.scheduleFlush();
   }
@@ -465,6 +460,7 @@ export class MessageRenderer {
       this.resumeProgress();
       this.startProgressTimeout();
     }
+    this.updateSplitPending();
     this.scheduleFlush();
   }
 
@@ -680,5 +676,23 @@ export class MessageRenderer {
     this.bubbleToolCount = 0;
     this.bubbleTimelineCount = 0;
     this.lastRenderedContent = '';
+  }
+
+  private updateSplitPending(): void {
+    if (!this._messageId || this.splitPending || this.completed || this.errorMessage) {
+      return;
+    }
+    if (this.shouldSplitBubble()) {
+      this.splitPending = true;
+    }
+  }
+
+  private shouldSplitBubble(): boolean {
+    if (this.shouldSplitState) {
+      const state = this.contentBuilder.getStateSnapshot(this.getRenderInput(), this.contentBuilder.render(this.getRenderInput()));
+      return this.shouldSplitState(state);
+    }
+    return this.bubbleToolCount >= SPLIT_TOOL_THRESHOLD
+      || this.bubbleTimelineCount >= SPLIT_TIMELINE_THRESHOLD;
   }
 }

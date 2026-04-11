@@ -1,8 +1,9 @@
+// Shared formatting utilities
 export { formatPermissionCard } from './permission.js';
 export { formatNotification } from './notification.js';
-export { buildFeishuCard } from './feishu-card.js';
 export { escapeHtml } from './escape.js';
 export { MessageFormatter } from './message-formatter.js';
+// Platform formatters are now in platforms/* — these are legacy re-exports
 export { TelegramFormatter } from './telegram-formatter.js';
 export { FeishuFormatter } from './feishu-formatter.js';
 export { QQBotFormatter } from './qqbot-formatter.js';

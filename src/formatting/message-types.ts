@@ -3,7 +3,7 @@
  * Upper layers use these types; adapters handle platform-specific rendering.
  */
 
-import type { Button } from '../channels/types.js';
+import type { Button } from '../ui/types.js';
 
 /** Status display for /status command */
 export interface StatusData {

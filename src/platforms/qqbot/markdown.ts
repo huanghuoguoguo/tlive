@@ -1,4 +1,4 @@
-import { truncateLongCodeBlocks } from './ir.js';
+import { truncateLongCodeBlocks } from '../../markdown/ir.js';
 
 /**
  * Convert markdown to QQ Bot compatible format.

@@ -1,7 +1,29 @@
-import type { FeishuCardElement } from './types.js';
-import type { Button } from '../channels/types.js';
+import type { Button } from '../../ui/types.js';
 
 export type FeishuHeaderTemplate = 'blue' | 'green' | 'orange' | 'red' | 'purple' | 'indigo' | 'yellow' | 'turquoise';
+
+/** Feishu card element */
+export interface FeishuCardElement {
+  tag: string;
+  content?: string;
+  elements?: Array<{ tag: string; content: string }>;
+  actions?: Array<{
+    tag: string;
+    text: { tag: string; content: string };
+    type: string;
+    value: Record<string, string>;
+  }>;
+  /** For collapsible_panel */
+  expanded?: boolean;
+  header?: {
+    title: { tag: string; content: string };
+  };
+  body?: {
+    elements: Array<{ tag: string; content: string }>;
+  };
+  /** Allow arbitrary additional properties */
+  [key: string]: unknown;
+}
 
 export interface FeishuCardOptions {
   header?: {

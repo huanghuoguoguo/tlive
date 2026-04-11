@@ -9,6 +9,12 @@ function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
     channelType,
     send: vi.fn().mockResolvedValue({ messageId: '1', success: true }),
     addReaction: vi.fn().mockResolvedValue(undefined),
+    getPermissionDecisionReaction: vi.fn().mockImplementation((decision: string) => {
+      if (channelType === 'feishu') {
+        return decision === 'deny' ? 'No' : decision === 'allow_always' ? 'DONE' : 'OK';
+      }
+      return decision === 'deny' ? '👎' : decision === 'allow_always' ? '👌' : '👍';
+    }),
   } as unknown as BaseChannelAdapter;
 }
 

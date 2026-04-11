@@ -2,15 +2,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PermissionBroker } from '../permissions/broker.js';
 import { PendingPermissions } from '../permissions/gateway.js';
 import type { BaseChannelAdapter } from '../channels/base.js';
+import { TelegramFormatter } from '../formatting/telegram-formatter.js';
 
 function createMockAdapter(): BaseChannelAdapter {
-  return {
+  const formatter = new TelegramFormatter('en');
+  const adapter = {
     channelType: 'telegram',
     send: vi.fn().mockResolvedValue({ messageId: '42', success: true }),
     editMessage: vi.fn(),
     start: vi.fn(), stop: vi.fn(), consumeOne: vi.fn(),
     validateConfig: vi.fn(), isAuthorized: vi.fn(),
-  } as any;
+    format: (msg: any) => formatter.format(msg),
+    sendFormatted: vi.fn().mockImplementation(async (msg: any) => {
+      return adapter.send(adapter.format(msg));
+    }),
+  };
+  return adapter as any;
 }
 
 describe('PermissionBroker', () => {

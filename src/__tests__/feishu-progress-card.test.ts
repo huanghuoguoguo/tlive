@@ -227,6 +227,29 @@ describe('FeishuFormatter.formatProgress', () => {
       expect(panels[0].elements[0].content).toContain('df -h');
       expect(panels[0].elements[0].content).toContain('Filesystem');
     });
+
+    it('keeps the latest operation visible when earlier traces are long', () => {
+      const longText = '早期步骤内容。'.repeat(220);
+      const msg = formatter.formatProgress('chat1', createProgressData({
+        phase: 'executing',
+        totalTools: 3,
+        timeline: [
+          { kind: 'thinking', text: `步骤一：${longText}` },
+          { kind: 'tool', toolName: 'Read', toolInput: 'src/a.ts', toolResult: 'ok' },
+          { kind: 'thinking', text: `步骤二：${longText}` },
+          { kind: 'tool', toolName: 'Read', toolInput: 'src/b.ts', toolResult: 'ok' },
+          { kind: 'thinking', text: '步骤三：总结最新状态并继续修改。' },
+          { kind: 'tool', toolName: 'Edit', toolInput: 'src/c.ts' },
+        ],
+      }));
+
+      const panels = findByTag(getElements(msg), 'collapsible_panel');
+      expect(panels.length).toBeGreaterThan(0);
+      const latestPanel = panels[panels.length - 1];
+      expect(latestPanel.expanded).toBe(true);
+      expect(latestPanel.header.title.content).toContain('步骤三');
+      expect(latestPanel.elements[0].content).toContain('src/c.ts');
+    });
   });
 
   describe('collapsible_panel — correct structure per Feishu Card 2.0 docs', () => {

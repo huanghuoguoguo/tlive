@@ -1,7 +1,8 @@
 import { basename } from 'node:path';
 import type { BaseChannelAdapter } from '../channels/base.js';
-import type { OutboundMessage } from '../channels/types.js';
+import type { FeishuRenderedMessage } from '../platforms/feishu/types.js';
 import type { PermissionCoordinator } from './permission-coordinator.js';
+import type { NotificationData } from '../formatting/message-types.js';
 import { truncate } from '../utils/string.js';
 
 /** Data shape for hook notifications (stop, idle_prompt, etc.) from Go Core */
@@ -34,12 +35,11 @@ export class HookNotificationDispatcher {
     hook: HookNotificationData,
     receiveIdType?: string,
   ): Promise<void> {
-    const { formatNotification } = await import('../formatting/index.js');
     const hookType = hook.tlive_hook_type || '';
 
-    let title: string;
     let type: 'stop' | 'idle_prompt' | 'generic';
     let summary: string | undefined;
+    let title: string;
 
     const contextParts: string[] = [];
     if (hook.tlive_cwd) {
@@ -68,18 +68,21 @@ export class HookNotificationDispatcher {
       ? this.options.buildTerminalUrl(hook.tlive_session_id)
       : undefined;
 
-    const formatted = formatNotification({ type, title, summary, terminalUrl }, adapter.channelType as any);
-
-    const outMsg: OutboundMessage = {
-      chatId,
-      text: formatted.text,
-      html: formatted.html,
-      buttons: (formatted as any).buttons,
-      feishuHeader: formatted.feishuHeader,
-      feishuElements: (formatted as any).feishuElements,
-      receiveIdType,
+    const data: NotificationData = {
+      type,
+      title,
+      summary,
+      terminalUrl,
+      sessionId: hook.tlive_session_id,
+      cwd: hook.tlive_cwd,
     };
-    const result = await adapter.send(outMsg);
+
+    const msg = adapter.format({ type: 'notification', chatId, data });
+    // Only Feishu supports receiveIdType
+    if (receiveIdType && adapter.channelType === 'feishu') {
+      (msg as FeishuRenderedMessage).receiveIdType = receiveIdType;
+    }
+    const result = await adapter.send(msg);
     this.options.permissions.trackHookMessage(result.messageId, hook.tlive_session_id || '');
   }
 }

@@ -1,5 +1,6 @@
 import type { PendingPermissions } from './gateway.js';
 import type { BaseChannelAdapter } from '../channels/base.js';
+import type { PermissionData } from '../formatting/message-types.js';
 
 export class PermissionBroker {
   private gateway: PendingPermissions;
@@ -20,32 +21,21 @@ export class PermissionBroker {
       ? request.toolInput
       : JSON.stringify(request.toolInput, null, 2);
 
-    const { formatPermissionCard } = await import('../formatting/index.js');
     const showTerminal = options?.showTerminalUrl ?? true;
 
     for (const adapter of adapters) {
       const chatId = getChatId(adapter.channelType);
       if (!chatId) continue;
 
-      const formatted = formatPermissionCard(
-        {
-          toolName: request.toolName,
-          toolInput: inputStr,
-          permissionId: request.permissionRequestId,
-          expiresInMinutes: 5,
-          terminalUrl: showTerminal ? (this.publicUrl || undefined) : undefined,
-        },
-        adapter.channelType as import('../channels/types.js').ChannelType,
-      );
+      const data: PermissionData = {
+        toolName: request.toolName,
+        toolInput: inputStr,
+        permissionId: request.permissionRequestId,
+        expiresInMinutes: 5,
+        terminalUrl: showTerminal ? (this.publicUrl || undefined) : undefined,
+      };
 
-      await adapter.send({
-        chatId,
-        text: formatted.text,
-        html: formatted.html,
-        buttons: formatted.buttons,
-        feishuHeader: formatted.feishuHeader,
-        feishuElements: formatted.feishuElements,
-      });
+      await adapter.sendFormatted({ type: 'permission', chatId, data });
     }
   }
 

@@ -1,5 +1,6 @@
 import type { BaseChannelAdapter } from '../channels/base.js';
-import type { InboundMessage, OutboundMessage } from '../channels/types.js';
+import type { InboundMessage, RenderedMessage } from '../channels/types.js';
+import type { FeishuRenderedMessage } from '../platforms/feishu/types.js';
 import type { FormattableMessage } from '../formatting/message-types.js';
 import { getBridgeContext } from '../context.js';
 import { ChannelRouter } from './router.js';
@@ -154,15 +155,21 @@ export class BridgeManager {
   }
 
   /** Broadcast a message to all active IM channels */
-  async broadcast(msg: Omit<OutboundMessage, 'chatId' | 'receiveIdType'>): Promise<void> {
+  async broadcast(msg: Omit<RenderedMessage, 'chatId'>): Promise<void> {
     for (const adapter of this.getAdapters()) {
       const chatId = this.getBroadcastTarget(adapter.channelType);
       if (!chatId) continue;
-      await adapter.send({
-        chatId,
-        receiveIdType: this.getBroadcastReceiveIdType(adapter.channelType),
-        ...msg,
-      });
+      // Build platform-specific message
+      const baseMsg = { chatId, ...msg };
+      if (adapter.channelType === 'feishu') {
+        // Feishu needs receiveIdType
+        await adapter.send({
+          ...baseMsg,
+          receiveIdType: this.getBroadcastReceiveIdType(adapter.channelType),
+        } as FeishuRenderedMessage);
+      } else {
+        await adapter.send(baseMsg as any);
+      }
     }
   }
 
@@ -177,10 +184,15 @@ export class BridgeManager {
       const chatId = this.getBroadcastTarget(adapter.channelType);
       if (!chatId) continue;
       const outMsg = adapter.format({ ...msg, chatId } as FormattableMessage);
-      await adapter.send({
-        ...outMsg,
-        receiveIdType: this.getBroadcastReceiveIdType(adapter.channelType),
-      });
+      // Only add receiveIdType for Feishu
+      if (adapter.channelType === 'feishu') {
+        await adapter.send({
+          ...outMsg,
+          receiveIdType: this.getBroadcastReceiveIdType(adapter.channelType),
+        } as FeishuRenderedMessage);
+      } else {
+        await adapter.send(outMsg);
+      }
     }
   }
 

@@ -1,16 +1,18 @@
-import type { ChannelType, OutboundMessage } from '../channels/types.js';
+import type { ChannelType } from '../channels/types.js';
+import type { FeishuRenderedMessage } from '../platforms/feishu/types.js';
 import type { NotificationData } from './types.js';
-import { markdownToTelegram } from '../markdown/telegram.js';
-import { downgradeHeadings } from '../markdown/feishu.js';
+import type { Button } from '../ui/types.js';
+import { markdownToTelegram } from '../platforms/telegram/markdown.js';
+import { downgradeHeadings } from '../platforms/feishu/markdown.js';
 import { truncate } from '../utils/string.js';
 
 interface NotificationMessage {
   text?: string;
   html?: string;
-  buttons?: OutboundMessage['buttons'];
+  buttons?: Button[];
   feishuHeader?: { template: string; title: string };
   /** Feishu Card 2.0: structured elements for richer layout */
-  feishuElements?: Array<Record<string, unknown>>;
+  feishuElements?: FeishuRenderedMessage['feishuElements'];
 }
 
 const HEADER_MAP: Record<NotificationData['type'], string> = {

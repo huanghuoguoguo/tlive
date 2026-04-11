@@ -1,12 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { BaseChannelAdapter } from '../channels/base.js';
 import { HookNotificationDispatcher } from '../engine/hook-notification-dispatcher.js';
+import { TelegramFormatter } from '../formatting/telegram-formatter.js';
+import { FeishuFormatter } from '../formatting/feishu-formatter.js';
 
 function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
-  return {
+  const formatter = channelType === 'feishu'
+    ? new FeishuFormatter('zh')
+    : new TelegramFormatter('en');
+  const adapter = {
     channelType,
     send: vi.fn().mockResolvedValue({ messageId: 'msg-1', success: true }),
-  } as unknown as BaseChannelAdapter;
+    format: (msg: any) => formatter.format(msg),
+  };
+  return adapter as unknown as BaseChannelAdapter;
 }
 
 describe('HookNotificationDispatcher', () => {

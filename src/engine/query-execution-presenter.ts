@@ -1,8 +1,7 @@
 import type { BaseChannelAdapter } from '../channels/base.js';
-import type { InboundMessage, OutboundMessage } from '../channels/types.js';
+import type { InboundMessage, RenderedMessage } from '../channels/types.js';
 import { chunkByParagraph } from '../delivery/delivery.js';
 import type { ProgressData } from '../formatting/message-types.js';
-import { downgradeHeadings } from '../markdown/feishu.js';
 import type { MessageRendererState } from './message-renderer.js';
 import { truncate } from '../utils/string.js';
 
@@ -29,8 +28,6 @@ export class QueryExecutionPresenter {
   private platformLimit: number;
   private clearTyping: () => void;
   private getMessageId: () => string | undefined;
-  private streamingSession: import('../channels/types.js').StreamingCardSession | null = null;
-  private streamingRetired = false;
 
   constructor(options: QueryExecutionPresenterOptions) {
     this.adapter = options.adapter;
@@ -46,25 +43,11 @@ export class QueryExecutionPresenter {
     buttons?: Array<{ label: string; callbackData: string; style: string }>,
     state?: MessageRendererState,
   ): Promise<string | undefined> {
-    if (
-      this.adapter.channelType === 'qqbot'
-      && state
-      && (state.phase === 'starting' || state.phase === 'executing')
-    ) {
+    if (state && !this.adapter.shouldRenderProgressPhase(state.phase)) {
       return;
     }
 
-    if (this.shouldUseStreamingCard(state, buttons)) {
-      // For completed phase via streaming, close with header update
-      if (state?.phase === 'completed') {
-        return this.closeStreamingCardWithCompletion(content, state);
-      }
-      return this.flushStreamingCard(content, isEdit, state!);
-    }
-
-    await this.retireStreamingCard();
-
-    let outMsg: OutboundMessage;
+    let outMsg: RenderedMessage;
     if (state) {
       const progressData: ProgressData = {
         phase: state.phase,
@@ -85,11 +68,7 @@ export class QueryExecutionPresenter {
         actionButtons: castButtons(buttons),
       };
 
-      if (
-        this.adapter.channelType === 'feishu'
-        && state.phase === 'completed'
-        && this.shouldSplitFeishuCompletion(state)
-      ) {
+      if (state.phase === 'completed' && this.shouldSplitCompletedTrace(state)) {
         const traceMsg = this.adapter.format({
           type: 'progress',
           chatId: this.inbound.chatId,
@@ -144,9 +123,7 @@ export class QueryExecutionPresenter {
     await this.adapter.editMessage(this.inbound.chatId, this.getMessageId()!, outMsg);
   }
 
-  async dispose(): Promise<void> {
-    await this.retireStreamingCard();
-  }
+  async dispose(): Promise<void> {}
 
   private buildTaskSummary(state: {
     responseText: string;
@@ -156,7 +133,8 @@ export class QueryExecutionPresenter {
     errorMessage?: string;
   }): import('../formatting/message-types.js').TaskSummaryData {
     const summarySource = (state.responseText || state.renderedText || '').trim();
-    const summary = truncate(summarySource || '任务已完成', 280);
+    // Allow full summary for task completion (up to 5000 chars)
+    const summary = truncate(summarySource || '任务已完成', 5000);
     const changedFileKeys = new Set(
       state.toolLogs
         .filter(log => ['Edit', 'Write', 'MultiEdit'].includes(log.name) && log.input.trim())
@@ -178,123 +156,23 @@ export class QueryExecutionPresenter {
     };
   }
 
-  private shouldSplitFeishuCompletion(state: {
+  private shouldSplitCompletedTrace(state: {
     thinkingText: string;
     timeline: Array<{ kind: 'thinking' | 'text' | 'tool' }>;
     responseText: string;
   }): boolean {
-    // Single pass counting instead of triple filter
     let thinkingCount = 0;
     let toolCount = 0;
     for (const entry of state.timeline) {
       if (entry.kind === 'thinking') thinkingCount++;
       else if (entry.kind === 'tool') toolCount++;
     }
-    const hasLongTrace = state.thinkingText.trim().length > 80 || state.timeline.length >= 4;
-    const hasMeaningfulTooling = toolCount >= 2 || (toolCount >= 1 && thinkingCount >= 1);
-    const hasLongAnswer = state.responseText.trim().length > 200;
-    return hasMeaningfulTooling || hasLongTrace || (toolCount >= 1 && hasLongAnswer);
-  }
-
-  private shouldUseStreamingCard(
-    state?: MessageRendererState,
-    buttons?: Array<{ label: string; callbackData: string; style: string }>,
-  ): boolean {
-    if (this.streamingRetired) return false;
-    if (this.adapter.channelType !== 'feishu') return false;
-    if (!state) return false;
-    if (buttons?.length) return false;
-    // For completed phase, only use streaming if we already have an active session
-    if (state.phase === 'completed') {
-      return this.streamingSession !== null;
-    }
-    return state.phase === 'starting' || state.phase === 'executing';
-  }
-
-  private async flushStreamingCard(
-    content: string,
-    isEdit: boolean,
-    state: MessageRendererState,
-  ): Promise<string | undefined> {
-    const session = this.getOrCreateStreamingCard(state);
-    if (!session) {
-      this.streamingRetired = true;
-      return undefined;
-    }
-    const markdown = downgradeHeadings(content);
-    if (!isEdit) {
-      const messageId = await session.start(markdown);
-      this.clearTyping();
-      return messageId;
-    }
-    await session.update(markdown);
-    return;
-  }
-
-  /** Close streaming card with completion header, optionally send summary. */
-  private async closeStreamingCardWithCompletion(
-    content: string,
-    state: MessageRendererState,
-  ): Promise<string | undefined> {
-    const session = this.streamingSession;
-    if (!session) {
-      // No streaming session existed, fall back to regular card
-      this.streamingRetired = true;
-      return undefined;
-    }
-
-    const markdown = downgradeHeadings(content);
-
-    // Close streaming with updated header
-    const completionHeader = { template: 'green', title: '✅ 已完成' };
-    await session.close({ finalText: markdown, header: completionHeader });
-
-    this.streamingSession = null;
-    this.streamingRetired = true;
-
-    // Optionally send summary card if meaningful tooling occurred
-    if (this.shouldSplitFeishuCompletion(state)) {
-      const summaryMsg = this.adapter.format({
-        type: 'taskSummary',
-        chatId: this.inbound.chatId,
-        data: this.buildTaskSummary(state),
-      });
-      await this.adapter.send(summaryMsg);
-    }
-
-    return session.currentMessageId;
-  }
-
-  private getOrCreateStreamingCard(
-    state: MessageRendererState,
-  ): import('../channels/types.js').StreamingCardSession | null {
-    if (this.streamingSession) return this.streamingSession;
-    this.streamingSession = this.adapter.createStreamingSession(
-      this.inbound.chatId,
-      undefined,
-      this.inbound.replyToMessageId,
-      this.getStreamingHeader(state),
-    );
-    return this.streamingSession;
-  }
-
-  private getStreamingHeader(state: MessageRendererState): { template: string; title: string } {
-    if (state.isContinuation) {
-      return { template: 'blue', title: `🔄 继续执行 (${state.totalTools} 步已完成)` };
-    }
-    return {
-      template: 'blue',
-      title: state.phase === 'starting' ? '⏳ 准备开始' : '⏳ 执行中',
-    };
-  }
-
-  private async retireStreamingCard(): Promise<void> {
-    if (!this.streamingSession) {
-      return;
-    }
-    const session = this.streamingSession;
-    this.streamingSession = null;
-    this.streamingRetired = true;
-    await session.close().catch(() => {});
+    return this.adapter.shouldSplitCompletedTrace({
+      thinkingTextLength: state.thinkingText.trim().length,
+      timelineLength: state.timeline.length,
+      thinkingEntries: thinkingCount,
+      toolEntries: toolCount,
+      responseTextLength: state.responseText.trim().length,
+    });
   }
 }

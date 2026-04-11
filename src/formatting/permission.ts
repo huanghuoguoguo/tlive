@@ -1,18 +1,20 @@
-import type { ChannelType, OutboundMessage } from '../channels/types.js';
+import type { ChannelType } from '../channels/types.js';
+import type { FeishuRenderedMessage } from '../platforms/feishu/types.js';
 import type { PermissionCardData } from './types.js';
+import type { Button } from '../ui/types.js';
 import { escapeHtml } from './escape.js';
 import { truncate } from '../utils/string.js';
 
 interface PermissionMessage {
   text?: string;
   html?: string;
-  buttons?: OutboundMessage['buttons'];
-  feishuElements?: OutboundMessage['feishuElements'];
+  buttons?: Button[];
+  feishuElements?: FeishuRenderedMessage['feishuElements'];
   /** Feishu card header (caller passes to buildFeishuCard) */
   feishuHeader?: { template: string; title: string };
 }
 
-function makeButtons(permissionId: string): NonNullable<OutboundMessage['buttons']> {
+function makeButtons(permissionId: string): Button[] {
   // Telegram enforces 64-byte callback_data limit; longest pattern is "perm:allow_session:ID"
   const maxIdBytes = 64 - Buffer.byteLength('perm:allow_session:', 'utf8');
   const safeId = Buffer.byteLength(permissionId, 'utf8') > maxIdBytes

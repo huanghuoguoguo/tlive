@@ -1,3 +1,5 @@
+import type { Button } from '../ui/types.js';
+
 export type ChannelType = 'telegram' | 'feishu' | 'qqbot';
 
 export interface InboundMessage {
@@ -20,36 +22,30 @@ export interface FileAttachment {
   url?: string;
 }
 
-export interface OutboundMessage {
-  chatId: string;
-  text?: string;
-  html?: string;
-  buttons?: Button[];
-  replyToMessageId?: string;
-  /** Feishu: override receive_id_type (default 'chat_id', can be 'open_id' for P2P) */
-  receiveIdType?: string;
-  /** Feishu card header (template color + title) */
-  feishuHeader?: {
-    template: string;
-    title: string;
-  };
-  /** Feishu Card 2.0: override card body elements directly (bypasses text→markdown conversion) */
-  feishuElements?: Array<Record<string, unknown>>;
-  /** Feishu Card 2.0: render explicit action rows instead of generic message buttons */
-  feishuButtons?: Button[];
-  /** Media attachment to send (image or file) */
-  media?: {
-    type: 'image' | 'file';
-    /** URL to fetch, or data URI (data:image/png;base64,...) */
-    url?: string;
-    /** Raw buffer data */
-    buffer?: Buffer;
-    /** Filename for file attachments */
-    filename?: string;
-    /** MIME type */
-    mimeType?: string;
-  };
+/** Media attachment for outbound messages */
+export interface MediaAttachment {
+  type: 'image' | 'file';
+  /** URL to fetch, or data URI (data:image/png;base64,...) */
+  url?: string;
+  /** Raw buffer data */
+  buffer?: Buffer;
+  /** Filename for file attachments */
+  filename?: string;
+  /** MIME type */
+  mimeType?: string;
 }
+
+// --- Platform-specific rendered message types ---
+// Re-exported from platforms for convenience
+
+/** Union type for all platform-specific rendered messages */
+export type RenderedMessage =
+  | import('../platforms/telegram/types.js').TelegramRenderedMessage
+  | import('../platforms/feishu/types.js').FeishuRenderedMessage
+  | import('../platforms/qqbot/types.js').QQBotRenderedMessage;
+
+/** Legacy type alias for backwards compatibility - will be removed */
+export type OutboundMessage = RenderedMessage;
 
 export interface SendResult {
   messageId: string;
@@ -62,14 +58,4 @@ export interface StreamingCardSession {
   close(options?: { finalText?: string; header?: { template: string; title: string } }): Promise<void>;
   /** Current message ID (for Feishu streaming cards) */
   currentMessageId?: string;
-}
-
-export interface Button {
-  label: string;
-  callbackData: string;
-  style?: 'primary' | 'danger' | 'default';
-  /** URL button: opens link directly instead of sending callback */
-  url?: string;
-  /** Row index for layout grouping. Buttons with same row are on one line. */
-  row?: number;
 }

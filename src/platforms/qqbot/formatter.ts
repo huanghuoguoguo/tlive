@@ -3,11 +3,11 @@
  * Similar to Telegram but without HTML conversion.
  */
 
-import { MessageFormatter, type MessageLocale } from './message-formatter.js';
-import { markdownToQQBot } from '../platforms/qqbot/markdown.js';
-import type { QQBotRenderedMessage } from '../platforms/qqbot/types.js';
-import type { ProgressData } from './message-types.js';
-import { truncate } from '../utils/string.js';
+import { MessageFormatter, type MessageLocale } from '../../formatting/message-formatter.js';
+import { markdownToQQBot } from './markdown.js';
+import type { QQBotRenderedMessage } from './types.js';
+import type { ProgressData } from '../../formatting/message-types.js';
+import { truncate } from '../../utils/string.js';
 
 export class QQBotFormatter extends MessageFormatter<QQBotRenderedMessage> {
   constructor(locale: MessageLocale = 'zh') {
