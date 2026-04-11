@@ -86,7 +86,7 @@ Enter numbers (e.g., 1,3):"
 - Auto-generate TL_TOKEN (32-char hex)
 
 **Step 4 — Write config and validate:**
-1. Read `config.env.example` as the template — use its exact variable names (e.g., `TL_TG_*` for Telegram, `TL_FS_*` for Feishu, `TL_QQ_*` for QQ Bot). Do NOT invent variable names.
+1. Read `references/config.env.example` as the template — use its exact variable names (e.g., `TL_TG_*` for Telegram, `TL_FS_*` for Feishu, `TL_QQ_*` for QQ Bot). Do NOT invent variable names.
 2. Show a summary table (secrets masked to last 4 chars)
 3. Ask user to confirm before writing
 4. `mkdir -p ~/.tlive/{data,logs,runtime}`
@@ -100,7 +100,7 @@ Enter numbers (e.g., 1,3):"
 1. Read current config from `~/.tlive/config.env`
 2. Show current settings in a table (secrets masked to last 4 chars only)
 3. Ask what the user wants to change
-4. Collect new values one at a time, show where to find each value (show full guide from `~/.tlive/docs/setup-guides.md` only if asked)
+4. Collect new values one at a time, show where to find each value (show full guide from `references/setup-guides.md` only if asked)
 5. Update config file
 6. Re-validate any changed tokens
 7. Note: "Changes apply to new conversations. No restart needed."
