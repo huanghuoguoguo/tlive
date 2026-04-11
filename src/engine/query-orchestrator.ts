@@ -170,6 +170,14 @@ export class QueryOrchestrator {
         }
       },
       flushCallback: async (content, isEdit, buttons, state) => {
+        if (
+          adapter.channelType === 'qqbot'
+          && state
+          && (state.phase === 'starting' || state.phase === 'executing')
+        ) {
+          return;
+        }
+
         if (feishuSession && !buttons?.length) {
           if (!isEdit) {
             try {
