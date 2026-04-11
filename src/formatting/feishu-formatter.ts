@@ -9,11 +9,14 @@ import type { OutboundMessage, Button } from '../channels/types.js';
 import type {
   NotificationData,
   HomeData,
+  PermissionStatusData,
+  TaskStartData,
   SessionsData,
   SessionDetailData,
   HelpData,
   NewSessionData,
   ProgressData,
+  TaskSummaryData,
   PermissionData,
   QuestionData,
   CardResolutionData,
@@ -262,13 +265,14 @@ export class FeishuFormatter extends MessageFormatter {
       this.md(`⏱ ${expires} 分钟内处理`),
     ];
     if (data.terminalUrl) {
-      elements.push(this.md(`🔗 [Open Terminal](${data.terminalUrl})`));
+      elements.push(this.md(`🔗 [在终端中查看](${data.terminalUrl})`));
     }
-    elements.push(this.md('💬 也可以直接回复 **allow** / **deny**。'));
+    elements.push(this.md('💬 也可以直接回复 **allow** / **deny** / **always**。'));
 
     const buttons: Button[] = [
-      { label: '✅ 允许', callbackData: `perm:allow:${data.permissionId}`, style: 'primary' },
-      { label: '❌ 拒绝', callbackData: `perm:deny:${data.permissionId}`, style: 'danger' },
+      { label: '✅ 允许本次', callbackData: `perm:allow:${data.permissionId}`, style: 'primary', row: 0 },
+      { label: '📌 本会话始终允许', callbackData: `perm:allow_session:${data.permissionId}`, style: 'default', row: 0 },
+      { label: '❌ 拒绝', callbackData: `perm:deny:${data.permissionId}`, style: 'danger', row: 1 },
     ];
 
     return this.createCardMessage(chatId,
@@ -281,28 +285,108 @@ export class FeishuFormatter extends MessageFormatter {
   override formatQuestion(chatId: string, data: QuestionData): OutboundMessage {
     const { question, options, multiSelect, permId, sessionId } = data;
 
-    const optionsList = options
-      .map((opt, i) => `${i + 1}. **${opt.label}**${opt.description ? ` — ${opt.description}` : ''}`)
-      .join('\n');
+    // Build form elements according to Feishu Card 2.0 spec
+    const formElements: FeishuElement[] = [];
 
-    const buttons: Button[] = multiSelect
-      ? this.buildMultiSelectButtons(permId, sessionId, options)
-      : this.buildSingleSelectButtons(permId, options);
+    // For single-select with many options, use select_static dropdown
+    const useSelectDropdown = !multiSelect && options.length > 4;
 
-    const hint = multiSelect
-      ? '点击选项切换勾选，然后点 Submit；也可以直接回复文字。'
-      : '可直接点选，也可以直接回复文字。';
+    if (useSelectDropdown) {
+      // Feishu select_static dropdown
+      formElements.push({
+        tag: 'select_static',
+        name: '_select',
+        placeholder: { tag: 'plain_text', content: '选择一个选项...' },
+        options: options.map(opt => ({
+          text: { tag: 'plain_text', content: opt.label },
+          value: opt.label,
+        })),
+        required: false,
+      } as FeishuElement);
+    }
 
-    const elements: FeishuElement[] = [
+    // Text input for free-form answers
+    formElements.push({
+      tag: 'input',
+      name: '_text_answer',
+      placeholder: { tag: 'plain_text', content: useSelectDropdown ? '或直接输入文字回答...' : '直接输入文字回答...' },
+      required: false,
+    } as FeishuElement);
+
+    // Hidden interaction ID input
+    formElements.push({
+      tag: 'input',
+      name: '_interaction_id',
+      placeholder: { tag: 'plain_text', content: '' },
+      required: false,
+      default_value: permId,
+    } as FeishuElement);
+
+    // Buttons based on mode
+    const formButtons: Button[] = [];
+
+    if (useSelectDropdown) {
+      // Submit + Skip buttons for dropdown mode
+      formButtons.push({
+        label: '✅ 提交',
+        callbackData: `form:${permId}`,
+        style: 'primary',
+        row: 0,
+      });
+      formButtons.push({
+        label: '⏭️ 跳过',
+        callbackData: `askq_skip:${permId}:${sessionId}`,
+        style: 'default',
+        row: 0,
+      });
+    } else if (multiSelect) {
+      // Multi-select uses toggle buttons + submit
+      formButtons.push(...this.buildMultiSelectButtons(permId, sessionId, options));
+    } else {
+      // Few options: direct option buttons
+      formButtons.push(...this.buildSingleSelectButtons(permId, options));
+      formButtons.push({
+        label: '⏭️ 跳过',
+        callbackData: `askq_skip:${permId}:${sessionId}`,
+        style: 'default',
+        row: Math.floor(options.length / 2),
+      });
+    }
+
+    // Build the card with form container
+    const cardElements: FeishuElement[] = [
       this.md(`**问题**\n${question}`),
-      this.md(`**选项**\n${optionsList}`),
-      this.md(`**说明**\n${hint}`),
     ];
+
+    if (!useSelectDropdown) {
+      // For non-dropdown modes, show options as markdown list
+      const optionsList = options
+        .map((opt, i) => `${i + 1}. **${opt.label}**${opt.description ? ` — ${opt.description}` : ''}`)
+        .join('\n');
+      cardElements.push(this.md(`**选项**\n${optionsList}`));
+      if (multiSelect) {
+        cardElements.push(this.md('💡 点击选项切换勾选，然后点提交。'));
+      } else {
+        cardElements.push(this.md('💡 点击选项或直接回复文字。'));
+      }
+    }
+
+    // Add form container with form elements and buttons
+    const formContainer: FeishuElement = {
+      tag: 'form',
+      name: `form_${permId}`,
+      elements: [
+        ...formElements,
+        ...buildFeishuButtonElements(formButtons) as unknown as FeishuElement[],
+      ],
+    };
+
+    cardElements.push(formContainer);
 
     return this.createCardMessage(chatId,
       { template: 'blue', title: '❓ 等待回答' },
-      elements,
-      buttons
+      cardElements,
+      undefined // buttons are inside form container
     );
   }
 
@@ -328,23 +412,65 @@ export class FeishuFormatter extends MessageFormatter {
   }
 
   override formatHome(chatId: string, data: HomeData): OutboundMessage {
-    const statusText = data.hasActiveTask
-      ? '有任务正在执行，通常更适合先回到最近会话继续处理。'
-      : '当前没有执行中的任务，可从最近会话继续，也可开始新会话。';
+    // Header section: Bridge status
+    const bridgeStatus = data.bridgeHealthy ? '🟢 已连接' : '🔴 已断开';
+    const channels = data.activeChannels?.join(', ') || '无';
+    const taskStatus = data.hasActiveTask
+      ? '⏳ 有任务正在执行'
+      : '✅ 当前无执行任务';
 
     const elements: FeishuElement[] = [
-      this.md(`**当前状态**\n${statusText}`),
-      this.md(`**项目目录**\n${data.cwd}`),
-      this.md(data.recentSummary
-        ? `**最近一次任务**\n${truncate(data.recentSummary, 180)}`
-        : '**最近一次任务**\n暂无历史任务摘要'
-      ),
-      this.md('**说明**\n"新会话"会清空当前飞书侧会话绑定；如果你只是想接着电脑上的工作做，优先用"最近会话"或"会话列表"。'),
+      // Status overview panel
+      this.md(`**系统状态**\n${bridgeStatus} · 通道: ${channels}`),
+      this.md(`**任务状态**\n${taskStatus}`),
+      this.md(`**项目目录**\n\`${data.cwd}\``),
+      this.md(`**权限模式**\n${data.permissionMode === 'on' ? '🔐 开启审批' : '⚡ 关闭审批'}`),
     ];
+
+    // Permission details (if relevant)
+    if (data.pendingPermission) {
+      elements.push(this.md(`**待处理审批**\n${data.pendingPermission.toolName}\n\`\`\`\n${truncate(data.pendingPermission.input, 180)}\n\`\`\``));
+    } else {
+      elements.push(this.md('**待处理审批**\n暂无'));
+    }
+
+    // Last permission decision
+    if (data.lastPermissionDecision) {
+      const decisionLabel = {
+        allow: '✅ 允许一次',
+        allow_always: '📌 本会话始终允许',
+        deny: '❌ 拒绝',
+        cancelled: '⏭ 已取消',
+      }[data.lastPermissionDecision.decision];
+      elements.push(this.md(`**最近审批**\n${data.lastPermissionDecision.toolName} → ${decisionLabel}`));
+    }
+
+    // Session whitelist count
+    if (data.sessionWhitelistCount && data.sessionWhitelistCount > 0) {
+      elements.push(this.md(`**会话白名单**\n已记忆 ${data.sessionWhitelistCount} 项工具/Bash 前缀`));
+    }
+
+    // Recent task summary
+    if (data.recentSummary) {
+      elements.push(this.md(`**最近任务**\n${truncate(data.recentSummary, 150)}`));
+    }
+
+    // Recent sessions
+    const recentSessions = data.recentSessions?.length
+      ? data.recentSessions
+        .map(session => `${session.index}. ${session.date} · ${truncate(session.preview, 50)}${session.isCurrent ? ' ◀' : ''}`)
+        .join('\n')
+      : '暂无最近会话';
+    elements.push(this.md(`**最近会话**\n${recentSessions}`));
+
+    // Usage hint
+    elements.push(this.md('💡 点击下方按钮快速操作；也可直接发送消息让 AI 处理。'));
 
     const buttons: Button[] = [
       { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'primary' },
+      { label: '🔐 权限设置', callbackData: 'cmd:perm', style: 'default' },
       { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default' },
+      { label: '📊 状态详情', callbackData: 'cmd:status', style: 'default' },
       { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default' },
     ];
 
@@ -355,23 +481,111 @@ export class FeishuFormatter extends MessageFormatter {
     );
   }
 
+  override formatPermissionStatus(chatId: string, data: PermissionStatusData): OutboundMessage {
+    const rememberedCount = data.rememberedTools + data.rememberedBashPrefixes;
+    const decisionLabel = data.lastDecision
+      ? {
+          allow: '允许一次',
+          allow_always: '本会话始终允许',
+          deny: '拒绝',
+          cancelled: '已取消',
+        }[data.lastDecision.decision]
+      : '';
+
+    const elements: FeishuElement[] = [
+      this.md(`**当前模式**\n${data.mode === 'on' ? '开启审批' : '关闭审批'}`),
+      this.md(`**本会话记忆**\n工具 ${data.rememberedTools} 项 · Bash 前缀 ${data.rememberedBashPrefixes} 项`),
+    ];
+
+    if (data.pending) {
+      elements.push(this.md(`**当前待审批**\n${data.pending.toolName}\n\`\`\`\n${truncate(data.pending.input, 220)}\n\`\`\``));
+    } else {
+      elements.push(this.md('**当前待审批**\n暂无'));
+    }
+
+    if (data.lastDecision) {
+      elements.push(this.md(`**最近处理**\n${data.lastDecision.toolName} · ${decisionLabel}`));
+    }
+
+    const buttons: Button[] = data.mode === 'on'
+      ? [
+          { label: '⚡ 关闭审批', callbackData: 'cmd:perm off', style: 'danger' },
+          { label: '🏠 首页', callbackData: 'cmd:home', style: 'default' },
+        ]
+      : [
+          { label: '🔐 开启审批', callbackData: 'cmd:perm on', style: 'primary' },
+          { label: '🏠 首页', callbackData: 'cmd:home', style: 'default' },
+        ];
+
+    return this.createCardMessage(chatId,
+      { template: data.mode === 'on' ? 'orange' : 'grey', title: '🔐 权限状态' },
+      elements,
+      buttons
+    );
+  }
+
+  override formatTaskStart(chatId: string, data: TaskStartData): OutboundMessage {
+    const title = data.isNewSession ? '🔄 会话已重置' : '🚀 开始执行';
+    const elements: FeishuElement[] = [
+      this.md(`**当前配置**\n目录：${data.cwd}\n权限：${data.permissionMode === 'on' ? '开启审批' : '关闭审批'}`),
+    ];
+
+    if (data.previousSessionPreview) {
+      elements.push(this.md(`**上次会话**\n${truncate(data.previousSessionPreview, 100)}`));
+    }
+
+    elements.push(this.md('💡 任务已开始执行。如需调整配置，点击下方按钮。'));
+
+    const buttons: Button[] = [
+      { label: '🏠 调整配置', callbackData: 'cmd:home', style: 'default', row: 0 },
+      { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default', row: 0 },
+    ];
+
+    return this.createCardMessage(chatId,
+      { template: 'blue', title },
+      elements,
+      buttons
+    );
+  }
+
+  override formatTaskSummary(chatId: string, data: TaskSummaryData): OutboundMessage {
+    const elements: FeishuElement[] = [
+      this.md(`**结果摘要**\n${truncate(data.summary, 500)}`),
+      this.md(`**执行结果**\n改动文件：${data.changedFiles}\n权限审批：${data.permissionRequests}\n状态：${data.hasError ? '有错误' : '已完成'}`),
+      this.md(`**下一步建议**\n${data.nextStep}`),
+    ];
+
+    const buttons: Button[] = [
+      { label: '🏠 首页', callbackData: 'cmd:home', style: 'primary' },
+      { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'default' },
+    ];
+
+    return this.createCardMessage(chatId,
+      { template: data.hasError ? 'red' : 'green', title: data.hasError ? '⚠️ 任务结束' : '✅ 任务摘要' },
+      elements,
+      buttons
+    );
+  }
+
   override formatSessions(chatId: string, data: SessionsData): OutboundMessage {
     const lines: string[] = [];
     for (const s of data.sessions) {
-      const marker = s.isCurrent ? ' ◀' : '';
-      lines.push(`${s.index}. ${s.date} · ${s.cwd} · ${s.size} · ${s.preview}${marker}`);
+      const marker = s.isCurrent ? ' ◀ 当前' : '';
+      lines.push(`${s.index}. ${s.date} · ${truncate(s.preview, 60)}${marker}`);
     }
 
     const elements: FeishuElement[] = [
-      this.md(`**会话列表** ${data.filterHint}\n${lines.join('\n')}`),
-      this.md('可直接点击"继续"或"详情"，也可以手输 /session <n>。'),
+      this.md(`**最近会话** ${data.filterHint}\n\n${lines.join('\n')}`),
+      this.md('💡 点击"继续"恢复会话；长按可查看详情。'),
     ];
 
     const buttons: Button[] = [];
-    for (let i = 0; i < Math.min(data.sessions.length, 5); i++) {
+    for (let i = 0; i < Math.min(data.sessions.length, 10); i++) {
+      const s = data.sessions[i];
+      const style = s.isCurrent ? 'primary' : 'default';
       buttons.push(
-        { label: `▶️ 继续 #${i + 1}`, callbackData: `cmd:session ${i + 1}`, style: 'primary', row: i },
-        { label: `ℹ️ 详情 #${i + 1}`, callbackData: `cmd:sessioninfo ${i + 1}`, style: 'default', row: i }
+        { label: `▶️ #${i + 1}`, callbackData: `cmd:session ${i + 1}`, style, row: i },
+        { label: `ℹ️`, callbackData: `cmd:sessioninfo ${i + 1}`, style: 'default', row: i }
       );
     }
 
@@ -437,7 +651,9 @@ export class FeishuFormatter extends MessageFormatter {
         ? { template: 'red' as const, title: '⚠️ 已停止' }
         : data.phase === 'waiting_permission'
           ? { template: 'orange' as const, title: '🔐 等待权限' }
-          : { template: 'blue' as const, title: data.phase === 'starting' ? '⏳ 准备开始' : '⏳ 执行中' };
+          : data.isContinuation
+            ? { template: 'blue' as const, title: `🔄 继续执行 (${data.totalTools} 步已完成)` }
+            : { template: 'blue' as const, title: data.phase === 'starting' ? '⏳ 准备开始' : '⏳ 执行中' };
 
     const elements: FeishuElement[] = [];
     const isDone = data.phase === 'completed' || data.phase === 'failed';

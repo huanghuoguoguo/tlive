@@ -19,9 +19,10 @@ describe('formatPermissionCard', () => {
     expect(msg.html).toContain('Expires in 5 minutes');
     expect(msg.html).toContain('<a href="https://example.com/terminal">');
     expect(msg.html).toContain('allow</b>');
-    expect(msg.buttons).toHaveLength(2);
+    expect(msg.buttons).toHaveLength(3);
     expect(msg.buttons![0].callbackData).toBe('perm:allow:perm-123');
-    expect(msg.buttons![1].callbackData).toBe('perm:deny:perm-123');
+    expect(msg.buttons![1].callbackData).toBe('perm:allow_session:perm-123');
+    expect(msg.buttons![2].callbackData).toBe('perm:deny:perm-123');
   });
 
   it('feishu: returns text with card built by caller', () => {
@@ -29,14 +30,14 @@ describe('formatPermissionCard', () => {
     expect(msg.text).toContain('**Tool:** Bash');
     expect(msg.text).toContain('npm run build');
     expect(msg.feishuHeader).toEqual({ template: 'orange', title: expect.stringContaining('Permission Required') });
-    expect(msg.buttons).toHaveLength(2);
+    expect(msg.buttons).toHaveLength(3);
   });
 
   it('qqbot: returns markdown text', () => {
     const msg = formatPermissionCard(baseData, 'qqbot');
     expect(msg.text).toContain('Permission Required');
     expect(msg.text).toContain('Bash');
-    expect(msg.buttons).toHaveLength(2);
+    expect(msg.buttons).toBeUndefined();
   });
 
   it('truncates long tool input', () => {

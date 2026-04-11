@@ -116,4 +116,22 @@ describe('QQBotAdapter', () => {
     });
     expect(msg?.attachments).toHaveLength(1);
   });
+
+  it('formats progress messages without QQ-native buttons', () => {
+    const msg = adapter.format({
+      type: 'progress',
+      chatId: 'user-1',
+      data: {
+        phase: 'executing',
+        taskSummary: '你好',
+        elapsedSeconds: 0,
+        renderedText: '我是 TLive，通过 Claude Code 帮你处理任务。',
+        todoItems: [],
+        totalTools: 0,
+      },
+    });
+
+    expect(msg.text).toContain('我是 TLive');
+    expect(msg.buttons).toBeUndefined();
+  });
 });

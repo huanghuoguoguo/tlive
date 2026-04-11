@@ -1,5 +1,6 @@
 import type { CanonicalEvent } from '../messages/schema.js';
 import type { FileAttachment, PermissionRequestHandler, QueryControls } from '../messages/types.js';
+import type { ClaudeSettingSource } from '../config.js';
 import type { EffortLevel } from '../utils/types.js';
 
 export type { FileAttachment, PermissionRequestHandler, QueryControls };
@@ -31,6 +32,8 @@ export interface StreamChatParams {
   onAskUserQuestion?: AskUserQuestionHandler;
   /** Controls Claude's thinking depth */
   effort?: EffortLevel;
+  /** Claude Code settings sources for this turn */
+  settingSources?: ClaudeSettingSource[];
 }
 
 export interface StreamChatResult {
@@ -49,6 +52,9 @@ export interface TurnParams {
   model?: string;
 }
 
+/** Message priority for SDK native queue */
+export type MessagePriority = 'now' | 'next' | 'later';
+
 /**
  * Long-lived session wrapping a persistent query/thread.
  * Follows Claude SDK's AsyncGenerator prompt model: one query() stays alive
@@ -59,6 +65,8 @@ export interface LiveSession {
   startTurn(prompt: string, params?: TurnParams): StreamChatResult;
   /** Inject text into active turn — like Codex turn/steer. No-op if no turn is active. */
   steerTurn(text: string): void;
+  /** Send message with SDK native priority. 'now' = steer, 'later' = queue. */
+  sendWithPriority(text: string, priority: MessagePriority): Promise<void>;
   /** Interrupt the active turn */
   interruptTurn(): Promise<void>;
   /** Close session and release all resources */
@@ -92,5 +100,11 @@ export interface LLMProvider {
   /** Declare provider capabilities */
   capabilities(): ProviderCapabilities;
   /** Create a long-lived session. Returns undefined if not supported. */
-  createSession?(params: { workingDirectory: string; sessionId?: string; effort?: EffortLevel; model?: string }): LiveSession;
+  createSession?(params: {
+    workingDirectory: string;
+    sessionId?: string;
+    effort?: EffortLevel;
+    model?: string;
+    settingSources?: ClaudeSettingSource[];
+  }): LiveSession;
 }

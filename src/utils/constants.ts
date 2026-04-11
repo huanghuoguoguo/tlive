@@ -15,12 +15,14 @@ export const CALLBACK_PREFIXES = {
   ASKQ_SUBMIT: 'askq_submit:',
   ASKQ_SKIP: 'askq_skip:',
   ASKQ_SUBMIT_SDK: 'askq_submit_sdk:',
+  FORM: 'form:',
   CMD: 'cmd:',
   HOOK: 'hook:',
   PERM_ALLOW_EDITS: 'perm:allow_edits:',
   PERM_ALLOW_TOOL: 'perm:allow_tool:',
   PERM_ALLOW_BASH: 'perm:allow_bash:',
   PERM_ALLOW: 'perm:allow:',
+  PERM_ALLOW_SESSION: 'perm:allow_session:',
   PERM_DENY: 'perm:deny:',
 } as const;
 

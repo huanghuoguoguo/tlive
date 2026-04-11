@@ -325,6 +325,55 @@ describe('FeishuAdapter', () => {
       await adapter.stop();
     });
 
+    it('handles form submission with form_value', async () => {
+      await adapter.start();
+
+      const handler = eventHandlers.get('card.action.trigger');
+      expect(handler).toBeTypeOf('function');
+
+      const result = await handler?.({
+        operator: { user_id: 'user_1' },
+        action: { form_value: { _interaction_id: 'askq-123', _text_answer: 'my answer' } },
+        context: { chat_id: 'chat_1', open_message_id: 'om_123' },
+      });
+
+      expect(result).toEqual({
+        toast: {
+          type: 'success',
+          content: '已提交',
+        },
+      });
+
+      const msg = await adapter.consumeOne();
+      expect(msg).toMatchObject({
+        channelType: 'feishu',
+        chatId: 'chat_1',
+        userId: 'user_1',
+        messageId: 'om_123',
+      });
+      expect(msg!.callbackData).toContain('form:askq-123:');
+      expect(msg!.callbackData).toContain('_text_answer');
+
+      await adapter.stop();
+    });
+
+    it('handles form submission with select value', async () => {
+      await adapter.start();
+
+      const handler = eventHandlers.get('card.action.trigger');
+      const result = await handler?.({
+        operator: { user_id: 'user_1' },
+        action: { form_value: { _interaction_id: 'askq-456', _select: 'Option A' } },
+        context: { chat_id: 'chat_1', open_message_id: 'om_456' },
+      });
+
+      const msg = await adapter.consumeOne();
+      expect(msg!.callbackData).toContain('form:askq-456:');
+      expect(msg!.callbackData).toContain('_select');
+
+      await adapter.stop();
+    });
+
     it('maps application bot menu events to commands', async () => {
       await adapter.start();
 

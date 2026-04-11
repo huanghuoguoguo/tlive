@@ -4,7 +4,10 @@ import type { SessionStateManager } from './session-state.js';
 import type { ChannelRouter } from './router.js';
 import type { LLMProvider, QueryControls } from '../providers/base.js';
 import { ClaudeSDKProvider } from '../providers/claude-sdk.js';
-import type { ClaudeSettingSource } from '../config.js';
+import {
+  DEFAULT_CLAUDE_SETTING_SOURCES,
+  type ClaudeSettingSource,
+} from '../config.js';
 import type { BridgeStore } from '../store/interface.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -29,6 +32,7 @@ import {
   presentPairings,
   presentPermissionModeChanged,
   presentPermissionModeStatus,
+  presentPermissionStatus,
   presentRestartResult,
   presentSessionNotFound,
   presentSessionDetail,
@@ -47,7 +51,7 @@ import {
   presentVersionUnskipped,
 } from './command-presenter.js';
 import { areHooksPaused, pauseHooks, resumeHooks } from './hooks-state.js';
-import type { FormattableMessage } from '../formatting/message-types.js';
+import type { FormattableMessage, HomeData } from '../formatting/message-types.js';
 
 /** Format file size in human-readable format */
 function formatSize(bytes: number): string {
@@ -81,9 +85,57 @@ export class CommandRouter {
     private defaultWorkdir: string,
     private llm: LLMProvider,
     private activeControls: Map<string, QueryControls>,
-    private permissions: { clearSessionWhitelist(): void },
-    private onNewSession?: (channelType: string, chatId: string) => void,
+    private permissions: {
+      clearSessionWhitelist(sessionId?: string): void;
+      getPermissionStatus(chatKey: string, sessionId?: string): {
+        rememberedTools: number;
+        rememberedBashPrefixes: number;
+        pending?: { toolName: string; input: string };
+        lastDecision?: { toolName: string; decision: 'allow' | 'allow_always' | 'deny' | 'cancelled' };
+      };
+    },
+    private defaultClaudeSettingSources: ClaudeSettingSource[] = DEFAULT_CLAUDE_SETTING_SOURCES,
+    private closeChatSessions?: (channelType: string, chatId: string) => void,
   ) {}
+
+  private getSettingsPreset(sources: ClaudeSettingSource[]): string {
+    if (sources.length === 0) return 'isolated';
+    if (sources.length === 1 && sources[0] === 'user') return 'user';
+    if (sources.length === 3 && sources[0] === 'user' && sources[1] === 'project' && sources[2] === 'local') {
+      return 'full';
+    }
+    return sources.join(',');
+  }
+
+  private async buildHomePayload(channelType: string, chatId: string): Promise<HomeData> {
+    const binding = await this.store.getBinding(channelType, chatId);
+    const currentCwd = binding?.cwd || this.defaultWorkdir;
+    const chatKey = this.state.stateKey(channelType, chatId);
+    const recentSessions = scanClaudeSessions(3, currentCwd);
+
+    // Get permission status info
+    const permStatus = this.permissions.getPermissionStatus(chatKey, binding?.sessionId);
+    const activeChannels = Array.from(this.getAdapters().keys());
+
+    return {
+      cwd: shortPath(currentCwd),
+      hasActiveTask: this.activeControls.has(chatKey),
+      permissionMode: this.state.getPermMode(channelType, chatId),
+      recentSummary: recentSessions[0]?.preview,
+      recentSessions: recentSessions.map((session, index) => ({
+        index: index + 1,
+        date: formatSessionDate(session.mtime),
+        preview: session.preview,
+        isCurrent: binding?.sdkSessionId === session.sdkSessionId,
+      })),
+      // Enhanced status overview
+      pendingPermission: permStatus.pending,
+      lastPermissionDecision: permStatus.lastDecision,
+      sessionWhitelistCount: permStatus.rememberedTools + permStatus.rememberedBashPrefixes,
+      bridgeHealthy: activeChannels.length > 0,
+      activeChannels,
+    };
+  }
 
   async handle(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
     const parts = msg.text.split(' ');
@@ -100,50 +152,51 @@ export class CommandRouter {
       }
       case '/new': {
         // Close any active LiveSession(s) for this chat before creating new session
-        this.onNewSession?.(msg.channelType, msg.chatId);
+        this.closeChatSessions?.(msg.channelType, msg.chatId);
         // Just clear session, keep current cwd
         const binding = await this.store.getBinding(msg.channelType, msg.chatId);
 
         const newSessionId = generateSessionId();
         await this.router.rebind(msg.channelType, msg.chatId, newSessionId, {
           cwd: binding?.cwd,
+          claudeSettingSources: binding?.claudeSettingSources,
         });
 
         this.state.clearLastActive(msg.channelType, msg.chatId);
         this.state.clearThread(msg.channelType, msg.chatId);
-        this.permissions.clearSessionWhitelist();
+        this.permissions.clearSessionWhitelist(binding?.sessionId);
 
         await send(adapter, presentNewSession(msg.chatId, { cwd: binding?.cwd }));
 
         // Send home screen for platforms with rich card support
         if (adapter.supportsRichCards()) {
-          await send(adapter, presentHome(msg.chatId, {
-            cwd: shortPath(binding?.cwd || this.defaultWorkdir),
-            hasActiveTask: false,
-          }));
+          const homeData = await this.buildHomePayload(msg.channelType, msg.chatId);
+          homeData.hasActiveTask = false;
+          await send(adapter, presentHome(msg.chatId, homeData));
         }
         return true;
       }
       case '/home': {
-        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-        const currentCwd = binding?.cwd || this.defaultWorkdir;
-        const recentSession = scanClaudeSessions(1, currentCwd)[0];
-        const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
-        await send(adapter, presentHome(msg.chatId, {
-          cwd: shortPath(currentCwd),
-          hasActiveTask: this.activeControls.has(chatKey),
-          recentSummary: recentSession?.preview,
-        }));
+        await send(adapter, presentHome(msg.chatId, await this.buildHomePayload(msg.channelType, msg.chatId)));
         return true;
       }
       case '/perm': {
         const sub = parts[1]?.toLowerCase();
+        const mode = (sub === 'on' || sub === 'off') ? sub : this.state.getPermMode(msg.channelType, msg.chatId);
         if (sub === 'on' || sub === 'off') {
           this.state.setPermMode(msg.channelType, msg.chatId, sub);
-          await send(adapter, presentPermissionModeChanged(msg.chatId, sub));
+        }
+        if (adapter.supportsRichCards()) {
+          const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+          const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
+          await send(adapter, presentPermissionStatus(msg.chatId, {
+            mode,
+            ...this.permissions.getPermissionStatus(chatKey, binding?.sessionId),
+          }));
+        } else if (sub === 'on' || sub === 'off') {
+          await send(adapter, presentPermissionModeChanged(msg.chatId, mode));
         } else {
-          const current = this.state.getPermMode(msg.channelType, msg.chatId);
-          await send(adapter, presentPermissionModeStatus(msg.chatId, current));
+          await send(adapter, presentPermissionModeStatus(msg.chatId, mode));
         }
         return true;
       }
@@ -224,6 +277,7 @@ export class CommandRouter {
         await this.router.rebind(msg.channelType, msg.chatId, newBindingId, {
           sdkSessionId: target.sdkSessionId,
           cwd: target.cwd, // update cwd to session's directory
+          claudeSettingSources: binding?.claudeSettingSources,
         });
 
         this.state.clearLastActive(msg.channelType, msg.chatId);
@@ -318,20 +372,31 @@ export class CommandRouter {
         };
 
         if (arg && arg in PRESETS) {
-          this.llm.setSettingSources(PRESETS[arg]);
+          const binding = await this.router.resolve(msg.channelType, msg.chatId);
+          binding.claudeSettingSources = [...PRESETS[arg]];
+          binding.sdkSessionId = undefined;
+          await this.store.saveBinding(binding);
+          this.closeChatSessions?.(msg.channelType, msg.chatId);
+          this.permissions.clearSessionWhitelist(binding.sessionId);
           const labels: Record<string, string> = {
-            user: '👤 user — auth & model only',
-            full: '📦 full — auth, CLAUDE.md, MCP, skills',
-            isolated: '🔒 isolated — no external settings',
+            user: '👤 user — current chat uses global auth/model only',
+            full: '📦 full — current chat loads project rules, MCP, and skills',
+            isolated: '🔒 isolated — current chat ignores external settings',
           };
           await send(adapter, presentSettingsChanged(msg.chatId, labels[arg]));
         } else {
-          const current = this.llm.getSettingSources();
-          const preset = current.length === 0 ? 'isolated'
-            : current.length === 1 && current[0] === 'user' ? 'user'
-            : current.includes('project') ? 'full'
-            : current.join(',');
-          await send(adapter, presentSettingsStatus(msg.chatId, preset, current));
+          const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+          const current = binding?.claudeSettingSources ?? this.defaultClaudeSettingSources;
+          const preset = this.getSettingsPreset(current);
+          await send(
+            adapter,
+            presentSettingsStatus(
+              msg.chatId,
+              preset,
+              current,
+              binding?.claudeSettingSources ? 'chat override' : 'default',
+            ),
+          );
         }
         return true;
       }

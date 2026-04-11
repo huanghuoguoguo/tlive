@@ -118,4 +118,32 @@ describe('ConversationEngine', () => {
     await engine.processMessage({ sdkSessionId: 's1', workingDirectory: '/tmp', text: 'hi' });
     expect(mockStore.releaseLock).toHaveBeenCalled();
   });
+
+  it('forwards Claude setting sources to streamChat', async () => {
+    let captured: any;
+    const llm = {
+      streamChat: vi.fn().mockImplementation((params) => {
+        captured = params;
+        return {
+          stream: new ReadableStream<CanonicalEvent>({
+            start(controller) {
+              controller.enqueue({ kind: 'query_result', sessionId: 's1', isError: false, usage: { inputTokens: 0, outputTokens: 0 } });
+              controller.close();
+            },
+          }),
+          controls: undefined,
+        };
+      }),
+    };
+    engine = new ConversationEngine(mockStore as any, llm as any);
+
+    await engine.processMessage({
+      sdkSessionId: 's1',
+      workingDirectory: '/tmp',
+      text: 'hi',
+      settingSources: ['user', 'project', 'local'],
+    });
+
+    expect(captured.settingSources).toEqual(['user', 'project', 'local']);
+  });
 });

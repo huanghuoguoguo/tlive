@@ -91,6 +91,9 @@ export class BridgeManager {
     this.permissions = new PermissionCoordinator(gateway, broker);
     this.engine = new ConversationEngine(store, llm);
     this.sdkEngine = new SDKEngine(this.state, this.router);
+    this.sdkEngine.onSessionPruned = (sessionKey) => {
+      this.permissions.clearSessionWhitelist(sessionKey);
+    };
     this.commands = new CommandRouter(
       this.state,
       () => this.adapters,
@@ -100,6 +103,7 @@ export class BridgeManager {
       llm,
       this.sdkEngine.getActiveControls(),
       this.permissions,
+      config.claudeSettingSources,
       (channelType, chatId) => this.sdkEngine.closeSession(channelType, chatId),
     );
     this.loop = new MessageLoopCoordinator({
@@ -123,6 +127,7 @@ export class BridgeManager {
       sdkEngine: this.sdkEngine,
       store,
       defaultWorkdir,
+      defaultClaudeSettingSources: config.claudeSettingSources,
       port: this.port,
     });
     this.notifications = new HookNotificationDispatcher({
@@ -283,6 +288,19 @@ export class BridgeManager {
   }
 
   async handleInboundMessage(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
+    // Menu events: fallback to user's last active chat
+    if (!msg.chatId && msg.userId) {
+      const userLastChat = this.state.getUserLastChat(msg.userId);
+      if (userLastChat && userLastChat.channelType === adapter.channelType) {
+        console.log(`[${adapter.channelType}] Menu event: fallback to user's last chat ${userLastChat.chatId}`);
+        msg = { ...msg, chatId: userLastChat.chatId };
+      } else {
+        console.warn(`[${adapter.channelType}] Menu event dropped: no recent chat for user ${msg.userId}`);
+        return false;
+      }
+    }
+
+    // Callback without chatId: fallback to last active chat for this channel
     if (msg.callbackData && !msg.chatId) {
       const fallbackChatId = this.ingress.getLastChatId(adapter.channelType);
       if (fallbackChatId) {
@@ -313,6 +331,11 @@ export class BridgeManager {
         }
       }
       return false;
+    }
+
+    // Track user's last active chat (for menu fallback)
+    if (msg.chatId && msg.userId) {
+      this.state.setUserLastChat(msg.userId, adapter.channelType, msg.chatId);
     }
 
     // Track last active chatId per channel type (used for hook notification routing)

@@ -1,9 +1,12 @@
+import type { ClaudeSettingSource } from '../config.js';
+
 export interface ChannelBinding {
   channelType: string;
   chatId: string;
   sessionId: string;           // internal key (used for locks, dedup)
   sdkSessionId?: string;       // Claude SDK session UUID (for resume)
   cwd?: string;                // current working directory for this chat
+  claudeSettingSources?: ClaudeSettingSource[]; // per-chat Claude settings override
   createdAt: string;
 }
 

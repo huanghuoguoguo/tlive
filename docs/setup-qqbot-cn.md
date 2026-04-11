@@ -137,7 +137,9 @@ QQ Bot 支持以下消息场景：
 
 ## 权限审批
 
-当 Claude 需要执行敏感操作时，QQ Bot 会发送带按钮的消息：
+为兼容 OpenClaw，QQ Bot 采用纯文本交互，不依赖卡片或按钮。
+
+当 Claude 需要执行敏感操作时，QQ Bot 会发送一条纯文本审批消息：
 
 ```
 🔐 Permission Required
@@ -149,10 +151,16 @@ rm -rf /tmp/test
 
 ⏱ Expires in 5 minutes
 
-[✅ Yes]  [❌ No]
+💬 回复 allow / deny / always
 ```
 
-点击按钮或回复 `allow` / `deny` 进行审批。
+可用回复：
+
+- `allow`：本次允许
+- `deny`：本次拒绝
+- `always`：当前会话内始终允许同类操作
+
+常用控制命令同样走文本交互，例如 `/stop`、`/help`、`/perm on|off`。
 
 ## 常见问题
 

@@ -81,7 +81,7 @@ curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.s
 
 ### Permission Approval Timeout
 
-Default timeout is 5 minutes, auto-deny on timeout. Tap buttons on phone or reply `allow`/`deny`.
+Default timeout is 5 minutes with auto-deny on timeout. On QQ Bot, reply `allow` / `deny` / `always` directly instead of waiting for buttons.
 
 ### Web Terminal Unreachable
 

@@ -2,6 +2,7 @@ import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';
 import type { PermissionCoordinator } from './permission-coordinator.js';
 import type { SDKEngine } from './sdk-engine.js';
+import { truncate } from '../utils/string.js';
 import {
   CALLBACK_PREFIXES,
 } from '../utils/constants.js';
@@ -13,6 +14,7 @@ import {
   parseAskqToggleCallback,
   parseCallback,
   parseHookCallback,
+  parseFormCallback,
 } from '../utils/callback.js';
 
 interface CallbackDispatcherDeps {
@@ -129,6 +131,60 @@ export async function handleCallbackMessage(
     return true;
   }
 
+  // Form submission callback (from Feishu form_input/form_select)
+  const formParsed = parseFormCallback(msg.callbackData);
+  if (formParsed) {
+    const { interactionId, formData } = formParsed;
+    const permId = interactionId;
+    const { sdkQuestionData, sdkQuestionTextAnswers, sdkQuestionAnswers } = deps.sdkEngine.getQuestionState();
+    const qData = sdkQuestionData.get(permId);
+
+    if (qData) {
+      const q = qData.questions[0];
+      // Check for text input (form_input)
+      const textAnswer = (formData._text_answer || formData.text || '').trim();
+      if (textAnswer) {
+        sdkQuestionTextAnswers.set(permId, textAnswer);
+        adapter.editCardResolution(msg.chatId, msg.messageId, {
+          resolution: 'answered',
+          label: `✅ Answer: ${truncate(textAnswer, 50)}`,
+        }).catch(() => {});
+        deps.permissions.cleanupQuestion(permId);
+        deps.permissions.getGateway().resolve(permId, 'allow');
+        return true;
+      }
+
+      // Check for select option (form_select)
+      const selectValue = (formData._select || '').trim();
+      if (selectValue) {
+        // Find the option index by matching the value
+        const optionIndex = q.options.findIndex(opt => opt.label === selectValue);
+        if (optionIndex >= 0) {
+          sdkQuestionAnswers.set(permId, optionIndex);
+          adapter.editCardResolution(msg.chatId, msg.messageId, {
+            resolution: 'selected',
+            label: `✅ ${selectValue}`,
+          }).catch(() => {});
+          deps.permissions.cleanupQuestion(permId);
+          deps.permissions.getGateway().resolve(permId, 'allow');
+          return true;
+        }
+
+        if (msg.chatId) {
+          await adapter.send({ chatId: msg.chatId, text: '⚠️ Invalid selection, please try again.' });
+        }
+        return true;
+      }
+
+      if (msg.chatId) {
+        await adapter.send({ chatId: msg.chatId, text: '⚠️ Please enter an answer or choose an option before submitting.' });
+      }
+    } else {
+      console.warn(`[bridge] Form submission for unknown question: ${permId}`);
+    }
+    return true;
+  }
+
   // Command shortcuts from help menu buttons
   if (msg.callbackData.startsWith('cmd:')) {
     const cmd = msg.callbackData.slice(4);
@@ -165,20 +221,24 @@ export async function handleCallbackMessage(
   if (msg.callbackData.startsWith(CALLBACK_PREFIXES.PERM_ALLOW_TOOL)) {
     const parts = parseCallback(msg.callbackData);
     const permId = parts[2];
-    const toolName = parts.slice(3).join(':');
+    const hasSessionScope = parts.length >= 5;
+    const sessionId = hasSessionScope ? parts[3] : undefined;
+    const toolName = parts.slice(hasSessionScope ? 4 : 3).join(':');
     deps.permissions.getGateway().resolve(permId, 'allow');
-    deps.permissions.addAllowedTool(toolName);
-    console.log(`[bridge] Added ${toolName} to session whitelist`);
+    deps.permissions.addAllowedTool(sessionId, toolName);
+    console.log(`[bridge] Added ${toolName} to session whitelist${sessionId ? ` (${sessionId})` : ''}`);
     return true;
   }
 
   if (msg.callbackData.startsWith(CALLBACK_PREFIXES.PERM_ALLOW_BASH)) {
     const parts = parseCallback(msg.callbackData);
     const permId = parts[2];
-    const prefix = parts.slice(3).join(':');
+    const hasSessionScope = parts.length >= 5;
+    const sessionId = hasSessionScope ? parts[3] : undefined;
+    const prefix = parts.slice(hasSessionScope ? 4 : 3).join(':');
     deps.permissions.getGateway().resolve(permId, 'allow');
-    deps.permissions.addAllowedBashPrefix(prefix);
-    console.log(`[bridge] Added Bash(${prefix} *) to session whitelist`);
+    deps.permissions.addAllowedBashPrefix(sessionId, prefix);
+    console.log(`[bridge] Added Bash(${prefix} *) to session whitelist${sessionId ? ` (${sessionId})` : ''}`);
     return true;
   }
 

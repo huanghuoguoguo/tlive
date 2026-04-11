@@ -81,7 +81,7 @@ curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.s
 
 ### 权限审批超时
 
-默认 5 分钟超时，超时后自动拒绝。可以在手机上点击按钮响应，或者回复 `allow`/`deny`。
+默认 5 分钟超时，超时后自动拒绝。QQ Bot 请直接回复 `allow` / `deny` / `always`；不要等待按钮。
 
 ### Web 终端无法访问
 

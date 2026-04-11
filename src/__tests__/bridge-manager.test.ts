@@ -103,6 +103,35 @@ describe('BridgeManager', () => {
     expect(processed).toBe(false);
   });
 
+  it('falls back menu events to the same user last chat only', async () => {
+    const adapter = mockAdapter('feishu');
+    manager.registerAdapter(adapter);
+    (manager as any).state.setUserLastChat('u1', 'feishu', 'user-chat');
+
+    const handled = await manager.handleInboundMessage(adapter, {
+      channelType: 'feishu', userId: 'u1', text: '/home', messageId: 'm1',
+    } as any);
+
+    expect(handled).toBe(true);
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({ chatId: 'user-chat' })
+    );
+  });
+
+  it('drops menu events without a user-scoped chat even if another chat was recently active', async () => {
+    const adapter = mockAdapter('feishu');
+    manager.registerAdapter(adapter);
+    (manager as any).ingress.recordChat('feishu', 'other-users-chat');
+
+    const handled = await manager.handleInboundMessage(adapter, {
+      channelType: 'feishu', userId: 'u1', text: '/home', messageId: 'm1',
+    } as any);
+
+    expect(handled).toBe(false);
+    expect((adapter as any).sendTyping).not.toHaveBeenCalled();
+    expect(adapter.send).not.toHaveBeenCalled();
+  });
+
   it('routes callback data to permission broker', async () => {
     const adapter = mockAdapter();
     manager.registerAdapter(adapter);

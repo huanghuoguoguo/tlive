@@ -6,21 +6,22 @@ import { truncate } from '../utils/string.js';
 interface PermissionMessage {
   text?: string;
   html?: string;
-  buttons: OutboundMessage['buttons'];
+  buttons?: OutboundMessage['buttons'];
   feishuElements?: OutboundMessage['feishuElements'];
   /** Feishu card header (caller passes to buildFeishuCard) */
   feishuHeader?: { template: string; title: string };
 }
 
 function makeButtons(permissionId: string): NonNullable<OutboundMessage['buttons']> {
-  // Telegram enforces 64-byte callback_data limit; longest pattern is "perm:allow:ID"
-  const maxIdBytes = 64 - Buffer.byteLength('perm:allow:', 'utf8');
+  // Telegram enforces 64-byte callback_data limit; longest pattern is "perm:allow_session:ID"
+  const maxIdBytes = 64 - Buffer.byteLength('perm:allow_session:', 'utf8');
   const safeId = Buffer.byteLength(permissionId, 'utf8') > maxIdBytes
     ? permissionId.slice(0, maxIdBytes)
     : permissionId;
   return [
-    { label: '✅ Yes', callbackData: `perm:allow:${safeId}`, style: 'primary' as const },
-    { label: '❌ No', callbackData: `perm:deny:${safeId}`, style: 'danger' as const },
+    { label: '✅ Allow', callbackData: `perm:allow:${safeId}`, style: 'primary' as const, row: 0 },
+    { label: '📌 Always', callbackData: `perm:allow_session:${safeId}`, style: 'default' as const, row: 0 },
+    { label: '❌ Deny', callbackData: `perm:deny:${safeId}`, style: 'danger' as const, row: 1 },
   ];
 }
 
@@ -42,7 +43,7 @@ export function formatPermissionCard(data: PermissionCardData, channelType: Chan
       if (data.terminalUrl) {
         parts.push(`\uD83D\uDD17 <a href="${data.terminalUrl}">Open Terminal</a>`);
       }
-      parts.push('', `💬 Or reply <b>allow</b> / <b>deny</b>`);
+      parts.push('', `💬 Or reply <b>allow</b> / <b>deny</b> / <b>always</b>`);
       return { html: parts.join('\n'), buttons };
     }
 
@@ -55,13 +56,13 @@ export function formatPermissionCard(data: PermissionCardData, channelType: Chan
       if (data.terminalUrl) {
         parts.push(`\uD83D\uDD17 [Open Terminal](${data.terminalUrl})`);
       }
-      parts.push('', '💬 回复 **allow** / **deny** 审批');
+      parts.push('', '💬 回复 **allow** / **deny** / **always** 审批');
       return {
         text: parts.join('\n'),
         feishuElements: [
           { tag: 'markdown', content: `**待审批动作**\n${data.toolName}\n\n\`\`\`\n${input}\n\`\`\`\n\n⏱ ${expires} 分钟内处理` },
           ...(data.terminalUrl ? [{ tag: 'markdown', content: `🔗 [Open Terminal](${data.terminalUrl})` }] : []),
-          { tag: 'markdown', content: '💬 也可以直接回复 **allow** / **deny**。' },
+          { tag: 'markdown', content: '💬 也可以直接回复 **allow** / **deny** / **always**。' },
         ],
         feishuHeader: { template: 'orange', title: '\uD83D\uDD10 Permission Required' },
         buttons,
@@ -82,10 +83,9 @@ export function formatPermissionCard(data: PermissionCardData, channelType: Chan
       if (data.terminalUrl) {
         parts.push(`\uD83D\uDD17 [Open Terminal](${data.terminalUrl})`);
       }
-      parts.push('', '💬 回复 **allow** / **deny** 或点击按钮');
+      parts.push('', '💬 回复 **allow** / **deny** / **always**');
       return {
         text: parts.join('\n'),
-        buttons,
       };
     }
   }

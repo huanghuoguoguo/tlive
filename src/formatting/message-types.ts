@@ -46,7 +46,53 @@ export interface NotificationData {
 export interface HomeData {
   cwd: string;
   hasActiveTask: boolean;
+  permissionMode: 'on' | 'off';
   recentSummary?: string;
+  recentSessions?: Array<{
+    index: number;
+    date: string;
+    preview: string;
+    isCurrent: boolean;
+  }>;
+  /** Pending permission request (if any) */
+  pendingPermission?: {
+    toolName: string;
+    input: string;
+  };
+  /** Last permission decision */
+  lastPermissionDecision?: {
+    toolName: string;
+    decision: 'allow' | 'allow_always' | 'deny' | 'cancelled';
+  };
+  /** Number of remembered tools/Bash prefixes in session whitelist */
+  sessionWhitelistCount?: number;
+  /** Bridge connection status */
+  bridgeHealthy?: boolean;
+  /** Active channels */
+  activeChannels?: string[];
+}
+
+/** Permission status card for /perm command */
+export interface PermissionStatusData {
+  mode: 'on' | 'off';
+  rememberedTools: number;
+  rememberedBashPrefixes: number;
+  pending?: {
+    toolName: string;
+    input: string;
+  };
+  lastDecision?: {
+    toolName: string;
+    decision: 'allow' | 'allow_always' | 'deny' | 'cancelled';
+  };
+}
+
+/** Task start confirmation card (session reset or new task) */
+export interface TaskStartData {
+  cwd: string;
+  permissionMode: 'on' | 'off';
+  isNewSession: boolean;
+  previousSessionPreview?: string;
 }
 
 /** Session list for /sessions command */
@@ -110,6 +156,19 @@ export interface ProgressData {
   completedTraceOnly?: boolean;
   /** Override buttons (e.g., permission-specific). Formatters derive defaults from phase when absent. */
   actionButtons?: Button[];
+  /** Number of permission prompts shown during this task. */
+  permissionRequests?: number;
+  /** True after bubble split — indicates continuation of previous task */
+  isContinuation?: boolean;
+}
+
+/** Task completion summary card */
+export interface TaskSummaryData {
+  summary: string;
+  changedFiles: number;
+  permissionRequests: number;
+  hasError: boolean;
+  nextStep: string;
 }
 
 /** Card resolution state update (after button click) */
@@ -149,12 +208,15 @@ export type FormattableMessage =
   | { type: 'question'; chatId: string; data: QuestionData }
   | { type: 'notification'; chatId: string; data: NotificationData }
   | { type: 'home'; chatId: string; data: HomeData }
+  | { type: 'permissionStatus'; chatId: string; data: PermissionStatusData }
+  | { type: 'taskStart'; chatId: string; data: TaskStartData }
   | { type: 'sessions'; chatId: string; data: SessionsData }
   | { type: 'sessionDetail'; chatId: string; data: SessionDetailData }
   | { type: 'help'; chatId: string; data: HelpData }
   | { type: 'newSession'; chatId: string; data: NewSessionData }
   | { type: 'error'; chatId: string; data: ErrorData }
   | { type: 'progress'; chatId: string; data: ProgressData }
+  | { type: 'taskSummary'; chatId: string; data: TaskSummaryData }
   | { type: 'cardResolution'; chatId: string; data: CardResolutionData }
   | { type: 'versionUpdate'; chatId: string; data: VersionUpdateData }
   | { type: 'multiSelectToggle'; chatId: string; data: MultiSelectToggleData };

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { presentHelp, presentNewSession, presentSessions, presentStatus, presentHome } from '../engine/command-presenter.js';
+import {
+  presentHelp,
+  presentNewSession,
+  presentPermissionStatus,
+  presentSessions,
+  presentStatus,
+  presentHome,
+} from '../engine/command-presenter.js';
 import { TelegramFormatter } from '../formatting/telegram-formatter.js';
 import { FeishuFormatter } from '../formatting/feishu-formatter.js';
 import type { FormattableMessage } from '../formatting/message-types.js';
@@ -127,6 +134,7 @@ describe('command presenter', () => {
       const msg = presentHome('chat-1', {
         cwd: '/home/user/project',
         hasActiveTask: true,
+        permissionMode: 'on',
         recentSummary: 'Working on feature X',
       });
       expect(msg.type).toBe('home');
@@ -140,9 +148,41 @@ describe('command presenter', () => {
       const msg = presentHome('chat-1', {
         cwd: '/home/user/project',
         hasActiveTask: false,
+        permissionMode: 'off',
+        recentSessions: [
+          { index: 1, date: '1月1日 12:00', preview: 'Recent task', isCurrent: true },
+        ],
       });
       const formatted = feishuFormatter.format(msg);
       expect(formatted.feishuHeader?.template).toBe('indigo');
+      expect(formatted.feishuElements?.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('presentPermissionStatus', () => {
+    it('returns semantic message data', () => {
+      const msg = presentPermissionStatus('chat-1', {
+        mode: 'on',
+        rememberedTools: 1,
+        rememberedBashPrefixes: 2,
+        pending: { toolName: 'Edit', input: 'src/main.ts' },
+        lastDecision: { toolName: 'Bash', decision: 'allow_always' },
+      });
+      expect(msg.type).toBe('permissionStatus');
+      if (msg.type === 'permissionStatus') {
+        expect(msg.data.mode).toBe('on');
+        expect(msg.data.rememberedBashPrefixes).toBe(2);
+      }
+    });
+
+    it('formats for Feishu with action buttons', () => {
+      const msg = presentPermissionStatus('chat-1', {
+        mode: 'off',
+        rememberedTools: 0,
+        rememberedBashPrefixes: 0,
+      });
+      const formatted = feishuFormatter.format(msg);
+      expect(formatted.feishuHeader?.title).toContain('权限状态');
       expect(formatted.feishuElements?.length).toBeGreaterThan(0);
     });
   });

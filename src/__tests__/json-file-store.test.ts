@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { JsonFileStore } from '../store/json-file.js';
+import type { ClaudeSettingSource } from '../config.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -32,11 +33,20 @@ describe('JsonFileStore', () => {
   });
 
   it('persists sdkSessionId and cwd in binding', async () => {
-    const binding = { channelType: 'telegram', chatId: '123', sessionId: 's1', sdkSessionId: 'uuid-1', cwd: '/home/test', createdAt: '' };
+    const binding = {
+      channelType: 'telegram',
+      chatId: '123',
+      sessionId: 's1',
+      sdkSessionId: 'uuid-1',
+      cwd: '/home/test',
+      claudeSettingSources: ['user', 'project'] as ClaudeSettingSource[],
+      createdAt: '',
+    };
     await store.saveBinding(binding);
     const got = await store.getBinding('telegram', '123');
     expect(got?.sdkSessionId).toBe('uuid-1');
     expect(got?.cwd).toBe('/home/test');
+    expect(got?.claudeSettingSources).toEqual(['user', 'project']);
   });
 
   // Dedup

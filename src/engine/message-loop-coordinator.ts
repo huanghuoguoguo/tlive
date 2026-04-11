@@ -56,47 +56,31 @@ export class MessageLoopCoordinator {
 
     this.options.state.setProcessing(chatKey, true);
     handleMessage(adapter, coalesced)
-      .then(() => this.drainQueue(adapter, coalesced.channelType, coalesced.chatId, handleMessage, onError))
       .catch(onError)
       .finally(() => this.options.state.setProcessing(chatKey, false));
   }
 
   private async handleBusyChat(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<void> {
-    if (msg.text && this.options.sdkEngine.canSteer(msg.channelType, msg.chatId, msg.replyToMessageId)) {
-      this.options.sdkEngine.steer(msg.channelType, msg.chatId, msg.text);
-      await adapter.send({ chatId: msg.chatId, text: '💬 Message sent to active session' }).catch(() => {});
-      return;
-    }
+    if (!msg.text) return;
 
-    if (!msg.text) {
-      return;
-    }
+    // Use sendWithContext to handle reply-to-bubble or fallback to active session
+    const result = await this.options.sdkEngine.sendWithContext(
+      msg.channelType,
+      msg.chatId,
+      msg.text,
+      msg.replyToMessageId,
+    );
 
-    const queued = this.options.sdkEngine.queueMessage(msg.channelType, msg.chatId, msg);
-    if (queued) {
-      await adapter.send({ chatId: msg.chatId, text: '📥 Queued — will process after current task' }).catch(() => {});
-    } else {
-      await adapter.send({ chatId: msg.chatId, text: '⚠️ Queue full — please wait for current tasks to finish' }).catch(() => {});
-    }
-  }
-
-  private async drainQueue(
-    adapter: BaseChannelAdapter,
-    channelType: string,
-    chatId: string,
-    handleMessage: (adapter: BaseChannelAdapter, msg: InboundMessage) => Promise<unknown>,
-    onError: (err: unknown) => void,
-  ): Promise<void> {
-    let next = this.options.sdkEngine.dequeueMessage(channelType, chatId);
-    while (next) {
-      console.log(`[${adapter.channelType}] Processing queued message`);
-      try {
-        await handleMessage(adapter, next);
-      } catch (err) {
-        onError(err);
-        break;
+    if (result.sent) {
+      if (result.mode === 'steer') {
+        await adapter.send({ chatId: msg.chatId, text: '💬 Message injected into active session' }).catch(() => {});
+      } else {
+        await adapter.send({ chatId: msg.chatId, text: '📥 Queued — will process after current task' }).catch(() => {});
       }
-      next = this.options.sdkEngine.dequeueMessage(channelType, chatId);
+      return;
     }
+
+    // No session found — prompt user
+    await adapter.send({ chatId: msg.chatId, text: '⚠️ No active session — please start a task first' }).catch(() => {});
   }
 }

@@ -1,4 +1,5 @@
 import type { BridgeStore } from '../store/interface.js';
+import type { ClaudeSettingSource } from '../config.js';
 import type { FileAttachment, LLMProvider, PermissionRequestHandler, QueryControls, StreamChatResult, EffortLevel } from '../providers/base.js';
 import type { AskUserQuestionHandler } from '../messages/types.js';
 import type { TodoStatus } from '../utils/types.js';
@@ -60,6 +61,8 @@ interface ProcessMessageParams {
   effort?: EffortLevel;
   /** Override model for this query */
   model?: string;
+  /** Claude settings sources for this query */
+  settingSources?: ClaudeSettingSource[];
   /** Pre-built stream from LiveSession.startTurn() — skips llm.streamChat() */
   streamResult?: StreamChatResult;
 }
@@ -98,6 +101,7 @@ export class ConversationEngine {
         onPermissionRequest: params.sdkPermissionHandler,
         onAskUserQuestion: params.sdkAskQuestionHandler,
         effort: params.effort,
+        settingSources: params.settingSources,
       });
 
       // Expose query controls (interrupt, stopTask) to caller

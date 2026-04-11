@@ -47,6 +47,10 @@ const PERMISSION_TIMEOUT_MS = 60_000;
 const PROGRESS_TIMEOUT_MS = 30_000;
 const PROGRESS_RESET_THROTTLE_MS = 5000;
 
+/** Bubble split thresholds — send new message when exceeded */
+const SPLIT_TOOL_THRESHOLD = 12;      // Split after N tools in current bubble
+const SPLIT_TIMELINE_THRESHOLD = 18;  // Split after N timeline entries
+
 interface PermissionState {
   toolName: string;
   input: string;
@@ -90,6 +94,7 @@ export interface MessageRendererState {
   toolSummary: string;
   footerLine?: string;
   errorMessage?: string;
+  permissionRequests: number;
   currentTool: CurrentTool | null;
   todoItems: Array<{ content: string; status: TodoStatus }>;
   thinkingText: string;
@@ -101,16 +106,23 @@ export interface MessageRendererState {
     input: string;
     queueLength: number;
   };
+  /** True after bubble split — continuation of previous task */
+  isContinuation?: boolean;
 }
 
 export class MessageRenderer {
   private toolCounts = new Map<string, number>();
   private totalTools = 0;
+  /** Tools count in current bubble (reset on split) */
+  private bubbleToolCount = 0;
+  /** Timeline entries in current bubble (reset on split) */
+  private bubbleTimelineCount = 0;
   private responseText = '';
   private completed = false;
   private footerLine?: string;
   private errorMessage?: string;
   private permissionQueue: PermissionState[] = [];
+  private permissionRequests = 0;
   /** Currently executing tool for detailed progress */
   private currentTool: CurrentTool | null = null;
   /** Todo items for progress display */
@@ -127,6 +139,8 @@ export class MessageRenderer {
   private toolIdToTimelineIndex = new Map<string, number>();
   /** Whether the last timeline entry is a text entry (for appending) */
   private lastTimelineIsText = false;
+  /** Flag to split bubble on next flush */
+  private splitPending = false;
 
   private _messageId?: string;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -190,9 +204,15 @@ export class MessageRenderer {
     if (last?.kind === 'thinking') {
       last.text = (last.text || '') + text;
     } else {
+      this.bubbleTimelineCount++;
       this.timeline.push({ kind: 'thinking', text });
     }
     this.lastTimelineIsText = false;
+    // Check for split threshold on thinking entries too
+    if (this._messageId && !this.splitPending && !this.completed &&
+        this.bubbleTimelineCount >= SPLIT_TIMELINE_THRESHOLD) {
+      this.splitPending = true;
+    }
     // Force flush: plain-text render() doesn't include thinking, but Feishu
     // card uses state.timeline which has changed. Without forceFlush, the
     // change detection sees unchanged plain text and skips the flush.
@@ -205,6 +225,7 @@ export class MessageRenderer {
     const current = this.toolCounts.get(name) ?? 0;
     this.toolCounts.set(name, current + 1);
     this.totalTools++;
+    this.bubbleToolCount++;
 
     // Set current tool for detailed progress
     this.currentTool = {
@@ -222,6 +243,7 @@ export class MessageRenderer {
 
     // Add to timeline
     const tlIdx = this.timeline.length;
+    this.bubbleTimelineCount++;
     this.timeline.push({
       kind: 'tool',
       toolName: name,
@@ -249,6 +271,13 @@ export class MessageRenderer {
     // Start progress timeout for intermediate updates
     this.resumeProgress();
     this.startProgressTimeout();
+
+    // Check for bubble split threshold
+    if (this._messageId && !this.splitPending && !this.completed &&
+        (this.bubbleToolCount >= SPLIT_TOOL_THRESHOLD ||
+         this.bubbleTimelineCount >= SPLIT_TIMELINE_THRESHOLD)) {
+      this.splitPending = true;
+    }
 
     this.forceFlush = true; // Force update on new tool
     this.scheduleFlush();
@@ -334,6 +363,7 @@ export class MessageRenderer {
     permId: string,
     buttons: Array<{ label: string; callbackData: string; style: string }>,
   ): void {
+    this.permissionRequests++;
     this.permissionQueue.push({ toolName, input, permId, buttons });
     // Clear progress timeout during permission wait - user needs to act
     this.clearProgressTimeout();
@@ -517,6 +547,7 @@ export class MessageRenderer {
       toolSummary: this.renderToolSummary(),
       footerLine: this.footerLine,
       errorMessage: this.errorMessage,
+      permissionRequests: this.permissionRequests,
       currentTool: this.currentTool,
       todoItems: [...this.todoItems],
       thinkingText: this.thinkingText,
@@ -529,10 +560,26 @@ export class MessageRenderer {
             queueLength: this.permissionQueue.length,
           }
         : undefined,
+      isContinuation: this.bubbleToolCount === 0 && this.totalTools > 0,
     };
   }
 
   private renderExecuting(): string {
+    // After bubble split: show continuation hint
+    if (this.bubbleToolCount === 0 && this.totalTools > 0) {
+      const lines: string[] = [];
+      lines.push(`🔄 继续执行... (${this.totalTools} 步已完成)`);
+      if (this.todoItems.length > 0) {
+        lines.push('');
+        lines.push(this.renderTodoProgress());
+      }
+      if (this.currentTool?.input) {
+        const elapsed = this.currentTool.elapsed > 0 ? ` (${this.currentTool.elapsed}s)` : '';
+        lines.push(`   └─ ${this.currentTool.name}: ${this.currentTool.input}${elapsed}`);
+      }
+      return this.applyPlatformLimit(redactSensitiveContent(lines.join('\n')));
+    }
+
     if (this.totalTools === 0 && !this.responseText && this.todoItems.length === 0) {
       return '⏳ Starting...';
     }
@@ -755,6 +802,19 @@ export class MessageRenderer {
       if (!isEdit && typeof result === 'string') {
         this._messageId = result;
       }
+
+      // Ignore deferred split once the task has already finished, otherwise
+      // completion/error flushes can spawn an extra empty continuation bubble.
+      if (this.splitPending && (this.completed || this.errorMessage)) {
+        this.splitPending = false;
+      } else if (this.splitPending) {
+        this.splitPending = false;
+        const toolsAtSplit = this.bubbleToolCount;
+        const timelineAtSplit = this.bubbleTimelineCount;
+        this.resetBubbleState();
+        this.pendingFlush = true; // Trigger new message
+        console.log(`[renderer] Bubble split after ${toolsAtSplit} tools, ${timelineAtSplit} timeline entries`);
+      }
     } finally {
       this.flushing = false;
       if (this.pendingFlush) {
@@ -763,5 +823,20 @@ export class MessageRenderer {
         if (retryContent) await this.doFlush(retryContent);
       }
     }
+  }
+
+  /** Reset bubble state for split — keep cumulative counts, clear per-bubble data */
+  private resetBubbleState(): void {
+    this._messageId = undefined; // Next flush will send new message
+    this.timeline = [];
+    this.toolLogs = [];
+    this.toolIdToLogIndex.clear();
+    this.toolIdToTimelineIndex.clear();
+    this.thinkingText = '';
+    this.responseText = '';
+    this.lastTimelineIsText = false;
+    this.bubbleToolCount = 0;
+    this.bubbleTimelineCount = 0;
+    this.lastRenderedContent = '';
   }
 }

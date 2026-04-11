@@ -14,7 +14,10 @@ import type { SDKEngine } from './sdk-engine.js';
 import { CHANNEL_TYPES, PLATFORM_LIMITS, PLATFORM_REACTIONS, type ChannelType } from '../utils/constants.js';
 import { generateSessionId } from '../utils/id.js';
 import { truncate } from '../utils/string.js';
+import { shortPath } from '../utils/path.js';
+import { scanClaudeSessions } from '../session-scanner.js';
 import type { BridgeStore } from '../store/interface.js';
+import type { ClaudeSettingSource } from '../config.js';
 const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
 import type { LLMProvider, LiveSession } from '../providers/base.js';
 
@@ -27,6 +30,7 @@ interface QueryOrchestratorOptions {
   sdkEngine: SDKEngine;
   store: BridgeStore;
   defaultWorkdir: string;
+  defaultClaudeSettingSources: ClaudeSettingSource[];
   port: number;
 }
 
@@ -37,6 +41,36 @@ interface QueryOrchestratorOptions {
  */
 export class QueryOrchestrator {
   constructor(private options: QueryOrchestratorOptions) {}
+
+  private buildTaskSummary(state: {
+    responseText: string;
+    renderedText: string;
+    toolLogs: Array<{ name: string; input: string }>;
+    permissionRequests: number;
+    errorMessage?: string;
+  }): import('../formatting/message-types.js').TaskSummaryData {
+    const summarySource = (state.responseText || state.renderedText || '').trim();
+    const summary = truncate(summarySource || '任务已完成', 280);
+    const changedFileKeys = new Set(
+      state.toolLogs
+        .filter(log => ['Edit', 'Write', 'MultiEdit'].includes(log.name) && log.input.trim())
+        .map(log => log.input.trim()),
+    );
+    const hasError = !!state.errorMessage;
+    const nextStep = hasError
+      ? '查看失败原因后继续追问，或重新发起一个更小的修改任务。'
+      : changedFileKeys.size > 0
+        ? '如果结果符合预期，可以继续追问、测试变更，或切回最近会话继续处理。'
+        : '可以继续追问细节，或切回最近会话处理下一步任务。';
+
+    return {
+      summary,
+      changedFiles: changedFileKeys.size,
+      permissionRequests: state.permissionRequests,
+      hasError,
+      nextStep,
+    };
+  }
 
   private shouldSplitFeishuCompletion(state: {
     totalTools: number;
@@ -54,13 +88,36 @@ export class QueryOrchestrator {
 
   async run(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
     const expired = this.options.state.checkAndUpdateLastActive(msg.channelType, msg.chatId);
+    let previousSessionPreview: string | undefined;
     if (expired) {
-      await this.options.router.rebind(msg.channelType, msg.chatId, generateSessionId());
+      const previousBinding = await this.options.store.getBinding(msg.channelType, msg.chatId);
+      this.options.permissions.clearSessionWhitelist(previousBinding?.sessionId);
+      // Get preview of previous session before rebind
+      const sessions = scanClaudeSessions(3, previousBinding?.cwd || this.options.defaultWorkdir);
+      previousSessionPreview = sessions.find(s => s.sdkSessionId === previousBinding?.sdkSessionId)?.preview;
+      await this.options.router.rebind(msg.channelType, msg.chatId, generateSessionId(), {
+        cwd: previousBinding?.cwd,
+        claudeSettingSources: previousBinding?.claudeSettingSources,
+      });
       this.options.state.clearThread(msg.channelType, msg.chatId);
-      this.options.permissions.clearSessionWhitelist();
     }
 
     const binding = await this.options.router.resolve(msg.channelType, msg.chatId);
+
+    // Send task start notification card for session reset (Feishu rich cards only)
+    if (expired && adapter.supportsRichCards()) {
+      const taskStartMsg = adapter.format({
+        type: 'taskStart',
+        chatId: msg.chatId,
+        data: {
+          cwd: shortPath(binding.cwd || this.options.defaultWorkdir),
+          permissionMode: this.options.state.getPermMode(msg.channelType, msg.chatId),
+          isNewSession: true,
+          previousSessionPreview,
+        },
+      });
+      await adapter.send(taskStartMsg);
+    }
 
     const reactionChatId = msg.chatId;
     const typingInterval = setInterval(() => {
@@ -113,6 +170,14 @@ export class QueryOrchestrator {
         }
       },
       flushCallback: async (content, isEdit, buttons, state) => {
+        if (
+          adapter.channelType === 'qqbot'
+          && state
+          && (state.phase === 'starting' || state.phase === 'executing')
+        ) {
+          return;
+        }
+
         if (feishuSession && !buttons?.length) {
           if (!isEdit) {
             try {
@@ -140,10 +205,12 @@ export class QueryOrchestrator {
             footerLine: state.footerLine,
             currentTool: state.currentTool,
             permission: state.permission,
+            permissionRequests: state.permissionRequests,
             todoItems: state.todoItems,
             thinkingText: state.thinkingText,
             toolLogs: state.toolLogs,
             timeline: state.timeline,
+            isContinuation: state.isContinuation,
             actionButtons: buttons?.length
               ? buttons.map(button => ({ ...button, style: button.style as 'primary' | 'danger' | 'default' }))
               : undefined,
@@ -177,17 +244,18 @@ export class QueryOrchestrator {
               void traceResult;
             }
 
-            const finalLines: string[] = [];
-            if (state.responseText.trim()) {
-              finalLines.push(state.responseText.trimEnd());
-            } else {
-              finalLines.push('✅ 已完成');
-            }
-            if (state.footerLine) {
-              finalLines.push('───────────────');
-              finalLines.push(state.footerLine);
-            }
-            await adapter.send(adapter.formatContent(msg.chatId, finalLines.join('\n')));
+            const summaryMsg = adapter.format({
+              type: 'taskSummary',
+              chatId: msg.chatId,
+              data: this.buildTaskSummary({
+                responseText: state.responseText,
+                renderedText: content,
+                toolLogs: state.toolLogs,
+                permissionRequests: state.permissionRequests,
+                errorMessage: state.errorMessage,
+              }),
+            });
+            await adapter.send(summaryMsg);
             return;
           }
 
@@ -226,7 +294,7 @@ export class QueryOrchestrator {
             return 'allow' as const;
           }
 
-          if (this.options.permissions.isToolAllowed(toolName, toolInput)) {
+          if (this.options.permissions.isToolAllowed(binding.sessionId, toolName, toolInput)) {
             console.log(`[bridge] Auto-allowed ${toolName} via session whitelist`);
             return 'allow' as const;
           }
@@ -246,6 +314,7 @@ export class QueryOrchestrator {
             console.log(`[bridge] Permission cancelled by SDK: ${toolName} (${permId})`);
             this.options.permissions.getGateway().resolve(permId, 'deny', 'Cancelled by SDK');
             this.options.permissions.clearPendingSdkPerm(chatKey);
+            this.options.permissions.notePermissionResolved(chatKey, binding.sessionId, toolName, 'cancelled', permId);
             renderer.onPermissionResolved(permId);
           };
           if (signal?.aborted) {
@@ -255,6 +324,7 @@ export class QueryOrchestrator {
           signal?.addEventListener('abort', abortCleanup, { once: true });
 
           const inputStr = getToolCommand(toolName, toolInput) || JSON.stringify(toolInput, null, 2);
+          this.options.permissions.notePermissionPending(chatKey, permId, binding.sessionId, toolName, inputStr);
           const buttons: Array<{ label: string; callbackData: string; style: string }> = [
             { label: '✅ Allow', callbackData: `perm:allow:${permId}`, style: 'primary' },
             { label: '❌ Deny', callbackData: `perm:deny:${permId}`, style: 'danger' },
@@ -265,6 +335,7 @@ export class QueryOrchestrator {
             timeoutMs: 5 * 60 * 1000,
             onTimeout: () => {
               this.options.permissions.clearPendingSdkPerm(chatKey);
+              this.options.permissions.clearPendingPermissionSnapshot(chatKey, permId);
               console.warn(`[bridge] Permission timeout: ${toolName} (${permId})`);
             },
           });
@@ -272,6 +343,16 @@ export class QueryOrchestrator {
           renderer.onPermissionResolved(permId);
 
           this.options.permissions.clearPendingSdkPerm(chatKey);
+          if (result.behavior === 'allow_always') {
+            this.options.permissions.rememberSessionAllowance(binding.sessionId, toolName, toolInput);
+          }
+          this.options.permissions.notePermissionResolved(
+            chatKey,
+            binding.sessionId,
+            toolName,
+            result.behavior === 'deny' && signal?.aborted ? 'cancelled' : result.behavior,
+            permId,
+          );
           console.log(`[bridge] Permission resolved: ${toolName} (${permId}) → ${result.behavior}`);
           return result.behavior as 'allow' | 'allow_always' | 'deny';
         };
@@ -365,7 +446,9 @@ export class QueryOrchestrator {
     try {
       // Get or create a LiveSession for this chat
       const workdir = binding.cwd || this.options.defaultWorkdir;
+      const settingSources = binding.claudeSettingSources ?? this.options.defaultClaudeSettingSources;
       const chatKey = this.options.state.stateKey(msg.channelType, msg.chatId);
+      const sessionKey = `${msg.channelType}:${msg.chatId}:${workdir}`;
       let liveSession: LiveSession | undefined;
       let streamResult: import('../providers/base.js').StreamChatResult | undefined;
 
@@ -377,6 +460,7 @@ export class QueryOrchestrator {
           workdir,
           {
             sessionId: binding.sdkSessionId,
+            settingSources,
           },
         );
       } catch (err) {
@@ -395,6 +479,7 @@ export class QueryOrchestrator {
       await this.options.engine.processMessage({
         sdkSessionId: binding.sdkSessionId,
         workingDirectory: workdir,
+        settingSources,
         text: msg.text,
         attachments: msg.attachments,
         // When using LiveSession, streamResult bypasses streamChat;
@@ -492,9 +577,9 @@ export class QueryOrchestrator {
         },
       });
 
-      // Track active message ID for steer matching
+      // Track progress bubble → session for multi-session steering
       if (renderer.messageId) {
-        this.options.sdkEngine.setActiveMessageId(chatKey, renderer.messageId);
+        this.options.sdkEngine.setActiveMessageId(chatKey, renderer.messageId, sessionKey);
       }
 
       adapter.addReaction(reactionChatId, msg.messageId, reactions.done).catch(() => {});

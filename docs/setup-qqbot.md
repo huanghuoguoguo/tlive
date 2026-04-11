@@ -137,7 +137,9 @@ QQ Bot supports the following scenarios:
 
 ## Permission Approval
 
-When Claude needs to perform sensitive operations, QQ Bot sends a message with buttons:
+For OpenClaw compatibility, QQ Bot uses plain-text interaction instead of cards or buttons.
+
+When Claude needs to perform sensitive operations, QQ Bot sends a plain-text approval message:
 
 ```
 🔐 Permission Required
@@ -149,10 +151,16 @@ rm -rf /tmp/test
 
 ⏱ Expires in 5 minutes
 
-[✅ Yes]  [❌ No]
+💬 Reply allow / deny / always
 ```
 
-Click buttons or reply `allow` / `deny` to approve.
+Available replies:
+
+- `allow`: approve once
+- `deny`: reject once
+- `always`: always allow similar operations in the current session
+
+Common controls also use plain text, such as `/stop`, `/help`, and `/perm on|off`.
 
 ## Troubleshooting
 
