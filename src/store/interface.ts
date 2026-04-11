@@ -1,4 +1,17 @@
-import type { ClaudeSettingSource } from '../config.js';
+/** Claude settings source types */
+export type ClaudeSettingSource = 'user' | 'project' | 'local';
+
+/** Project configuration for multi-repo support */
+export interface ProjectConfig {
+  /** Project name (unique identifier) */
+  name: string;
+  /** Default working directory */
+  workdir: string;
+  /** Channels enabled for this project (optional, defaults to all) */
+  channels?: string[];
+  /** Claude settings sources for this project */
+  claudeSettingSources?: ClaudeSettingSource[];
+}
 
 export interface ChannelBinding {
   channelType: string;
@@ -7,6 +20,8 @@ export interface ChannelBinding {
   sdkSessionId?: string;       // Claude SDK session UUID (for resume)
   cwd?: string;                // current working directory for this chat
   claudeSettingSources?: ClaudeSettingSource[]; // per-chat Claude settings override
+  /** Project binding (optional, for multi-project support) */
+  projectName?: string;
   createdAt: string;
 }
 

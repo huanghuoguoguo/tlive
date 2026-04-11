@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import type { ProjectConfig, ClaudeSettingSource } from '../store/interface.js';
 
-export type ClaudeSettingSource = 'user' | 'project' | 'local';
 export const DEFAULT_CLAUDE_SETTING_SOURCES: ClaudeSettingSource[] = ['user', 'project', 'local'];
 
 /** Which Claude Code filesystem settings to load in bridge mode.
@@ -64,6 +64,21 @@ export interface Config {
     /** HTTP/SOCKS proxy URL — overrides global TL_PROXY */
     proxy: string;
   };
+}
+
+/** Load projects configuration from projects.json (optional) */
+export function loadProjectsConfig(): ProjectConfig[] | undefined {
+  const projectsPath = join(homedir(), '.tlive', 'projects.json');
+  try {
+    const content = readFileSync(projectsPath, 'utf-8');
+    const data = JSON.parse(content);
+    if (Array.isArray(data.projects)) {
+      return data.projects as ProjectConfig[];
+    }
+  } catch {
+    // File doesn't exist or invalid — single-project mode
+  }
+  return undefined;
 }
 
 function parseList(value: string | undefined): string[] {
