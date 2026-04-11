@@ -14,6 +14,7 @@ import { shortPath } from '../utils/path.js';
 import { scanClaudeSessions } from '../session-scanner.js';
 import type { BridgeStore, ChannelBinding } from '../store/interface.js';
 import type { ClaudeSettingSource } from '../config.js';
+import { Logger, type LogContext } from '../logger.js';
 import type { LLMProvider, LiveSession } from '../providers/base.js';
 import { QueryExecutionPresenter } from './query-execution-presenter.js';
 import { SDKPermissionHandler } from './sdk-permission-handler.js';
@@ -42,10 +43,29 @@ interface QueryOrchestratorOptions {
 export class QueryOrchestrator {
   constructor(private options: QueryOrchestratorOptions) {}
 
-  async run(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
-    const { binding, expired, previousSessionPreview } = await this.handleSessionExpiry(adapter, msg);
+  async run(adapter: BaseChannelAdapter, msg: InboundMessage, requestId?: string): Promise<boolean> {
+    const ctx: LogContext = { requestId, chatId: msg.chatId };
+    const expired = this.options.state.checkAndUpdateLastActive(msg.channelType, msg.chatId);
+    let previousSessionPreview: string | undefined;
+    if (expired) {
+      const previousBinding = await this.options.store.getBinding(msg.channelType, msg.chatId);
+      this.options.permissions.clearSessionWhitelist(previousBinding?.sessionId);
+      console.log(`[query] ${ctx.requestId} SESSION_EXPIRED sid=${previousBinding?.sessionId?.slice(-4) || '?'}`);
+      // Get preview of previous session before rebind
+      const sessions = scanClaudeSessions(3, previousBinding?.cwd || this.options.defaultWorkdir);
+      previousSessionPreview = sessions.find(s => s.sdkSessionId === previousBinding?.sdkSessionId)?.preview;
+      await this.options.router.rebind(msg.channelType, msg.chatId, generateSessionId(), {
+        cwd: previousBinding?.cwd,
+        claudeSettingSources: previousBinding?.claudeSettingSources,
+      });
+      this.options.state.clearThread(msg.channelType, msg.chatId);
+    }
 
-    // Send task start notification card for session reset
+    const binding = await this.options.router.resolve(msg.channelType, msg.chatId);
+    ctx.sessionId = binding.sessionId;
+    console.log(`[query] ${ctx.requestId} START session=${binding.sessionId.slice(-4)} cwd=${shortPath(binding.cwd || this.options.defaultWorkdir)}`);
+
+    // Send task start notification card for session reset (Feishu rich cards only)
     if (expired && adapter.supportsRichCards()) {
       const taskStartMsg = adapter.format({
         type: 'taskStart',
@@ -99,7 +119,7 @@ export class QueryOrchestrator {
     const sdkAskQuestionHandler = askQuestionHandler.handle.bind(askQuestionHandler);
 
     try {
-      await this.executeQuery(adapter, msg, binding, renderer, costTracker, sdkPermissionHandler, sdkAskQuestionHandler);
+      await this.executeQuery(adapter, msg, binding, renderer, costTracker, sdkPermissionHandler, sdkAskQuestionHandler, ctx);
 
       // Track progress bubble → session for multi-session steering
       const chatKey = this.options.state.stateKey(msg.channelType, msg.chatId);
@@ -107,6 +127,7 @@ export class QueryOrchestrator {
       const sessionKey = `${msg.channelType}:${msg.chatId}:${workdir}`;
       if (renderer.messageId) {
         this.options.sdkEngine.setActiveMessageId(chatKey, renderer.messageId, sessionKey);
+        console.log(`[query] ${ctx.requestId} SENT msgId=${renderer.messageId.slice(-8)}`);
       }
 
       adapter.addReaction(msg.chatId, msg.messageId, reactions.done).catch(() => {});
@@ -114,7 +135,9 @@ export class QueryOrchestrator {
         adapter.addReaction(msg.chatId, renderer.messageId, reactions.done).catch(() => {});
       }
     } catch (err) {
+      console.error(`[query] ${ctx.requestId} FATAL ${Logger.formatError(err)}`);
       adapter.addReaction(msg.chatId, msg.messageId, reactions.error).catch(() => {});
+      // Also add error reaction to the bot's progress message
       if (renderer.messageId) {
         adapter.addReaction(msg.chatId, renderer.messageId, reactions.error).catch(() => {});
       }
@@ -223,6 +246,7 @@ export class QueryOrchestrator {
     costTracker: CostTracker,
     sdkPermissionHandler: (toolName: string, toolInput: Record<string, unknown>, promptSentence: string, signal?: AbortSignal) => Promise<'allow' | 'allow_always' | 'deny'>,
     sdkAskQuestionHandler: (questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }>, signal?: AbortSignal) => Promise<Record<string, string>>,
+    ctx: LogContext,
   ): Promise<void> {
     const workdir = binding.cwd || this.options.defaultWorkdir;
     const settingSources = binding.claudeSettingSources ?? this.options.defaultClaudeSettingSources;
@@ -295,13 +319,14 @@ export class QueryOrchestrator {
       onTodoUpdate: (todos) => renderer.onTodoUpdate(todos),
       onQueryResult: async (event) => {
         if (event.permissionDenials?.length) {
-          console.warn(`[bridge] Permission denials: ${event.permissionDenials.map(d => d.toolName).join(', ')}`);
+          console.warn(`[query] ${ctx.requestId} DENIALS ${event.permissionDenials.map(denial => denial.toolName).join(', ')}`);
         }
         costTracker.finish({
           input_tokens: event.usage.inputTokens,
           output_tokens: event.usage.outputTokens,
           cost_usd: event.usage.costUsd,
         });
+        console.log(`[query] ${ctx.requestId} COMPLETE tokens=${event.usage.inputTokens}+${event.usage.outputTokens} cost=${event.usage.costUsd?.toFixed(4) || '?'}$`);
         if (DEBUG_EVENTS) {
           const state = renderer.getDebugSnapshot();
           console.log(`[bridge] final timeline: thinking=${state.thinkingEntries} text=${state.textEntries} tool=${state.toolEntries}`);
@@ -318,11 +343,12 @@ export class QueryOrchestrator {
       },
       onError: async (err) => {
         if (err.includes('No conversation found') || err.includes('session ID') || (err.includes('Invalid') && err.includes('signature'))) {
-          console.log(`[bridge] Session expired or stale, clearing for ${msg.channelType}:${msg.chatId}`);
+          console.log(`[query] ${ctx.requestId} SESSION_STALE clearing sdkSessionId`);
           binding.sdkSessionId = undefined;
           await this.options.store.saveBinding(binding);
           this.options.sdkEngine.closeSession(msg.channelType, msg.chatId);
         }
+        console.error(`[query] ${ctx.requestId} ERROR ${err.slice(0, 200)}`);
         if (DEBUG_EVENTS) {
           const state = renderer.getDebugSnapshot();
           console.log(`[bridge] error timeline: thinking=${state.thinkingEntries} text=${state.textEntries} tool=${state.toolEntries}`);

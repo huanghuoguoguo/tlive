@@ -15,9 +15,10 @@ interface MessageLoopCoordinatorOptions {
 interface SlowMessageDispatchOptions {
   adapter: BaseChannelAdapter;
   msg: InboundMessage;
+  requestId?: string;
   coalesceMessage: (adapter: BaseChannelAdapter, msg: InboundMessage) => Promise<InboundMessage>;
-  handleMessage: (adapter: BaseChannelAdapter, msg: InboundMessage) => Promise<unknown>;
-  onError: (err: unknown) => void;
+  handleMessage: (adapter: BaseChannelAdapter, msg: InboundMessage, requestId?: string) => Promise<unknown>;
+  onError: (err: unknown, requestId?: string) => void;
 }
 
 /**
@@ -42,6 +43,7 @@ export class MessageLoopCoordinator {
   async dispatchSlowMessage({
     adapter,
     msg,
+    requestId,
     coalesceMessage,
     handleMessage,
     onError,
@@ -55,8 +57,8 @@ export class MessageLoopCoordinator {
     }
 
     this.options.state.setProcessing(chatKey, true);
-    handleMessage(adapter, coalesced)
-      .catch(onError)
+    handleMessage(adapter, coalesced, requestId)
+      .catch((err) => onError(err, requestId))
       .finally(() => this.options.state.setProcessing(chatKey, false));
   }
 

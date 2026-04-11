@@ -200,11 +200,3 @@ export function presentUpgradeCommand(chatId: string): { chatId: string; text: s
 export function presentRestartResult(chatId: string): { chatId: string; text: string } {
   return { chatId, text: '🔄 Restarting... The service will reconnect in a few seconds.' };
 }
-
-export function presentVersionSkipped(chatId: string, version: string): { chatId: string; text: string } {
-  return { chatId, text: `⏭️ Skipped version v${version}\n\nYou will be notified when a newer version is available.` };
-}
-
-export function presentVersionUnskipped(chatId: string): { chatId: string; text: string } {
-  return { chatId, text: '↩️ Update notifications re-enabled.' };
-}
