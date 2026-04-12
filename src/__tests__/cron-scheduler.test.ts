@@ -8,8 +8,8 @@ import {
   calculateNextRun,
   CronScheduler,
   type CronJob,
-} from '../engine/cron-scheduler.js';
-import type { BridgeManager } from '../engine/bridge-manager.js';
+} from '../engine/automation/cron.js';
+import type { BridgeManager } from '../engine/coordinators/bridge-manager.js';
 import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

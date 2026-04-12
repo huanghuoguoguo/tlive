@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';
-import { SessionStateManager } from '../engine/session-state.js';
-import { TextDispatcher } from '../engine/text-dispatcher.js';
+import { SessionStateManager } from '../engine/state/session-state.js';
+import { TextDispatcher } from '../engine/messages/text-dispatcher.js';
 
 function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
   return {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { redactSensitiveContent } from '../engine/content-filter.js';
+import { redactSensitiveContent } from '../engine/utils/content-filter.js';
 
 describe('content-filter', () => {
   describe('ANSI stripping', () => {

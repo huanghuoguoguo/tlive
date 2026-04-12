@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ConversationEngine } from '../engine/conversation.js';
+import { ConversationEngine } from '../engine/utils/conversation.js';
 import { initBridgeContext } from '../context.js';
 import type { CanonicalEvent } from '../messages/schema.js';
 

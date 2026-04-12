@@ -1,27 +1,27 @@
-import type { BaseChannelAdapter } from '../channels/base.js';
-import type { InboundMessage } from '../channels/types.js';
-import { MessageRenderer } from './message-renderer.js';
-import { CostTracker } from './cost-tracker.js';
-import type { ConversationEngine } from './conversation.js';
-import type { ChannelRouter } from './router.js';
-import type { SessionStateManager } from './session-state.js';
-import type { PermissionCoordinator } from './permission-coordinator.js';
-import type { SDKEngine } from './sdk-engine.js';
-import { PLATFORM_LIMITS, type ChannelType } from '../utils/constants.js';
-import { generateSessionId } from '../utils/id.js';
-import { truncate } from '../utils/string.js';
-import { shortPath } from '../utils/path.js';
-import { scanClaudeSessions } from '../session-scanner.js';
-import type { BridgeStore, ChannelBinding } from '../store/interface.js';
-import type { ClaudeSettingSource } from '../config.js';
-import { Logger, type LogContext } from '../logger.js';
-import type { LLMProvider, LiveSession } from '../providers/base.js';
-import { QueryExecutionPresenter } from './query-execution-presenter.js';
-import { SDKPermissionHandler } from './sdk-permission-handler.js';
-import { SDKAskQuestionHandler } from './sdk-ask-question-handler.js';
-import type { ProgressData } from '../formatting/message-types.js';
-import type { MessageRendererState } from './message-renderer.js';
-import { SessionStaleError, isStaleSessionError } from './session-stale-error.js';
+import type { BaseChannelAdapter } from '../../channels/base.js';
+import type { InboundMessage } from '../../channels/types.js';
+import { MessageRenderer } from '../messages/renderer.js';
+import { CostTracker } from '../utils/cost-tracker.js';
+import type { ConversationEngine } from '../utils/conversation.js';
+import type { ChannelRouter } from '../utils/router.js';
+import type { SessionStateManager } from '../state/session-state.js';
+import type { PermissionCoordinator } from './permission.js';
+import type { SDKEngine } from '../sdk/engine.js';
+import { PLATFORM_LIMITS, type ChannelType } from '../../utils/constants.js';
+import { generateSessionId } from '../../utils/id.js';
+import { truncate } from '../../utils/string.js';
+import { shortPath } from '../../utils/path.js';
+import { scanClaudeSessions } from '../../session-scanner.js';
+import type { BridgeStore, ChannelBinding } from '../../store/interface.js';
+import type { ClaudeSettingSource } from '../../config.js';
+import { Logger, type LogContext } from '../../logger.js';
+import type { LLMProvider, LiveSession } from '../../providers/base.js';
+import { QueryExecutionPresenter } from '../messages/query-presenter.js';
+import { SDKPermissionHandler } from '../sdk/permission-handler.js';
+import { SDKAskQuestionHandler } from '../sdk/ask-question-handler.js';
+import type { ProgressData } from '../../formatting/message-types.js';
+import type { MessageRendererState } from '../messages/renderer.js';
+import { SessionStaleError, isStaleSessionError } from '../state/session-stale-error.js';
 
 const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
 
@@ -310,7 +310,7 @@ export class QueryOrchestrator {
     const chatKey = this.options.state.stateKey(msg.channelType, msg.chatId);
 
     let liveSession: LiveSession | undefined;
-    let streamResult: import('../providers/base.js').StreamChatResult | undefined;
+    let streamResult: import('../../providers/base.js').StreamChatResult | undefined;
 
     try {
       liveSession = this.options.sdkEngine.getOrCreateSession(

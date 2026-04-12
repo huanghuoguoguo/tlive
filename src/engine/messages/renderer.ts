@@ -3,11 +3,11 @@
  * Rendering logic delegated to ProgressContentBuilder.
  */
 
-import { truncate } from '../utils/string.js';
-import { shortPath } from '../utils/path.js';
-import type { TodoStatus } from '../utils/types.js';
-import type { VerboseLevel } from './session-state.js';
-import { ProgressContentBuilder, type RenderInput } from './progress-content-builder.js';
+import { truncate } from '../../utils/string.js';
+import { shortPath } from '../../utils/path.js';
+import type { TodoStatus } from '../../utils/types.js';
+import type { VerboseLevel } from '../state/session-state.js';
+import { ProgressContentBuilder, type RenderInput } from './progress-builder.js';
 
 export interface MessageRendererOptions {
   shouldSplitState?: (state: MessageRendererState) => boolean;

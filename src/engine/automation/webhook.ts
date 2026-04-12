@@ -12,9 +12,9 @@
  */
 
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
-import type { BridgeManager } from './bridge-manager.js';
-import type { ProjectConfig } from '../store/interface.js';
-import { generateRequestId, Logger } from '../logger.js';
+import type { BridgeManager } from '../coordinators/bridge-manager.js';
+import type { ProjectConfig } from '../../store/interface.js';
+import { generateRequestId, Logger } from '../../logger.js';
 
 /** Webhook request body */
 export interface WebhookRequest {

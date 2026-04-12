@@ -6,3 +6,5 @@ dist/
 .termlive.toml
 .worktrees/
 docs/plans/
+coverage/
+.codex

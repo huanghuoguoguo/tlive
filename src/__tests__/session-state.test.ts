@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SessionStateManager } from '../engine/session-state.js';
+import { SessionStateManager } from '../engine/state/session-state.js';
 
 describe('SessionStateManager', () => {
   let state: SessionStateManager;

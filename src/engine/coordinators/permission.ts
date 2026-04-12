@@ -1,8 +1,8 @@
-import type { PendingPermissions } from '../permissions/gateway.js';
-import type { PermissionBroker } from '../permissions/broker.js';
-import type { BaseChannelAdapter } from '../channels/base.js';
-import type { PermissionDecision as TextPermissionDecision } from '../ui/policy.js';
-import { truncate } from '../utils/string.js';
+import type { PendingPermissions } from '../../permissions/gateway.js';
+import type { PermissionBroker } from '../../permissions/broker.js';
+import type { BaseChannelAdapter } from '../../channels/base.js';
+import type { PermissionDecision as TextPermissionDecision } from '../../ui/policy.js';
+import { truncate } from '../../utils/string.js';
 
 type PermissionDecision = TextPermissionDecision | 'cancelled';
 

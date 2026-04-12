@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { BridgeManager } from '../engine/bridge-manager.js';
+import { BridgeManager } from '../engine/coordinators/bridge-manager.js';
 import { initBridgeContext } from '../context.js';
 import type { BaseChannelAdapter } from '../channels/base.js';
 import type { OutboundMessage } from '../channels/types.js';

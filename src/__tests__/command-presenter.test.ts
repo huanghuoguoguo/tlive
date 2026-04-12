@@ -8,7 +8,7 @@ import {
   presentHome,
   presentQueueStatus,
   presentDiagnose,
-} from '../engine/command-presenter.js';
+} from '../engine/messages/presenter.js';
 import { TelegramFormatter } from '../formatting/telegram-formatter.js';
 import { FeishuFormatter } from '../formatting/feishu-formatter.js';
 import type { FormattableMessage } from '../formatting/message-types.js';

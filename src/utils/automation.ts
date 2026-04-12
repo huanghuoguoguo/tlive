@@ -1,7 +1,7 @@
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import type { ClaudeSettingSource } from '../config.js';
-import type { BridgeManager } from '../engine/bridge-manager.js';
+import type { BridgeManager } from '../engine/coordinators/bridge-manager.js';
 import type { ProjectConfig } from '../store/interface.js';
 
 /** Build a consistent chat key from channelType and chatId */

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { handleCallbackMessage } from '../engine/callback-dispatcher.js';
+import { handleCallbackMessage } from '../engine/messages/callback-dispatcher.js';
 
 function createAdapter() {
   return {

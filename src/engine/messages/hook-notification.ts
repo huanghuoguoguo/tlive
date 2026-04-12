@@ -1,9 +1,9 @@
 import { basename } from 'node:path';
-import type { BaseChannelAdapter } from '../channels/base.js';
-import type { FeishuRenderedMessage } from '../platforms/feishu/types.js';
-import type { PermissionCoordinator } from './permission-coordinator.js';
-import type { NotificationData } from '../formatting/message-types.js';
-import { truncate } from '../utils/string.js';
+import type { BaseChannelAdapter } from '../../channels/base.js';
+import type { FeishuRenderedMessage } from '../../platforms/feishu/types.js';
+import type { PermissionCoordinator } from '../coordinators/permission.js';
+import type { NotificationData } from '../../formatting/message-types.js';
+import { truncate } from '../../utils/string.js';
 
 /** Data shape for hook notifications (stop, idle_prompt, etc.) from Go Core */
 export interface HookNotificationData {

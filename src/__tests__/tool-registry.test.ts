@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getToolIcon, getToolTitle, getToolCommand, getToolResultPreview, TOOL_RESULT_MAX_LINES } from '../engine/tool-registry.js';
+import { getToolIcon, getToolTitle, getToolCommand, getToolResultPreview, TOOL_RESULT_MAX_LINES } from '../engine/utils/tool-registry.js';
 
 describe('tool-registry', () => {
   describe('getToolIcon', () => {

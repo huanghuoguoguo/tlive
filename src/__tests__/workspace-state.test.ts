@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { WorkspaceStateManager } from '../engine/workspace-state.js';
+import { WorkspaceStateManager } from '../engine/state/workspace-state.js';
 
 describe('WorkspaceStateManager', () => {
   let tmpDir: string;

@@ -8,11 +8,11 @@
  * - Queue depth tracking: limit queued messages and provide user feedback
  */
 
-import type { QueryControls, LiveSession, LLMProvider, MessagePriority } from '../providers/base.js';
-import type { ClaudeSettingSource } from '../config.js';
-import type { EffortLevel } from '../utils/types.js';
-import { InteractionState, type SdkQuestionState } from './interaction-state.js';
-import { SESSION_STALE_THRESHOLD_MS } from '../utils/constants.js';
+import type { QueryControls, LiveSession, LLMProvider, MessagePriority } from '../../providers/base.js';
+import type { ClaudeSettingSource } from '../../config.js';
+import type { EffortLevel } from '../../utils/types.js';
+import { InteractionState, type SdkQuestionState } from '../state/interaction-state.js';
+import { SESSION_STALE_THRESHOLD_MS } from '../../utils/constants.js';
 
 /** Reason for closing a session — used for logging and diagnostics */
 export type SessionCleanupReason = 'new' | 'switch' | 'cd' | 'settings' | 'expire' | 'close';

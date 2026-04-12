@@ -1,4 +1,4 @@
-import type { SessionMode } from '../messages/types.js';
+import type { SessionMode } from '../../messages/types.js';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 

@@ -1,10 +1,10 @@
 import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';
-import type { SessionStateManager } from './session-state.js';
-import type { WorkspaceStateManager } from './workspace-state.js';
-import type { ChannelRouter } from './router.js';
+import type { SessionStateManager } from './state/session-state.js';
+import type { WorkspaceStateManager } from './state/workspace-state.js';
+import type { ChannelRouter } from './utils/router.js';
 import type { LLMProvider, QueryControls } from '../providers/base.js';
-import type { SDKEngine, SessionCleanupReason } from './sdk-engine.js';
+import type { SDKEngine, SessionCleanupReason } from './sdk/engine.js';
 import type { ProjectsValidationResult } from '../config.js';
 import { basename } from 'node:path';
 import { exec } from 'node:child_process';
@@ -65,8 +65,8 @@ import {
   presentUpgradeCommand,
   presentUpgradeResult,
   presentVersionCheck,
-} from './command-presenter.js';
-import { areHooksPaused, pauseHooks, resumeHooks } from './hooks-state.js';
+} from './messages/presenter.js';
+import { areHooksPaused, pauseHooks, resumeHooks } from './utils/hooks-state.js';
 import type { FormattableMessage, HomeData, ProjectListData } from '../formatting/message-types.js';
 import { SESSION_STALE_THRESHOLD_MS, FLAGS, hasFlag, getNonFlagArg } from '../utils/constants.js';
 
@@ -760,7 +760,7 @@ export class CommandRouter {
         }
 
         // Check for updates
-        const { checkForUpdates } = await import('./version-checker.js');
+        const { checkForUpdates } = await import('./utils/version-checker.js');
         const info = await checkForUpdates();
         if (info) {
           await send(adapter, presentVersionCheck(msg.chatId, info));
