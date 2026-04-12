@@ -4,8 +4,8 @@ import { initBridgeContext } from '../../context.js';
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { OutboundMessage } from '../../channels/types.js';
 import type { FormattableMessage } from '../../formatting/message-types.js';
-import { TelegramFormatter } from '../../formatting/telegram-formatter.js';
-import { FeishuFormatter } from '../../formatting/feishu-formatter.js';
+import { TelegramFormatter } from '../../platforms/telegram/formatter.js';
+import { FeishuFormatter } from '../../platforms/feishu/formatter.js';
 
 const telegramFormatter = new TelegramFormatter('en');
 const feishuFormatter = new FeishuFormatter('zh');

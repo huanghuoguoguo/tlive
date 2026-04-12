@@ -9,8 +9,8 @@ import {
   presentQueueStatus,
   presentDiagnose,
 } from '../../engine/messages/presenter.js';
-import { TelegramFormatter } from '../../formatting/telegram-formatter.js';
-import { FeishuFormatter } from '../../formatting/feishu-formatter.js';
+import { TelegramFormatter } from '../../platforms/telegram/formatter.js';
+import { FeishuFormatter } from '../../platforms/feishu/formatter.js';
 import type { FormattableMessage } from '../../formatting/message-types.js';
 
 describe('command presenter', () => {
