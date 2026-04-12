@@ -49,3 +49,33 @@ export const PLATFORM_PERMISSION_DECISION_REACTIONS: Record<ChannelType, { allow
 
 /** Default permission/question timeout (5 minutes) */
 export const DEFAULT_PERMISSION_TIMEOUT_MS = 5 * 60 * 1000;
+
+/** Session stale threshold - session considered stale after 2 hours of inactivity */
+export const SESSION_STALE_THRESHOLD_MS = 2 * 60 * 60 * 1000;
+
+/** Command flags */
+export const FLAGS = {
+  ALL: { long: '--all', short: '-a' },
+} as const;
+
+/** Check if args contain a specific flag (long or short form, case-insensitive) */
+export function hasFlag(args: string[], flag: { long: string; short?: string }): boolean {
+  return args.some(arg => {
+    const normalized = arg.toLowerCase();
+    return normalized === flag.long || (flag.short !== undefined && normalized === flag.short);
+  });
+}
+
+/** Get first argument that is not one of the specified flags (case-insensitive) */
+export function getNonFlagArg(
+  args: string[],
+  flags: Array<{ long: string; short?: string }>
+): string | undefined {
+  return args.find(arg => {
+    const normalized = arg.toLowerCase();
+    return !flags.some(f => normalized === f.long || (f.short !== undefined && normalized === f.short));
+  });
+}
+
+/** Lightweight estimate for IM feedback - average seconds per turn */
+export const AVERAGE_TURN_SECONDS = 45;

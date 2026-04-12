@@ -24,9 +24,14 @@ import type {
   CardResolutionData,
   VersionUpdateData,
   MultiSelectToggleData,
+  QueueStatusData,
+  DiagnoseData,
+  ProjectListData,
+  ProjectInfoData,
   FormattableMessage,
 } from './message-types.js';
 import { truncate } from '../utils/string.js';
+import { AVERAGE_TURN_SECONDS } from '../utils/constants.js';
 
 /** Language preference for messages */
 export type MessageLocale = 'en' | 'zh';
@@ -90,6 +95,14 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
         return this.formatVersionUpdate(chatId, msg.data);
       case 'multiSelectToggle':
         return this.formatMultiSelectToggle(chatId, msg.data);
+      case 'queueStatus':
+        return this.formatQueueStatus(chatId, msg.data);
+      case 'diagnose':
+        return this.formatDiagnose(chatId, msg.data);
+      case 'projectList':
+        return this.formatProjectList(chatId, msg.data);
+      case 'projectInfo':
+        return this.formatProjectInfo(chatId, msg.data);
       default:
         throw new Error(`Unknown message type: ${(msg as any).type}`);
     }
@@ -182,8 +195,15 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
       ``,
       `**Status:** ${taskStatus}`,
       `**Directory:** \`${data.cwd}\``,
-      `**Permissions:** ${data.permissionMode}`,
     ];
+
+    // Show workspace binding if different from current cwd
+    if (data.workspaceBinding && data.workspaceBinding !== data.cwd) {
+      const label = this.locale === 'zh' ? '工作区绑定' : 'Workspace binding';
+      lines.push(`**${label}:** \`${data.workspaceBinding}\``);
+    }
+
+    lines.push(`**Permissions:** ${data.permissionMode}`);
     if (data.recentSummary) {
       lines.push(``, `**Recent:** ${truncate(data.recentSummary, 100)}`);
     }
@@ -321,6 +341,13 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
 
   formatSessions(chatId: string, data: SessionsData): TRendered {
     const lines = [`📋 **Sessions** ${data.filterHint}`, ''];
+
+    // Show workspace binding if available
+    if (data.workspaceBinding) {
+      const label = this.locale === 'zh' ? '工作区绑定' : 'Workspace binding';
+      lines.push(`🏠 **${label}:** \`${data.workspaceBinding}\``, '');
+    }
+
     for (const s of data.sessions) {
       const marker = s.isCurrent ? ' ◀' : '';
       lines.push(`${s.index}. ${s.date} · ${s.cwd} · ${s.size} · ${s.preview}${marker}`);
@@ -493,6 +520,131 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
     });
 
     return this.createMessage(chatId, text + hint, buttons);
+  }
+
+  formatQueueStatus(chatId: string, data: QueueStatusData): TRendered {
+    const saturationRatio = data.saturationRatio ?? (data.maxDepth > 0 ? data.depth / data.maxDepth : 0);
+    const oldestQueuedAgeSeconds = data.oldestQueuedAgeSeconds
+      ?? (data.queuedMessages?.length
+        ? Math.max(0, Math.floor((Date.now() - Math.min(...data.queuedMessages.map(item => item.timestamp))) / 1000))
+        : undefined);
+    const estimatedWaitSeconds = data.estimatedWaitSeconds
+      ?? (data.depth > 0 ? data.depth * AVERAGE_TURN_SECONDS : undefined);
+    const state = data.depth === 0
+      ? 'idle'
+      : saturationRatio >= 1
+        ? 'saturated'
+        : saturationRatio >= 0.8
+          ? 'high'
+          : 'normal';
+
+    const lines = [
+      '📥 **Queue Status**',
+      '',
+      `**Session:** \`${data.sessionKey}\``,
+      `**Depth:** ${data.depth}/${data.maxDepth}`,
+      `**State:** ${state}`,
+    ];
+
+    if (data.queuedMessages?.length) {
+      lines.push('', '**Queued messages:**');
+      for (const [index, message] of data.queuedMessages.entries()) {
+        lines.push(`${index + 1}. ${truncate(message.preview, 80)}`);
+      }
+    }
+
+    if (oldestQueuedAgeSeconds !== undefined && data.depth > 0) {
+      lines.push('', `**Oldest queued:** ${Math.ceil(oldestQueuedAgeSeconds / 60)} min ago`);
+    }
+
+    if (estimatedWaitSeconds && data.depth > 0) {
+      lines.push('', `**Estimated wait:** ${Math.ceil(estimatedWaitSeconds / 60)} min`);
+    }
+
+    return this.createMessage(chatId, lines.join('\n'));
+  }
+
+  formatDiagnose(chatId: string, data: DiagnoseData): TRendered {
+    const totalCapacity = data.queueStats.reduce((sum, stat) => sum + stat.maxDepth, 0);
+    const totalDepth = data.queueStats.reduce((sum, stat) => sum + stat.depth, 0);
+    const queueUtilizationRatio = data.queueUtilizationRatio
+      ?? (totalCapacity > 0 ? totalDepth / totalCapacity : undefined);
+    const saturatedSessions = data.saturatedSessions
+      ?? data.queueStats.filter(stat => stat.depth >= stat.maxDepth).length;
+    const busiestSession = data.busiestSession
+      ?? (data.queueStats.length > 0
+        ? data.queueStats.reduce((max, stat) => {
+          const ratio = stat.maxDepth > 0 ? stat.depth / stat.maxDepth : 0;
+          const maxRatio = max.maxDepth > 0 ? max.depth / max.maxDepth : 0;
+          return ratio > maxRatio ? stat : max;
+        }, data.queueStats[0])
+        : undefined);
+
+    const lines = [
+      '🩺 **Diagnose**',
+      '',
+      `**Sessions:** active ${data.activeSessions}, idle ${data.idleSessions}`,
+      `**Queued messages:** ${data.totalQueuedMessages}`,
+      `**Processing chats:** ${data.processingChats}`,
+      `**Bubble mappings:** ${data.totalBubbleMappings}`,
+    ];
+
+    if (queueUtilizationRatio !== undefined) {
+      lines.push(`**Queue utilization:** ${Math.round(queueUtilizationRatio * 100)}%`);
+    }
+    if (saturatedSessions > 0) {
+      lines.push(`**Saturated sessions:** ${saturatedSessions}`);
+    }
+    if (busiestSession) {
+      lines.push(`**Busiest session:** ${busiestSession.depth}/${busiestSession.maxDepth}`);
+    }
+
+    if (data.memoryUsage) {
+      lines.push(`**Memory:** ${data.memoryUsage}`);
+    }
+
+    if (data.queueStats.length > 0) {
+      lines.push('', '**Queue detail:**');
+      for (const stat of data.queueStats) {
+        lines.push(`- ${stat.sessionKey}: ${stat.depth}/${stat.maxDepth}`);
+      }
+    }
+
+    return this.createMessage(chatId, lines.join('\n'));
+  }
+
+  formatProjectList(chatId: string, data: ProjectListData): TRendered {
+    const lines = ['📦 **Projects**', ''];
+
+    for (const project of data.projects) {
+      const flags = [
+        project.isCurrent ? 'current' : '',
+        project.isDefault ? 'default' : '',
+      ].filter(Boolean).join(', ');
+      lines.push(`- **${project.name}** — \`${project.workdir}\`${flags ? ` (${flags})` : ''}`);
+    }
+
+    return this.createMessage(chatId, lines.join('\n'));
+  }
+
+  formatProjectInfo(chatId: string, data: ProjectInfoData): TRendered {
+    const lines = [
+      `📦 **${data.projectName}**`,
+      '',
+      `**Workdir:** \`${data.workdir}\``,
+    ];
+
+    if (data.workspaceBinding && data.workspaceBinding !== data.workdir) {
+      lines.push(`**Workspace binding:** \`${data.workspaceBinding}\``);
+    }
+    if (data.channels?.length) {
+      lines.push(`**Channels:** ${data.channels.join(', ')}`);
+    }
+    if (data.claudeSettingSources?.length) {
+      lines.push(`**Settings:** ${data.claudeSettingSources.join(', ')}`);
+    }
+
+    return this.createMessage(chatId, lines.join('\n'));
   }
 
   // --- Helper methods ---

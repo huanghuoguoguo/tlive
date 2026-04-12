@@ -54,6 +54,7 @@ export class ClaudeLiveSession implements LiveSession {
 
   // Controls extracted from the query object
   private queryControls: QueryControls | null = null;
+  private lifecycleCallbacks: { onTurnComplete?: () => void } = {};
 
   constructor(private options: ClaudeLiveSessionOptions) {
     this.initQuery();
@@ -61,6 +62,10 @@ export class ClaudeLiveSession implements LiveSession {
 
   get isAlive(): boolean { return this._isAlive; }
   get isTurnActive(): boolean { return this._isTurnActive; }
+
+  setLifecycleCallbacks(callbacks: { onTurnComplete?: () => void }): void {
+    this.lifecycleCallbacks = callbacks;
+  }
 
   private initQuery(): void {
     const { workingDirectory, sessionId, cliPath, settingSources, effort, model } = this.options;
@@ -195,6 +200,7 @@ export class ClaudeLiveSession implements LiveSession {
               this.currentTurnController?.close();
             } catch { /* already closed */ }
             this.currentTurnController = null;
+            this.lifecycleCallbacks.onTurnComplete?.();
             // Reset adapter state between turns to prevent hiddenToolUseIds leak
             this.adapter.reset();
           }

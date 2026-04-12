@@ -6,11 +6,14 @@ import { getBridgeContext } from '../context.js';
 import { ChannelRouter } from './router.js';
 import { PermissionBroker } from '../permissions/broker.js';
 import { PendingPermissions } from '../permissions/gateway.js';
-import { loadConfig, type Config } from '../config.js';
+import { loadConfig, loadProjectsConfig, type Config, type ClaudeSettingSource } from '../config.js';
 import { SessionStateManager } from './session-state.js';
+import { WorkspaceStateManager } from './workspace-state.js';
 import { PermissionCoordinator } from './permission-coordinator.js';
 import { CommandRouter } from './command-router.js';
 import { SDKEngine } from './sdk-engine.js';
+import { WebhookServer } from './webhook-server.js';
+import { CronScheduler } from './cron-scheduler.js';
 import { networkInterfaces } from 'node:os';
 import { handleCallbackMessage } from './callback-dispatcher.js';
 import { IngressCoordinator } from './ingress-coordinator.js';
@@ -24,6 +27,7 @@ import type { BridgeStore } from '../store/interface.js';
 import type { LLMProvider } from '../providers/base.js';
 import { generateRequestId, Logger, type LogContext } from '../logger.js';
 import { truncate } from '../utils/string.js';
+import { areSettingSourcesEqual } from '../utils/automation.js';
 
 /** Bridge commands handled synchronously (don't block adapter loop) */
 const QUICK_COMMANDS = new Set(['/new', '/home', '/status', '/hooks', '/sessions', '/session', '/sessioninfo', '/help', '/help-cli', '/perm', '/stop', '/approve', '/pairings', '/settings', '/cd', '/pwd', '/upgrade', '/restart']);
@@ -65,10 +69,12 @@ function getLocalIP(): string {
 export class BridgeManager {
   private adapters = new Map<string, BaseChannelAdapter>();
   private running = false;
+  private store: BridgeStore;
   private engine: ConversationEngine;
   private router: ChannelRouter;
   private port: number;
   private state = new SessionStateManager(getTliveRuntimeDir());
+  private workspace = new WorkspaceStateManager(getTliveRuntimeDir());
   private permissions: PermissionCoordinator;
   /** SDK Engine for LiveSession management */
   private sdkEngine: SDKEngine;
@@ -77,6 +83,10 @@ export class BridgeManager {
   private text: TextDispatcher;
   private query: QueryOrchestrator;
   private notifications: HookNotificationDispatcher;
+  /** Webhook server for automation entry */
+  private webhookServer: WebhookServer | null = null;
+  /** Cron scheduler for scheduled tasks (Phase 3) */
+  private cronScheduler: CronScheduler | null = null;
 
   private commands: CommandRouter;
   /** Cleanup timer for SDK question data */
@@ -86,6 +96,7 @@ export class BridgeManager {
     const config = deps?.config ?? loadConfig();
     const context = deps ?? getBridgeContext();
     const { store, llm, defaultWorkdir } = context;
+    this.store = store;
     const localUrl = `http://${getLocalIP()}:${config.port || 8080}`;
     const gateway = new PendingPermissions();
     const broker = new PermissionBroker(gateway, localUrl);
@@ -97,8 +108,11 @@ export class BridgeManager {
     this.sdkEngine.onSessionPruned = (sessionKey) => {
       this.permissions.clearSessionWhitelist(sessionKey);
     };
+    // Load projects config once for CommandRouter, WebhookServer, and CronScheduler
+    const projectsResult = loadProjectsConfig();
     this.commands = new CommandRouter(
       this.state,
+      this.workspace,
       () => this.adapters,
       this.router,
       store,
@@ -107,7 +121,8 @@ export class BridgeManager {
       this.sdkEngine.getActiveControls(),
       this.permissions,
       config.claudeSettingSources,
-      (channelType, chatId) => this.sdkEngine.closeSession(channelType, chatId),
+      this.sdkEngine,
+      projectsResult,
     );
     this.loop = new MessageLoopCoordinator({
       state: this.state,
@@ -137,6 +152,30 @@ export class BridgeManager {
       permissions: this.permissions,
       buildTerminalUrl: (sessionId) => `http://${getLocalIP()}:${this.port}/terminal.html?id=${sessionId}`,
     });
+    // Initialize webhook server if enabled
+    if (config.webhook.enabled && config.webhook.token) {
+      this.webhookServer = new WebhookServer({
+        token: config.webhook.token,
+        port: config.webhook.port,
+        path: config.webhook.path,
+        bridge: this,
+        sessionStrategy: config.webhook.sessionStrategy,
+        callbackUrl: config.webhook.callbackUrl,
+        rateLimitPerMinute: config.webhook.rateLimitPerMinute,
+        projects: projectsResult?.valid,
+        defaultProject: projectsResult?.defaultProject,
+      });
+    }
+    // Initialize cron scheduler if enabled (Phase 3)
+    if (config.cron.enabled) {
+      this.cronScheduler = new CronScheduler({
+        runtimeDir: getTliveRuntimeDir(),
+        bridge: this,
+        enabled: config.cron.enabled,
+        maxConcurrency: config.cron.maxConcurrency,
+        projects: projectsResult?.valid,
+      });
+    }
   }
 
   
@@ -147,6 +186,90 @@ export class BridgeManager {
 
   getAdapter(channelType: string): BaseChannelAdapter | undefined {
     return this.adapters.get(channelType);
+  }
+
+  async getBinding(channelType: string, chatId: string) {
+    return this.store.getBinding(channelType, chatId);
+  }
+
+  async getBindingBySessionId(sessionId: string) {
+    return this.store.getBindingBySessionId(sessionId);
+  }
+
+  hasActiveSession(channelType: string, chatId: string, workdir?: string): boolean {
+    return this.sdkEngine.hasActiveSession(channelType, chatId, workdir);
+  }
+
+  async injectAutomationPrompt(options: {
+    channelType: string;
+    chatId: string;
+    text: string;
+    requestId?: string;
+    messageId?: string;
+    userId?: string;
+    workdir?: string;
+    projectName?: string;
+    claudeSettingSources?: ClaudeSettingSource[];
+  }): Promise<{ sessionId?: string }> {
+    const adapter = this.getAdapter(options.channelType);
+    if (!adapter) {
+      throw new Error(`Channel '${options.channelType}' not available`);
+    }
+
+    const binding = await this.router.resolve(options.channelType, options.chatId);
+    const previousCwd = binding.cwd;
+    const workdirChanged = options.workdir !== undefined && binding.cwd !== options.workdir;
+    const projectChanged = options.projectName !== undefined && binding.projectName !== options.projectName;
+    const settingsChanged = options.claudeSettingSources !== undefined
+      && !areSettingSourcesEqual(binding.claudeSettingSources, options.claudeSettingSources);
+    const sessionContextChanged = workdirChanged || projectChanged || settingsChanged;
+
+    let bindingChanged = false;
+
+    if (options.workdir !== undefined && binding.cwd !== options.workdir) {
+      binding.cwd = options.workdir;
+      bindingChanged = true;
+    }
+    if (options.projectName !== undefined && binding.projectName !== options.projectName) {
+      binding.projectName = options.projectName;
+      bindingChanged = true;
+    }
+    if (options.claudeSettingSources !== undefined && settingsChanged) {
+      const nextSources = [...options.claudeSettingSources];
+      binding.claudeSettingSources = nextSources;
+      bindingChanged = true;
+    }
+
+    if (sessionContextChanged) {
+      this.sdkEngine.cleanupSession(
+        options.channelType,
+        options.chatId,
+        workdirChanged || projectChanged ? 'cd' : 'settings',
+        previousCwd,
+      );
+      binding.sdkSessionId = undefined;
+      this.permissions.clearSessionWhitelist(binding.sessionId);
+      bindingChanged = true;
+    }
+
+    if (bindingChanged) {
+      await this.store.saveBinding(binding);
+    }
+
+    this.ingress.recordChat(options.channelType, options.chatId);
+    await this.query.run(adapter, {
+      channelType: adapter.channelType,
+      chatId: options.chatId,
+      userId: options.userId ?? 'automation',
+      text: options.text,
+      messageId: options.messageId ?? `automation-${options.requestId || generateRequestId()}`,
+      attachments: [],
+    }, options.requestId);
+
+    const updatedBinding = await this.store.getBinding(options.channelType, options.chatId);
+    return {
+      sessionId: updatedBinding?.sdkSessionId ?? updatedBinding?.sessionId,
+    };
   }
 
   /** Get the last active chatId for a given channel type (for hook routing) */
@@ -247,6 +370,14 @@ export class BridgeManager {
       this.sdkEngine.getInteractionState().pruneResolvedSdkQuestions(this.permissions.getGateway());
       this.ingress.pruneStaleState();
     }, 5 * 60 * 1000);
+    // Start webhook server if configured
+    if (this.webhookServer) {
+      this.webhookServer.start();
+    }
+    // Start cron scheduler if configured (Phase 3)
+    if (this.cronScheduler) {
+      this.cronScheduler.start();
+    }
   }
 
   async stop(): Promise<void> {
@@ -259,6 +390,14 @@ export class BridgeManager {
     this.permissions.stopPruning();
     this.sdkEngine.stopSessionPruning();
     this.permissions.getGateway().denyAll();
+    // Stop webhook server
+    if (this.webhookServer) {
+      this.webhookServer.stop();
+    }
+    // Stop cron scheduler (Phase 3)
+    if (this.cronScheduler) {
+      this.cronScheduler.stop();
+    }
     for (const adapter of this.adapters.values()) {
       await adapter.stop();
     }

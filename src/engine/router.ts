@@ -25,7 +25,12 @@ export class ChannelRouter {
     channelType: string,
     chatId: string,
     sessionId: string,
-    opts?: { sdkSessionId?: string; cwd?: string; claudeSettingSources?: ClaudeSettingSource[] },
+    opts?: {
+      sdkSessionId?: string;
+      cwd?: string;
+      claudeSettingSources?: ClaudeSettingSource[];
+      projectName?: string;
+    },
   ): Promise<ChannelBinding> {
     const binding: ChannelBinding = {
       channelType,
@@ -34,6 +39,7 @@ export class ChannelRouter {
       sdkSessionId: opts?.sdkSessionId,
       cwd: opts?.cwd,
       claudeSettingSources: opts?.claudeSettingSources,
+      projectName: opts?.projectName,
       createdAt: new Date().toISOString(),
     };
     await this.store.saveBinding(binding);

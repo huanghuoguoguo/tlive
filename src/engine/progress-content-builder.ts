@@ -5,7 +5,6 @@
 
 import { redactSensitiveContent } from './content-filter.js';
 import { getToolIcon } from './tool-registry.js';
-import { truncate } from '../utils/string.js';
 import { shortPath } from '../utils/path.js';
 import type { TodoStatus } from '../utils/types.js';
 import type { MessageRendererState, TimelineEntry, ToolLogEntry } from './message-renderer.js';

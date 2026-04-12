@@ -5,7 +5,7 @@
 
 import { MessageFormatter, type MessageLocale } from './message-formatter.js';
 import { downgradeHeadings } from '../platforms/feishu/markdown.js';
-import { buildFeishuButtonElements, type FeishuCardElement } from '../platforms/feishu/card-builder.js';
+import { buildFeishuButtonElements } from '../platforms/feishu/card-builder.js';
 import type { FeishuRenderedMessage } from '../platforms/feishu/types.js';
 import type {
   NotificationData,
@@ -23,6 +23,8 @@ import type {
   CardResolutionData,
   VersionUpdateData,
   MultiSelectToggleData,
+  QueueStatusData,
+  DiagnoseData,
 } from './message-types.js';
 import type { Button } from '../ui/types.js';
 import { truncate } from '../utils/string.js';
@@ -420,13 +422,33 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       ? '⏳ 有任务正在执行'
       : '✅ 当前无执行任务';
 
+    // Session status with stale indicator
+    let sessionStatusLine = taskStatus;
+    if (data.sessionStale) {
+      sessionStatusLine = '⚠️ 会话已长时间未活动';
+    }
+    if (data.queueInfo) {
+      sessionStatusLine += ` · 队列: ${data.queueInfo.depth}/${data.queueInfo.max}`;
+    }
+
     const elements: FeishuElement[] = [
       // Status overview panel
       this.md(`**系统状态**\n${bridgeStatus} · 通道: ${channels}`),
-      this.md(`**任务状态**\n${taskStatus}`),
+      this.md(`**任务状态**\n${sessionStatusLine}`),
       this.md(`**项目目录**\n\`${data.cwd}\``),
-      this.md(`**权限模式**\n${data.permissionMode === 'on' ? '🔐 开启审批' : '⚡ 关闭审批'}`),
     ];
+
+    // Show workspace binding if different from current cwd
+    if (data.workspaceBinding && data.workspaceBinding !== data.cwd) {
+      elements.push(this.md(`**工作区绑定**\n\`${data.workspaceBinding}\``));
+    }
+
+    // Last active time
+    if (data.lastActiveAt) {
+      elements.push(this.md(`**上次活跃**\n${data.lastActiveAt}`));
+    }
+
+    elements.push(this.md(`**权限模式**\n${data.permissionMode === 'on' ? '🔐 开启审批' : '⚡ 关闭审批'}`));
 
     // Permission details (if relevant)
     if (data.pendingPermission) {
@@ -525,10 +547,29 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
   }
 
   override formatTaskStart(chatId: string, data: TaskStartData): FeishuRenderedMessage {
-    const title = data.isNewSession ? '🔄 会话已重置' : '🚀 开始执行';
+    // Determine title and reason message based on reason field
+    let title = '🚀 开始执行';
+    let reasonMessage = '';
+    if (data.isNewSession) {
+      if (data.reason === 'idle') {
+        title = '⏰ 长时间未活动，已开启新会话';
+        reasonMessage = '会话已超过 2 小时未活动，已自动重置。';
+      } else if (data.reason === 'stale') {
+        title = '🔄 旧会话无法恢复，已开启新会话';
+        reasonMessage = '之前尝试恢复旧会话失败，已创建新会话。';
+      } else {
+        title = '🔄 会话已重置';
+        reasonMessage = '';
+      }
+    }
+
     const elements: FeishuElement[] = [
       this.md(`**当前配置**\n目录：${data.cwd}\n权限：${data.permissionMode === 'on' ? '开启审批' : '关闭审批'}`),
     ];
+
+    if (reasonMessage) {
+      elements.push(this.md(reasonMessage));
+    }
 
     if (data.previousSessionPreview) {
       elements.push(this.md(`**上次会话**\n${truncate(data.previousSessionPreview, 100)}`));
@@ -569,14 +610,22 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
 
   override formatSessions(chatId: string, data: SessionsData): FeishuRenderedMessage {
     const lines: string[] = [];
+
+    // Show workspace binding if available
+    if (data.workspaceBinding) {
+      lines.push(`🏠 工作区绑定：\`${data.workspaceBinding}\``);
+      lines.push('');
+    }
+
     for (const s of data.sessions) {
-      const marker = s.isCurrent ? ' ◀ 当前' : '';
+      const staleMarker = s.isStale ? ' ⏰ 陈旧' : '';
+      const marker = s.isCurrent ? ' ◀ 当前' : staleMarker;
       lines.push(`${s.index}. ${s.date} · ${truncate(s.preview, 60)}${marker}`);
     }
 
     const elements: FeishuElement[] = [
       this.md(`**最近会话** ${data.filterHint}\n\n${lines.join('\n')}`),
-      this.md('💡 点击"继续"恢复会话；长按可查看详情。'),
+      this.md('💡 点击"继续"恢复会话；长按可查看详情。\n⏰ 陈旧会话可能需要重新开始。'),
     ];
 
     const buttons: Button[] = [];
@@ -833,6 +882,69 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
 
     return this.createCardMessage(chatId,
       { template: 'blue', title: '❓ 等待回答' },
+      elements,
+      buttons
+    );
+  }
+
+  // --- Phase 3: Queue/Diagnose formatting ---
+
+  override formatQueueStatus(chatId: string, data: QueueStatusData): FeishuRenderedMessage {
+    const elements: FeishuElement[] = [
+      this.md(`**会话**\n${data.sessionKey.split(':').slice(0, 2).join(':')}`),
+      this.md(`**队列状态**\n${data.depth}/${data.maxDepth} 条消息`),
+    ];
+
+    if (data.queuedMessages && data.queuedMessages.length > 0) {
+      const queueLines = data.queuedMessages.map((msg, i) => {
+        const timeStr = new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        return `${i + 1}. ${truncate(msg.preview, 60)} (${timeStr})`;
+      });
+      elements.push(this.md(`**排队消息**\n${queueLines.join('\n')}`));
+    }
+
+    if (data.estimatedWaitSeconds && data.estimatedWaitSeconds > 0) {
+      const waitMin = Math.ceil(data.estimatedWaitSeconds / 60);
+      elements.push(this.md(`**预计等待**\n约 ${waitMin} 分钟`));
+    }
+
+    const buttons: Button[] = [
+      { label: '🗑️ 清空队列', callbackData: 'cmd:queue clear', style: 'danger', row: 0 },
+      { label: '🏠 首页', callbackData: 'cmd:home', style: 'default', row: 0 },
+    ];
+
+    return this.createCardMessage(chatId,
+      { template: data.depth > 0 ? 'orange' : 'green', title: `📥 队列状态` },
+      elements,
+      buttons
+    );
+  }
+
+  override formatDiagnose(chatId: string, data: DiagnoseData): FeishuRenderedMessage {
+    const elements: FeishuElement[] = [
+      this.md(`**会话统计**\n活跃：${data.activeSessions} · 空闲：${data.idleSessions}`),
+      this.md(`**Bubble映射**\n${data.totalBubbleMappings} 条`),
+      this.md(`**队列状态**\n总排队：${data.totalQueuedMessages} 条 · 处理中：${data.processingChats} 个`),
+    ];
+
+    if (data.queueStats.length > 0) {
+      const queueLines = data.queueStats.map(stat => {
+        const sessionPreview = stat.sessionKey.split(':').slice(0, 2).join(':');
+        return `${sessionPreview}: ${stat.depth}/${stat.maxDepth}`;
+      });
+      elements.push(this.md(`**各会话队列**\n${queueLines.join('\n')}`));
+    }
+
+    if (data.memoryUsage) {
+      elements.push(this.md(`**内存使用**\n${data.memoryUsage}`));
+    }
+
+    const buttons: Button[] = [
+      { label: '🏠 首页', callbackData: 'cmd:home', style: 'default' },
+    ];
+
+    return this.createCardMessage(chatId,
+      { template: 'blue', title: '📊 系统诊断' },
       elements,
       buttons
     );

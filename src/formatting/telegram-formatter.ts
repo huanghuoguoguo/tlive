@@ -65,12 +65,34 @@ export class TelegramFormatter extends MessageFormatter<TelegramRenderedMessage>
       ? (this.locale === 'zh' ? '有任务正在执行' : 'Task in progress')
       : (this.locale === 'zh' ? '无执行中任务' : 'No active task');
 
+    // Session status with stale indicator
+    let sessionStatus = taskStatus;
+    if (data.sessionStale) {
+      sessionStatus = this.locale === 'zh' ? '⚠️ 会话已长时间未活动' : '⚠️ Session stale';
+    }
+    if (data.queueInfo) {
+      sessionStatus += ` · Queue: ${data.queueInfo.depth}/${data.queueInfo.max}`;
+    }
+
     const lines = [
       `🏠 **TLive**`,
       ``,
-      `**Status:** ${taskStatus}`,
+      `**Status:** ${sessionStatus}`,
       `**Directory:** \`${data.cwd}\``,
     ];
+
+    // Show workspace binding if different from current cwd
+    if (data.workspaceBinding && data.workspaceBinding !== data.cwd) {
+      const label = this.locale === 'zh' ? '工作区绑定' : 'Workspace binding';
+      lines.push(`**${label}:** \`${data.workspaceBinding}\``);
+    }
+
+    // Last active time
+    if (data.lastActiveAt) {
+      const label = this.locale === 'zh' ? '上次活跃' : 'Last active';
+      lines.push(`**${label}:** ${data.lastActiveAt}`);
+    }
+
     if (data.recentSummary) {
       lines.push(``, `**Recent:** ${truncate(data.recentSummary, 100)}`);
     }
@@ -80,8 +102,16 @@ export class TelegramFormatter extends MessageFormatter<TelegramRenderedMessage>
 
   override formatSessions(chatId: string, data: SessionsData): TelegramRenderedMessage {
     const lines = [`📋 **Sessions** ${data.filterHint}`, ''];
+
+    // Show workspace binding if available
+    if (data.workspaceBinding) {
+      const label = this.locale === 'zh' ? '工作区绑定' : 'Workspace binding';
+      lines.push(`🏠 **${label}:** \`${data.workspaceBinding}\``, '');
+    }
+
     for (const s of data.sessions) {
-      const marker = s.isCurrent ? ' ◀' : '';
+      const staleMarker = s.isStale ? (this.locale === 'zh' ? ' ⏰ 陈旧' : ' ⏰ stale') : '';
+      const marker = s.isCurrent ? ' ◀' : staleMarker;
       lines.push(`${s.index}. ${s.date} · ${s.cwd} · ${s.size} · ${s.preview}${marker}`);
     }
     const footer = this.locale === 'zh' ? '\n使用 /session <n> 切换' : '\nUse /session <n> to switch';
