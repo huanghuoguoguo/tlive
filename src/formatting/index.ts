@@ -7,5 +7,6 @@ export { MessageFormatter } from './message-formatter.js';
 export { TelegramFormatter } from '../platforms/telegram/formatter.js';
 export { FeishuFormatter } from '../platforms/feishu/formatter.js';
 export { QQBotFormatter } from '../platforms/qqbot/formatter.js';
-export type { PermissionCardData, NotificationData, FeishuCardElement } from './types.js';
+export type { PermissionCardData, NotificationData } from './types.js';
+export type { FeishuCardElement } from '../platforms/feishu/card-builder.js';
 export type { FormattableMessage, StatusData, PermissionData, QuestionData, HomeData, SessionsData, ProgressData } from './message-types.js';
