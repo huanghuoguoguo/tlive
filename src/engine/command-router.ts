@@ -13,7 +13,7 @@ import {
   type ClaudeSettingSource,
   getProjectByName,
 } from '../config.js';
-import type { BridgeStore } from '../store/interface.js';
+import type { BridgeStore, ChannelBinding } from '../store/interface.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -163,9 +163,9 @@ export class CommandRouter {
       previousCwd?: string;
       clearProject?: boolean;
       clearLastActive?: boolean;
-      binding?: { sessionId?: string; projectName?: string; sdkSessionId?: string; cwd?: string };
+      binding?: ChannelBinding | null;
     } = {},
-  ): Promise<{ hadActiveSession: boolean; binding: Awaited<ReturnType<typeof this.store.getBinding>> }> {
+  ): Promise<{ hadActiveSession: boolean; binding: ChannelBinding | null }> {
     const binding = opts.binding ?? await this.store.getBinding(channelType, chatId);
     const hadActiveSession = this.sdkEngine?.cleanupSession(
       channelType,
