@@ -7,6 +7,8 @@ import type { LLMProvider, QueryControls } from '../providers/base.js';
 import type { SDKEngine, SessionCleanupReason } from './sdk-engine.js';
 import type { ProjectsValidationResult } from '../config.js';
 import { basename } from 'node:path';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
 import { ClaudeSDKProvider } from '../providers/claude-sdk.js';
 import {
   DEFAULT_CLAUDE_SETTING_SOURCES,
@@ -20,8 +22,10 @@ import { homedir } from 'node:os';
 import { readSessionTranscriptPreview, scanClaudeSessions } from '../session-scanner.js';
 import { generateSessionId } from '../utils/id.js';
 import { shortPath } from '../utils/path.js';
+import { truncate } from '../utils/string.js';
+import { escapeHtml } from '../formatting/escape.js';
 import { isSameRepoRoot, findGitRoot } from '../utils/repo.js';
-import { areSettingSourcesEqual, buildChatKey } from '../utils/automation.js';
+import { areSettingSourcesEqual } from '../utils/automation.js';
 import {
   presentApproveFailure,
   presentApproveSuccess,
@@ -65,6 +69,8 @@ import {
 import { areHooksPaused, pauseHooks, resumeHooks } from './hooks-state.js';
 import type { FormattableMessage, HomeData, ProjectListData } from '../formatting/message-types.js';
 import { SESSION_STALE_THRESHOLD_MS, FLAGS, hasFlag, getNonFlagArg } from '../utils/constants.js';
+
+const execAsync = promisify(exec);
 
 /** Format file size in human-readable format */
 function formatSize(bytes: number): string {
@@ -559,6 +565,50 @@ export class CommandRouter {
         }
         return true;
       }
+      case '/bash': {
+        const cmdText = msg.text.slice('/bash '.length).trim();
+        if (!cmdText) {
+          await adapter.send({ chatId: msg.chatId, text: 'Usage: /bash <command>' });
+          return true;
+        }
+
+        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+        const cwd = binding?.cwd || this.defaultWorkdir;
+
+        try {
+          const { stdout, stderr } = await execAsync(cmdText, {
+            cwd,
+            timeout: 30_000,
+            maxBuffer: 4 * 1024 * 1024,
+          });
+
+          const output = (stdout + (stderr ? '\n⚠️ stderr:\n' + stderr : '')).trim();
+          const truncatedOutput = truncate(output, 4000);
+
+          // Format output based on platform
+          if (adapter.channelType === 'telegram') {
+            await adapter.send({
+              chatId: msg.chatId,
+              html: `<pre>${escapeHtml(truncatedOutput || '(no output)')}</pre>`,
+            });
+          } else if (adapter.channelType === 'feishu') {
+            await adapter.send({
+              chatId: msg.chatId,
+              text: '```\n' + (truncatedOutput || '(no output)') + '\n```',
+            });
+          } else {
+            await adapter.send({
+              chatId: msg.chatId,
+              text: truncatedOutput || '(no output)',
+            });
+          }
+        } catch (err: any) {
+          const errMsg = err.stderr || err.message || String(err);
+          const truncatedErr = truncate(errMsg, 1000);
+          await adapter.send({ chatId: msg.chatId, text: `❌ ${truncatedErr}` });
+        }
+        return true;
+      }
       case '/settings': {
         const arg = parts[1]?.toLowerCase();
 
@@ -615,6 +665,7 @@ export class CommandRouter {
             { cmd: 'session <n>', desc: 'Switch to session #n' },
             { cmd: 'cd <path>', desc: 'Change directory' },
             { cmd: 'pwd', desc: 'Show current directory' },
+            { cmd: 'bash <cmd>', desc: 'Execute shell command' },
             { cmd: 'perm on|off', desc: 'Permission prompts' },
             { cmd: 'stop', desc: 'Interrupt execution' },
             { cmd: 'status', desc: 'Bridge status' },
@@ -631,6 +682,8 @@ export class CommandRouter {
             { cmd: 'sessions', desc: 'List sessions' },
             { cmd: 'session <n>', desc: 'Switch session' },
             { cmd: 'cd <path>', desc: 'Change directory' },
+            { cmd: 'pwd', desc: 'Show current directory' },
+            { cmd: 'bash <cmd>', desc: 'Execute shell command' },
             { cmd: 'perm on|off', desc: 'Permission prompts' },
             { cmd: 'settings user|full|isolated', desc: 'Claude settings' },
             { cmd: 'stop', desc: 'Interrupt execution' },

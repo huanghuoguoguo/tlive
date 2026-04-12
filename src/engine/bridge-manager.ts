@@ -30,7 +30,7 @@ import { truncate } from '../utils/string.js';
 import { areSettingSourcesEqual } from '../utils/automation.js';
 
 /** Bridge commands handled synchronously (don't block adapter loop) */
-const QUICK_COMMANDS = new Set(['/new', '/home', '/status', '/hooks', '/sessions', '/session', '/sessioninfo', '/help', '/help-cli', '/perm', '/stop', '/approve', '/pairings', '/settings', '/cd', '/pwd', '/upgrade', '/restart']);
+const QUICK_COMMANDS = new Set(['/new', '/home', '/status', '/hooks', '/sessions', '/session', '/sessioninfo', '/help', '/help-cli', '/perm', '/stop', '/approve', '/pairings', '/settings', '/cd', '/pwd', '/bash', '/upgrade', '/restart']);
 
 interface BridgeManagerDeps {
   store: BridgeStore;
