@@ -4,7 +4,7 @@
  */
 
 import { MessageFormatter, type MessageLocale } from '../../formatting/message-formatter.js';
-import { downgradeHeadings } from './markdown.js';
+import { downgradeHeadings, splitLargeTables } from './markdown.js';
 import { buildFeishuButtonElements, type FeishuCardElement } from './card-builder.js';
 import type { FeishuRenderedMessage } from './types.js';
 import type {
@@ -98,7 +98,13 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
   }
 
   private md(content: string): FeishuCardElement {
-    return { tag: 'markdown', content: downgradeHeadings(content) };
+    // Apply table splitting before heading downgrade to handle large tables
+    return { tag: 'markdown', content: downgradeHeadings(splitLargeTables(content)) };
+  }
+
+  /** Create markdown element for collapsible panel content (also applies table splitting) */
+  private mdPanel(content: string): { tag: string; content: string } {
+    return { tag: 'markdown', content: downgradeHeadings(splitLargeTables(content)) };
   }
 
   private collectTimelineOperations(data: ProgressData): TimelineOperationDisplay[] {
@@ -281,7 +287,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
           tag: 'collapsible_panel',
           expanded: false,
           header: { title: { tag: 'plain_text', content: `📡 会话 ${sessionHeader}` } },
-          elements: [{ tag: 'markdown', content: lines.join('\n\n') }],
+          elements: [this.mdPanel(lines.join('\n\n'))],
         } as FeishuCardElement);
       } else {
         elements.push(this.md(`**会话**\n${sessionHeader}`));
@@ -764,7 +770,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
           tag: 'collapsible_panel',
           expanded: isExpanded,
           header: { title: { tag: 'plain_text', content: this.buildOperationHeader(operation, isExpanded) } },
-          elements: [{ tag: 'markdown', content }],
+          elements: [this.mdPanel(content)],
         });
       }
     } else {
@@ -774,7 +780,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
           tag: 'collapsible_panel',
           expanded: false,
           header: { title: { tag: 'plain_text', content: '💭 思考过程' } },
-          elements: [{ tag: 'markdown', content: truncate(data.thinkingText.trim(), 1500) }],
+          elements: [this.mdPanel(truncate(data.thinkingText.trim(), 1500))],
         });
       }
       if (data.toolLogs?.length) {
@@ -788,7 +794,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
           tag: 'collapsible_panel',
           expanded: !isDone,
           header: { title: { tag: 'plain_text', content: `🔧 工具调用 (${data.toolLogs.length})` } },
-          elements: [{ tag: 'markdown', content: truncate(logLines.join('\n'), 2000) }],
+          elements: [this.mdPanel(truncate(logLines.join('\n'), 2000))],
         });
       }
     }
@@ -844,7 +850,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
         tag: 'collapsible_panel',
         expanded: false,
         header: { title: { tag: 'plain_text', content: '🔌 会话环境' } },
-        elements: [{ tag: 'markdown', content: infoParts.join('\n') }],
+        elements: [this.mdPanel(infoParts.join('\n'))],
       });
     }
 
@@ -864,7 +870,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
         tag: 'collapsible_panel',
         expanded: false,
         header: { title: { tag: 'plain_text', content: '📝 工具调用摘要' } },
-        elements: [{ tag: 'markdown', content: truncate(data.toolUseSummaryText, 1000) }],
+        elements: [this.mdPanel(truncate(data.toolUseSummaryText, 1000))],
       });
     }
 
