@@ -171,7 +171,6 @@ export class BridgeManager {
         enabled: config.cron.enabled,
         maxConcurrency: config.cron.maxConcurrency,
         projects: projectsResult?.valid,
-        defaultProject: projectsResult?.defaultProject,
       });
     }
   }

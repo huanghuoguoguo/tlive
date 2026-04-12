@@ -257,6 +257,22 @@ describe('WebhookServer', () => {
       expect((server as any).allowRequestForSource('127.0.0.1', 30_000)).toBe(false);
       expect((server as any).allowRequestForSource('127.0.0.1', 62_000)).toBe(true);
     });
+
+    it('cleans up idle rate-limit buckets', () => {
+      server = new WebhookServer({
+        token: 'test-token',
+        port: 9999,
+        path: '/webhook',
+        bridge: mockBridge as BridgeManager,
+        sessionStrategy: 'reject',
+        rateLimitPerMinute: 1,
+      });
+
+      expect((server as any).allowRequestForSource('127.0.0.1', 1_000)).toBe(true);
+      expect((server as any).recentRequestsBySource.has('127.0.0.1')).toBe(true);
+      expect((server as any).allowRequestForSource('127.0.0.1', 62_000)).toBe(true);
+      expect((server as any).recentRequestsBySource.get('127.0.0.1')).toHaveLength(1);
+    });
   });
 
   describe('project routing', () => {

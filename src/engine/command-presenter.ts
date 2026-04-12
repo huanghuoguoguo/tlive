@@ -94,7 +94,7 @@ export function presentNoSessions(chatId: string, hint: string): { chatId: strin
 }
 
 export function presentSessionUsage(chatId: string): { chatId: string; text: string } {
-  return { chatId, text: 'Usage: /session <number>\nUse /sessions to list.' };
+  return { chatId, text: 'Usage: /session <number> [--all]\nUse /sessions to list.' };
 }
 
 export function presentSessionNotFound(chatId: string, idx: number): { chatId: string; text: string } {
@@ -307,38 +307,9 @@ export function presentProjectInfoExtended(chatId: string, data: ProjectInfoExte
 // --- Queue/Diagnose messages (Phase 3) ---
 
 export function presentQueueStatus(chatId: string, data: QueueStatusData): FormattableMessage {
-  const next: QueueStatusData = { ...data };
-  if (next.maxDepth > 0) {
-    next.saturationRatio = next.depth / next.maxDepth;
-  }
-  if (next.queuedMessages && next.queuedMessages.length > 0) {
-    const oldestTimestamp = Math.min(...next.queuedMessages.map(item => item.timestamp));
-    next.oldestQueuedAgeSeconds = Math.max(0, Math.floor((Date.now() - oldestTimestamp) / 1000));
-  }
-  if (next.depth > 0 && next.estimatedWaitSeconds === undefined) {
-    // Lightweight estimate for IM feedback only.
-    const averageTurnSeconds = 45;
-    next.estimatedWaitSeconds = next.depth * averageTurnSeconds;
-  }
-  return { type: 'queueStatus', chatId, data: next };
+  return { type: 'queueStatus', chatId, data };
 }
 
 export function presentDiagnose(chatId: string, data: DiagnoseData): FormattableMessage {
-  const totalDepth = data.queueStats.reduce((sum, stat) => sum + stat.depth, 0);
-  const totalCapacity = data.queueStats.reduce((sum, stat) => sum + stat.maxDepth, 0);
-  const saturatedSessions = data.queueStats.filter(stat => stat.depth >= stat.maxDepth).length;
-  const busiestSession = data.queueStats
-    .slice()
-    .sort((a, b) => (b.maxDepth > 0 ? b.depth / b.maxDepth : 0) - (a.maxDepth > 0 ? a.depth / a.maxDepth : 0))[0];
-
-  return {
-    type: 'diagnose',
-    chatId,
-    data: {
-      ...data,
-      saturatedSessions,
-      queueUtilizationRatio: totalCapacity > 0 ? totalDepth / totalCapacity : undefined,
-      busiestSession,
-    },
-  };
+  return { type: 'diagnose', chatId, data };
 }

@@ -397,19 +397,6 @@ export class SDKEngine {
   }
 
   /**
-   * Reset queue depth when a turn starts fresh (clears all pending queued messages).
-   * This should be called when detecting that queued messages have been consumed.
-   */
-  resetQueueDepth(sessionKey: string): void {
-    const current = this.getQueueDepth(sessionKey);
-    if (current > 0) {
-      this.queueDepthBySession.delete(sessionKey);
-      this.queuePreviewBySession.delete(sessionKey);
-      console.log(`[tlive:engine] Queue depth reset for ${sessionKey} (was ${current})`);
-    }
-  }
-
-  /**
    * Get queue info for a session: { depth, max }.
    * Returns undefined if session doesn't exist or has no queue.
    */
@@ -498,15 +485,6 @@ export class SDKEngine {
       return undefined;
     }
     return sessionKey;
-  }
-
-  /**
-   * Resolve target session for a message.
-   * - If replyToMessageId is provided and tracked → use that session
-   * - Otherwise → use activeSessionByChat (most recent)
-   */
-  resolveTargetSession(channelType: string, chatId: string, replyToMessageId?: string): string | undefined {
-    return this.resolveTargetSessionWithReason(channelType, chatId, replyToMessageId).sessionKey;
   }
 
   private resolveTargetSessionWithReason(

@@ -65,8 +65,6 @@ export interface CronSchedulerOptions {
   maxConcurrency?: number;
   /** Project configurations for routing without re-reading disk */
   projects?: ProjectConfig[];
-  /** Default project name for routing fallback */
-  defaultProject?: string;
 }
 
 /** Persisted cron jobs file structure */
@@ -247,7 +245,6 @@ export class CronScheduler {
   private enabled: boolean;
   private maxConcurrency: number;
   private projects?: ProjectConfig[];
-  private defaultProject?: string;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private running = false;
   private activeJobs = new Set<string>();
@@ -258,7 +255,6 @@ export class CronScheduler {
     this.enabled = options.enabled;
     this.maxConcurrency = normalizeConcurrency(options.maxConcurrency);
     this.projects = options.projects;
-    this.defaultProject = options.defaultProject;
 
     if (this.enabled) {
       this.loadJobs();

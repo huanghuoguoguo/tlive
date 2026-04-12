@@ -190,7 +190,7 @@ describe('command presenter', () => {
   });
 
   describe('presentQueueStatus', () => {
-    it('adds derived queue fields for downstream formatters', () => {
+    it('returns semantic queue data without mutating payload', () => {
       const now = Date.now();
       const msg = presentQueueStatus('chat-1', {
         sessionKey: 'telegram:chat-1:/repo',
@@ -204,15 +204,16 @@ describe('command presenter', () => {
 
       expect(msg.type).toBe('queueStatus');
       if (msg.type === 'queueStatus') {
-        expect(msg.data.saturationRatio).toBe(0.5);
-        expect(msg.data.estimatedWaitSeconds).toBe(90);
-        expect(msg.data.oldestQueuedAgeSeconds).toBeGreaterThanOrEqual(120);
+        expect(msg.data.depth).toBe(2);
+        expect(msg.data.saturationRatio).toBeUndefined();
+        expect(msg.data.estimatedWaitSeconds).toBeUndefined();
+        expect(msg.data.oldestQueuedAgeSeconds).toBeUndefined();
       }
     });
   });
 
   describe('presentDiagnose', () => {
-    it('adds aggregate queue diagnostics', () => {
+    it('returns semantic diagnose data without mutating payload', () => {
       const msg = presentDiagnose('chat-1', {
         activeSessions: 2,
         idleSessions: 1,
@@ -227,9 +228,10 @@ describe('command presenter', () => {
 
       expect(msg.type).toBe('diagnose');
       if (msg.type === 'diagnose') {
-        expect(msg.data.saturatedSessions).toBe(1);
-        expect(msg.data.queueUtilizationRatio).toBeCloseTo(4 / 7, 5);
-        expect(msg.data.busiestSession).toEqual({ sessionKey: 's1', depth: 3, maxDepth: 3 });
+        expect(msg.data.queueStats).toHaveLength(2);
+        expect(msg.data.saturatedSessions).toBeUndefined();
+        expect(msg.data.queueUtilizationRatio).toBeUndefined();
+        expect(msg.data.busiestSession).toBeUndefined();
       }
     });
   });

@@ -175,6 +175,9 @@ export class WebhookServer {
 
     const windowStart = now - 60_000;
     const recent = (this.recentRequestsBySource.get(sourceKey) ?? []).filter(timestamp => timestamp > windowStart);
+    if (recent.length === 0) {
+      this.recentRequestsBySource.delete(sourceKey);
+    }
     if (recent.length >= limit) {
       this.recentRequestsBySource.set(sourceKey, recent);
       return false;

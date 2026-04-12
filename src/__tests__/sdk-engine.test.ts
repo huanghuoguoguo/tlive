@@ -55,11 +55,6 @@ describe('SDKEngine', () => {
       engine.decrementQueueDepth('test-session'); // No effect when depth is 0
       expect(engine.getQueueDepth('test-session')).toBe(0);
     });
-
-    it('resets queue depth to 0', () => {
-      engine.resetQueueDepth('test-session');
-      expect(engine.getQueueDepth('test-session')).toBe(0);
-    });
   });
 
   describe('sendWithContext', () => {

@@ -31,6 +31,7 @@ import type {
   FormattableMessage,
 } from './message-types.js';
 import { truncate } from '../utils/string.js';
+import { AVERAGE_TURN_SECONDS } from '../utils/constants.js';
 
 /** Language preference for messages */
 export type MessageLocale = 'en' | 'zh';
@@ -527,6 +528,8 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
       ?? (data.queuedMessages?.length
         ? Math.max(0, Math.floor((Date.now() - Math.min(...data.queuedMessages.map(item => item.timestamp))) / 1000))
         : undefined);
+    const estimatedWaitSeconds = data.estimatedWaitSeconds
+      ?? (data.depth > 0 ? data.depth * AVERAGE_TURN_SECONDS : undefined);
     const state = data.depth === 0
       ? 'idle'
       : saturationRatio >= 1
@@ -554,8 +557,8 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
       lines.push('', `**Oldest queued:** ${Math.ceil(oldestQueuedAgeSeconds / 60)} min ago`);
     }
 
-    if (data.estimatedWaitSeconds && data.depth > 0) {
-      lines.push('', `**Estimated wait:** ${Math.ceil(data.estimatedWaitSeconds / 60)} min`);
+    if (estimatedWaitSeconds && data.depth > 0) {
+      lines.push('', `**Estimated wait:** ${Math.ceil(estimatedWaitSeconds / 60)} min`);
     }
 
     return this.createMessage(chatId, lines.join('\n'));
@@ -566,6 +569,16 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
     const totalDepth = data.queueStats.reduce((sum, stat) => sum + stat.depth, 0);
     const queueUtilizationRatio = data.queueUtilizationRatio
       ?? (totalCapacity > 0 ? totalDepth / totalCapacity : undefined);
+    const saturatedSessions = data.saturatedSessions
+      ?? data.queueStats.filter(stat => stat.depth >= stat.maxDepth).length;
+    const busiestSession = data.busiestSession
+      ?? (data.queueStats.length > 0
+        ? data.queueStats.reduce((max, stat) => {
+          const ratio = stat.maxDepth > 0 ? stat.depth / stat.maxDepth : 0;
+          const maxRatio = max.maxDepth > 0 ? max.depth / max.maxDepth : 0;
+          return ratio > maxRatio ? stat : max;
+        }, data.queueStats[0])
+        : undefined);
 
     const lines = [
       '🩺 **Diagnose**',
@@ -579,11 +592,11 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
     if (queueUtilizationRatio !== undefined) {
       lines.push(`**Queue utilization:** ${Math.round(queueUtilizationRatio * 100)}%`);
     }
-    if (data.saturatedSessions !== undefined && data.saturatedSessions > 0) {
-      lines.push(`**Saturated sessions:** ${data.saturatedSessions}`);
+    if (saturatedSessions > 0) {
+      lines.push(`**Saturated sessions:** ${saturatedSessions}`);
     }
-    if (data.busiestSession) {
-      lines.push(`**Busiest session:** ${data.busiestSession.depth}/${data.busiestSession.maxDepth}`);
+    if (busiestSession) {
+      lines.push(`**Busiest session:** ${busiestSession.depth}/${busiestSession.maxDepth}`);
     }
 
     if (data.memoryUsage) {

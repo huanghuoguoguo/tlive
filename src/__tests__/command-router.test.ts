@@ -393,7 +393,7 @@ describe('CommandRouter /settings', () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  it('clears project binding when /session switches to another repo', async () => {
+  it('clears project binding when /session --all switches to another repo', async () => {
     const repoA = join(tmpDir, 'repo-a');
     const repoB = join(tmpDir, 'repo-b');
     mkdirSync(join(repoA, '.git'), { recursive: true });
@@ -425,7 +425,7 @@ describe('CommandRouter /settings', () => {
       channelType: 'telegram',
       chatId: 'c1',
       userId: 'u1',
-      text: '/session 1',
+      text: '/session --all 1',
       messageId: 'm12',
     } as any);
 

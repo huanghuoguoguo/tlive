@@ -63,7 +63,7 @@ import {
 } from './command-presenter.js';
 import { areHooksPaused, pauseHooks, resumeHooks } from './hooks-state.js';
 import type { FormattableMessage, HomeData, ProjectListData } from '../formatting/message-types.js';
-import { SESSION_STALE_THRESHOLD_MS } from '../utils/constants.js';
+import { SESSION_STALE_THRESHOLD_MS, FLAGS, hasFlag, getNonFlagArg } from '../utils/constants.js';
 
 /** Format file size in human-readable format */
 function formatSize(bytes: number): string {
@@ -295,7 +295,7 @@ export class CommandRouter {
       case '/sessions': {
         const binding = await this.store.getBinding(msg.channelType, msg.chatId);
         const currentCwd = binding?.cwd || this.defaultWorkdir;
-        const showAll = parts[1]?.toLowerCase() === '--all' || parts[1]?.toLowerCase() === '-a';
+        const showAll = hasFlag(parts.slice(1), FLAGS.ALL);
 
         const sessions = scanClaudeSessions(10, showAll ? undefined : currentCwd);
         const currentSdkId = binding?.sdkSessionId;
@@ -331,7 +331,10 @@ export class CommandRouter {
         return true;
       }
       case '/session': {
-        const idx = parseInt(parts[1], 10);
+        const sessionArgs = parts.slice(1);
+        const showAll = hasFlag(sessionArgs, FLAGS.ALL);
+        const idxToken = getNonFlagArg(sessionArgs, [FLAGS.ALL]);
+        const idx = parseInt(idxToken || '', 10);
         if (Number.isNaN(idx) || idx < 1) {
           await send(adapter, presentSessionUsage(msg.chatId));
           return true;
@@ -339,7 +342,7 @@ export class CommandRouter {
 
         const binding = await this.store.getBinding(msg.channelType, msg.chatId);
         const currentCwd = binding?.cwd || this.defaultWorkdir;
-        const sessions = scanClaudeSessions(10, currentCwd);
+        const sessions = scanClaudeSessions(10, showAll ? undefined : currentCwd);
 
         if (idx > sessions.length) {
           await send(adapter, presentSessionNotFound(msg.chatId, idx));
@@ -379,7 +382,10 @@ export class CommandRouter {
         return true;
       }
       case '/sessioninfo': {
-        const idx = parseInt(parts[1], 10);
+        const sessionArgs = parts.slice(1);
+        const showAll = hasFlag(sessionArgs, FLAGS.ALL);
+        const idxToken = getNonFlagArg(sessionArgs, [FLAGS.ALL]);
+        const idx = parseInt(idxToken || '', 10);
         if (Number.isNaN(idx) || idx < 1) {
           await send(adapter, presentSessionUsage(msg.chatId));
           return true;
@@ -387,7 +393,6 @@ export class CommandRouter {
 
         const binding = await this.store.getBinding(msg.channelType, msg.chatId);
         const currentCwd = binding?.cwd || this.defaultWorkdir;
-        const showAll = parts[2]?.toLowerCase() === '--all' || parts[1]?.toLowerCase() === '--all';
         const sessions = scanClaudeSessions(10, showAll ? undefined : currentCwd);
         if (idx > sessions.length) {
           await send(adapter, presentSessionNotFound(msg.chatId, idx));
