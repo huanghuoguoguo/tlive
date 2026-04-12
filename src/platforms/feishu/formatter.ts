@@ -827,6 +827,47 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       elements.push(this.md(`⏳ ${statusParts.join(' · ')}`));
     }
 
+    // Session info panel (skills, MCP servers) — shown once at start
+    if (data.sessionInfo && (data.sessionInfo.skills?.length || data.sessionInfo.mcpServers?.length)) {
+      const infoParts: string[] = [];
+      if (data.sessionInfo.skills?.length) {
+        infoParts.push(`**Skills** ${data.sessionInfo.skills.join(', ')}`);
+      }
+      if (data.sessionInfo.mcpServers?.length) {
+        const serverLines = data.sessionInfo.mcpServers.map(s => {
+          const icon = s.status === 'connected' ? '🟢' : s.status === 'failed' ? '🔴' : '🟡';
+          return `${icon} ${s.name}`;
+        });
+        infoParts.push(`**MCP** ${serverLines.join(' · ')}`);
+      }
+      elements.push({
+        tag: 'collapsible_panel',
+        expanded: false,
+        header: { title: { tag: 'plain_text', content: '🔌 会话环境' } },
+        elements: [{ tag: 'markdown', content: infoParts.join('\n') }],
+      });
+    }
+
+    // API retry indicator
+    if (data.apiRetry) {
+      elements.push(this.md(`🔄 API 重试中 (${data.apiRetry.attempt}/${data.apiRetry.maxRetries})${data.apiRetry.error ? ` — ${data.apiRetry.error}` : ''}`));
+    }
+
+    // Context compaction indicator
+    if (data.compacting) {
+      elements.push(this.md('📦 正在压缩上下文...'));
+    }
+
+    // Tool use summary (AI-generated)
+    if (data.toolUseSummaryText && isDone) {
+      elements.push({
+        tag: 'collapsible_panel',
+        expanded: false,
+        header: { title: { tag: 'plain_text', content: '📝 工具调用摘要' } },
+        elements: [{ tag: 'markdown', content: truncate(data.toolUseSummaryText, 1000) }],
+      });
+    }
+
     // Todo progress
     if (data.todoItems.length > 0) {
       const done = data.todoItems.filter(item => item.status === 'completed').length;

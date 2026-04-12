@@ -33,20 +33,6 @@ export const PLATFORM_LIMITS: Record<ChannelType, number> = {
   [CHANNEL_TYPES.QQBOT]: 4096,
 };
 
-/** Reaction emojis per platform */
-export const PLATFORM_REACTIONS: Record<ChannelType, { processing: string; done: string; error: string; stalled: string; permission: string }> = {
-  [CHANNEL_TYPES.TELEGRAM]: { processing: '\u{1F914}', done: '\u{1F44D}', error: '\u{1F631}', stalled: '\u{23F3}', permission: '\u{1F510}' },
-  [CHANNEL_TYPES.FEISHU]: { processing: 'Typing', done: 'OK', error: 'FACEPALM', stalled: 'OneSecond', permission: 'Pin' },
-  [CHANNEL_TYPES.QQBOT]: { processing: '\u{1F914}', done: '\u{1F44D}', error: '\u{1F631}', stalled: '\u{23F3}', permission: '\u{1F510}' },
-};
-
-/** Text permission acknowledgement reactions per platform */
-export const PLATFORM_PERMISSION_DECISION_REACTIONS: Record<ChannelType, { allow: string; allow_always: string; deny: string }> = {
-  [CHANNEL_TYPES.TELEGRAM]: { allow: '\u{1F44D}', allow_always: '\u{1F44C}', deny: '\u{1F44E}' },
-  [CHANNEL_TYPES.FEISHU]: { allow: 'OK', allow_always: 'DONE', deny: 'No' },
-  [CHANNEL_TYPES.QQBOT]: { allow: '\u{1F44D}', allow_always: '\u{1F44C}', deny: '\u{1F44E}' },
-};
-
 /** Default permission/question timeout (5 minutes) */
 export const DEFAULT_PERMISSION_TIMEOUT_MS = 5 * 60 * 1000;
 

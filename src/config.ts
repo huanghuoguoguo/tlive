@@ -1,5 +1,5 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
-import { join, resolve, basename } from 'node:path';
+import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import type { ProjectConfig, ClaudeSettingSource } from './store/interface.js';
 
@@ -214,15 +214,6 @@ export function getProjectByName(projects: ProjectConfig[], name: string): Proje
   return projects.find(p => p.name === name);
 }
 
-/** Create implicit default project from config */
-export function createImplicitProject(defaultWorkdir: string, claudeSettingSources: ClaudeSettingSource[]): ProjectConfig {
-  return {
-    name: basename(defaultWorkdir) || 'default',
-    workdir: defaultWorkdir,
-    claudeSettingSources,
-  };
-}
-
 function parseList(value: string | undefined): string[] {
   if (!value?.trim()) return [];
   return value.split(',').map(s => s.trim()).filter(Boolean);
@@ -266,11 +257,6 @@ function loadEnvFile(path: string): Record<string, string> {
   } catch {
     return {};
   }
-}
-
-export function maskSecret(value: string): string {
-  if (!value || value.length <= 4) return '****';
-  return '*'.repeat(value.length - 4) + value.slice(-4);
 }
 
 export function loadConfig(): Config {

@@ -1,7 +1,7 @@
 import type { CommandHandler, HelpEntry } from './types.js';
 
 /** Registry for command handlers - implements open-closed principle */
-export class CommandRegistry {
+class CommandRegistry {
   private handlers = new Map<string, CommandHandler>();
 
   /** Register a command handler */

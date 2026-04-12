@@ -90,7 +90,28 @@ export class TelegramFormatter extends MessageFormatter<TelegramRenderedMessage>
 
   override formatProgress(chatId: string, data: ProgressData): TelegramRenderedMessage {
     if (data.renderedText?.trim()) {
-      const msg: TelegramRenderedMessage = { chatId, html: this.formatMarkdown(data.renderedText) };
+      let text = data.renderedText;
+      // Append session info on first render
+      if (data.sessionInfo && (data.sessionInfo.skills?.length || data.sessionInfo.mcpServers?.length)) {
+        const infoParts: string[] = [];
+        if (data.sessionInfo.skills?.length) {
+          infoParts.push(`Skills: ${data.sessionInfo.skills.join(', ')}`);
+        }
+        if (data.sessionInfo.mcpServers?.length) {
+          const servers = data.sessionInfo.mcpServers.map(s => `${s.status === 'connected' ? '🟢' : '🔴'} ${s.name}`);
+          infoParts.push(`MCP: ${servers.join(' · ')}`);
+        }
+        text = `🔌 ${infoParts.join(' | ')}\n\n${text}`;
+      }
+      // API retry indicator
+      if (data.apiRetry) {
+        text = `🔄 API retry ${data.apiRetry.attempt}/${data.apiRetry.maxRetries}${data.apiRetry.error ? ` (${data.apiRetry.error})` : ''}\n\n${text}`;
+      }
+      // Compaction indicator
+      if (data.compacting) {
+        text = `📦 Compacting context...\n\n${text}`;
+      }
+      const msg: TelegramRenderedMessage = { chatId, html: this.formatMarkdown(text) };
       const buttons = data.actionButtons?.length ? data.actionButtons : this.defaultProgressButtons(data.phase);
       if (buttons.length) msg.buttons = buttons;
       return msg;

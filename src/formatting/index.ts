@@ -3,9 +3,10 @@ export { formatPermissionCard } from './permission.js';
 export { formatNotification } from './notification.js';
 export { escapeHtml } from './escape.js';
 export { MessageFormatter } from './message-formatter.js';
-// Platform formatters are now in platforms/* — these are legacy re-exports
-export { TelegramFormatter } from './telegram-formatter.js';
-export { FeishuFormatter } from './feishu-formatter.js';
-export { QQBotFormatter } from './qqbot-formatter.js';
-export type { PermissionCardData, NotificationData, FeishuCardElement } from './types.js';
+// Platform formatters — canonical implementations live in platforms/*
+export { TelegramFormatter } from '../platforms/telegram/formatter.js';
+export { FeishuFormatter } from '../platforms/feishu/formatter.js';
+export { QQBotFormatter } from '../platforms/qqbot/formatter.js';
+export type { PermissionCardData, NotificationData } from './types.js';
+export type { FeishuCardElement } from '../platforms/feishu/card-builder.js';
 export type { FormattableMessage, StatusData, PermissionData, QuestionData, HomeData, SessionsData, ProgressData } from './message-types.js';
