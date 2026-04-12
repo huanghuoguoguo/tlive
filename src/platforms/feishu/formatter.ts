@@ -227,11 +227,15 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     if (operation.toolEntries.length > 0) {
       const toolLines = operation.toolEntries.map(tool => {
         const status = tool.isError ? '❌' : tool.toolResult !== undefined ? '✅' : '⏳';
-        const resultLine = tool.toolResult ? `\n→ ${truncate(tool.toolResult, 120)}` : '';
-        const inputPreview = tool.toolName === 'Bash'
-          ? `\`${truncate(tool.toolInput, 120)}\``
-          : truncate(tool.toolInput, 160);
-        return `${status} **${tool.toolName}**\n\n${inputPreview}${resultLine}`;
+        const result = tool.toolResult ? truncate(tool.toolResult, 120) : '';
+        if (tool.toolName === 'Bash') {
+          // Compact: icon + name + command on one line, result indented
+          const line = `${status} **Bash** \`${truncate(tool.toolInput, 120)}\``;
+          return result ? `${line}\n> ${result}` : line;
+        }
+        const inputPreview = truncate(tool.toolInput, 160);
+        const line = `${status} **${tool.toolName}**\n${inputPreview}`;
+        return result ? `${line}\n> ${result}` : line;
       });
       sections.push(toolLines.join('\n\n'));
     }
@@ -256,11 +260,32 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       this.md(`**通道**\n${channelDetails.join('\n') || '无'}`),
     ];
 
-    // Sessions
+    // Sessions — collapsible panel with detail
     if (data.activeSessions !== undefined) {
-      const sessionText = `${data.activeSessions} 活跃` +
-        (data.idleSessions ? ` / ${data.idleSessions} 空闲` : '');
-      elements.push(this.md(`**会话**\n${sessionText}`));
+      const total = (data.activeSessions || 0) + (data.idleSessions || 0);
+      const sessionHeader = `${data.activeSessions} 活跃` +
+        (data.idleSessions ? ` / ${data.idleSessions} 空闲` : '') +
+        ` (共 ${total})`;
+
+      if (data.sessionSnapshots?.length) {
+        const now = Date.now();
+        const lines = data.sessionSnapshots.map(s => {
+          const stateIcon = s.isTurnActive ? '🔄' : s.isAlive ? '💤' : '💀';
+          const stateText = s.isTurnActive ? '执行中' : s.isAlive ? '空闲' : '已断开';
+          const ago = this.formatElapsed(now - s.lastActiveAt);
+          const dir = s.workdir.replace(/^\/home\/[^/]+\//, '~/');
+          const sid = s.sessionKey.length > 12 ? `…${s.sessionKey.slice(-8)}` : s.sessionKey;
+          return `${stateIcon} **${stateText}** \`${sid}\`\n📁 \`${dir}\` · ${ago}前活跃`;
+        });
+        elements.push({
+          tag: 'collapsible_panel',
+          expanded: false,
+          header: { title: { tag: 'plain_text', content: `📡 会话 ${sessionHeader}` } },
+          elements: [{ tag: 'markdown', content: lines.join('\n\n') }],
+        } as FeishuCardElement);
+      } else {
+        elements.push(this.md(`**会话**\n${sessionHeader}`));
+      }
     }
 
     // Memory & uptime
@@ -298,6 +323,10 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     const days = Math.floor(seconds / 86400);
     const hours = Math.floor((seconds % 86400) / 3600);
     return `${days}天${hours}小时`;
+  }
+
+  private formatElapsed(ms: number): string {
+    return this.formatUptime(Math.floor(ms / 1000));
   }
 
   override formatPermission(chatId: string, data: PermissionData): FeishuRenderedMessage {
@@ -728,6 +757,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       picked.reverse();
       const expandedIndex = isDone ? -1 : picked.length - 1;
       for (let i = 0; i < picked.length; i++) {
+        if (i > 0) elements.push({ tag: 'hr' } as FeishuCardElement);
         const { operation, content } = picked[i];
         const isExpanded = i === expandedIndex;
         elements.push({

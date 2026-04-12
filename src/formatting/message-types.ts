@@ -5,6 +5,15 @@
 
 import type { Button } from '../ui/types.js';
 
+/** Session snapshot for /status detail */
+export interface SessionSnapshot {
+  sessionKey: string;
+  workdir: string;
+  isAlive: boolean;
+  isTurnActive: boolean;
+  lastActiveAt: number;
+}
+
 /** Status display for /status command */
 export interface StatusData {
   healthy: boolean;
@@ -17,6 +26,8 @@ export interface StatusData {
   activeSessions?: number;
   /** Idle SDK sessions */
   idleSessions?: number;
+  /** Session detail snapshots */
+  sessionSnapshots?: SessionSnapshot[];
   /** Memory usage string */
   memoryUsage?: string;
   /** Uptime in seconds */
