@@ -9,8 +9,20 @@ import type { Button } from '../ui/types.js';
 export interface StatusData {
   healthy: boolean;
   channels: string[];
+  /** Bot info per channel (name or ID) */
+  channelInfo?: Array<{ type: string; name?: string; id?: string }>;
   cwd?: string;
   sessionId?: string;
+  /** Active SDK sessions */
+  activeSessions?: number;
+  /** Idle SDK sessions */
+  idleSessions?: number;
+  /** Memory usage string */
+  memoryUsage?: string;
+  /** Uptime in seconds */
+  uptimeSeconds?: number;
+  /** tlive version */
+  version?: string;
 }
 
 /** Permission request card */

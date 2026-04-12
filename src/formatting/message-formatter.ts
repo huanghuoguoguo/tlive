@@ -112,17 +112,50 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
 
   formatStatus(chatId: string, data: StatusData): TRendered {
     const status = data.healthy ? '🟢 running' : '🔴 disconnected';
-    const channelList = data.channels.join(', ') || 'none';
+
+    // Channel details with bot info
+    const channelDetails = data.channelInfo?.map(ch => {
+      if (ch.name) return `${ch.type} (@${ch.name})`;
+      if (ch.id) return `${ch.type} (${ch.id})`;
+      return ch.type;
+    }) || data.channels;
+
     const lines = [
       `**TLive Status**`,
       ``,
       `State: ${status}`,
-      `Channels: ${channelList}`,
+      `Channels: ${channelDetails.join(', ') || 'none'}`,
     ];
+
+    if (data.activeSessions !== undefined) {
+      const sessionText = `${data.activeSessions} active` +
+        (data.idleSessions ? ` / ${data.idleSessions} idle` : '');
+      lines.push(`Sessions: ${sessionText}`);
+    }
+
+    if (data.memoryUsage) lines.push(`Memory: ${data.memoryUsage}`);
+    if (data.uptimeSeconds !== undefined) {
+      const uptime = this.formatUptime(data.uptimeSeconds);
+      lines.push(`Uptime: ${uptime}`);
+    }
+    if (data.version) lines.push(`Version: \`v${data.version}\``);
     if (data.cwd) lines.push(`Directory: \`${data.cwd}\``);
     if (data.sessionId) lines.push(`Session: #${data.sessionId.slice(-6)}`);
 
     return this.createMessage(chatId, lines.join('\n'));
+  }
+
+  protected formatUptime(seconds: number): string {
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+    if (seconds < 86400) {
+      const hours = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      return `${hours}h${mins}m`;
+    }
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    return `${days}d${hours}h`;
   }
 
   formatPermission(chatId: string, data: PermissionData): TRendered {

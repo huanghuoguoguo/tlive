@@ -23,6 +23,7 @@ import type {
   CardResolutionData,
   VersionUpdateData,
   MultiSelectToggleData,
+  StatusData,
 } from '../../formatting/message-types.js';
 import type { Button } from '../../ui/types.js';
 import { truncate } from '../../utils/string.js';
@@ -240,20 +241,63 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
 
   // --- Override all formatting methods for Feishu Card format ---
 
-  override formatStatus(chatId: string, data: { healthy: boolean; channels: string[]; cwd?: string; sessionId?: string }): FeishuRenderedMessage {
+  override formatStatus(chatId: string, data: StatusData): FeishuRenderedMessage {
     const status = data.healthy ? '🟢 运行中' : '🔴 已断开';
-    const channelList = data.channels.join(', ') || '无';
+
+    // Format channel info with bot name/id
+    const channelDetails = data.channelInfo?.map(ch => {
+      if (ch.name) return `${ch.type} (@${ch.name})`;
+      if (ch.id) return `${ch.type} (${ch.id})`;
+      return ch.type;
+    }) || data.channels;
+
     const elements: FeishuCardElement[] = [
       this.md(`**状态**\n${status}`),
-      this.md(`**通道**\n${channelList}`),
+      this.md(`**通道**\n${channelDetails.join('\n') || '无'}`),
     ];
+
+    // Sessions
+    if (data.activeSessions !== undefined) {
+      const sessionText = `${data.activeSessions} 活跃` +
+        (data.idleSessions ? ` / ${data.idleSessions} 空闲` : '');
+      elements.push(this.md(`**会话**\n${sessionText}`));
+    }
+
+    // Memory & uptime
+    if (data.memoryUsage) {
+      elements.push(this.md(`**内存**\n${data.memoryUsage}`));
+    }
+    if (data.uptimeSeconds !== undefined) {
+      const uptime = this.formatUptime(data.uptimeSeconds);
+      elements.push(this.md(`**运行时长**\n${uptime}`));
+    }
+
+    // Version
+    if (data.version) {
+      elements.push(this.md(`**版本**\n\`v${data.version}\``));
+    }
+
     if (data.cwd) {
       elements.push(this.md(`**目录**\n\`${data.cwd}\``));
     }
+
     return this.createCardMessage(chatId,
       { template: 'blue', title: '📊 TLive 状态' },
       elements
     );
+  }
+
+  protected override formatUptime(seconds: number): string {
+    if (seconds < 60) return `${seconds}秒`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}分钟`;
+    if (seconds < 86400) {
+      const hours = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      return `${hours}小时${mins}分钟`;
+    }
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    return `${days}天${hours}小时`;
   }
 
   override formatPermission(chatId: string, data: PermissionData): FeishuRenderedMessage {
