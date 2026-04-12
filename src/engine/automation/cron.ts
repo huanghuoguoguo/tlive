@@ -34,6 +34,8 @@ export interface CronJob {
   chatId?: string;
   /** Project name for routing (alternative to channelType + chatId) */
   projectName?: string;
+  /** Working directory for this job (overrides chat/project workdir) */
+  workdir?: string;
   /** Prompt to send to Claude */
   prompt: string;
   /** Event name for IM feedback display */
@@ -183,6 +185,7 @@ function normalizeLoadedJob(rawJob: unknown): CronJob | null {
     channelType,
     chatId,
     projectName,
+    workdir,
     prompt,
     event,
     enabled,
@@ -213,6 +216,7 @@ function normalizeLoadedJob(rawJob: unknown): CronJob | null {
   if (typeof channelType === 'string' && channelType.trim()) job.channelType = channelType;
   if (typeof chatId === 'string' && chatId.trim()) job.chatId = chatId;
   if (typeof projectName === 'string' && projectName.trim()) job.projectName = projectName;
+  if (typeof workdir === 'string' && workdir.trim()) job.workdir = workdir;
   if (typeof event === 'string' && event.trim()) job.event = event;
   if (typeof lastRun === 'number' && Number.isFinite(lastRun)) job.lastRun = lastRun;
   if (typeof nextRun === 'number' && Number.isFinite(nextRun)) job.nextRun = nextRun;
@@ -409,6 +413,7 @@ export class CronScheduler {
         adapter,
         channelType: job.channelType,
         chatId,
+        workdir: job.workdir,
       };
     }
 
@@ -429,7 +434,7 @@ export class CronScheduler {
           adapter,
           channelType: project.webhookDefaultChat.channelType,
           chatId: project.webhookDefaultChat.chatId,
-          workdir: project.workdir,
+          workdir: job.workdir || project.workdir,
           projectName: project.name,
           claudeSettingSources: project.claudeSettingSources,
         };
@@ -444,7 +449,7 @@ export class CronScheduler {
             adapter,
             channelType,
             chatId,
-            workdir: project.workdir,
+            workdir: job.workdir || project.workdir,
             projectName: project.name,
             claudeSettingSources: project.claudeSettingSources,
           };
@@ -468,6 +473,7 @@ export class CronScheduler {
       adapter,
       channelType: adapter.channelType,
       chatId,
+      workdir: job.workdir,
     };
   }
 

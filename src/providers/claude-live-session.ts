@@ -33,6 +33,8 @@ export interface ClaudeLiveSessionOptions {
   onPermissionTimeout?: PermissionTimeoutCallback;
   effort?: EffortLevel;
   model?: string;
+  /** Additional system prompt text appended to Claude Code's default prompt */
+  appendSystemPrompt?: string;
 }
 
 export class ClaudeLiveSession implements LiveSession {
@@ -68,7 +70,7 @@ export class ClaudeLiveSession implements LiveSession {
   }
 
   private initQuery(): void {
-    const { workingDirectory, sessionId, cliPath, settingSources, effort, model } = this.options;
+    const { workingDirectory, sessionId, cliPath, settingSources, effort, model, appendSystemPrompt } = this.options;
     const self = this;
 
     // AsyncGenerator that feeds user messages to the query
@@ -93,6 +95,9 @@ export class ClaudeLiveSession implements LiveSession {
       settingSources,
       settings: { permissions: { allow: SAFE_PERMISSIONS } },
       env: buildSubprocessEnv(),
+      ...(appendSystemPrompt ? {
+        systemPrompt: { type: 'preset', preset: 'claude_code', append: appendSystemPrompt },
+      } : {}),
       stderr: (data: string) => {
         const trimmed = data.length > 200 ? data.slice(-200) : data;
         console.log(`[tlive:session] stderr: ${trimmed}`);

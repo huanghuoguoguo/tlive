@@ -15,6 +15,7 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import type { BridgeManager } from '../coordinators/bridge-manager.js';
 import type { ProjectConfig } from '../../store/interface.js';
 import { generateRequestId, Logger } from '../../logger.js';
+import { isCronApiRequest, handleCronApiRequest } from './cron-api.js';
 
 /** Webhook request body */
 export interface WebhookRequest {
@@ -211,16 +212,9 @@ export class WebhookServer {
 
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const requestId = generateRequestId();
+    const url = req.url ?? '/';
 
-    // Only accept POST to the configured path
-    if (req.method !== 'POST' || req.url !== this.options.path) {
-      console.log(`[webhook] ${requestId} 404 Not found: ${req.method} ${req.url}`);
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: false, error: 'Not found', requestId }));
-      return;
-    }
-
-    // Validate token
+    // Validate token for all requests
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
       console.warn(`[webhook] ${requestId} 401 Missing or invalid Authorization header`);
@@ -234,6 +228,21 @@ export class WebhookServer {
       console.warn(`[webhook] ${requestId} 403 Invalid token`);
       res.writeHead(403, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: false, error: 'Invalid token', requestId }));
+      return;
+    }
+
+    // Route cron API requests
+    if (isCronApiRequest(url)) {
+      const scheduler = this.options.bridge.getCronScheduler();
+      await handleCronApiRequest(req, res, scheduler);
+      return;
+    }
+
+    // Only accept POST to the configured webhook path
+    if (req.method !== 'POST' || url !== this.options.path) {
+      console.log(`[webhook] ${requestId} 404 Not found: ${req.method} ${url}`);
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Not found', requestId }));
       return;
     }
 

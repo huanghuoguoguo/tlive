@@ -37,6 +37,7 @@ export { ProgressContentBuilder } from './messages/progress-builder.js';
 // Automation
 export { WebhookServer } from './automation/webhook.js';
 export { CronScheduler } from './automation/cron.js';
+export { isCronApiRequest, handleCronApiRequest } from './automation/cron-api.js';
 
 // Commands (new - open-closed principle)
 export { commandRegistry, CommandRegistry, registerAllCommands } from './commands/index.js';

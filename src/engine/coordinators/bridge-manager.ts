@@ -14,6 +14,7 @@ import { CommandRouter } from '../command-router.js';
 import { SDKEngine } from '../sdk/engine.js';
 import { WebhookServer } from '../automation/webhook.js';
 import { CronScheduler } from '../automation/cron.js';
+import { buildCronSystemPrompt } from '../automation/cron-system-prompt.js';
 import { networkInterfaces } from 'node:os';
 import { handleCallbackMessage } from '../messages/callback-dispatcher.js';
 import { IngressCoordinator } from './ingress.js';
@@ -88,6 +89,11 @@ export class BridgeManager {
   /** Cron scheduler for scheduled tasks (Phase 3) */
   private cronScheduler: CronScheduler | null = null;
 
+  /** Get the cron scheduler instance (null if disabled) */
+  getCronScheduler(): CronScheduler | null {
+    return this.cronScheduler;
+  }
+
   private commands: CommandRouter;
   /** Cleanup timer for SDK question data */
   private sdkQuestionCleanupTimer: ReturnType<typeof setInterval> | null = null;
@@ -147,6 +153,7 @@ export class BridgeManager {
       defaultWorkdir,
       defaultClaudeSettingSources: config.claudeSettingSources,
       port: this.port,
+      appendSystemPrompt: this.buildAppendSystemPrompt(config),
     });
     this.notifications = new HookNotificationDispatcher({
       permissions: this.permissions,
@@ -406,6 +413,18 @@ export class BridgeManager {
   /** Send a hook notification to IM with [Local] prefix and track for reply routing */
   async sendHookNotification(adapter: BaseChannelAdapter, chatId: string, hook: HookNotificationData, receiveIdType?: string): Promise<void> {
     await this.notifications.send(adapter, chatId, hook, receiveIdType);
+  }
+
+  /** Build appendSystemPrompt for agent sessions based on enabled features */
+  private buildAppendSystemPrompt(config: Config): string | undefined {
+    const parts: string[] = [];
+
+    // Cron management prompt (only when both webhook and cron are enabled)
+    if (config.cron.enabled && config.webhook.enabled && config.webhook.token) {
+      parts.push(buildCronSystemPrompt(config.webhook.port, config.webhook.token));
+    }
+
+    return parts.length > 0 ? parts.join('\n\n') : undefined;
   }
 
   private async runAdapterLoop(adapter: BaseChannelAdapter): Promise<void> {

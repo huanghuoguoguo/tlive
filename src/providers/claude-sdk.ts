@@ -164,6 +164,7 @@ export class ClaudeSDKProvider implements LLMProvider {
     effort?: EffortLevel;
     model?: string;
     settingSources?: ClaudeSettingSource[];
+    appendSystemPrompt?: string;
   }): LiveSession {
     return new ClaudeLiveSession({
       workingDirectory: params.workingDirectory,
@@ -172,6 +173,7 @@ export class ClaudeSDKProvider implements LLMProvider {
       settingSources: params.settingSources ?? this.defaultSettingSources,
       effort: params.effort,
       model: params.model,
+      appendSystemPrompt: params.appendSystemPrompt,
     });
   }
 
