@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { CommandRouter } from '../engine/command-router.js';
@@ -19,9 +19,11 @@ describe('CommandRouter /settings', () => {
   let workspace: WorkspaceStateManager;
   let clearSessionWhitelist: (sessionId?: string) => void;
   let adapter: any;
+  let originalHome: string | undefined;
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'tlive-command-router-'));
+    originalHome = process.env.HOME;
     store = new JsonFileStore(tmpDir);
     clearSessionWhitelist = vi.fn<(sessionId?: string) => void>();
     adapter = {
@@ -65,6 +67,7 @@ describe('CommandRouter /settings', () => {
   });
 
   afterEach(() => {
+    process.env.HOME = originalHome;
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -125,6 +128,7 @@ describe('CommandRouter /settings', () => {
       chatId: 'c1',
       sessionId: 'binding-1',
       sdkSessionId: 'sdk-1',
+      projectName: 'repo',
       claudeSettingSources: ['user'] as ClaudeSettingSource[],
       cwd: '/tmp/project',
       createdAt: '',
@@ -140,5 +144,94 @@ describe('CommandRouter /settings', () => {
 
     const binding = await store.getBinding('telegram', 'c1');
     expect(binding?.claudeSettingSources).toEqual(['user']);
+    expect(binding?.projectName).toBe('repo');
+  });
+
+  it('tracks the current directory so /cd - returns to the immediate previous path', async () => {
+    const dirA = join(tmpDir, 'a');
+    const dirB = join(tmpDir, 'b');
+    const dirC = join(tmpDir, 'c');
+    mkdirSync(dirA);
+    mkdirSync(dirB);
+    mkdirSync(dirC);
+
+    await store.saveBinding({
+      channelType: 'telegram',
+      chatId: 'c1',
+      sessionId: 'binding-1',
+      cwd: dirA,
+      createdAt: '',
+    });
+    workspace.pushHistory('telegram', 'c1', dirA);
+
+    await router.handle(adapter, {
+      channelType: 'telegram',
+      chatId: 'c1',
+      userId: 'u1',
+      text: `/cd ${dirB}`,
+      messageId: 'm4',
+    } as any);
+
+    await router.handle(adapter, {
+      channelType: 'telegram',
+      chatId: 'c1',
+      userId: 'u1',
+      text: `/cd ${dirC}`,
+      messageId: 'm5',
+    } as any);
+
+    await router.handle(adapter, {
+      channelType: 'telegram',
+      chatId: 'c1',
+      userId: 'u1',
+      text: '/cd -',
+      messageId: 'm6',
+    } as any);
+
+    const binding = await store.getBinding('telegram', 'c1');
+    expect(binding?.cwd).toBe(dirB);
+    expect(workspace.getHistory('telegram', 'c1')).toEqual([dirB, dirC, dirA]);
+  });
+
+  it('applies project claudeSettingSources on /project use', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'tlive-home-'));
+    const projectDir = join(homeDir, 'repo');
+    mkdirSync(projectDir, { recursive: true });
+    mkdirSync(join(homeDir, '.tlive'), { recursive: true });
+    writeFileSync(join(homeDir, '.tlive', 'projects.json'), JSON.stringify({
+      defaultProject: 'repo',
+      projects: [
+        {
+          name: 'repo',
+          workdir: projectDir,
+          claudeSettingSources: ['user'],
+        },
+      ],
+    }));
+    process.env.HOME = homeDir;
+
+    await store.saveBinding({
+      channelType: 'telegram',
+      chatId: 'c1',
+      sessionId: 'binding-1',
+      cwd: tmpDir,
+      claudeSettingSources: ['user', 'project', 'local'] as ClaudeSettingSource[],
+      createdAt: '',
+    });
+
+    await router.handle(adapter, {
+      channelType: 'telegram',
+      chatId: 'c1',
+      userId: 'u1',
+      text: '/project use repo',
+      messageId: 'm7',
+    } as any);
+
+    const binding = await store.getBinding('telegram', 'c1');
+    expect(binding?.projectName).toBe('repo');
+    expect(binding?.cwd).toBe(projectDir);
+    expect(binding?.claudeSettingSources).toEqual(['user']);
+
+    rmSync(homeDir, { recursive: true, force: true });
   });
 });

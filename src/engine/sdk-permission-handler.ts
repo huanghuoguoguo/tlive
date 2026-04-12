@@ -46,7 +46,7 @@ export class SDKPermissionHandler {
     _promptSentence: string,
     signal?: AbortSignal,
   ): Promise<'allow' | 'allow_always' | 'deny'> {
-    const { adapter, msg, binding, permissions, state, renderer, reactions } = this.context;
+    const { msg, binding, permissions, state, renderer } = this.context;
 
     // Check perm mode dynamically (so /perm off mid-query takes effect)
     const permMode = state.getPermMode(msg.channelType, msg.chatId);

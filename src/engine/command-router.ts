@@ -5,13 +5,11 @@ import type { WorkspaceStateManager } from './workspace-state.js';
 import type { ChannelRouter } from './router.js';
 import type { LLMProvider, QueryControls } from '../providers/base.js';
 import type { SDKEngine } from './sdk-engine.js';
-import type { ProjectConfig } from '../store/interface.js';
 import { basename } from 'node:path';
 import { ClaudeSDKProvider } from '../providers/claude-sdk.js';
 import {
   DEFAULT_CLAUDE_SETTING_SOURCES,
   type ClaudeSettingSource,
-  type ProjectsValidationResult,
   getProjectByName,
   loadProjectsConfig,
 } from '../config.js';
@@ -41,8 +39,6 @@ import {
   presentNoSessions,
   presentPairingUnavailable,
   presentPairings,
-  presentPermissionModeChanged,
-  presentPermissionModeStatus,
   presentPermissionStatus,
   presentProjectInfoExtended,
   presentProjectList,
@@ -66,7 +62,7 @@ import {
   presentVersionCheck,
 } from './command-presenter.js';
 import { areHooksPaused, pauseHooks, resumeHooks } from './hooks-state.js';
-import type { FormattableMessage, HomeData, ProjectListData, ProjectInfoData, QueueStatusData, DiagnoseData } from '../formatting/message-types.js';
+import type { FormattableMessage, HomeData, ProjectListData } from '../formatting/message-types.js';
 import { SESSION_STALE_THRESHOLD_MS } from '../utils/constants.js';
 
 /** Format file size in human-readable format */
@@ -153,7 +149,7 @@ export class CommandRouter {
     const workspaceBinding = this.workspace.getBinding(channelType, chatId);
 
     // Get project name from workspace state
-    const projectName = this.workspace.getProjectName(channelType, chatId);
+    const projectName = binding?.projectName ?? this.workspace.getProjectName(channelType, chatId);
 
     // Get last active time from SessionStateManager
     const lastActiveTime = this.state.getLastActiveTime(channelType, chatId);
@@ -216,6 +212,7 @@ export class CommandRouter {
         await this.router.rebind(msg.channelType, msg.chatId, newSessionId, {
           cwd: previousBinding?.cwd,
           claudeSettingSources: previousBinding?.claudeSettingSources,
+          projectName: previousBinding?.projectName,
         });
 
         this.state.clearLastActive(msg.channelType, msg.chatId);
@@ -346,6 +343,7 @@ export class CommandRouter {
           sdkSessionId: target.sdkSessionId,
           cwd: target.cwd, // update cwd to session's directory
           claudeSettingSources: binding?.claudeSettingSources,
+          projectName: binding?.projectName,
         });
 
         this.state.clearLastActive(msg.channelType, msg.chatId);
@@ -414,12 +412,12 @@ export class CommandRouter {
           const currentCwd = binding?.cwd || this.defaultWorkdir;
 
           // Close SDK session if switching repo
-          const hadActiveSession = this.sdkEngine?.cleanupSession(
+          this.sdkEngine?.cleanupSession(
             msg.channelType,
             msg.chatId,
             'cd',
             currentCwd,
-          ) ?? false;
+          );
           const switchedRepo = !isSameRepoRoot(currentCwd, previousDir);
 
           // Update binding
@@ -432,6 +430,7 @@ export class CommandRouter {
           } else {
             await this.router.rebind(msg.channelType, msg.chatId, generateSessionId(), { cwd: previousDir });
           }
+          this.workspace.pushHistory(msg.channelType, msg.chatId, previousDir);
 
           if (switchedRepo) {
             this.permissions.clearSessionWhitelist(binding?.sessionId);
@@ -478,6 +477,7 @@ export class CommandRouter {
         } else {
           await this.router.rebind(msg.channelType, msg.chatId, generateSessionId(), { cwd: resolvedPath });
         }
+        this.workspace.pushHistory(msg.channelType, msg.chatId, resolvedPath);
 
         // Set workspace binding if switching to a git repo root
         const gitRoot = findGitRoot(resolvedPath);
@@ -775,7 +775,8 @@ export class CommandRouter {
 
         // /project or /project list - show all projects
         if (!sub || sub === 'list') {
-          const currentProjectName = this.workspace.getProjectName(msg.channelType, msg.chatId);
+          const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+          const currentProjectName = binding?.projectName ?? this.workspace.getProjectName(msg.channelType, msg.chatId);
           const projects: ProjectListData['projects'] = projectsConfig.valid.map(p => ({
             name: p.name,
             workdir: shortPath(p.workdir),
@@ -808,7 +809,7 @@ export class CommandRouter {
           // Get current binding
           const binding = await this.store.getBinding(msg.channelType, msg.chatId);
           const currentCwd = binding?.cwd || this.defaultWorkdir;
-          const previousProjectName = this.workspace.getProjectName(msg.channelType, msg.chatId);
+          const previousProjectName = binding?.projectName ?? this.workspace.getProjectName(msg.channelType, msg.chatId);
 
           // Track directory history before switching
           this.workspace.pushHistory(msg.channelType, msg.chatId, currentCwd);
@@ -826,6 +827,9 @@ export class CommandRouter {
           if (binding) {
             binding.cwd = project.workdir;
             binding.projectName = project.name;
+            binding.claudeSettingSources = project.claudeSettingSources
+              ? [...project.claudeSettingSources]
+              : undefined;
             if (switchedRepo) {
               binding.sdkSessionId = undefined;
             }
@@ -834,8 +838,12 @@ export class CommandRouter {
             await this.router.rebind(msg.channelType, msg.chatId, generateSessionId(), {
               cwd: project.workdir,
               projectName: project.name,
+              claudeSettingSources: project.claudeSettingSources
+                ? [...project.claudeSettingSources]
+                : undefined,
             });
           }
+          this.workspace.pushHistory(msg.channelType, msg.chatId, project.workdir);
 
           // Update workspace state
           this.workspace.setProjectName(msg.channelType, msg.chatId, project.name);
@@ -867,8 +875,8 @@ export class CommandRouter {
 
         // /project status - show current project status
         if (sub === 'status' || sub === 'info') {
-          const currentProjectName = this.workspace.getProjectName(msg.channelType, msg.chatId);
           const binding = await this.store.getBinding(msg.channelType, msg.chatId);
+          const currentProjectName = binding?.projectName ?? this.workspace.getProjectName(msg.channelType, msg.chatId);
           const currentCwd = binding?.cwd || this.defaultWorkdir;
           const workspaceBinding = this.workspace.getBinding(msg.channelType, msg.chatId);
 

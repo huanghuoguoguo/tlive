@@ -94,10 +94,8 @@ cron 可以等 webhook 稳定后再做。
 
 ```json
 {
-  "target": {
-    "channelType": "telegram",
-    "chatId": "123456"
-  },
+  "channelType": "telegram",
+  "chatId": "123456",
   "event": "git:commit",
   "prompt": "Review the latest commit and summarize risk.",
   "payload": {
@@ -126,7 +124,7 @@ cron 可以等 webhook 稳定后再做。
 2. 显式 `channelType + chatId`
 3. 显式 `projectName` 加默认 chat
 
-第一阶段最好只做前两种，避免过早引入 project 路由复杂度。
+当前实现已经支持 `projectName` 路由，但仍建议把主要稳定性验证放在前两种目标上。
 
 推荐规则：
 
@@ -140,6 +138,11 @@ cron 可以等 webhook 稳定后再做。
 
 - `reject_if_no_session`
 - `create_new_if_no_session`
+
+当前实现中的配置名为：
+
+- `reject`
+- `create`
 
 ## IM 反馈建议
 
@@ -317,4 +320,3 @@ scheduler.addJob({
   enabled: true,
 });
 ```
-

@@ -102,7 +102,9 @@ export class MessageLoopCoordinator {
     }
 
     if (result.mode === 'queue' && result.queuePosition !== undefined) {
-      const maxDepth = this.options.sdkEngine.MAX_QUEUE_DEPTH;
+      const maxDepth = typeof this.options.sdkEngine.getMaxQueueDepth === 'function'
+        ? this.options.sdkEngine.getMaxQueueDepth()
+        : 3;
       return `📥 已排队（位置 ${result.queuePosition}/${maxDepth}），当前任务结束后继续处理`;
     }
 

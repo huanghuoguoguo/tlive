@@ -88,6 +88,10 @@ describe('WebhookServer', () => {
       getAdapter: vi.fn().mockReturnValue(mockAdapter),
       getAdapters: vi.fn().mockReturnValue([mockAdapter]),
       getLastChatId: vi.fn().mockReturnValue('chat-123'),
+      hasActiveSession: vi.fn().mockReturnValue(false),
+      getBinding: vi.fn().mockResolvedValue(null),
+      getBindingBySessionId: vi.fn().mockResolvedValue(null),
+      injectAutomationPrompt: vi.fn().mockResolvedValue({ sessionId: 'sdk-123' }),
       handleInboundMessage: vi.fn().mockResolvedValue(true),
     };
     mockFetch.mockClear();
@@ -222,17 +226,123 @@ describe('WebhookServer', () => {
       // Test fallback to default project configuration
       expect(true).toBe(true);
     });
+
+    it('resolves route from sessionId before chat coordinates', async () => {
+      server = new WebhookServer({
+        token: 'test-token',
+        port: 9999,
+        path: '/webhook',
+        bridge: mockBridge as BridgeManager,
+        sessionStrategy: 'reject',
+      });
+
+      vi.mocked(mockBridge.getBindingBySessionId!).mockResolvedValue({
+        channelType: 'telegram',
+        chatId: 'chat-from-session',
+        sessionId: 'binding-1',
+        sdkSessionId: 'sdk-456',
+        cwd: '/repo/session',
+        createdAt: '',
+      } as any);
+
+      const route = await (server as any).resolveRoute({
+        event: 'test',
+        prompt: 'Hello',
+        channelType: 'telegram',
+        chatId: 'chat-ignored',
+        sessionId: 'sdk-456',
+      });
+
+      expect(route).toEqual({
+        channelType: 'telegram',
+        chatId: 'chat-from-session',
+        workdir: '/repo/session',
+        projectName: undefined,
+        claudeSettingSources: undefined,
+      });
+      expect(mockBridge.getBindingBySessionId).toHaveBeenCalledWith('sdk-456');
+      expect(mockBridge.getBinding).not.toHaveBeenCalled();
+    });
   });
 
   describe('session routing strategy', () => {
-    it('reject strategy should check for active session', () => {
-      // Test reject strategy behavior
-      expect(true).toBe(true);
+    it('reject strategy should fail when no active session exists', async () => {
+      server = new WebhookServer({
+        token: 'test-token',
+        port: 9999,
+        path: '/webhook',
+        bridge: mockBridge as BridgeManager,
+        sessionStrategy: 'reject',
+      });
+
+      vi.mocked(mockBridge.getBinding!).mockResolvedValue({
+        channelType: 'telegram',
+        chatId: 'chat-123',
+        sessionId: 'binding-1',
+        cwd: '/repo/session',
+        createdAt: '',
+      } as any);
+
+      const result = await (server as any).deliverPrompt(
+        {
+          event: 'test',
+          prompt: 'Hello',
+          channelType: 'telegram',
+          chatId: 'chat-123',
+        },
+        {
+          channelType: 'telegram',
+          chatId: 'chat-123',
+          workdir: '/repo/session',
+        },
+        'Hello',
+        'req-1',
+      );
+
+      expect(result).toEqual({
+        success: false,
+        error: 'No active session for telegram:chat-123. Start a conversation in IM first, or set webhook.sessionStrategy=\'create\'.',
+      });
+      expect(mockBridge.hasActiveSession).toHaveBeenCalledWith('telegram', 'chat-123', '/repo/session');
+      expect(mockBridge.injectAutomationPrompt).not.toHaveBeenCalled();
     });
 
-    it('create strategy should allow without active session', () => {
-      // Test create strategy behavior
-      expect(true).toBe(true);
+    it('create strategy should allow without active session', async () => {
+      server = new WebhookServer({
+        token: 'test-token',
+        port: 9999,
+        path: '/webhook',
+        bridge: mockBridge as BridgeManager,
+        sessionStrategy: 'create',
+      });
+
+      const result = await (server as any).deliverPrompt(
+        {
+          event: 'test',
+          prompt: 'Hello',
+          channelType: 'telegram',
+          chatId: 'chat-123',
+        },
+        {
+          channelType: 'telegram',
+          chatId: 'chat-123',
+          workdir: '/repo/session',
+        },
+        'Hello',
+        'req-2',
+      );
+
+      expect(result).toEqual({
+        success: true,
+        sessionId: 'sdk-123',
+      });
+      expect(mockBridge.hasActiveSession).not.toHaveBeenCalled();
+      expect(mockBridge.injectAutomationPrompt).toHaveBeenCalledWith(expect.objectContaining({
+        channelType: 'telegram',
+        chatId: 'chat-123',
+        text: 'Hello',
+        workdir: '/repo/session',
+      }));
     });
   });
 

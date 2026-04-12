@@ -273,6 +273,17 @@ export class SDKEngine {
     });
 
     this.registry.set(key, { session, workdir, lastActiveAt: Date.now() });
+    session.setLifecycleCallbacks?.({
+      onTurnComplete: () => {
+        const managed = this.registry.get(key);
+        if (managed) {
+          managed.lastActiveAt = Date.now();
+        }
+        if (this.getQueueDepth(key) > 0) {
+          this.decrementQueueDepth(key);
+        }
+      },
+    });
     this.activeSessionByChat.set(chatKey, key);
     return session;
   }

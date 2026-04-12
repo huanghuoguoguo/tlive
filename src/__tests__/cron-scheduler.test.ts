@@ -25,6 +25,7 @@ const createMockBridge = (): BridgeManager => {
       { channelType: 'telegram', send: vi.fn().mockResolvedValue(undefined) },
     ]),
     getLastChatId: vi.fn().mockReturnValue('test-chat-123'),
+    injectAutomationPrompt: vi.fn().mockResolvedValue({ sessionId: 'sdk-123' }),
     handleInboundMessage: vi.fn().mockResolvedValue(true),
   } as any as BridgeManager;
 };
@@ -374,5 +375,33 @@ describe('CronScheduler', () => {
     });
     disabledScheduler.start(); // Should do nothing
     disabledScheduler.stop();
+  });
+
+  it('executes the cron prompt before marking the job successful', async () => {
+    const scheduler = new CronScheduler({
+      runtimeDir: tempDir,
+      bridge: mockBridge,
+      enabled: true,
+    });
+
+    const job = scheduler.addJob({
+      name: 'Run prompt',
+      schedule: '0 9 * * *',
+      channelType: 'telegram',
+      chatId: 'test-chat-123',
+      prompt: 'summarize the repo status',
+      enabled: true,
+    });
+
+    await (scheduler as any).executeJob(job);
+
+    expect(mockBridge.injectAutomationPrompt).toHaveBeenCalledWith(expect.objectContaining({
+      channelType: 'telegram',
+      chatId: 'test-chat-123',
+      text: 'summarize the repo status',
+      userId: 'cron',
+    }));
+    expect(job.lastResult).toBe('success');
+    expect(job.lastRun).toBeDefined();
   });
 });

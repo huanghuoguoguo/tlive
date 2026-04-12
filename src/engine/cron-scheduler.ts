@@ -16,6 +16,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BridgeManager } from './bridge-manager.js';
+import { loadProjectsConfig, type ClaudeSettingSource } from '../config.js';
 
 /** Cron job definition */
 export interface CronJob {
@@ -93,7 +94,7 @@ export function parseCronExpression(expression: string): {
   const parsePart = (part: string, min: number, max: number): number | '*' => {
     if (part === '*') return '*';
     const num = parseInt(part, 10);
-    if (isNaN(num) || num < min || num > max) return null as any;
+    if (Number.isNaN(num) || num < min || num > max) return null as any;
     return num;
   };
 
@@ -127,7 +128,7 @@ export function calculateNextRun(expression: string, fromTime?: number): number 
   // This is not optimal but works for basic expressions
   // For production, consider a proper cron library
 
-  let candidate = new Date(fromDate);
+  const candidate = new Date(fromDate);
   candidate.setSeconds(0);
   candidate.setMilliseconds(0);
 
@@ -159,6 +160,10 @@ export function calculateNextRun(expression: string, fromTime?: number): number 
  */
 function generateJobId(): string {
   return `cron-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function calculateNextRunOrUndefined(expression: string, fromTime?: number): number | undefined {
+  return calculateNextRun(expression, fromTime) ?? undefined;
 }
 
 /**
@@ -223,12 +228,12 @@ export class CronScheduler {
   private tick(): void {
     const now = Date.now();
 
-    for (const [id, job] of this.jobs) {
+    for (const [, job] of this.jobs) {
       if (!job.enabled) continue;
 
       // Update nextRun if not set
       if (!job.nextRun) {
-        job.nextRun = calculateNextRun(job.schedule, now);
+        job.nextRun = calculateNextRunOrUndefined(job.schedule, now);
         this.saveJobs();
       }
 
@@ -246,32 +251,18 @@ export class CronScheduler {
     console.log(`[cron] Executing job: ${job.id} (${job.name})`);
 
     try {
-      // Determine target
-      const adapter = job.channelType
-        ? this.bridge.getAdapter(job.channelType)
-        : this.bridge.getAdapters()[0]; // Fallback to first adapter if projectName used
-
-      if (!adapter) {
-        console.warn(`[cron] No adapter available for job ${job.id}`);
-        job.lastResult = 'failed';
-        job.lastError = 'No adapter available';
-        job.lastRun = Date.now();
-        job.nextRun = calculateNextRun(job.schedule);
-        this.saveJobs();
-        return;
-      }
-
-      // Determine chatId
-      const chatId = job.chatId || this.bridge.getLastChatId(adapter.channelType);
-      if (!chatId) {
-        console.warn(`[cron] No chatId for job ${job.id}`);
+      const route = this.resolveJobTarget(job);
+      if (!route) {
+        console.warn(`[cron] No target available for job ${job.id}`);
         job.lastResult = 'skipped';
         job.lastError = 'No target chat available';
         job.lastRun = Date.now();
-        job.nextRun = calculateNextRun(job.schedule);
+        job.nextRun = calculateNextRunOrUndefined(job.schedule);
         this.saveJobs();
         return;
       }
+
+      const { adapter, channelType, chatId, workdir, projectName, claudeSettingSources } = route;
 
       // Send feedback to IM
       const eventLabel = job.event || 'Scheduled task';
@@ -282,16 +273,22 @@ export class CronScheduler {
         console.warn(`[cron] Failed to send feedback: ${err}`);
       });
 
-      // Note: Full prompt delivery requires integration with the message processing pipeline.
-      // For Phase 3, we only send the feedback message. Actual prompt execution
-      // would require calling bridge.handleInboundMessage or query.run.
-      // This is intentionally left as a TODO for Phase 4 when we have better
-      // session routing strategy.
+      await this.bridge.injectAutomationPrompt({
+        channelType,
+        chatId,
+        text: job.prompt,
+        messageId: `cron-${job.id}-${Date.now().toString(36)}`,
+        userId: 'cron',
+        workdir,
+        projectName,
+        claudeSettingSources,
+      });
 
       // Mark success
       job.lastResult = 'success';
+      job.lastError = undefined;
       job.lastRun = Date.now();
-      job.nextRun = calculateNextRun(job.schedule);
+      job.nextRun = calculateNextRunOrUndefined(job.schedule);
       this.saveJobs();
 
       console.log(`[cron] Job ${job.id} completed successfully`);
@@ -300,9 +297,93 @@ export class CronScheduler {
       job.lastResult = 'failed';
       job.lastError = err instanceof Error ? err.message : 'Unknown error';
       job.lastRun = Date.now();
-      job.nextRun = calculateNextRun(job.schedule);
+      job.nextRun = calculateNextRunOrUndefined(job.schedule);
       this.saveJobs();
     }
+  }
+
+  private resolveJobTarget(job: CronJob): {
+    adapter: NonNullable<ReturnType<BridgeManager['getAdapter']>>;
+    channelType: string;
+    chatId: string;
+    workdir?: string;
+    projectName?: string;
+    claudeSettingSources?: ClaudeSettingSource[];
+  } | null {
+    if (job.channelType) {
+      const adapter = this.bridge.getAdapter(job.channelType);
+      if (!adapter) {
+        return null;
+      }
+
+      const chatId = job.chatId || this.bridge.getLastChatId(job.channelType);
+      if (!chatId) {
+        return null;
+      }
+
+      return {
+        adapter,
+        channelType: job.channelType,
+        chatId,
+      };
+    }
+
+    if (job.projectName) {
+      const project = loadProjectsConfig()?.valid.find(candidate => candidate.name === job.projectName);
+      if (!project) {
+        return null;
+      }
+
+      if (project.webhookDefaultChat) {
+        const adapter = this.bridge.getAdapter(project.webhookDefaultChat.channelType);
+        if (!adapter) {
+          return null;
+        }
+
+        return {
+          adapter,
+          channelType: project.webhookDefaultChat.channelType,
+          chatId: project.webhookDefaultChat.chatId,
+          workdir: project.workdir,
+          projectName: project.name,
+          claudeSettingSources: project.claudeSettingSources,
+        };
+      }
+
+      const enabledChannels = project.channels || this.bridge.getAdapters().map(adapter => adapter.channelType);
+      for (const channelType of enabledChannels) {
+        const adapter = this.bridge.getAdapter(channelType);
+        const chatId = this.bridge.getLastChatId(channelType);
+        if (adapter && chatId) {
+          return {
+            adapter,
+            channelType,
+            chatId,
+            workdir: project.workdir,
+            projectName: project.name,
+            claudeSettingSources: project.claudeSettingSources,
+          };
+        }
+      }
+
+      return null;
+    }
+
+    const adapter = this.bridge.getAdapters()[0];
+    if (!adapter) {
+      return null;
+    }
+
+    const chatId = this.bridge.getLastChatId(adapter.channelType);
+    if (!chatId) {
+      return null;
+    }
+
+    return {
+      adapter,
+      channelType: adapter.channelType,
+      chatId,
+    };
   }
 
   // ── Job Management API ──
@@ -325,7 +406,7 @@ export class CronScheduler {
       id,
       createdAt: now,
       updatedAt: now,
-      nextRun: calculateNextRun(job.schedule, now),
+      nextRun: calculateNextRunOrUndefined(job.schedule, now),
     };
 
     this.jobs.set(id, newJob);
@@ -354,7 +435,7 @@ export class CronScheduler {
 
     // Recalculate nextRun if schedule changed
     if (updates.schedule || updates.enabled === true) {
-      job.nextRun = calculateNextRun(job.schedule);
+      job.nextRun = calculateNextRunOrUndefined(job.schedule);
     }
 
     this.saveJobs();
@@ -421,7 +502,7 @@ export class CronScheduler {
       const now = Date.now();
       for (const job of this.jobs.values()) {
         if (job.enabled) {
-          job.nextRun = calculateNextRun(job.schedule, now);
+          job.nextRun = calculateNextRunOrUndefined(job.schedule, now);
         }
       }
     } catch (err) {

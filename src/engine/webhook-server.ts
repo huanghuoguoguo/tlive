@@ -69,6 +69,14 @@ export interface WebhookCallbackPayload {
   timestamp: string;
 }
 
+interface ResolvedWebhookRoute {
+  channelType: string;
+  chatId: string;
+  workdir?: string;
+  projectName?: string;
+  claudeSettingSources?: ProjectConfig['claudeSettingSources'];
+}
+
 /**
  * Webhook server configuration
  */
@@ -190,7 +198,7 @@ export class WebhookServer {
 
     // Validate token
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!authHeader?.startsWith('Bearer ')) {
       console.warn(`[webhook] ${requestId} 401 Missing or invalid Authorization header`);
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: false, error: 'Missing or invalid Authorization header', requestId }));
@@ -240,7 +248,7 @@ export class WebhookServer {
         }
 
         // Route the request to target chat
-        const routeResult = this.resolveRoute(request);
+        const routeResult = await this.resolveRoute(request);
         if (!routeResult) {
           const errorMsg = 'No valid target: specify channelType+chatId, projectName, or configure defaultProject';
           console.warn(`[webhook] ${requestId} ROUTE_FAILED: ${errorMsg}`);
@@ -345,10 +353,33 @@ export class WebhookServer {
    * 2. Explicit projectName (use project's webhookDefaultChat or last active chat)
    * 3. Default project's webhookDefaultChat
    */
-  private resolveRoute(request: WebhookRequest): { channelType: string; chatId: string; workdir?: string } | null {
+  private async resolveRoute(request: WebhookRequest): Promise<ResolvedWebhookRoute | null> {
+    if (request.sessionId) {
+      const binding = await this.options.bridge.getBindingBySessionId(request.sessionId);
+      if (!binding) {
+        console.warn(`[webhook] Session '${request.sessionId}' not found`);
+        return null;
+      }
+
+      return {
+        channelType: binding.channelType,
+        chatId: binding.chatId,
+        workdir: binding.cwd,
+        projectName: binding.projectName,
+        claudeSettingSources: binding.claudeSettingSources,
+      };
+    }
+
     // Priority 1: Explicit channelType + chatId
     if (request.channelType && request.chatId) {
-      return { channelType: request.channelType, chatId: request.chatId };
+      const binding = await this.options.bridge.getBinding(request.channelType, request.chatId);
+      return {
+        channelType: request.channelType,
+        chatId: request.chatId,
+        workdir: binding?.cwd,
+        projectName: binding?.projectName,
+        claudeSettingSources: binding?.claudeSettingSources,
+      };
     }
 
     // Priority 2: Explicit projectName
@@ -365,6 +396,8 @@ export class WebhookServer {
           channelType: project.webhookDefaultChat.channelType,
           chatId: project.webhookDefaultChat.chatId,
           workdir: project.workdir,
+          projectName: project.name,
+          claudeSettingSources: project.claudeSettingSources,
         };
       }
 
@@ -374,7 +407,13 @@ export class WebhookServer {
         const lastChatId = this.options.bridge.getLastChatId(channelType);
         if (lastChatId) {
           console.log(`[webhook] Project '${request.projectName}' using last active chat: ${channelType}:${lastChatId.slice(-8)}`);
-          return { channelType, chatId: lastChatId, workdir: project.workdir };
+          return {
+            channelType,
+            chatId: lastChatId,
+            workdir: project.workdir,
+            projectName: project.name,
+            claudeSettingSources: project.claudeSettingSources,
+          };
         }
       }
 
@@ -390,6 +429,8 @@ export class WebhookServer {
           channelType: defaultProject.webhookDefaultChat.channelType,
           chatId: defaultProject.webhookDefaultChat.chatId,
           workdir: defaultProject.workdir,
+          projectName: defaultProject.name,
+          claudeSettingSources: defaultProject.claudeSettingSources,
         };
       }
     }
@@ -400,12 +441,12 @@ export class WebhookServer {
 
   private async deliverPrompt(
     request: WebhookRequest,
-    route: { channelType: string; chatId: string; workdir?: string },
+    route: ResolvedWebhookRoute,
     injectedPrompt: string,
     requestId: string,
   ): Promise<{ success: boolean; sessionId?: string; error?: string }> {
     const { event, silent } = request;
-    const { channelType, chatId, workdir } = route;
+    const { channelType, chatId, workdir, projectName, claudeSettingSources } = route;
 
     // Get the adapter for this channel
     const adapter = this.options.bridge.getAdapter(channelType);
@@ -419,11 +460,13 @@ export class WebhookServer {
 
     // Check session routing strategy
     if (this.options.sessionStrategy === 'reject') {
-      // For 'reject' strategy, check if there's an active session
-      // Phase 2: Simplified check - we rely on user having started a conversation
-      // A more robust implementation would check SDKEngine.hasActiveSession
-      const hasRecentActivity = this.options.bridge.getLastChatId(channelType) === chatId;
-      if (!hasRecentActivity) {
+      const existingBinding = request.sessionId
+        ? await this.options.bridge.getBindingBySessionId(request.sessionId)
+        : await this.options.bridge.getBinding(channelType, chatId);
+      const hasActiveSession = existingBinding
+        ? this.options.bridge.hasActiveSession(channelType, chatId, existingBinding.cwd ?? workdir)
+        : false;
+      if (!existingBinding || !hasActiveSession) {
         return {
           success: false,
           error: `No active session for ${channelType}:${chatId}. Start a conversation in IM first, or set webhook.sessionStrategy='create'.`,
@@ -443,31 +486,22 @@ export class WebhookServer {
       });
     }
 
-    // Create synthetic inbound message to inject into bridge
-    const syntheticMessage = {
-      channelType,
-      chatId,
-      userId: 'webhook',
-      text: injectedPrompt,
-      messageId: `webhook-${requestId}`,
-      attachments: [],
-      // Project workdir hint for session creation (Phase 3)
-      projectWorkdir: workdir,
-      // Event metadata for logging/tracking
-      webhookEvent: event,
-      webhookPayload: request.payload,
-    };
-
-    // Process through bridge
     try {
-      await this.options.bridge.handleInboundMessage(adapter, syntheticMessage, requestId);
-
-      // Get the resulting session ID (placeholder for proper tracking)
-      const sessionId = this.getSessionIdForChat(channelType, chatId);
+      const result = await this.options.bridge.injectAutomationPrompt({
+        channelType,
+        chatId,
+        text: injectedPrompt,
+        requestId,
+        messageId: `webhook-${requestId}`,
+        userId: 'webhook',
+        workdir,
+        projectName,
+        claudeSettingSources,
+      });
 
       return {
         success: true,
-        sessionId,
+        sessionId: result.sessionId,
       };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -476,14 +510,5 @@ export class WebhookServer {
         error: `Failed to deliver prompt: ${errorMessage}`,
       };
     }
-  }
-
-  /**
-   * Get session ID for a chat (placeholder for proper tracking).
-   * Future implementation should get from SDKEngine.
-   */
-  private getSessionIdForChat(channelType: string, chatId: string): string | undefined {
-    // Placeholder - actual implementation should get from SDKEngine
-    return `${channelType}:${chatId}:${Date.now().toString(36)}`;
   }
 }

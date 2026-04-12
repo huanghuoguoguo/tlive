@@ -1,5 +1,3 @@
-import type { Button } from '../ui/types.js';
-
 export type ChannelType = 'telegram' | 'feishu' | 'qqbot';
 
 export interface InboundMessage {

@@ -60,6 +60,7 @@ export class QueryOrchestrator {
       await this.options.router.rebind(msg.channelType, msg.chatId, generateSessionId(), {
         cwd: previousBinding?.cwd,
         claudeSettingSources: previousBinding?.claudeSettingSources,
+        projectName: previousBinding?.projectName,
       });
       this.options.state.clearThread(msg.channelType, msg.chatId);
     }
@@ -87,7 +88,7 @@ export class QueryOrchestrator {
     const reactions = adapter.getLifecycleReactions();
     adapter.addReaction(msg.chatId, msg.messageId, reactions.processing).catch(() => {});
 
-    const typingInterval = setInterval(() => adapter.sendTyping(msg.chatId).catch(() => {}), 4000);
+    let typingInterval = setInterval(() => adapter.sendTyping(msg.chatId).catch(() => {}), 4000);
     adapter.sendTyping(msg.chatId).catch(() => {});
 
     const costTracker = new CostTracker();
@@ -191,10 +192,8 @@ export class QueryOrchestrator {
           );
 
           // Restart typing indicator for retry
-          const newTypingInterval = setInterval(() => adapter.sendTyping(msg.chatId).catch(() => {}), 4000);
+          typingInterval = setInterval(() => adapter.sendTyping(msg.chatId).catch(() => {}), 4000);
           adapter.sendTyping(msg.chatId).catch(() => {});
-          // Note: We need to reassign typingInterval for cleanup later, but the loop structure
-          // requires careful handling. For simplicity, we'll continue with the new interval.
           continue;
         }
 
@@ -215,37 +214,6 @@ export class QueryOrchestrator {
     clearInterval(typingInterval);
 
     return true;
-  }
-
-  // --- Private helpers ---
-
-  private async handleSessionExpiry(
-    adapter: BaseChannelAdapter,
-    msg: InboundMessage,
-  ): Promise<{
-    binding: ChannelBinding;
-    expired: boolean;
-    previousSessionPreview?: string;
-  }> {
-    const expired = this.options.state.checkAndUpdateLastActive(msg.channelType, msg.chatId);
-    let previousSessionPreview: string | undefined;
-
-    if (expired) {
-      const previousBinding = await this.options.store.getBinding(msg.channelType, msg.chatId);
-      this.options.permissions.clearSessionWhitelist(previousBinding?.sessionId);
-
-      const sessions = scanClaudeSessions(3, previousBinding?.cwd || this.options.defaultWorkdir);
-      previousSessionPreview = sessions.find(s => s.sdkSessionId === previousBinding?.sdkSessionId)?.preview;
-
-      await this.options.router.rebind(msg.channelType, msg.chatId, generateSessionId(), {
-        cwd: previousBinding?.cwd,
-        claudeSettingSources: previousBinding?.claudeSettingSources,
-      });
-      this.options.state.clearThread(msg.channelType, msg.chatId);
-    }
-
-    const binding = await this.options.router.resolve(msg.channelType, msg.chatId);
-    return { binding, expired, previousSessionPreview };
   }
 
   private createRendererAndPresenter(

@@ -6,7 +6,7 @@ import { getBridgeContext } from '../context.js';
 import { ChannelRouter } from './router.js';
 import { PermissionBroker } from '../permissions/broker.js';
 import { PendingPermissions } from '../permissions/gateway.js';
-import { loadConfig, loadProjectsConfig, type Config } from '../config.js';
+import { loadConfig, loadProjectsConfig, type Config, type ClaudeSettingSource } from '../config.js';
 import { SessionStateManager } from './session-state.js';
 import { WorkspaceStateManager } from './workspace-state.js';
 import { PermissionCoordinator } from './permission-coordinator.js';
@@ -68,6 +68,7 @@ function getLocalIP(): string {
 export class BridgeManager {
   private adapters = new Map<string, BaseChannelAdapter>();
   private running = false;
+  private store: BridgeStore;
   private engine: ConversationEngine;
   private router: ChannelRouter;
   private port: number;
@@ -94,6 +95,7 @@ export class BridgeManager {
     const config = deps?.config ?? loadConfig();
     const context = deps ?? getBridgeContext();
     const { store, llm, defaultWorkdir } = context;
+    this.store = store;
     const localUrl = `http://${getLocalIP()}:${config.port || 8080}`;
     const gateway = new PendingPermissions();
     const broker = new PermissionBroker(gateway, localUrl);
@@ -178,6 +180,97 @@ export class BridgeManager {
 
   getAdapter(channelType: string): BaseChannelAdapter | undefined {
     return this.adapters.get(channelType);
+  }
+
+  async getBinding(channelType: string, chatId: string) {
+    return this.store.getBinding(channelType, chatId);
+  }
+
+  async getBindingBySessionId(sessionId: string) {
+    return this.store.getBindingBySessionId(sessionId);
+  }
+
+  hasActiveSession(channelType: string, chatId: string, workdir?: string): boolean {
+    return this.sdkEngine.hasActiveSession(channelType, chatId, workdir);
+  }
+
+  async injectAutomationPrompt(options: {
+    channelType: string;
+    chatId: string;
+    text: string;
+    requestId?: string;
+    messageId?: string;
+    userId?: string;
+    workdir?: string;
+    projectName?: string;
+    claudeSettingSources?: ClaudeSettingSource[];
+  }): Promise<{ sessionId?: string }> {
+    const adapter = this.getAdapter(options.channelType);
+    if (!adapter) {
+      throw new Error(`Channel '${options.channelType}' not available`);
+    }
+
+    const binding = await this.router.resolve(options.channelType, options.chatId);
+    const previousCwd = binding.cwd;
+    const workdirChanged = options.workdir !== undefined && binding.cwd !== options.workdir;
+    const projectChanged = options.projectName !== undefined && binding.projectName !== options.projectName;
+    const settingsChanged = (() => {
+      if (options.claudeSettingSources === undefined) {
+        return false;
+      }
+      const nextSources = [...options.claudeSettingSources];
+      const currentSources = binding.claudeSettingSources ?? [];
+      return currentSources.length !== nextSources.length
+        || currentSources.some((source, index) => source !== nextSources[index]);
+    })();
+    const sessionContextChanged = workdirChanged || projectChanged || settingsChanged;
+
+    let bindingChanged = false;
+
+    if (options.workdir !== undefined && binding.cwd !== options.workdir) {
+      binding.cwd = options.workdir;
+      bindingChanged = true;
+    }
+    if (options.projectName !== undefined && binding.projectName !== options.projectName) {
+      binding.projectName = options.projectName;
+      bindingChanged = true;
+    }
+    if (options.claudeSettingSources !== undefined && settingsChanged) {
+      const nextSources = [...options.claudeSettingSources];
+      binding.claudeSettingSources = nextSources;
+      bindingChanged = true;
+    }
+
+    if (sessionContextChanged) {
+      this.sdkEngine.cleanupSession(
+        options.channelType,
+        options.chatId,
+        workdirChanged || projectChanged ? 'cd' : 'settings',
+        previousCwd,
+      );
+      binding.sdkSessionId = undefined;
+      this.permissions.clearSessionWhitelist(binding.sessionId);
+      bindingChanged = true;
+    }
+
+    if (bindingChanged) {
+      await this.store.saveBinding(binding);
+    }
+
+    this.ingress.recordChat(options.channelType, options.chatId);
+    await this.query.run(adapter, {
+      channelType: adapter.channelType,
+      chatId: options.chatId,
+      userId: options.userId ?? 'automation',
+      text: options.text,
+      messageId: options.messageId ?? `automation-${options.requestId || generateRequestId()}`,
+      attachments: [],
+    }, options.requestId);
+
+    const updatedBinding = await this.store.getBinding(options.channelType, options.chatId);
+    return {
+      sessionId: updatedBinding?.sdkSessionId ?? updatedBinding?.sessionId,
+    };
   }
 
   /** Get the last active chatId for a given channel type (for hook routing) */

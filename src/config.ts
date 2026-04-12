@@ -1,7 +1,9 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, basename } from 'node:path';
 import { homedir } from 'node:os';
-import type { ProjectConfig, ClaudeSettingSource } from '../store/interface.js';
+import type { ProjectConfig, ClaudeSettingSource } from './store/interface.js';
+
+export type { ClaudeSettingSource } from './store/interface.js';
 
 export const DEFAULT_CLAUDE_SETTING_SOURCES: ClaudeSettingSource[] = ['user', 'project', 'local'];
 

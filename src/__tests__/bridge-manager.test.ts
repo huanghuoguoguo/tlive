@@ -188,6 +188,46 @@ describe('BridgeManager', () => {
     );
   });
 
+  it('resets the stored SDK session when automation changes workdir', async () => {
+    const adapter = mockAdapter();
+    manager.registerAdapter(adapter);
+
+    const store = (await import('../context.js')).getBridgeContext().store as any;
+    const binding = {
+      channelType: 'telegram',
+      chatId: 'c1',
+      sessionId: 'binding-1',
+      sdkSessionId: 'sdk-old',
+      cwd: '/repo/old',
+      projectName: 'old-project',
+      createdAt: '',
+    };
+    store.getBinding.mockImplementation(async () => binding);
+    store.saveBinding.mockImplementation(async (nextBinding: typeof binding) => {
+      Object.assign(binding, nextBinding);
+    });
+
+    const cleanupSpy = vi.spyOn((manager as any).sdkEngine, 'cleanupSession');
+    const clearWhitelistSpy = vi.spyOn((manager as any).permissions, 'clearSessionWhitelist');
+    const queryRunSpy = vi.spyOn((manager as any).query, 'run').mockResolvedValue(true);
+
+    const result = await manager.injectAutomationPrompt({
+      channelType: 'telegram',
+      chatId: 'c1',
+      text: 'analyze',
+      workdir: '/repo/new',
+      projectName: 'new-project',
+    });
+
+    expect(cleanupSpy).toHaveBeenCalledWith('telegram', 'c1', 'cd', '/repo/old');
+    expect(clearWhitelistSpy).toHaveBeenCalledWith('binding-1');
+    expect(binding.sdkSessionId).toBeUndefined();
+    expect(binding.cwd).toBe('/repo/new');
+    expect(binding.projectName).toBe('new-project');
+    expect(queryRunSpy).toHaveBeenCalled();
+    expect(result.sessionId).toBe('binding-1');
+  });
+
   it('updates /help text to omit removed commands', async () => {
     const adapter = mockAdapter();
     manager.registerAdapter(adapter);

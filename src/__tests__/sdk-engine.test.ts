@@ -3,6 +3,7 @@ import { SDKEngine } from '../engine/sdk-engine.js';
 import type { LiveSession, LLMProvider } from '../providers/base.js';
 
 function createMockSession(isAlive = true, isTurnActive = false): LiveSession {
+  let callbacks: { onTurnComplete?: () => void } | undefined;
   return {
     isAlive,
     isTurnActive,
@@ -11,6 +12,10 @@ function createMockSession(isAlive = true, isTurnActive = false): LiveSession {
     sendWithPriority: vi.fn().mockResolvedValue(undefined),
     interruptTurn: vi.fn().mockResolvedValue(undefined),
     close: vi.fn(),
+    setLifecycleCallbacks: vi.fn().mockImplementation((nextCallbacks: { onTurnComplete?: () => void }) => {
+      callbacks = nextCallbacks;
+    }),
+    __triggerTurnComplete: () => callbacks?.onTurnComplete?.(),
   } as unknown as LiveSession;
 }
 
@@ -163,6 +168,21 @@ describe('SDKEngine', () => {
       await engine.sendWithContext('telegram', 'chat-1', 'queued');
 
       engine.closeSession('telegram', 'chat-1'); // Close all sessions for chat
+      expect(engine.getQueueDepth('telegram:chat-1:/workdir')).toBe(0);
+    });
+
+    it('decrements queue depth as queued turns are consumed', async () => {
+      const mockSession = createMockSession(true, false) as LiveSession & { __triggerTurnComplete: () => void };
+      const mockProvider = createMockProvider({ '/workdir': mockSession });
+
+      engine.getOrCreateSession(mockProvider, 'telegram', 'chat-1', '/workdir');
+      await engine.sendWithContext('telegram', 'chat-1', 'message 1');
+      await engine.sendWithContext('telegram', 'chat-1', 'message 2');
+
+      mockSession.__triggerTurnComplete();
+      expect(engine.getQueueDepth('telegram:chat-1:/workdir')).toBe(1);
+
+      mockSession.__triggerTurnComplete();
       expect(engine.getQueueDepth('telegram:chat-1:/workdir')).toBe(0);
     });
   });

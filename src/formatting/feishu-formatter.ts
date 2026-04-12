@@ -5,7 +5,7 @@
 
 import { MessageFormatter, type MessageLocale } from './message-formatter.js';
 import { downgradeHeadings } from '../platforms/feishu/markdown.js';
-import { buildFeishuButtonElements, type FeishuCardElement } from '../platforms/feishu/card-builder.js';
+import { buildFeishuButtonElements } from '../platforms/feishu/card-builder.js';
 import type { FeishuRenderedMessage } from '../platforms/feishu/types.js';
 import type {
   NotificationData,

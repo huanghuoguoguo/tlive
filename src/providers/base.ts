@@ -71,6 +71,8 @@ export interface LiveSession {
   interruptTurn(): Promise<void>;
   /** Close session and release all resources */
   close(): void;
+  /** Optional lifecycle hooks used by bridge-side session governance. */
+  setLifecycleCallbacks?(callbacks: { onTurnComplete?: () => void }): void;
   /** Whether the underlying query/thread is still alive */
   readonly isAlive: boolean;
   /** Whether a turn is currently in progress */
