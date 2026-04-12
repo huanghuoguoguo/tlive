@@ -21,7 +21,9 @@ function parseCallbackFields<T extends Record<string, string | number>>(
 ): T | null {
   if (!callbackData.startsWith(prefix)) return null;
   const parts = parseCallback(callbackData);
-  if (parts.length < minParts) return null;
+  // minParts should cover the maximum index in fieldMap
+  const requiredParts = Math.max(minParts, ...Object.keys(fieldMap).map(Number).map(i => i + 1));
+  if (parts.length < requiredParts) return null;
   const result: Record<string, string | number> = {};
   for (const [idx, field] of Object.entries(fieldMap)) {
     const i = Number(idx);

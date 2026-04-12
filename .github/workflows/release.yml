@@ -45,8 +45,7 @@ jobs:
       - name: Install, test, and build
         run: |
           npm install
-          npm run typecheck
-          npm test
+          npm run check
           npm run build
 
       - name: Create release tarball
