@@ -10,6 +10,7 @@ import { JsonFileStore } from '../store/json-file.js';
 import { ClaudeSDKProvider } from '../providers/claude-sdk.js';
 import type { ClaudeSettingSource } from '../config.js';
 import type { SDKEngine } from '../engine/sdk-engine.js';
+import * as sessionScanner from '../session-scanner.js';
 
 describe('CommandRouter /settings', () => {
   let tmpDir: string;
@@ -233,5 +234,210 @@ describe('CommandRouter /settings', () => {
     expect(binding?.claudeSettingSources).toEqual(['user']);
 
     rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  it('does not cleanup session when /cd stays in the same git repo', async () => {
+    const repoDir = join(tmpDir, 'repo');
+    const subDir = join(repoDir, 'src');
+    mkdirSync(join(repoDir, '.git'), { recursive: true });
+    mkdirSync(subDir, { recursive: true });
+
+    await store.saveBinding({
+      channelType: 'telegram',
+      chatId: 'c1',
+      sessionId: 'binding-1',
+      sdkSessionId: 'sdk-1',
+      cwd: repoDir,
+      projectName: 'repo',
+      createdAt: '',
+    });
+
+    await router.handle(adapter, {
+      channelType: 'telegram',
+      chatId: 'c1',
+      userId: 'u1',
+      text: `/cd ${subDir}`,
+      messageId: 'm8',
+    } as any);
+
+    expect(sdkEngine.cleanupSession).not.toHaveBeenCalled();
+    expect(clearSessionWhitelist).not.toHaveBeenCalled();
+    const binding = await store.getBinding('telegram', 'c1');
+    expect(binding?.cwd).toBe(subDir);
+    expect(binding?.sdkSessionId).toBe('sdk-1');
+    expect(binding?.projectName).toBe('repo');
+    expect(workspace.getBinding('telegram', 'c1')).toBe(repoDir);
+  });
+
+  it('cleans session and clears project binding when /cd crosses repos', async () => {
+    const repoA = join(tmpDir, 'repo-a');
+    const repoB = join(tmpDir, 'repo-b');
+    mkdirSync(join(repoA, '.git'), { recursive: true });
+    mkdirSync(join(repoB, '.git'), { recursive: true });
+
+    await store.saveBinding({
+      channelType: 'telegram',
+      chatId: 'c1',
+      sessionId: 'binding-1',
+      sdkSessionId: 'sdk-1',
+      cwd: repoA,
+      projectName: 'repo-a',
+      createdAt: '',
+    });
+    workspace.setProjectName('telegram', 'c1', 'repo-a');
+
+    await router.handle(adapter, {
+      channelType: 'telegram',
+      chatId: 'c1',
+      userId: 'u1',
+      text: `/cd ${repoB}`,
+      messageId: 'm9',
+    } as any);
+
+    expect(sdkEngine.cleanupSession).toHaveBeenCalledWith('telegram', 'c1', 'cd', repoA);
+    expect(clearSessionWhitelist).toHaveBeenCalledWith('binding-1');
+    const binding = await store.getBinding('telegram', 'c1');
+    expect(binding?.cwd).toBe(repoB);
+    expect(binding?.sdkSessionId).toBeUndefined();
+    expect(binding?.projectName).toBeUndefined();
+    expect(workspace.getProjectName('telegram', 'c1')).toBeUndefined();
+    expect(workspace.getBinding('telegram', 'c1')).toBe(repoB);
+  });
+
+  it('keeps session when switching project within same repo and same settings', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'tlive-home-'));
+    const repoDir = join(homeDir, 'repo');
+    mkdirSync(repoDir, { recursive: true });
+    mkdirSync(join(repoDir, '.git'), { recursive: true });
+    mkdirSync(join(homeDir, '.tlive'), { recursive: true });
+    writeFileSync(join(homeDir, '.tlive', 'projects.json'), JSON.stringify({
+      defaultProject: 'a',
+      projects: [
+        { name: 'a', workdir: repoDir, claudeSettingSources: ['user'] },
+        { name: 'b', workdir: repoDir, claudeSettingSources: ['user'] },
+      ],
+    }));
+    process.env.HOME = homeDir;
+
+    await store.saveBinding({
+      channelType: 'telegram',
+      chatId: 'c1',
+      sessionId: 'binding-1',
+      sdkSessionId: 'sdk-1',
+      cwd: repoDir,
+      projectName: 'a',
+      claudeSettingSources: ['user'] as ClaudeSettingSource[],
+      createdAt: '',
+    });
+    workspace.setProjectName('telegram', 'c1', 'a');
+
+    await router.handle(adapter, {
+      channelType: 'telegram',
+      chatId: 'c1',
+      userId: 'u1',
+      text: '/project use b',
+      messageId: 'm10',
+    } as any);
+
+    expect(sdkEngine.cleanupSession).not.toHaveBeenCalled();
+    expect(clearSessionWhitelist).not.toHaveBeenCalled();
+    const binding = await store.getBinding('telegram', 'c1');
+    expect(binding?.projectName).toBe('b');
+    expect(binding?.sdkSessionId).toBe('sdk-1');
+
+    rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  it('resets session when switching project changes settings in same repo', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'tlive-home-'));
+    const repoDir = join(homeDir, 'repo');
+    mkdirSync(repoDir, { recursive: true });
+    mkdirSync(join(repoDir, '.git'), { recursive: true });
+    mkdirSync(join(homeDir, '.tlive'), { recursive: true });
+    writeFileSync(join(homeDir, '.tlive', 'projects.json'), JSON.stringify({
+      defaultProject: 'a',
+      projects: [
+        { name: 'a', workdir: repoDir, claudeSettingSources: ['user'] },
+        { name: 'b', workdir: repoDir, claudeSettingSources: ['user', 'project', 'local'] },
+      ],
+    }));
+    process.env.HOME = homeDir;
+
+    await store.saveBinding({
+      channelType: 'telegram',
+      chatId: 'c1',
+      sessionId: 'binding-1',
+      sdkSessionId: 'sdk-1',
+      cwd: repoDir,
+      projectName: 'a',
+      claudeSettingSources: ['user'] as ClaudeSettingSource[],
+      createdAt: '',
+    });
+    workspace.setProjectName('telegram', 'c1', 'a');
+
+    await router.handle(adapter, {
+      channelType: 'telegram',
+      chatId: 'c1',
+      userId: 'u1',
+      text: '/project use b',
+      messageId: 'm11',
+    } as any);
+
+    expect(sdkEngine.cleanupSession).toHaveBeenCalledWith('telegram', 'c1', 'settings', repoDir);
+    expect(clearSessionWhitelist).toHaveBeenCalledWith('binding-1');
+    const binding = await store.getBinding('telegram', 'c1');
+    expect(binding?.projectName).toBe('b');
+    expect(binding?.sdkSessionId).toBeUndefined();
+    expect(binding?.claudeSettingSources).toEqual(['user', 'project', 'local']);
+
+    rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  it('clears project binding when /session switches to another repo', async () => {
+    const repoA = join(tmpDir, 'repo-a');
+    const repoB = join(tmpDir, 'repo-b');
+    mkdirSync(join(repoA, '.git'), { recursive: true });
+    mkdirSync(join(repoB, '.git'), { recursive: true });
+
+    const scanSpy = vi.spyOn(sessionScanner, 'scanClaudeSessions').mockReturnValue([
+      {
+        sdkSessionId: 'sdk-target',
+        cwd: repoB,
+        preview: 'target session',
+        mtime: Date.now(),
+        size: 1024,
+      },
+    ] as any);
+
+    await store.saveBinding({
+      channelType: 'telegram',
+      chatId: 'c1',
+      sessionId: 'binding-1',
+      sdkSessionId: 'sdk-1',
+      cwd: repoA,
+      projectName: 'repo-a',
+      createdAt: '',
+    });
+    workspace.setProjectName('telegram', 'c1', 'repo-a');
+    workspace.setBinding('telegram', 'c1', repoA);
+
+    await router.handle(adapter, {
+      channelType: 'telegram',
+      chatId: 'c1',
+      userId: 'u1',
+      text: '/session 1',
+      messageId: 'm12',
+    } as any);
+
+    expect(sdkEngine.cleanupSession).toHaveBeenCalledWith('telegram', 'c1', 'switch', repoA);
+    expect(clearSessionWhitelist).toHaveBeenCalledWith('binding-1');
+    const binding = await store.getBinding('telegram', 'c1');
+    expect(binding?.cwd).toBe(repoB);
+    expect(binding?.sdkSessionId).toBe('sdk-target');
+    expect(binding?.projectName).toBeUndefined();
+    expect(workspace.getProjectName('telegram', 'c1')).toBeUndefined();
+    expect(workspace.getBinding('telegram', 'c1')).toBe(repoB);
+
+    scanSpy.mockRestore();
   });
 });

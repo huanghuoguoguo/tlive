@@ -1,19 +1,20 @@
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 /**
  * Find the git repository root directory for a given path.
  * Returns undefined if the path is not inside a git repository.
  */
 export function findGitRoot(path: string): string | undefined {
-  let current = path;
-  while (current !== '/' && current !== '.') {
+  let current = resolve(path);
+  while (true) {
     if (existsSync(join(current, '.git'))) {
       return current;
     }
-    // Move up one directory
-    const parent = join(current, '..');
-    if (parent === current) break; // Reached root
+    const parent = dirname(current);
+    if (parent === current) {
+      break;
+    }
     current = parent;
   }
   return undefined;

@@ -88,10 +88,21 @@ export class MessageLoopCoordinator {
   private formatQueueFeedback(result: SendWithContextResult): string | null {
     if (!result.sent) {
       if (result.mode === 'none') {
+        if (result.failureReason === 'reply_target_missing') {
+          return '⚠️ 引用的会话已失效，请直接发送消息或切换会话后重试';
+        }
+        if (result.failureReason === 'send_failed') {
+          return '⚠️ 会话注入失败，请稍后重试';
+        }
         return '⚠️ 无活跃会话，请先开始任务';
       }
       if (result.queueFull) {
-        return '⚠️ 排队已满，请稍后再发';
+        const maxDepth = result.maxQueueDepth
+          ?? (typeof this.options.sdkEngine.getMaxQueueDepth === 'function'
+            ? this.options.sdkEngine.getMaxQueueDepth()
+            : 3);
+        const depth = result.queueDepth ?? maxDepth;
+        return `⚠️ 排队已满（${depth}/${maxDepth}），请稍后再发`;
       }
       // Send failed for other reason - no feedback needed
       return null;
@@ -102,9 +113,10 @@ export class MessageLoopCoordinator {
     }
 
     if (result.mode === 'queue' && result.queuePosition !== undefined) {
-      const maxDepth = typeof this.options.sdkEngine.getMaxQueueDepth === 'function'
-        ? this.options.sdkEngine.getMaxQueueDepth()
-        : 3;
+      const maxDepth = result.maxQueueDepth
+        ?? (typeof this.options.sdkEngine.getMaxQueueDepth === 'function'
+          ? this.options.sdkEngine.getMaxQueueDepth()
+          : 3);
       return `📥 已排队（位置 ${result.queuePosition}/${maxDepth}），当前任务结束后继续处理`;
     }
 

@@ -6,6 +6,8 @@ import {
   presentSessions,
   presentStatus,
   presentHome,
+  presentQueueStatus,
+  presentDiagnose,
 } from '../engine/command-presenter.js';
 import { TelegramFormatter } from '../formatting/telegram-formatter.js';
 import { FeishuFormatter } from '../formatting/feishu-formatter.js';
@@ -184,6 +186,51 @@ describe('command presenter', () => {
       const formatted = feishuFormatter.format(msg);
       expect(formatted.feishuHeader?.title).toContain('权限状态');
       expect(formatted.feishuElements?.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('presentQueueStatus', () => {
+    it('adds derived queue fields for downstream formatters', () => {
+      const now = Date.now();
+      const msg = presentQueueStatus('chat-1', {
+        sessionKey: 'telegram:chat-1:/repo',
+        depth: 2,
+        maxDepth: 4,
+        queuedMessages: [
+          { preview: 'oldest', timestamp: now - 120_000 },
+          { preview: 'newer', timestamp: now - 30_000 },
+        ],
+      });
+
+      expect(msg.type).toBe('queueStatus');
+      if (msg.type === 'queueStatus') {
+        expect(msg.data.saturationRatio).toBe(0.5);
+        expect(msg.data.estimatedWaitSeconds).toBe(90);
+        expect(msg.data.oldestQueuedAgeSeconds).toBeGreaterThanOrEqual(120);
+      }
+    });
+  });
+
+  describe('presentDiagnose', () => {
+    it('adds aggregate queue diagnostics', () => {
+      const msg = presentDiagnose('chat-1', {
+        activeSessions: 2,
+        idleSessions: 1,
+        totalBubbleMappings: 4,
+        queueStats: [
+          { sessionKey: 's1', depth: 3, maxDepth: 3 },
+          { sessionKey: 's2', depth: 1, maxDepth: 4 },
+        ],
+        totalQueuedMessages: 4,
+        processingChats: 1,
+      });
+
+      expect(msg.type).toBe('diagnose');
+      if (msg.type === 'diagnose') {
+        expect(msg.data.saturatedSessions).toBe(1);
+        expect(msg.data.queueUtilizationRatio).toBeCloseTo(4 / 7, 5);
+        expect(msg.data.busiestSession).toEqual({ sessionKey: 's1', depth: 3, maxDepth: 3 });
+      }
     });
   });
 });

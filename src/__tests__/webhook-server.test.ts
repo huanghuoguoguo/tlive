@@ -149,6 +149,18 @@ describe('WebhookServer', () => {
       expect(server).toBeDefined();
     });
 
+    it('accepts webhook rate limit option', () => {
+      server = new WebhookServer({
+        token: 'test-token',
+        port: 9999,
+        path: '/webhook',
+        bridge: mockBridge as BridgeManager,
+        sessionStrategy: 'reject',
+        rateLimitPerMinute: 10,
+      });
+      expect(server).toBeDefined();
+    });
+
     it('accepts projects configuration', () => {
       const projects: ProjectConfig[] = [
         { name: 'project-a', workdir: '/path/a', webhookDefaultChat: { channelType: 'telegram', chatId: 'chat-a' } },
@@ -198,6 +210,52 @@ describe('WebhookServer', () => {
 
     it('validates payload field count limit', async () => {
       expect(true).toBe(true);
+    });
+  });
+
+  describe('rate limiting', () => {
+    it('allows requests while under the per-minute limit', () => {
+      server = new WebhookServer({
+        token: 'test-token',
+        port: 9999,
+        path: '/webhook',
+        bridge: mockBridge as BridgeManager,
+        sessionStrategy: 'reject',
+        rateLimitPerMinute: 2,
+      });
+
+      expect((server as any).allowRequestForSource('127.0.0.1', 1_000)).toBe(true);
+      expect((server as any).allowRequestForSource('127.0.0.1', 2_000)).toBe(true);
+    });
+
+    it('rejects requests that exceed the per-minute limit', () => {
+      server = new WebhookServer({
+        token: 'test-token',
+        port: 9999,
+        path: '/webhook',
+        bridge: mockBridge as BridgeManager,
+        sessionStrategy: 'reject',
+        rateLimitPerMinute: 2,
+      });
+
+      expect((server as any).allowRequestForSource('127.0.0.1', 1_000)).toBe(true);
+      expect((server as any).allowRequestForSource('127.0.0.1', 2_000)).toBe(true);
+      expect((server as any).allowRequestForSource('127.0.0.1', 3_000)).toBe(false);
+    });
+
+    it('expires old requests from the rate-limit window', () => {
+      server = new WebhookServer({
+        token: 'test-token',
+        port: 9999,
+        path: '/webhook',
+        bridge: mockBridge as BridgeManager,
+        sessionStrategy: 'reject',
+        rateLimitPerMinute: 1,
+      });
+
+      expect((server as any).allowRequestForSource('127.0.0.1', 1_000)).toBe(true);
+      expect((server as any).allowRequestForSource('127.0.0.1', 30_000)).toBe(false);
+      expect((server as any).allowRequestForSource('127.0.0.1', 62_000)).toBe(true);
     });
   });
 

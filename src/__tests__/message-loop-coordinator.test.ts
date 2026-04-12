@@ -193,7 +193,88 @@ describe('MessageLoopCoordinator', () => {
 
     expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('telegram', 'chat-1', 'message when queue full', undefined);
     expect(adapter.send).toHaveBeenCalledWith(
-      expect.objectContaining({ text: '⚠️ 排队已满，请稍后再发' }),
+      expect.objectContaining({ text: '⚠️ 排队已满（3/3），请稍后再发' }),
+    );
+  });
+
+  it('warns when reply target session is missing', async () => {
+    const state = new SessionStateManager();
+    const chatKey = state.stateKey('telegram', 'chat-1');
+    state.setProcessing(chatKey, true);
+
+    const sdkEngine = {
+      sendWithContext: vi.fn().mockResolvedValue({
+        sent: false,
+        mode: 'none',
+        failureReason: 'reply_target_missing',
+      } satisfies SendWithContextResult),
+      MAX_QUEUE_DEPTH: 3,
+    } as any;
+    const permissions = {
+      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
+      parsePermissionText: vi.fn().mockReturnValue(null),
+    } as any;
+
+    const coordinator = new MessageLoopCoordinator({
+      state,
+      sdkEngine,
+      permissions,
+      quickCommands: new Set(),
+      hasPendingSdkQuestion: () => false,
+    });
+    const adapter = createAdapter();
+
+    await coordinator.dispatchSlowMessage({
+      adapter,
+      msg: createMessage('reply to missing bubble', { replyToMessageId: 'bubble-missing' }),
+      coalesceMessage: async (_adapter, msg) => msg,
+      handleMessage: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '⚠️ 引用的会话已失效，请直接发送消息或切换会话后重试' }),
+    );
+  });
+
+  it('warns when session injection fails', async () => {
+    const state = new SessionStateManager();
+    const chatKey = state.stateKey('telegram', 'chat-1');
+    state.setProcessing(chatKey, true);
+
+    const sdkEngine = {
+      sendWithContext: vi.fn().mockResolvedValue({
+        sent: false,
+        mode: 'none',
+        sessionKey: 'session-1',
+        failureReason: 'send_failed',
+      } satisfies SendWithContextResult),
+      MAX_QUEUE_DEPTH: 3,
+    } as any;
+    const permissions = {
+      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
+      parsePermissionText: vi.fn().mockReturnValue(null),
+    } as any;
+
+    const coordinator = new MessageLoopCoordinator({
+      state,
+      sdkEngine,
+      permissions,
+      quickCommands: new Set(),
+      hasPendingSdkQuestion: () => false,
+    });
+    const adapter = createAdapter();
+
+    await coordinator.dispatchSlowMessage({
+      adapter,
+      msg: createMessage('message when injection fails'),
+      coalesceMessage: async (_adapter, msg) => msg,
+      handleMessage: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '⚠️ 会话注入失败，请稍后重试' }),
     );
   });
 

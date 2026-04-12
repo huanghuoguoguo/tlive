@@ -86,6 +86,25 @@ describe('WorkspaceStateManager', () => {
     it('returns undefined if no binding', () => {
       expect(manager.getBinding('telegram', 'chat1')).toBeUndefined();
     });
+
+    it('clears workspace binding', () => {
+      manager.setBinding('telegram', 'chat1', '/home/user/repo');
+      manager.clearBinding('telegram', 'chat1');
+      expect(manager.getBinding('telegram', 'chat1')).toBeUndefined();
+    });
+  });
+
+  describe('project binding', () => {
+    it('sets and gets project name', () => {
+      manager.setProjectName('telegram', 'chat1', 'repo-a');
+      expect(manager.getProjectName('telegram', 'chat1')).toBe('repo-a');
+    });
+
+    it('clears project name', () => {
+      manager.setProjectName('telegram', 'chat1', 'repo-a');
+      manager.clearProjectName('telegram', 'chat1');
+      expect(manager.getProjectName('telegram', 'chat1')).toBeUndefined();
+    });
   });
 
   describe('clear', () => {

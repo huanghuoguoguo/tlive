@@ -135,6 +135,24 @@ export class CommandRouter {
     return sources.join(',');
   }
 
+  private sameSettingSources(
+    current: ClaudeSettingSource[] | undefined,
+    next: ClaudeSettingSource[] | undefined,
+  ): boolean {
+    const left = current ?? [];
+    const right = next ?? [];
+    return left.length === right.length && left.every((source, index) => source === right[index]);
+  }
+
+  private updateWorkspaceBindingFromPath(channelType: string, chatId: string, cwd: string): void {
+    const gitRoot = findGitRoot(cwd);
+    if (gitRoot) {
+      this.workspace.setBinding(channelType, chatId, gitRoot);
+      return;
+    }
+    this.workspace.clearBinding(channelType, chatId);
+  }
+
   private async buildHomePayload(channelType: string, chatId: string): Promise<HomeData> {
     const binding = await this.store.getBinding(channelType, chatId);
     const currentCwd = binding?.cwd || this.defaultWorkdir;
@@ -329,6 +347,7 @@ export class CommandRouter {
         }
 
         const target = sessions[idx - 1];
+        const switchedRepo = !isSameRepoRoot(currentCwd, target.cwd);
 
         // Close old SDK session if switching to a different workdir
         const hadActiveSession = this.sdkEngine?.cleanupSession(
@@ -343,13 +362,17 @@ export class CommandRouter {
           sdkSessionId: target.sdkSessionId,
           cwd: target.cwd, // update cwd to session's directory
           claudeSettingSources: binding?.claudeSettingSources,
-          projectName: binding?.projectName,
+          projectName: switchedRepo ? undefined : binding?.projectName,
         });
+        this.updateWorkspaceBindingFromPath(msg.channelType, msg.chatId, target.cwd);
+        if (switchedRepo) {
+          this.workspace.clearProjectName(msg.channelType, msg.chatId);
+        }
 
         this.state.clearLastActive(msg.channelType, msg.chatId);
         this.permissions.clearSessionWhitelist(binding?.sessionId);
 
-        const feedbackText = hadActiveSession && !isSameRepoRoot(currentCwd, target.cwd)
+        const feedbackText = hadActiveSession && switchedRepo
           ? `🔄 已关闭旧工作区的活跃会话`
           : undefined;
         await send(adapter, presentSessionSwitched(msg.chatId, idx, shortPath(target.cwd), target.preview, feedbackText));
@@ -410,29 +433,34 @@ export class CommandRouter {
           // Switch to previous directory
           const binding = await this.store.getBinding(msg.channelType, msg.chatId);
           const currentCwd = binding?.cwd || this.defaultWorkdir;
-
-          // Close SDK session if switching repo
-          this.sdkEngine?.cleanupSession(
-            msg.channelType,
-            msg.chatId,
-            'cd',
-            currentCwd,
-          );
           const switchedRepo = !isSameRepoRoot(currentCwd, previousDir);
+
+          // Cross-repo directory switches must reset session context.
+          if (switchedRepo) {
+            this.sdkEngine?.cleanupSession(
+              msg.channelType,
+              msg.chatId,
+              'cd',
+              currentCwd,
+            );
+          }
 
           // Update binding
           if (binding) {
             binding.cwd = previousDir;
             if (switchedRepo) {
               binding.sdkSessionId = undefined;
+              binding.projectName = undefined;
             }
             await this.store.saveBinding(binding);
           } else {
             await this.router.rebind(msg.channelType, msg.chatId, generateSessionId(), { cwd: previousDir });
           }
           this.workspace.pushHistory(msg.channelType, msg.chatId, previousDir);
+          this.updateWorkspaceBindingFromPath(msg.channelType, msg.chatId, previousDir);
 
           if (switchedRepo) {
+            this.workspace.clearProjectName(msg.channelType, msg.chatId);
             this.permissions.clearSessionWhitelist(binding?.sessionId);
           }
 
@@ -457,14 +485,16 @@ export class CommandRouter {
         // Track directory history before switching
         this.workspace.pushHistory(msg.channelType, msg.chatId, baseCwd);
 
-        // Close SDK session if switching to a different repo root
-        const hadActiveSession = this.sdkEngine?.cleanupSession(
-          msg.channelType,
-          msg.chatId,
-          'cd',
-          baseCwd,
-        ) ?? false;
         const switchedRepo = !isSameRepoRoot(baseCwd, resolvedPath);
+        // Keep session for same-repo directory changes; reset only when crossing repos.
+        const hadActiveSession = switchedRepo
+          ? (this.sdkEngine?.cleanupSession(
+            msg.channelType,
+            msg.chatId,
+            'cd',
+            baseCwd,
+          ) ?? false)
+          : false;
 
         // Update binding
         if (binding) {
@@ -472,21 +502,18 @@ export class CommandRouter {
           // Clear sdkSessionId when switching repo to avoid mismatch
           if (switchedRepo) {
             binding.sdkSessionId = undefined;
+            binding.projectName = undefined;
           }
           await this.store.saveBinding(binding);
         } else {
           await this.router.rebind(msg.channelType, msg.chatId, generateSessionId(), { cwd: resolvedPath });
         }
         this.workspace.pushHistory(msg.channelType, msg.chatId, resolvedPath);
-
-        // Set workspace binding if switching to a git repo root
-        const gitRoot = findGitRoot(resolvedPath);
-        if (gitRoot) {
-          this.workspace.setBinding(msg.channelType, msg.chatId, gitRoot);
-        }
+        this.updateWorkspaceBindingFromPath(msg.channelType, msg.chatId, resolvedPath);
 
         // Clear permission whitelist when switching repo
         if (switchedRepo) {
+          this.workspace.clearProjectName(msg.channelType, msg.chatId);
           this.permissions.clearSessionWhitelist(binding?.sessionId);
         }
 
@@ -814,14 +841,20 @@ export class CommandRouter {
           // Track directory history before switching
           this.workspace.pushHistory(msg.channelType, msg.chatId, currentCwd);
 
-          // Close SDK session if switching to a different workdir
-          const hadActiveSession = this.sdkEngine?.cleanupSession(
-            msg.channelType,
-            msg.chatId,
-            'cd',
-            currentCwd,
-          ) ?? false;
           const switchedRepo = !isSameRepoRoot(currentCwd, project.workdir);
+          const settingsChanged = !this.sameSettingSources(
+            binding?.claudeSettingSources,
+            project.claudeSettingSources,
+          );
+          const shouldResetSession = switchedRepo || settingsChanged;
+          const hadActiveSession = shouldResetSession
+            ? (this.sdkEngine?.cleanupSession(
+              msg.channelType,
+              msg.chatId,
+              switchedRepo ? 'cd' : 'settings',
+              currentCwd,
+            ) ?? false)
+            : false;
 
           // Update binding with new workdir
           if (binding) {
@@ -830,7 +863,7 @@ export class CommandRouter {
             binding.claudeSettingSources = project.claudeSettingSources
               ? [...project.claudeSettingSources]
               : undefined;
-            if (switchedRepo) {
+            if (shouldResetSession) {
               binding.sdkSessionId = undefined;
             }
             await this.store.saveBinding(binding);
@@ -850,7 +883,7 @@ export class CommandRouter {
           this.workspace.setBinding(msg.channelType, msg.chatId, project.workdir);
 
           // Clear permission whitelist when switching repo
-          if (switchedRepo) {
+          if (switchedRepo || settingsChanged) {
             this.permissions.clearSessionWhitelist(binding?.sessionId);
           }
 
@@ -863,6 +896,8 @@ export class CommandRouter {
           feedbackParts.push(`工作区更新为 ${shortPath(project.workdir)}`);
           if (hadActiveSession && switchedRepo) {
             feedbackParts.push('已关闭旧项目的活跃会话');
+          } else if (hadActiveSession && settingsChanged) {
+            feedbackParts.push('已应用项目设置并重置会话');
           }
 
           await send(adapter, presentProjectSwitched(msg.chatId, {

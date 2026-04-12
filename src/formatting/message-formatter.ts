@@ -522,11 +522,25 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
   }
 
   formatQueueStatus(chatId: string, data: QueueStatusData): TRendered {
+    const saturationRatio = data.saturationRatio ?? (data.maxDepth > 0 ? data.depth / data.maxDepth : 0);
+    const oldestQueuedAgeSeconds = data.oldestQueuedAgeSeconds
+      ?? (data.queuedMessages?.length
+        ? Math.max(0, Math.floor((Date.now() - Math.min(...data.queuedMessages.map(item => item.timestamp))) / 1000))
+        : undefined);
+    const state = data.depth === 0
+      ? 'idle'
+      : saturationRatio >= 1
+        ? 'saturated'
+        : saturationRatio >= 0.8
+          ? 'high'
+          : 'normal';
+
     const lines = [
       '📥 **Queue Status**',
       '',
       `**Session:** \`${data.sessionKey}\``,
       `**Depth:** ${data.depth}/${data.maxDepth}`,
+      `**State:** ${state}`,
     ];
 
     if (data.queuedMessages?.length) {
@@ -536,7 +550,11 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
       }
     }
 
-    if (data.estimatedWaitSeconds) {
+    if (oldestQueuedAgeSeconds !== undefined && data.depth > 0) {
+      lines.push('', `**Oldest queued:** ${Math.ceil(oldestQueuedAgeSeconds / 60)} min ago`);
+    }
+
+    if (data.estimatedWaitSeconds && data.depth > 0) {
       lines.push('', `**Estimated wait:** ${Math.ceil(data.estimatedWaitSeconds / 60)} min`);
     }
 
@@ -544,6 +562,11 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
   }
 
   formatDiagnose(chatId: string, data: DiagnoseData): TRendered {
+    const totalCapacity = data.queueStats.reduce((sum, stat) => sum + stat.maxDepth, 0);
+    const totalDepth = data.queueStats.reduce((sum, stat) => sum + stat.depth, 0);
+    const queueUtilizationRatio = data.queueUtilizationRatio
+      ?? (totalCapacity > 0 ? totalDepth / totalCapacity : undefined);
+
     const lines = [
       '🩺 **Diagnose**',
       '',
@@ -552,6 +575,16 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
       `**Processing chats:** ${data.processingChats}`,
       `**Bubble mappings:** ${data.totalBubbleMappings}`,
     ];
+
+    if (queueUtilizationRatio !== undefined) {
+      lines.push(`**Queue utilization:** ${Math.round(queueUtilizationRatio * 100)}%`);
+    }
+    if (data.saturatedSessions !== undefined && data.saturatedSessions > 0) {
+      lines.push(`**Saturated sessions:** ${data.saturatedSessions}`);
+    }
+    if (data.busiestSession) {
+      lines.push(`**Busiest session:** ${data.busiestSession.depth}/${data.busiestSession.maxDepth}`);
+    }
 
     if (data.memoryUsage) {
       lines.push(`**Memory:** ${data.memoryUsage}`);

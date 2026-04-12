@@ -67,6 +67,22 @@ describe('SDKEngine', () => {
       const result = await engine.sendWithContext('telegram', 'chat-1', 'test message');
       expect(result.sent).toBe(false);
       expect(result.mode).toBe('none');
+      expect(result.failureReason).toBe('no_session');
+    });
+
+    it('does not fall back when reply target is missing', async () => {
+      const mockSession = createMockSession(true, true);
+      const mockProvider = createMockProvider({ '/workdir': mockSession });
+
+      engine.getOrCreateSession(mockProvider, 'telegram', 'chat-1', '/workdir');
+
+      const result = await engine.sendWithContext('telegram', 'chat-1', 'reply message', 'missing-bubble');
+      expect(result).toMatchObject({
+        sent: false,
+        mode: 'none',
+        failureReason: 'reply_target_missing',
+      });
+      expect(mockSession.sendWithPriority).not.toHaveBeenCalled();
     });
 
     it('queues message when session exists but turn is not active', async () => {
@@ -81,6 +97,8 @@ describe('SDKEngine', () => {
       expect(result.sent).toBe(true);
       expect(result.mode).toBe('queue');
       expect(result.queuePosition).toBe(1);
+      expect(result.queueDepth).toBe(1);
+      expect(result.maxQueueDepth).toBe(3);
       expect(result.sessionKey).toBe('telegram:chat-1:/workdir');
       expect(mockSession.sendWithPriority).toHaveBeenCalledWith('queued message', 'later');
     });
@@ -117,6 +135,8 @@ describe('SDKEngine', () => {
       expect(result.sent).toBe(false);
       expect(result.mode).toBe('queue');
       expect(result.queueFull).toBe(true);
+      expect(result.queueDepth).toBe(3);
+      expect(result.maxQueueDepth).toBe(3);
     });
 
     it('steers message when session has active turn', async () => {
@@ -131,6 +151,22 @@ describe('SDKEngine', () => {
       expect(result.mode).toBe('steer');
       expect(result.queuePosition).toBeUndefined();
       expect(mockSession.sendWithPriority).toHaveBeenCalledWith('steer message', 'now');
+    });
+
+    it('returns send_failed when steering cannot be injected', async () => {
+      const mockSession = createMockSession(true, true);
+      vi.mocked(mockSession.sendWithPriority).mockRejectedValueOnce(new Error('boom'));
+      const mockProvider = createMockProvider({ '/workdir': mockSession });
+
+      engine.getOrCreateSession(mockProvider, 'telegram', 'chat-1', '/workdir');
+
+      const result = await engine.sendWithContext('telegram', 'chat-1', 'steer message');
+      expect(result).toMatchObject({
+        sent: false,
+        mode: 'none',
+        failureReason: 'send_failed',
+        sessionKey: 'telegram:chat-1:/workdir',
+      });
     });
 
     it('steering does not increment queue depth', async () => {

@@ -93,6 +93,8 @@ export interface WebhookServerOptions {
   sessionStrategy: 'reject' | 'create';
   /** Optional callback URL for result notifications */
   callbackUrl?: string;
+  /** Maximum requests per minute from the same source (0 disables) */
+  rateLimitPerMinute?: number;
   /** Project configurations for project-based routing (Phase 3) */
   projects?: ProjectConfig[];
   /** Default project name (used when no target specified) */
@@ -159,9 +161,28 @@ async function sendCallback(callbackUrl: string, payload: WebhookCallbackPayload
 export class WebhookServer {
   private server: Server | null = null;
   private options: WebhookServerOptions;
+  private recentRequestsBySource = new Map<string, number[]>();
 
   constructor(options: WebhookServerOptions) {
     this.options = options;
+  }
+
+  private allowRequestForSource(sourceKey: string, now = Date.now()): boolean {
+    const limit = this.options.rateLimitPerMinute ?? 0;
+    if (limit <= 0) {
+      return true;
+    }
+
+    const windowStart = now - 60_000;
+    const recent = (this.recentRequestsBySource.get(sourceKey) ?? []).filter(timestamp => timestamp > windowStart);
+    if (recent.length >= limit) {
+      this.recentRequestsBySource.set(sourceKey, recent);
+      return false;
+    }
+
+    recent.push(now);
+    this.recentRequestsBySource.set(sourceKey, recent);
+    return true;
   }
 
   /**
@@ -210,6 +231,14 @@ export class WebhookServer {
       console.warn(`[webhook] ${requestId} 403 Invalid token`);
       res.writeHead(403, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: false, error: 'Invalid token', requestId }));
+      return;
+    }
+
+    const sourceKey = req.socket.remoteAddress || 'unknown';
+    if (!this.allowRequestForSource(sourceKey)) {
+      console.warn(`[webhook] ${requestId} 429 Rate limit exceeded for ${sourceKey}`);
+      res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '60' });
+      res.end(JSON.stringify({ success: false, error: 'Rate limit exceeded', requestId }));
       return;
     }
 

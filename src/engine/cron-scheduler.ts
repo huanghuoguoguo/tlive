@@ -13,10 +13,11 @@
  * - Only 'prompt' is supported (no exec by default)
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, unlinkSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import type { BridgeManager } from './bridge-manager.js';
 import { loadProjectsConfig, type ClaudeSettingSource } from '../config.js';
+import type { ProjectConfig } from '../store/interface.js';
 
 /** Cron job definition */
 export interface CronJob {
@@ -60,6 +61,12 @@ export interface CronSchedulerOptions {
   bridge: BridgeManager;
   /** Enable cron scheduler (default: false) */
   enabled: boolean;
+  /** Maximum number of jobs allowed to run concurrently (default: 3) */
+  maxConcurrency?: number;
+  /** Project configurations for routing without re-reading disk */
+  projects?: ProjectConfig[];
+  /** Default project name for routing fallback */
+  defaultProject?: string;
 }
 
 /** Persisted cron jobs file structure */
@@ -166,6 +173,64 @@ function calculateNextRunOrUndefined(expression: string, fromTime?: number): num
   return calculateNextRun(expression, fromTime) ?? undefined;
 }
 
+function normalizeConcurrency(value: number | undefined): number {
+  const parsed = Math.floor(value ?? 3);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeLoadedJob(rawJob: unknown): CronJob | null {
+  if (!isRecord(rawJob)) return null;
+
+  const {
+    id,
+    name,
+    schedule,
+    channelType,
+    chatId,
+    projectName,
+    prompt,
+    event,
+    enabled,
+    lastRun,
+    nextRun,
+    lastResult,
+    lastError,
+    createdAt,
+    updatedAt,
+  } = rawJob;
+
+  if (typeof id !== 'string' || !id.trim()) return null;
+  if (typeof name !== 'string' || !name.trim()) return null;
+  if (typeof schedule !== 'string' || !parseCronExpression(schedule)) return null;
+  if (typeof prompt !== 'string' || !prompt.trim()) return null;
+  if (typeof enabled !== 'boolean') return null;
+
+  const job: CronJob = {
+    id,
+    name,
+    schedule,
+    prompt,
+    enabled,
+    createdAt: typeof createdAt === 'number' && Number.isFinite(createdAt) ? createdAt : Date.now(),
+    updatedAt: typeof updatedAt === 'number' && Number.isFinite(updatedAt) ? updatedAt : Date.now(),
+  };
+
+  if (typeof channelType === 'string' && channelType.trim()) job.channelType = channelType;
+  if (typeof chatId === 'string' && chatId.trim()) job.chatId = chatId;
+  if (typeof projectName === 'string' && projectName.trim()) job.projectName = projectName;
+  if (typeof event === 'string' && event.trim()) job.event = event;
+  if (typeof lastRun === 'number' && Number.isFinite(lastRun)) job.lastRun = lastRun;
+  if (typeof nextRun === 'number' && Number.isFinite(nextRun)) job.nextRun = nextRun;
+  if (lastResult === 'success' || lastResult === 'failed' || lastResult === 'skipped') job.lastResult = lastResult;
+  if (typeof lastError === 'string' && lastError.trim()) job.lastError = lastError;
+
+  return job;
+}
+
 /**
  * Cron Scheduler — manages scheduled jobs and triggers prompts.
  *
@@ -180,13 +245,20 @@ export class CronScheduler {
   private persistPath: string;
   private bridge: BridgeManager;
   private enabled: boolean;
+  private maxConcurrency: number;
+  private projects?: ProjectConfig[];
+  private defaultProject?: string;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private running = false;
+  private activeJobs = new Set<string>();
 
   constructor(options: CronSchedulerOptions) {
     this.persistPath = join(options.runtimeDir, 'cron-jobs.json');
     this.bridge = options.bridge;
     this.enabled = options.enabled;
+    this.maxConcurrency = normalizeConcurrency(options.maxConcurrency);
+    this.projects = options.projects;
+    this.defaultProject = options.defaultProject;
 
     if (this.enabled) {
       this.loadJobs();
@@ -227,9 +299,11 @@ export class CronScheduler {
    */
   private tick(): void {
     const now = Date.now();
+    let launched = 0;
 
     for (const [, job] of this.jobs) {
       if (!job.enabled) continue;
+      if (this.activeJobs.has(job.id)) continue;
 
       // Update nextRun if not set
       if (!job.nextRun) {
@@ -238,9 +312,18 @@ export class CronScheduler {
       }
 
       // Check if job is due
-      if (job.nextRun && job.nextRun <= now) {
-        this.executeJob(job);
+      if (!job.nextRun || job.nextRun > now) continue;
+      if (this.activeJobs.size >= this.maxConcurrency) {
+        console.log(`[cron] Concurrency limit reached (${this.activeJobs.size}/${this.maxConcurrency}); deferring job ${job.id}`);
+        continue;
       }
+
+      launched++;
+      void this.executeJob(job);
+    }
+
+    if (launched > 0) {
+      console.log(`[cron] Tick launched ${launched} job(s)`);
     }
   }
 
@@ -248,6 +331,10 @@ export class CronScheduler {
    * Execute a cron job — deliver the prompt to the target.
    */
   private async executeJob(job: CronJob): Promise<void> {
+    if (this.activeJobs.has(job.id)) {
+      return;
+    }
+    this.activeJobs.add(job.id);
     console.log(`[cron] Executing job: ${job.id} (${job.name})`);
 
     try {
@@ -299,6 +386,8 @@ export class CronScheduler {
       job.lastRun = Date.now();
       job.nextRun = calculateNextRunOrUndefined(job.schedule);
       this.saveJobs();
+    } finally {
+      this.activeJobs.delete(job.id);
     }
   }
 
@@ -329,7 +418,8 @@ export class CronScheduler {
     }
 
     if (job.projectName) {
-      const project = loadProjectsConfig()?.valid.find(candidate => candidate.name === job.projectName);
+      const projects = this.projects ?? loadProjectsConfig()?.valid;
+      const project = projects?.find(candidate => candidate.name === job.projectName);
       if (!project) {
         return null;
       }
@@ -484,6 +574,7 @@ export class CronScheduler {
     if (!existsSync(this.persistPath)) return;
 
     try {
+      this.jobs.clear();
       const data: CronJobsFile = JSON.parse(readFileSync(this.persistPath, 'utf-8'));
 
       // Version check for future schema changes
@@ -492,11 +583,22 @@ export class CronScheduler {
         return;
       }
 
-      for (const job of data.jobs) {
+      if (!Array.isArray(data.jobs)) {
+        console.warn('[cron] Invalid jobs file: jobs must be an array');
+        return;
+      }
+
+      let skipped = 0;
+      for (const rawJob of data.jobs) {
+        const job = normalizeLoadedJob(rawJob);
+        if (!job) {
+          skipped++;
+          continue;
+        }
         this.jobs.set(job.id, job);
       }
 
-      console.log(`[cron] Loaded ${this.jobs.size} jobs from ${this.persistPath}`);
+      console.log(`[cron] Loaded ${this.jobs.size} job(s) from ${this.persistPath}${skipped > 0 ? `, skipped ${skipped} invalid job(s)` : ''}`);
 
       // Recalculate nextRun for all jobs
       const now = Date.now();
@@ -522,8 +624,20 @@ export class CronScheduler {
     };
 
     try {
-      mkdirSync(join(this.persistPath, '..'), { recursive: true });
-      writeFileSync(this.persistPath, JSON.stringify(data, null, 2));
+      const directory = dirname(this.persistPath);
+      mkdirSync(directory, { recursive: true });
+      const tempPath = `${this.persistPath}.tmp`;
+      writeFileSync(tempPath, JSON.stringify(data, null, 2));
+      try {
+        renameSync(tempPath, this.persistPath);
+      } catch (renameErr) {
+        try {
+          unlinkSync(tempPath);
+        } catch {
+          // Ignore cleanup errors after a failed atomic write.
+        }
+        throw renameErr;
+      }
     } catch (err) {
       console.warn('[cron] Failed to save jobs:', err);
     }

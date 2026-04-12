@@ -320,3 +320,36 @@ scheduler.addJob({
   enabled: true,
 });
 ```
+
+## 当前实现进度（2026-04）
+
+当前已落地的部分：
+
+- token 保护的 webhook endpoint
+- `sessionId` / `channelType + chatId` / `projectName` 路由
+- payload 注入
+- `reject` / `create` 会话策略
+- IM 内反馈
+- prompt-only 的最小 cron 调度器
+
+当前明确未做的部分：
+
+- shell exec
+- Web 管理端
+- 复杂管理 API
+
+当前仍未完全收口的部分：
+
+- webhook 的基础频率限制
+- 更强的失败观测和运维可见性
+- cron 的时区和更细的并发治理
+
+## 下一阶段目标
+
+下一阶段建议保持“最小事件入口”定位，不要扩成平台：
+
+1. 把 webhook 安全边界和观测性补齐
+2. 把 cron 继续保持在 prompt-only、低复杂度范围内
+3. 明确自动化路由继续依赖项目层和会话治理，不单独长出一套管理模型
+
+对 `tlive` 来说，自动化入口的目标是把外部事件带进 IM，而不是做一套 Web 后台。

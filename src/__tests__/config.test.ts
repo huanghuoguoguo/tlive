@@ -67,4 +67,17 @@ describe('loadConfig', () => {
     expect(config.qqbot.clientSecret).toBe('qq-secret');
     expect(config.qqbot.allowedUsers).toEqual(['qqu1']);
   });
+
+  it('normalizes webhook path, strategy, and rate limit config', () => {
+    process.env.TL_WEBHOOK_PATH = 'hook/';
+    process.env.TL_WEBHOOK_SESSION_STRATEGY = 'invalid';
+    process.env.TL_WEBHOOK_RATE_LIMIT_PER_MINUTE = '15';
+    process.env.TL_CRON_MAX_CONCURRENCY = '0';
+
+    const config = loadConfig();
+    expect(config.webhook.path).toBe('/hook');
+    expect(config.webhook.sessionStrategy).toBe('reject');
+    expect(config.webhook.rateLimitPerMinute).toBe(15);
+    expect(config.cron.maxConcurrency).toBe(3);
+  });
 });

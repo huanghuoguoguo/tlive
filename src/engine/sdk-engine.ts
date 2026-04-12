@@ -32,10 +32,16 @@ export interface SendWithContextResult {
   sent: boolean;
   mode: 'steer' | 'queue' | 'none';
   sessionKey?: string;
+  /** Why sending failed when sent=false */
+  failureReason?: 'no_session' | 'reply_target_missing' | 'send_failed';
   /** Queue position (1-based) when mode is 'queue', undefined otherwise */
   queuePosition?: number;
   /** Whether the queue was full (only set when sent is false and mode is 'queue') */
   queueFull?: boolean;
+  /** Queue depth snapshot when queue-related */
+  queueDepth?: number;
+  /** Max queue depth snapshot when queue-related */
+  maxQueueDepth?: number;
 }
 
 /** Queue statistics for a session */
@@ -500,13 +506,27 @@ export class SDKEngine {
    * - Otherwise → use activeSessionByChat (most recent)
    */
   resolveTargetSession(channelType: string, chatId: string, replyToMessageId?: string): string | undefined {
-    // Priority 1: reply to specific bubble
+    return this.resolveTargetSessionWithReason(channelType, chatId, replyToMessageId).sessionKey;
+  }
+
+  private resolveTargetSessionWithReason(
+    channelType: string,
+    chatId: string,
+    replyToMessageId?: string,
+  ): { sessionKey?: string; failureReason?: SendWithContextResult['failureReason'] } {
     if (replyToMessageId) {
       const bubbleSession = this.getSessionForBubble(replyToMessageId);
-      if (bubbleSession) return bubbleSession;
+      if (bubbleSession) {
+        return { sessionKey: bubbleSession };
+      }
+      // Explicit reply target should not silently fall back to another session.
+      return { failureReason: 'reply_target_missing' };
     }
-    // Priority 2: fallback to most recent session
-    return this.activeSessionByChat.get(`${channelType}:${chatId}`);
+    const active = this.activeSessionByChat.get(`${channelType}:${chatId}`);
+    if (!active) {
+      return { failureReason: 'no_session' };
+    }
+    return { sessionKey: active };
   }
 
   /** Check if a specific session can be steered (alive + turn active) */
@@ -521,6 +541,7 @@ export class SDKEngine {
     if (!managed?.session.isAlive) return false;
     try {
       await managed.session.sendWithPriority(text, priority);
+      managed.lastActiveAt = Date.now();
       return true;
     } catch (err) {
       console.error(`[tlive:engine] sendToSession error:`, err);
@@ -541,30 +562,53 @@ export class SDKEngine {
     text: string,
     replyToMessageId?: string,
   ): Promise<SendWithContextResult> {
-    const sessionKey = this.resolveTargetSession(channelType, chatId, replyToMessageId);
+    const { sessionKey, failureReason } = this.resolveTargetSessionWithReason(
+      channelType,
+      chatId,
+      replyToMessageId,
+    );
     if (!sessionKey) {
-      return { sent: false, mode: 'none' };
+      return { sent: false, mode: 'none', failureReason: failureReason ?? 'no_session' };
     }
 
     // Steer if turn active
     if (this.canSteerSession(sessionKey)) {
       const sent = await this.sendToSession(sessionKey, text, 'now');
-      return { sent, mode: sent ? 'steer' : 'none', sessionKey };
+      return {
+        sent,
+        mode: sent ? 'steer' : 'none',
+        sessionKey,
+        failureReason: sent ? undefined : 'send_failed',
+      };
     }
 
     // Check queue depth before queueing
     if (this.isQueueFull(sessionKey)) {
       console.log(`[tlive:engine] Queue full for ${sessionKey}, rejecting message`);
-      return { sent: false, mode: 'queue', sessionKey, queueFull: true };
+      return {
+        sent: false,
+        mode: 'queue',
+        sessionKey,
+        queueFull: true,
+        queueDepth: this.getQueueDepth(sessionKey),
+        maxQueueDepth: this.maxQueueDepth,
+      };
     }
 
     // Queue the message
     const sent = await this.sendToSession(sessionKey, text, 'later');
     if (sent) {
       const queuePosition = this.incrementQueueDepth(sessionKey, text);
-      return { sent: true, mode: 'queue', sessionKey, queuePosition };
+      return {
+        sent: true,
+        mode: 'queue',
+        sessionKey,
+        queuePosition,
+        queueDepth: queuePosition,
+        maxQueueDepth: this.maxQueueDepth,
+      };
     }
-    return { sent: false, mode: 'none' };
+    return { sent: false, mode: 'none', sessionKey, failureReason: 'send_failed' };
   }
 
   // ── Shared State (CallbackRouter, /stop) ──

@@ -214,3 +214,29 @@
 - 切换项目后，IM 中能看见清晰反馈
 - 后续 workspace / session / webhook 文档可以基于该项目层继续设计
 
+## 当前实现进度（2026-04）
+
+当前这条线已经不是纯规划，已落地的部分包括：
+
+- `projects.json` 读取、校验和默认项目解析
+- `ProjectConfig` / `projectName` 数据结构
+- `/project list`
+- `/project use <name>`
+- `/project info`
+- Home / 项目状态展示里的当前项目信息
+
+目前仍未完全收口的点：
+
+- “隐式默认项目”还没有成为统一的运行时概念
+- `projectName`、workspace binding、当前 cwd 三者的长期关系仍需继续理顺
+- 项目切换后的 session 复用 / 重置规则仍在细化中
+
+## 下一阶段目标
+
+下一阶段建议把项目层继续做薄，而不是做重：
+
+1. 把“项目 = 默认 workdir + 默认 settings scope + 自动化路由锚点”固定下来
+2. 把隐式默认项目和显式项目的行为尽量统一
+3. 避免继续向 provider 管理、多租户、项目级控制台方向扩张
+
+对 `tlive` 来说，项目层的目标不是成为管理中心，而是给 IM 内的工作区、会话和自动化提供稳定锚点。

@@ -114,6 +114,20 @@ export class WorkspaceStateManager {
   }
 
   /**
+   * Clear workspace binding for a chat.
+   */
+  clearBinding(channelType: string, chatId: string): void {
+    const key = this.chatKey(channelType, chatId);
+    const state = this.stateByChat.get(key);
+    if (!state || state.binding === undefined) {
+      return;
+    }
+    state.binding = undefined;
+    this.stateByChat.set(key, state);
+    this.debouncedSave();
+  }
+
+  /**
    * Set the project binding (name of the project this chat is associated with).
    */
   setProjectName(channelType: string, chatId: string, projectName: string): void {

@@ -148,9 +148,9 @@ export class BridgeManager {
       permissions: this.permissions,
       buildTerminalUrl: (sessionId) => `http://${getLocalIP()}:${this.port}/terminal.html?id=${sessionId}`,
     });
+    const projectsResult = loadProjectsConfig();
     // Initialize webhook server if enabled
     if (config.webhook.enabled && config.webhook.token) {
-      const projectsResult = loadProjectsConfig();
       this.webhookServer = new WebhookServer({
         token: config.webhook.token,
         port: config.webhook.port,
@@ -158,6 +158,7 @@ export class BridgeManager {
         bridge: this,
         sessionStrategy: config.webhook.sessionStrategy,
         callbackUrl: config.webhook.callbackUrl,
+        rateLimitPerMinute: config.webhook.rateLimitPerMinute,
         projects: projectsResult?.valid,
         defaultProject: projectsResult?.defaultProject,
       });
@@ -168,6 +169,9 @@ export class BridgeManager {
         runtimeDir: getTliveRuntimeDir(),
         bridge: this,
         enabled: config.cron.enabled,
+        maxConcurrency: config.cron.maxConcurrency,
+        projects: projectsResult?.valid,
+        defaultProject: projectsResult?.defaultProject,
       });
     }
   }

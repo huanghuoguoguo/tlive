@@ -54,6 +54,8 @@ export interface Config {
     sessionStrategy: 'reject' | 'create';
     /** Optional callback URL for webhook result notifications */
     callbackUrl?: string;
+    /** Maximum accepted webhook requests per minute from the same source (0 disables) */
+    rateLimitPerMinute: number;
   };
   /** Cron scheduler configuration for scheduled tasks (Phase 3) */
   cron: {
@@ -226,6 +228,22 @@ function parseList(value: string | undefined): string[] {
   return value.split(',').map(s => s.trim()).filter(Boolean);
 }
 
+function parsePositiveInt(value: string | undefined, defaultValue: number): number {
+  const parsed = Number.parseInt(value ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue;
+}
+
+function normalizeWebhookPath(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) return '/webhook';
+  const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return withLeadingSlash.length > 1 ? withLeadingSlash.replace(/\/+$/, '') : withLeadingSlash;
+}
+
+function normalizeWebhookSessionStrategy(value: string | undefined): 'reject' | 'create' {
+  return value === 'create' ? 'create' : 'reject';
+}
+
 function loadEnvFile(path: string): Record<string, string> {
   try {
     const content = readFileSync(path, 'utf-8');
@@ -288,14 +306,15 @@ export function loadConfig(): Config {
       enabled: get('TL_WEBHOOK_ENABLED', 'false') === 'true',
       token: get('TL_WEBHOOK_TOKEN'),
       port: parseInt(get('TL_WEBHOOK_PORT', '8081'), 10),
-      path: get('TL_WEBHOOK_PATH', '/webhook'),
-      sessionStrategy: get('TL_WEBHOOK_SESSION_STRATEGY', 'reject') as 'reject' | 'create',
+      path: normalizeWebhookPath(get('TL_WEBHOOK_PATH', '/webhook')),
+      sessionStrategy: normalizeWebhookSessionStrategy(get('TL_WEBHOOK_SESSION_STRATEGY', 'reject')),
       callbackUrl: get('TL_WEBHOOK_CALLBACK_URL') || undefined,
+      rateLimitPerMinute: Math.max(0, Number.parseInt(get('TL_WEBHOOK_RATE_LIMIT_PER_MINUTE', '30'), 10) || 0),
     },
     cron: {
       enabled: get('TL_CRON_ENABLED', 'false') === 'true',
       timezone: get('TL_CRON_TIMEZONE') || undefined,
-      maxConcurrency: parseInt(get('TL_CRON_MAX_CONCURRENCY', '3'), 10),
+      maxConcurrency: parsePositiveInt(get('TL_CRON_MAX_CONCURRENCY', '3'), 3),
     },
     exec: {
       // IMPORTANT: Exec is disabled by default and not implemented in Phase 3

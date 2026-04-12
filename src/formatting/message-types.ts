@@ -228,6 +228,10 @@ export interface QueueStatusData {
   queuedMessages?: Array<{ preview: string; timestamp: number }>;
   /** Estimated wait time in seconds (if calculable) */
   estimatedWaitSeconds?: number;
+  /** Age of the oldest queued message in seconds */
+  oldestQueuedAgeSeconds?: number;
+  /** Queue pressure ratio: depth/maxDepth (0-1+) */
+  saturationRatio?: number;
 }
 
 /** Diagnose system status for /diagnose command */
@@ -244,6 +248,12 @@ export interface DiagnoseData {
   processingChats: number;
   /** Idle sessions count */
   idleSessions: number;
+  /** Number of sessions with full queue depth */
+  saturatedSessions?: number;
+  /** Overall queue utilization ratio (0-1+) */
+  queueUtilizationRatio?: number;
+  /** Session with highest queue pressure */
+  busiestSession?: { sessionKey: string; depth: number; maxDepth: number };
 }
 
 /** Project list for /project command */
