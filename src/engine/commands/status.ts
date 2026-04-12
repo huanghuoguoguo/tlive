@@ -29,6 +29,7 @@ export class StatusCommand extends BaseCommand {
     // Gather session stats
     const activeSessions = ctx.sdkEngine?.getActiveSessionCount() ?? 0;
     const idleSessions = ctx.sdkEngine?.getIdleSessionCount() ?? 0;
+    const sessionSnapshots = ctx.sdkEngine?.getSessionRegistrySnapshot() ?? [];
 
     // Memory usage
     const memUsage = process.memoryUsage();
@@ -46,6 +47,7 @@ export class StatusCommand extends BaseCommand {
       channelInfo,
       activeSessions,
       idleSessions,
+      sessionSnapshots,
       memoryUsage,
       uptimeSeconds,
       version,
