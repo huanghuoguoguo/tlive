@@ -5,85 +5,24 @@ import type { WorkspaceStateManager } from './state/workspace-state.js';
 import type { ChannelRouter } from './utils/router.js';
 import type { LLMProvider, QueryControls } from '../providers/base.js';
 import type { SDKEngine, SessionCleanupReason } from './sdk/engine.js';
-import type { ProjectsValidationResult } from '../config.js';
-import { basename } from 'node:path';
-import { exec } from 'node:child_process';
-import { promisify } from 'node:util';
-import { ClaudeSDKProvider } from '../providers/claude-sdk.js';
-import {
-  DEFAULT_CLAUDE_SETTING_SOURCES,
-  type ClaudeSettingSource,
-  getProjectByName,
-} from '../config.js';
+import type { ProjectsValidationResult, ClaudeSettingSource } from '../config.js';
 import type { BridgeStore, ChannelBinding } from '../store/interface.js';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
-import { readSessionTranscriptPreview, scanClaudeSessions } from '../session-scanner.js';
-import { generateSessionId } from '../utils/id.js';
+import type { HomeData } from '../formatting/message-types.js';
+import type { RouterHelpers } from './commands/types.js';
+import type { PermissionCoordinator } from './coordinators/permission.js';
+import { commandRegistry, registerAllCommands } from './commands/index.js';
+import { DEFAULT_CLAUDE_SETTING_SOURCES } from '../config.js';
+import { scanClaudeSessions } from '../session-scanner.js';
 import { shortPath } from '../utils/path.js';
-import { truncate } from '../utils/string.js';
-import { escapeHtml } from '../formatting/escape.js';
-import { isSameRepoRoot, findGitRoot } from '../utils/repo.js';
-import { areSettingSourcesEqual } from '../utils/automation.js';
-import {
-  presentApproveFailure,
-  presentApproveSuccess,
-  presentApproveUsage,
-  presentDiagnose,
-  presentDirectory,
-  presentDirectoryHistory,
-  presentDirectoryNotFound,
-  presentHelp,
-  presentHooksChanged,
-  presentHooksStatus,
-  presentHome,
-  presentNewSession,
-  presentNoPairings,
-  presentNoProjects,
-  presentNoSessions,
-  presentPairingUnavailable,
-  presentPairings,
-  presentPermissionStatus,
-  presentProjectInfoExtended,
-  presentProjectList,
-  presentProjectNotFound,
-  presentProjectSwitched,
-  presentProjectUsage,
-  presentQueueStatus,
-  presentRestartResult,
-  presentSessionNotFound,
-  presentSessionDetail,
-  presentSessions,
-  presentSessionSwitched,
-  presentSessionUsage,
-  presentSettingsChanged,
-  presentSettingsStatus,
-  presentSettingsUnavailable,
-  presentStatus,
-  presentStopResult,
-  presentUpgradeCommand,
-  presentUpgradeResult,
-  presentVersionCheck,
-} from './messages/presenter.js';
-import { areHooksPaused, pauseHooks, resumeHooks } from './utils/hooks-state.js';
-import type { FormattableMessage, HomeData, ProjectListData } from '../formatting/message-types.js';
-import { SESSION_STALE_THRESHOLD_MS, FLAGS, hasFlag, getNonFlagArg } from '../utils/constants.js';
+import { findGitRoot } from '../utils/repo.js';
 
-const execAsync = promisify(exec);
-
-/** Format file size in human-readable format */
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
-}
+// Register all commands on module load
+registerAllCommands();
 
 function formatSessionDate(mtime: number): string {
   return new Date(mtime).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-/** Format relative time (e.g., "2小时前", "刚刚") */
 function formatRelativeTime(timestamp: number): string {
   const now = Date.now();
   const diffMs = now - timestamp;
@@ -98,20 +37,7 @@ function formatRelativeTime(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 }
 
-/** Helper to send either a formatted message or simple text */
-async function send(
-  adapter: BaseChannelAdapter,
-  msg: FormattableMessage | { chatId: string; text: string },
-): Promise<void> {
-  if ('type' in msg) {
-    await adapter.sendFormatted(msg);
-  } else {
-    await adapter.send({ chatId: msg.chatId, text: msg.text });
-  }
-}
-
 export class CommandRouter {
-  /** Cached projects config — loaded once at construction, refreshed via /project reload */
   private projectsConfig: ProjectsValidationResult | undefined;
 
   constructor(
@@ -123,20 +49,24 @@ export class CommandRouter {
     private defaultWorkdir: string,
     private llm: LLMProvider,
     private activeControls: Map<string, QueryControls>,
-    private permissions: {
-      clearSessionWhitelist(sessionId?: string): void;
-      getPermissionStatus(chatKey: string, sessionId?: string): {
-        rememberedTools: number;
-        rememberedBashPrefixes: number;
-        pending?: { toolName: string; input: string };
-        lastDecision?: { toolName: string; decision: 'allow' | 'allow_always' | 'deny' | 'cancelled' };
-      };
-    },
+    private permissions: PermissionCoordinator,
     private defaultClaudeSettingSources: ClaudeSettingSource[] = DEFAULT_CLAUDE_SETTING_SOURCES,
     private sdkEngine?: SDKEngine,
     projectsConfig?: ProjectsValidationResult,
   ) {
     this.projectsConfig = projectsConfig;
+  }
+
+  /** Build RouterHelpers implementation for command context */
+  private buildHelpers(): RouterHelpers {
+    return {
+      resetSessionContext: this.resetSessionContext.bind(this),
+      buildHomePayload: this.buildHomePayload.bind(this),
+      updateWorkspaceBindingFromPath: this.updateWorkspaceBindingFromPath.bind(this),
+      getSettingsPreset: this.getSettingsPreset.bind(this),
+      projectsConfig: this.projectsConfig ?? null,
+      defaultClaudeSettingSources: this.defaultClaudeSettingSources,
+    };
   }
 
   private getSettingsPreset(sources: ClaudeSettingSource[]): string {
@@ -157,10 +87,6 @@ export class CommandRouter {
     this.workspace.clearBinding(channelType, chatId);
   }
 
-  /**
-   * Unified session context reset helper.
-   * Encapsulates the common cleanup pattern used across /new, /session, /cd, /project use, /settings.
-   */
   private async resetSessionContext(
     channelType: string,
     chatId: string,
@@ -203,20 +129,11 @@ export class CommandRouter {
     const chatKey = this.state.stateKey(channelType, chatId);
     const recentSessions = scanClaudeSessions(3, currentCwd);
 
-    // Get permission status info
     const permStatus = this.permissions.getPermissionStatus(chatKey, binding?.sessionId);
     const activeChannels = Array.from(this.getAdapters().keys());
-
-    // Get workspace binding (long-term repo attribution)
     const workspaceBinding = this.workspace.getBinding(channelType, chatId);
-
-    // Project name comes from binding only (single source of truth)
     const projectName = binding?.projectName;
-
-    // Get last active time from SessionStateManager
     const lastActiveTime = this.state.getLastActiveTime(channelType, chatId);
-
-    // Get queue info and stale status from SDKEngine
     const activeSessionKey = this.sdkEngine?.getActiveSessionKey(channelType, chatId);
     const queueInfo = activeSessionKey ? this.sdkEngine?.getQueueInfo(activeSessionKey) : undefined;
     const sessionStale = this.sdkEngine?.isChatSessionStale(channelType, chatId) ?? false;
@@ -234,779 +151,46 @@ export class CommandRouter {
         preview: session.preview,
         isCurrent: binding?.sdkSessionId === session.sdkSessionId,
       })),
-      // Enhanced status overview
       pendingPermission: permStatus.pending,
       lastPermissionDecision: permStatus.lastDecision,
       sessionWhitelistCount: permStatus.rememberedTools + permStatus.rememberedBashPrefixes,
       bridgeHealthy: activeChannels.length > 0,
       activeChannels,
-      // Phase 2: Session governance fields
       lastActiveAt: lastActiveTime ? formatRelativeTime(lastActiveTime) : undefined,
       queueInfo,
       sessionStale,
     };
   }
 
+  /** Handle command message using registry dispatch */
   async handle(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
     const parts = msg.text.split(' ');
     const cmd = parts[0].toLowerCase();
 
-    switch (cmd) {
-      case '/status': {
-        const channelList = Array.from(this.getAdapters().keys()).join(', ') || 'none';
-        await send(adapter, presentStatus(msg.chatId, {
-          healthy: true,
-          channels: channelList.split(', '),
-        }));
-        return true;
-      }
-      case '/new': {
-        // Unified session cleanup before creating new session
-        const previousBinding = await this.store.getBinding(msg.channelType, msg.chatId);
-        const hadActiveSession = this.sdkEngine?.cleanupSession(
-          msg.channelType,
-          msg.chatId,
-          'new',
-          previousBinding?.cwd,
-        ) ?? false;
-
-        const newSessionId = generateSessionId();
-        await this.router.rebind(msg.channelType, msg.chatId, newSessionId, {
-          cwd: previousBinding?.cwd,
-          claudeSettingSources: previousBinding?.claudeSettingSources,
-          projectName: previousBinding?.projectName,
-        });
-
-        this.state.clearLastActive(msg.channelType, msg.chatId);
-        this.state.clearThread(msg.channelType, msg.chatId);
-        this.permissions.clearSessionWhitelist(previousBinding?.sessionId);
-
-        const feedbackText = hadActiveSession
-          ? `🔄 已关闭旧会话，开启新会话`
-          : undefined;
-        await send(adapter, presentNewSession(msg.chatId, { cwd: previousBinding?.cwd, feedbackText }));
-
-        // Send home screen after session reset
-        const homeData = await this.buildHomePayload(msg.channelType, msg.chatId);
-        homeData.hasActiveTask = false;
-        await send(adapter, presentHome(msg.chatId, homeData));
-        return true;
-      }
-      case '/home': {
-        await send(adapter, presentHome(msg.chatId, await this.buildHomePayload(msg.channelType, msg.chatId)));
-        return true;
-      }
-      case '/perm': {
-        const sub = parts[1]?.toLowerCase();
-        const mode = (sub === 'on' || sub === 'off') ? sub : this.state.getPermMode(msg.channelType, msg.chatId);
-        if (sub === 'on' || sub === 'off') {
-          this.state.setPermMode(msg.channelType, msg.chatId, sub);
-        }
-        // Always send permission status card; formatter handles platform fallback
-        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-        const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
-        await send(adapter, presentPermissionStatus(msg.chatId, {
-          mode,
-          ...this.permissions.getPermissionStatus(chatKey, binding?.sessionId),
-        }));
-        return true;
-      }
-      case '/stop': {
-        const chatKey = this.state.stateKey(msg.channelType, msg.chatId);
-        const ctrl = this.activeControls.get(chatKey);
-        if (ctrl) {
-          this.activeControls.delete(chatKey);
-          await ctrl.interrupt();
-          await send(adapter, presentStopResult(msg.chatId, true));
-        } else {
-          await send(adapter, presentStopResult(msg.chatId, false));
-        }
-        return true;
-      }
-      case '/hooks': {
-        const sub = parts[1]?.toLowerCase();
-        if (sub === 'pause') {
-          pauseHooks();
-          await send(adapter, presentHooksChanged(msg.chatId, true));
-        } else if (sub === 'resume') {
-          resumeHooks();
-          await send(adapter, presentHooksChanged(msg.chatId, false));
-        } else {
-          await send(adapter, presentHooksStatus(msg.chatId, areHooksPaused()));
-        }
-        return true;
-      }
-      case '/sessions': {
-        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-        const currentCwd = binding?.cwd || this.defaultWorkdir;
-        const showAll = hasFlag(parts.slice(1), FLAGS.ALL);
-
-        const sessions = scanClaudeSessions(10, showAll ? undefined : currentCwd);
-        const currentSdkId = binding?.sdkSessionId;
-
-        // Get workspace binding for display
-        const workspaceBinding = this.workspace.getBinding(msg.channelType, msg.chatId);
-
-        if (sessions.length === 0) {
-          const hint = showAll ? '' : ` in ${shortPath(currentCwd)}\nUse /sessions --all to see all projects.`;
-          await send(adapter, presentNoSessions(msg.chatId, hint));
-          return true;
-        }
-
-        // Check stale status for each session (based on mtime)
-        const now = Date.now();
-        const sessionData = sessions.map((s, i) => ({
-          index: i + 1,
-          date: formatSessionDate(s.mtime),
-          cwd: shortPath(s.cwd),
-          size: formatSize(s.size),
-          preview: s.preview,
-          isCurrent: currentSdkId === s.sdkSessionId,
-          // Mark as stale if inactive for more than SESSION_STALE_THRESHOLD_MS
-          isStale: (now - s.mtime) > SESSION_STALE_THRESHOLD_MS,
-        }));
-
-        const filterHint = showAll ? ' (all projects)' : ` (${shortPath(currentCwd)})`;
-        await send(adapter, presentSessions(msg.chatId, {
-          workspaceBinding: workspaceBinding ? shortPath(workspaceBinding) : undefined,
-          sessions: sessionData,
-          filterHint,
-        }));
-        return true;
-      }
-      case '/session': {
-        const sessionArgs = parts.slice(1);
-        const showAll = hasFlag(sessionArgs, FLAGS.ALL);
-        const idxToken = getNonFlagArg(sessionArgs, [FLAGS.ALL]);
-        const idx = parseInt(idxToken || '', 10);
-        if (Number.isNaN(idx) || idx < 1) {
-          await send(adapter, presentSessionUsage(msg.chatId));
-          return true;
-        }
-
-        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-        const currentCwd = binding?.cwd || this.defaultWorkdir;
-        const sessions = scanClaudeSessions(10, showAll ? undefined : currentCwd);
-
-        if (idx > sessions.length) {
-          await send(adapter, presentSessionNotFound(msg.chatId, idx));
-          return true;
-        }
-
-        const target = sessions[idx - 1];
-        const switchedRepo = !isSameRepoRoot(currentCwd, target.cwd);
-
-        // Use resetSessionContext helper
-        const { hadActiveSession } = await this.resetSessionContext(
-          msg.channelType,
-          msg.chatId,
-          'switch',
-          { previousCwd: currentCwd, clearProject: switchedRepo, binding },
-        );
-
-        const newBindingId = generateSessionId();
-        await this.router.rebind(msg.channelType, msg.chatId, newBindingId, {
-          sdkSessionId: target.sdkSessionId,
-          cwd: target.cwd,
-          claudeSettingSources: binding?.claudeSettingSources,
-          projectName: switchedRepo ? undefined : binding?.projectName,
-        });
-        this.updateWorkspaceBindingFromPath(msg.channelType, msg.chatId, target.cwd);
-
-        const feedbackText = hadActiveSession && switchedRepo
-          ? `🔄 已关闭旧工作区的活跃会话`
-          : undefined;
-        await send(adapter, presentSessionSwitched(msg.chatId, idx, shortPath(target.cwd), target.preview, feedbackText));
-        return true;
-      }
-      case '/sessioninfo': {
-        const sessionArgs = parts.slice(1);
-        const showAll = hasFlag(sessionArgs, FLAGS.ALL);
-        const idxToken = getNonFlagArg(sessionArgs, [FLAGS.ALL]);
-        const idx = parseInt(idxToken || '', 10);
-        if (Number.isNaN(idx) || idx < 1) {
-          await send(adapter, presentSessionUsage(msg.chatId));
-          return true;
-        }
-
-        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-        const currentCwd = binding?.cwd || this.defaultWorkdir;
-        const sessions = scanClaudeSessions(10, showAll ? undefined : currentCwd);
-        if (idx > sessions.length) {
-          await send(adapter, presentSessionNotFound(msg.chatId, idx));
-          return true;
-        }
-
-        const target = sessions[idx - 1];
-        const transcript = readSessionTranscriptPreview(target, 4).map(item => ({
-          role: item.role,
-          text: item.text,
-        }));
-        await send(adapter, presentSessionDetail(msg.chatId, {
-          index: idx,
-          cwd: shortPath(target.cwd),
-          preview: target.preview,
-          date: formatSessionDate(target.mtime),
-          size: formatSize(target.size),
-          transcript,
-        }));
-        return true;
-      }
-      case '/cd': {
-        const path = parts.slice(1).join(' ').trim();
-
-        if (!path) {
-          // Show current directory and history
-          const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-          const current = binding?.cwd || this.defaultWorkdir;
-          const history = this.workspace.getHistory(msg.channelType, msg.chatId);
-          const workspaceBinding = this.workspace.getBinding(msg.channelType, msg.chatId);
-          await send(adapter, presentDirectoryHistory(msg.chatId, shortPath(current), history.map(shortPath), workspaceBinding ? shortPath(workspaceBinding) : undefined));
-          return true;
-        }
-
-        // Handle /cd - (back to previous directory)
-        if (path === '-') {
-          const previousDir = this.workspace.getPreviousDirectory(msg.channelType, msg.chatId);
-          if (!previousDir) {
-            await send(adapter, { chatId: msg.chatId, text: '⚠️ 没有历史目录可返回' });
-            return true;
-          }
-
-          const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-          const currentCwd = binding?.cwd || this.defaultWorkdir;
-          const switchedRepo = !isSameRepoRoot(currentCwd, previousDir);
-
-          // Use resetSessionContext helper when crossing repos
-          if (switchedRepo) {
-            await this.resetSessionContext(
-              msg.channelType,
-              msg.chatId,
-              'cd',
-              { previousCwd: currentCwd, clearProject: true, binding },
-            );
-          }
-
-          // Update binding
-          if (binding) {
-            binding.cwd = previousDir;
-            await this.store.saveBinding(binding);
-          } else {
-            await this.router.rebind(msg.channelType, msg.chatId, generateSessionId(), { cwd: previousDir });
-          }
-          this.workspace.pushHistory(msg.channelType, msg.chatId, previousDir);
-          this.updateWorkspaceBindingFromPath(msg.channelType, msg.chatId, previousDir);
-
-          const feedbackText = `🔙 已切换到上一目录`;
-          await send(adapter, presentDirectory(msg.chatId, shortPath(previousDir), true, feedbackText));
-          return true;
-        }
-
-        // Handle ~ expansion
-        const expandedPath = path.startsWith('~') ? join(homedir(), path.slice(1)) : path;
-
-        // Resolve relative paths
-        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-        const baseCwd = binding?.cwd || this.defaultWorkdir;
-        const resolvedPath = expandedPath.startsWith('/') ? expandedPath : join(baseCwd, expandedPath);
-
-        if (!existsSync(resolvedPath)) {
-          await send(adapter, presentDirectoryNotFound(msg.chatId, shortPath(resolvedPath)));
-          return true;
-        }
-
-        // Track directory history before switching
-        this.workspace.pushHistory(msg.channelType, msg.chatId, baseCwd);
-
-        const switchedRepo = !isSameRepoRoot(baseCwd, resolvedPath);
-
-        // Use resetSessionContext helper when crossing repos
-        const { hadActiveSession } = switchedRepo
-          ? await this.resetSessionContext(
-            msg.channelType,
-            msg.chatId,
-            'cd',
-            { previousCwd: baseCwd, clearProject: true, binding },
-          )
-          : { hadActiveSession: false };
-
-        // Update binding
-        if (binding) {
-          binding.cwd = resolvedPath;
-          await this.store.saveBinding(binding);
-        } else {
-          await this.router.rebind(msg.channelType, msg.chatId, generateSessionId(), { cwd: resolvedPath });
-        }
-        this.workspace.pushHistory(msg.channelType, msg.chatId, resolvedPath);
-        this.updateWorkspaceBindingFromPath(msg.channelType, msg.chatId, resolvedPath);
-
-        const feedbackText = hadActiveSession && switchedRepo
-          ? `🔄 已关闭旧仓库的活跃会话`
-          : undefined;
-        await send(adapter, presentDirectory(msg.chatId, shortPath(resolvedPath), true, feedbackText));
-        return true;
-      }
-      case '/pwd': {
-        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-        const current = binding?.cwd || this.defaultWorkdir;
-        const history = this.workspace.getHistory(msg.channelType, msg.chatId);
-        const workspaceBinding = this.workspace.getBinding(msg.channelType, msg.chatId);
-
-        // Enhanced display: show current, history, and workspace binding
-        if (history.length > 1 || workspaceBinding) {
-          await send(adapter, presentDirectoryHistory(
-            msg.chatId,
-            shortPath(current),
-            history.map(shortPath),
-            workspaceBinding ? shortPath(workspaceBinding) : undefined,
-          ));
-        } else {
-          await send(adapter, presentDirectory(msg.chatId, shortPath(current)));
-        }
-        return true;
-      }
-      case '/bash': {
-        const cmdText = msg.text.slice('/bash '.length).trim();
-        if (!cmdText) {
-          await adapter.send({ chatId: msg.chatId, text: 'Usage: /bash <command>' });
-          return true;
-        }
-
-        const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-        const cwd = binding?.cwd || this.defaultWorkdir;
-
-        try {
-          const { stdout, stderr } = await execAsync(cmdText, {
-            cwd,
-            timeout: 30_000,
-            maxBuffer: 4 * 1024 * 1024,
-          });
-
-          const output = (stdout + (stderr ? '\n⚠️ stderr:\n' + stderr : '')).trim();
-          const truncatedOutput = truncate(output, 4000);
-
-          // Format output based on platform
-          if (adapter.channelType === 'telegram') {
-            await adapter.send({
-              chatId: msg.chatId,
-              html: `<pre>${escapeHtml(truncatedOutput || '(no output)')}</pre>`,
-            });
-          } else if (adapter.channelType === 'feishu') {
-            await adapter.send({
-              chatId: msg.chatId,
-              text: '```\n' + (truncatedOutput || '(no output)') + '\n```',
-            });
-          } else {
-            await adapter.send({
-              chatId: msg.chatId,
-              text: truncatedOutput || '(no output)',
-            });
-          }
-        } catch (err: any) {
-          const errMsg = err.stderr || err.message || String(err);
-          const truncatedErr = truncate(errMsg, 1000);
-          await adapter.send({ chatId: msg.chatId, text: `❌ ${truncatedErr}` });
-        }
-        return true;
-      }
-      case '/settings': {
-        const arg = parts[1]?.toLowerCase();
-
-        if (!(this.llm instanceof ClaudeSDKProvider)) {
-          await send(adapter, presentSettingsUnavailable(msg.chatId));
-          return true;
-        }
-
-        const PRESETS: Record<string, ClaudeSettingSource[]> = {
-          user: ['user'],
-          full: ['user', 'project', 'local'],
-          isolated: [],
-        };
-
-        if (arg && arg in PRESETS) {
-          const binding = await this.router.resolve(msg.channelType, msg.chatId);
-          const previousBinding = await this.store.getBinding(msg.channelType, msg.chatId);
-          binding.claudeSettingSources = [...PRESETS[arg]];
-          binding.sdkSessionId = undefined;
-          await this.store.saveBinding(binding);
-          await this.resetSessionContext(
-            msg.channelType,
-            msg.chatId,
-            'settings',
-            { previousCwd: previousBinding?.cwd, binding },
-          );
-          const labels: Record<string, string> = {
-            user: '👤 user — current chat uses global auth/model only',
-            full: '📦 full — current chat loads project rules, MCP, and skills',
-            isolated: '🔒 isolated — current chat ignores external settings',
-          };
-          await send(adapter, presentSettingsChanged(msg.chatId, labels[arg]));
-        } else {
-          const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-          const current = binding?.claudeSettingSources ?? this.defaultClaudeSettingSources;
-          const preset = this.getSettingsPreset(current);
-          await send(
-            adapter,
-            presentSettingsStatus(
-              msg.chatId,
-              preset,
-              current,
-              binding?.claudeSettingSources ? 'chat override' : 'default',
-            ),
-          );
-        }
-        return true;
-      }
-      case '/help': {
-        await send(adapter, presentHelp(msg.chatId, {
-          commands: [
-            { cmd: 'new', desc: 'New conversation' },
-            { cmd: 'sessions', desc: 'List sessions in current dir' },
-            { cmd: 'session <n>', desc: 'Switch to session #n' },
-            { cmd: 'cd <path>', desc: 'Change directory' },
-            { cmd: 'pwd', desc: 'Show current directory' },
-            { cmd: 'bash <cmd>', desc: 'Execute shell command' },
-            { cmd: 'perm on|off', desc: 'Permission prompts' },
-            { cmd: 'stop', desc: 'Interrupt execution' },
-            { cmd: 'status', desc: 'Bridge status' },
-            { cmd: 'help', desc: 'This message' },
-          ],
-        }));
-        return true;
-      }
-      case '/help-cli': {
-        // For non-Feishu, just show regular help
-        await send(adapter, presentHelp(msg.chatId, {
-          commands: [
-            { cmd: 'new', desc: 'New conversation' },
-            { cmd: 'sessions', desc: 'List sessions' },
-            { cmd: 'session <n>', desc: 'Switch session' },
-            { cmd: 'cd <path>', desc: 'Change directory' },
-            { cmd: 'pwd', desc: 'Show current directory' },
-            { cmd: 'bash <cmd>', desc: 'Execute shell command' },
-            { cmd: 'perm on|off', desc: 'Permission prompts' },
-            { cmd: 'settings user|full|isolated', desc: 'Claude settings' },
-            { cmd: 'stop', desc: 'Interrupt execution' },
-            { cmd: 'status', desc: 'Bridge status' },
-            { cmd: 'help', desc: 'Commands list' },
-          ],
-        }));
-        return true;
-      }
-      case '/approve': {
-        const code = parts[1];
-        if (!code) {
-          await send(adapter, presentApproveUsage(msg.chatId));
-          return true;
-        }
-        const tgAdapter = this.getAdapters().get('telegram');
-        if (tgAdapter && 'approvePairing' in tgAdapter) {
-          const result = (tgAdapter as any).approvePairing(code);
-          if (result) {
-            await send(adapter, presentApproveSuccess(msg.chatId, result.username, result.userId));
-          } else {
-            await send(adapter, presentApproveFailure(msg.chatId));
-          }
-        } else {
-          await send(adapter, presentPairingUnavailable(msg.chatId));
-        }
-        return true;
-      }
-      case '/pairings': {
-        const tgAdapter = this.getAdapters().get('telegram');
-        if (tgAdapter && 'listPairings' in tgAdapter) {
-          const pairings = (tgAdapter as any).listPairings() as Array<{ code: string; userId: string; username: string }>;
-          if (pairings.length === 0) {
-            await send(adapter, presentNoPairings(msg.chatId));
-          } else {
-            const lines = pairings.map(p => `• <code>${p.code}</code> — ${p.username} (${p.userId})`);
-            await send(adapter, presentPairings(msg.chatId, lines));
-          }
-        } else {
-          await send(adapter, presentPairingUnavailable(msg.chatId));
-        }
-        return true;
-      }
-      case '/upgrade': {
-        const subCmd = parts[1]?.toLowerCase();
-
-        // Handle sub-commands with optional version parameter (e.g., confirm:0.9.3)
-        if (subCmd?.startsWith('confirm')) {
-          const { execSync } = await import('node:child_process');
-          try {
-            // Download and run installer
-            const cmd = 'curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash';
-            execSync(cmd, { stdio: 'inherit', timeout: 120_000 });
-            await adapter.send({
-              chatId: msg.chatId,
-              text: '✅ 升级完成，正在重启...',
-            });
-            // Restart bridge to load new code (exit, daemon manager will restart)
-            setTimeout(() => process.exit(0), 1000);
-          } catch (err: any) {
-            await send(adapter, presentUpgradeResult(msg.chatId, {
-              success: false,
-              error: err?.message || 'Upgrade failed',
-            }));
-          }
-          return true;
-        }
-
-        if (subCmd === 'cmd' || subCmd === 'command') {
-          await send(adapter, presentUpgradeCommand(msg.chatId));
-          return true;
-        }
-
-        if (subCmd === 'notes') {
-          // Show release notes link
-          await adapter.send({
-            chatId: msg.chatId,
-            text: '📋 查看更新内容：\nhttps://github.com/huanghuoguoguo/tlive/releases',
-          });
-          return true;
-        }
-
-        // Check for updates
-        const { checkForUpdates } = await import('./utils/version-checker.js');
-        const info = await checkForUpdates();
-        if (info) {
-          await send(adapter, presentVersionCheck(msg.chatId, info));
-        } else {
-          await adapter.send({
-            chatId: msg.chatId,
-            text: '⚠️ 无法检查更新，请稍后重试',
-          });
-        }
-        return true;
-      }
-      case '/restart': {
-        await send(adapter, presentRestartResult(msg.chatId));
-        // Delay restart to allow message to be sent
-        setTimeout(() => {
-          process.exit(0); // Exit cleanly, external process manager should restart
-        }, 1000);
-        return true;
-      }
-      case '/queue': {
-        const sub = parts[1]?.toLowerCase();
-
-        // Get active session key
-        const activeSessionKey = this.sdkEngine?.getActiveSessionKey(msg.channelType, msg.chatId);
-
-        if (!activeSessionKey) {
-          await send(adapter, { chatId: msg.chatId, text: '⚠️ 无活跃会话，队列不可用' });
-          return true;
-        }
-
-        // /queue clear - clear the queue
-        if (sub === 'clear') {
-          const cleared = this.sdkEngine?.clearQueue(activeSessionKey) ?? 0;
-          if (cleared > 0) {
-            await send(adapter, { chatId: msg.chatId, text: `✅ 已清空队列 (${cleared} 条消息)` });
-          } else {
-            await send(adapter, { chatId: msg.chatId, text: '队列已为空' });
-          }
-          return true;
-        }
-
-        // /queue depth <n> - set max queue depth
-        if (sub === 'depth') {
-          const depth = parseInt(parts[2], 10);
-          if (Number.isNaN(depth) || depth < 1 || depth > 10) {
-            await send(adapter, { chatId: msg.chatId, text: '⚠️ 队列深度需为 1-10 的整数' });
-            return true;
-          }
-          this.sdkEngine?.setMaxQueueDepth(depth);
-          await send(adapter, { chatId: msg.chatId, text: `✅ 已设置队列深度为 ${depth}` });
-          return true;
-        }
-
-        // /queue or /queue status - show queue status
-        const queueDepth = this.sdkEngine?.getQueueDepth(activeSessionKey) ?? 0;
-        const maxDepth = this.sdkEngine?.getMaxQueueDepth() ?? 3;
-        const queuedMessages = this.sdkEngine?.getQueuedMessages(activeSessionKey) ?? [];
-
-        await send(adapter, presentQueueStatus(msg.chatId, {
-          sessionKey: activeSessionKey,
-          depth: queueDepth,
-          maxDepth,
-          queuedMessages,
-        }));
-        return true;
-      }
-      case '/diagnose': {
-        // Collect system diagnostics
-        const activeSessions = this.sdkEngine?.getActiveSessionCount() ?? 0;
-        const idleSessions = this.sdkEngine?.getIdleSessionCount() ?? 0;
-        const totalBubbleMappings = this.sdkEngine?.getTotalBubbleMappings() ?? 0;
-        const queueStats = this.sdkEngine?.getAllQueueStats() ?? [];
-        const totalQueuedMessages = this.sdkEngine?.getTotalQueuedMessages() ?? 0;
-
-        // Get processing chats count
-        let processingChats = 0;
-        for (const chatKey of this.activeControls.keys()) {
-          if (this.state.isProcessing(chatKey)) processingChats++;
-        }
-
-        // Get memory usage
-        const memUsage = process.memoryUsage();
-        const memoryUsage = `${formatSize(memUsage.heapUsed)} / ${formatSize(memUsage.heapTotal)}`;
-
-        await send(adapter, presentDiagnose(msg.chatId, {
-          activeSessions,
-          totalBubbleMappings,
-          queueStats,
-          totalQueuedMessages,
-          memoryUsage,
-          processingChats,
-          idleSessions,
-        }));
-        return true;
-      }
-      case '/project': {
-        const sub = parts[1]?.toLowerCase();
-
-        // Use cached projects config
-        const projectsConfig = this.projectsConfig;
-
-        if (!projectsConfig || projectsConfig.valid.length === 0) {
-          await send(adapter, presentNoProjects(msg.chatId));
-          return true;
-        }
-
-        // /project or /project list - show all projects
-        if (!sub || sub === 'list') {
-          const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-          const currentProjectName = binding?.projectName;
-          const projects: ProjectListData['projects'] = projectsConfig.valid.map(p => ({
-            name: p.name,
-            workdir: shortPath(p.workdir),
-            isCurrent: p.name === currentProjectName,
-            isDefault: p.name === projectsConfig.defaultProject,
-          }));
-
-          await send(adapter, presentProjectList(msg.chatId, {
-            projects,
-            defaultProject: projectsConfig.defaultProject,
-            currentProject: currentProjectName,
-          }));
-          return true;
-        }
-
-        // /project use <name> - switch to a project
-        if (sub === 'use') {
-          const projectName = parts[2]?.trim();
-          if (!projectName) {
-            await send(adapter, presentProjectUsage(msg.chatId));
-            return true;
-          }
-
-          const project = getProjectByName(projectsConfig.valid, projectName);
-          if (!project) {
-            await send(adapter, presentProjectNotFound(msg.chatId, projectName));
-            return true;
-          }
-
-          const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-          const currentCwd = binding?.cwd || this.defaultWorkdir;
-          const previousProjectName = binding?.projectName;
-
-          // Track directory history before switching
-          this.workspace.pushHistory(msg.channelType, msg.chatId, currentCwd);
-
-          const switchedRepo = !isSameRepoRoot(currentCwd, project.workdir);
-          const settingsChanged = !areSettingSourcesEqual(
-            binding?.claudeSettingSources,
-            project.claudeSettingSources,
-          );
-          const shouldResetSession = switchedRepo || settingsChanged;
-
-          // Use resetSessionContext helper
-          const { hadActiveSession } = shouldResetSession
-            ? await this.resetSessionContext(
-              msg.channelType,
-              msg.chatId,
-              switchedRepo ? 'cd' : 'settings',
-              { previousCwd: currentCwd, clearProject: switchedRepo, binding },
-            )
-            : { hadActiveSession: false };
-
-          // Update binding with new workdir
-          if (binding) {
-            binding.cwd = project.workdir;
-            binding.projectName = project.name;
-            binding.claudeSettingSources = project.claudeSettingSources
-              ? [...project.claudeSettingSources]
-              : undefined;
-            await this.store.saveBinding(binding);
-          } else {
-            await this.router.rebind(msg.channelType, msg.chatId, generateSessionId(), {
-              cwd: project.workdir,
-              projectName: project.name,
-              claudeSettingSources: project.claudeSettingSources
-                ? [...project.claudeSettingSources]
-                : undefined,
-            });
-          }
-          this.workspace.pushHistory(msg.channelType, msg.chatId, project.workdir);
-          this.workspace.setBinding(msg.channelType, msg.chatId, project.workdir);
-
-          const feedbackParts: string[] = [];
-          if (previousProjectName && previousProjectName !== project.name) {
-            feedbackParts.push(`已从项目 ${previousProjectName} 切换`);
-          } else {
-            feedbackParts.push(`已切换到项目 ${project.name}`);
-          }
-          feedbackParts.push(`工作区更新为 ${shortPath(project.workdir)}`);
-          if (hadActiveSession && switchedRepo) {
-            feedbackParts.push('已关闭旧项目的活跃会话');
-          } else if (hadActiveSession && settingsChanged) {
-            feedbackParts.push('已应用项目设置并重置会话');
-          }
-
-          await send(adapter, presentProjectSwitched(msg.chatId, {
-            projectName: project.name,
-            workdir: shortPath(project.workdir),
-            feedbackText: feedbackParts.join('，'),
-          }));
-          return true;
-        }
-
-        // /project status - show current project status
-        if (sub === 'status' || sub === 'info') {
-          const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-          const currentProjectName = binding?.projectName;
-          const currentCwd = binding?.cwd || this.defaultWorkdir;
-          const workspaceBinding = this.workspace.getBinding(msg.channelType, msg.chatId);
-
-          if (!currentProjectName) {
-            // No project bound - show implicit project info
-            const implicitName = basename(currentCwd);
-            await send(adapter, presentProjectInfoExtended(msg.chatId, {
-              projectName: implicitName,
-              workdir: shortPath(currentCwd),
-              isImplicit: true,
-              workspaceBinding: workspaceBinding ? shortPath(workspaceBinding) : undefined,
-            }));
-          } else {
-            const project = getProjectByName(projectsConfig.valid, currentProjectName);
-            await send(adapter, presentProjectInfoExtended(msg.chatId, {
-              projectName: currentProjectName,
-              workdir: project ? shortPath(project.workdir) : shortPath(currentCwd),
-              isImplicit: false,
-              workspaceBinding: workspaceBinding ? shortPath(workspaceBinding) : undefined,
-              isValidProject: !!project,
-            }));
-          }
-          return true;
-        }
-
-        // Unknown subcommand
-        await send(adapter, presentProjectUsage(msg.chatId));
-        return true;
-      }
-      default:
-        return false;
+    // Try registry dispatch
+    const handler = commandRegistry.get(cmd);
+    if (handler) {
+      const ctx = {
+        adapter,
+        msg,
+        parts,
+        store: this.store,
+        router: this.router,
+        state: this.state,
+        workspace: this.workspace,
+        permissions: this.permissions,
+        sdkEngine: this.sdkEngine,
+        llm: this.llm,
+        activeControls: this.activeControls,
+        defaultWorkdir: this.defaultWorkdir,
+        defaultClaudeSettingSources: this.defaultClaudeSettingSources,
+        getAdapters: this.getAdapters,
+        helpers: this.buildHelpers(),
+      };
+      return handler.execute(ctx);
     }
+
+    // Unknown command
+    return false;
   }
 }

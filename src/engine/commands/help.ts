@@ -13,7 +13,7 @@ export class HelpCommand extends BaseCommand {
       { cmd: 'sessions', desc: 'List sessions in current dir' },
       { cmd: 'sessions --all', desc: 'List all sessions' },
       { cmd: 'session <n>', desc: 'Switch to session #n' },
-      { cmd: 'sessioninfo', desc: 'Show current session info' },
+      { cmd: 'sessioninfo <n>', desc: 'Show session #n details' },
       { cmd: 'cd <path>', desc: 'Change directory' },
       { cmd: 'cd -', desc: 'Back to previous directory' },
       { cmd: 'pwd', desc: 'Show current directory' },
