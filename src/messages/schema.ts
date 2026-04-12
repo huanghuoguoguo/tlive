@@ -87,6 +87,42 @@ const statusSchema = z.object({
   model: z.string(),
 }).passthrough();
 
+const sessionInfoSchema = z.object({
+  kind: z.literal('session_info'),
+  sessionId: z.string(),
+  model: z.string(),
+  tools: z.array(z.string()).optional(),
+  mcpServers: z.array(z.object({
+    name: z.string(),
+    status: z.string(),
+  })).optional(),
+  skills: z.array(z.string()).optional(),
+}).passthrough();
+
+const toolUseSummarySchema = z.object({
+  kind: z.literal('tool_use_summary'),
+  summary: z.string(),
+}).passthrough();
+
+const sessionStateSchema = z.object({
+  kind: z.literal('session_state'),
+  state: z.enum(['idle', 'running', 'requires_action']),
+}).passthrough();
+
+const apiRetrySchema = z.object({
+  kind: z.literal('api_retry'),
+  attempt: z.number(),
+  maxRetries: z.number(),
+  retryDelayMs: z.number(),
+  error: z.string().optional(),
+}).passthrough();
+
+const compactBoundarySchema = z.object({
+  kind: z.literal('compact_boundary'),
+  trigger: z.enum(['manual', 'auto']),
+  preTokens: z.number().optional(),
+}).passthrough();
+
 const promptSuggestionSchema = z.object({
   kind: z.literal('prompt_suggestion'),
   suggestion: z.string(),
@@ -119,6 +155,11 @@ export const canonicalEventSchema = z.discriminatedUnion('kind', [
   queryResultSchema,
   errorSchema,
   statusSchema,
+  sessionInfoSchema,
+  toolUseSummarySchema,
+  sessionStateSchema,
+  apiRetrySchema,
+  compactBoundarySchema,
   promptSuggestionSchema,
   rateLimitSchema,
   todoUpdateSchema,

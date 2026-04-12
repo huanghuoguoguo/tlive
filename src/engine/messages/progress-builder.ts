@@ -38,6 +38,23 @@ export interface RenderInput {
   cwd?: string;
   sessionId?: string;
   platformLimit: number;
+  /** Session info from SDK init */
+  sessionInfo?: {
+    tools?: string[];
+    mcpServers?: Array<{ name: string; status: string }>;
+    skills?: string[];
+  };
+  /** AI-generated tool use summary */
+  toolUseSummaryText?: string;
+  /** API retry state */
+  apiRetry?: {
+    attempt: number;
+    maxRetries: number;
+    retryDelayMs: number;
+    error?: string;
+  };
+  /** Context compaction indicator */
+  compacting?: boolean;
 }
 
 export class ProgressContentBuilder {
@@ -104,6 +121,10 @@ export class ProgressContentBuilder {
           }
         : undefined,
       isContinuation: input.bubbleToolCount === 0 && input.totalTools > 0,
+      sessionInfo: input.sessionInfo,
+      toolUseSummaryText: input.toolUseSummaryText,
+      apiRetry: input.apiRetry,
+      compacting: input.compacting,
     };
   }
 

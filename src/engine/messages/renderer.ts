@@ -111,6 +111,23 @@ export interface MessageRendererState {
   };
   /** True after bubble split — continuation of previous task */
   isContinuation?: boolean;
+  /** Session info from SDK init event */
+  sessionInfo?: {
+    tools?: string[];
+    mcpServers?: Array<{ name: string; status: string }>;
+    skills?: string[];
+  };
+  /** AI-generated summary of preceding tool calls */
+  toolUseSummaryText?: string;
+  /** API retry state */
+  apiRetry?: {
+    attempt: number;
+    maxRetries: number;
+    retryDelayMs: number;
+    error?: string;
+  };
+  /** Context compaction indicator */
+  compacting?: boolean;
 }
 
 export class MessageRenderer {
@@ -144,6 +161,14 @@ export class MessageRenderer {
   private lastTimelineIsText = false;
   /** Flag to split bubble on next flush */
   private splitPending = false;
+  /** Session info from SDK init */
+  private sessionInfo?: { tools?: string[]; mcpServers?: Array<{ name: string; status: string }>; skills?: string[] };
+  /** AI-generated tool use summary */
+  private toolUseSummaryText?: string;
+  /** API retry state */
+  private apiRetryState?: { attempt: number; maxRetries: number; retryDelayMs: number; error?: string };
+  /** Context compaction indicator */
+  private compacting = false;
 
   private _messageId?: string;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -294,6 +319,34 @@ export class MessageRenderer {
   onTodoUpdate(todos: Array<{ content: string; status: TodoStatus }>): void {
     this.todoItems = todos;
     this.updateSplitPending();
+    this.scheduleFlush();
+  }
+
+  onSessionInfo(info: { tools?: string[]; mcpServers?: Array<{ name: string; status: string }>; skills?: string[] }): void {
+    this.sessionInfo = info;
+    this.forceFlush = true;
+    this.scheduleFlush();
+  }
+
+  onToolUseSummary(summary: string): void {
+    this.toolUseSummaryText = summary;
+    this.forceFlush = true;
+    this.scheduleFlush();
+  }
+
+  onApiRetry(data: { attempt: number; maxRetries: number; retryDelayMs: number; error?: string }): void {
+    this.apiRetryState = data;
+    this.forceFlush = true;
+    this.scheduleFlush();
+  }
+
+  onApiRetryCleared(): void {
+    this.apiRetryState = undefined;
+  }
+
+  onCompacting(active: boolean): void {
+    this.compacting = active;
+    this.forceFlush = true;
     this.scheduleFlush();
   }
 
@@ -536,6 +589,10 @@ export class MessageRenderer {
       cwd: this.cwd,
       sessionId: this.sessionId,
       platformLimit: this.platformLimit,
+      sessionInfo: this.sessionInfo,
+      toolUseSummaryText: this.toolUseSummaryText,
+      apiRetry: this.apiRetryState,
+      compacting: this.compacting,
     };
   }
 

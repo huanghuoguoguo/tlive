@@ -291,6 +291,10 @@ export class QueryOrchestrator {
       toolLogs: state.toolLogs,
       timeline: state.timeline,
       isContinuation: state.isContinuation,
+      sessionInfo: state.sessionInfo,
+      toolUseSummaryText: state.toolUseSummaryText,
+      apiRetry: state.apiRetry,
+      compacting: state.compacting,
     };
     const outMsg = adapter.format({ type: 'progress', chatId: inbound.chatId, data: progressData });
     return adapter.shouldSplitProgressMessage(outMsg);
@@ -367,6 +371,19 @@ export class QueryOrchestrator {
       onAgentComplete: () => renderer.onToolComplete('agent-complete'),
       onToolProgress: (data) => renderer.onToolProgress(data),
       onStatus: (data) => renderer.setModel(data.model),
+      onSessionInfo: (data) => renderer.onSessionInfo(data),
+      onToolUseSummary: (summary) => renderer.onToolUseSummary(summary),
+      onSessionState: (state) => {
+        if (DEBUG_EVENTS) console.log(`[bridge] session_state: ${state}`);
+      },
+      onApiRetry: (data) => {
+        console.log(`[bridge] api_retry: attempt ${data.attempt}/${data.maxRetries} delay=${data.retryDelayMs}ms${data.error ? ` error=${data.error}` : ''}`);
+        renderer.onApiRetry(data);
+      },
+      onCompactBoundary: (data) => {
+        console.log(`[bridge] compact_boundary: trigger=${data.trigger}${data.preTokens ? ` pre_tokens=${data.preTokens}` : ''}`);
+        renderer.onCompacting(true);
+      },
       onRateLimit: (data) => {
         if (data.status === 'rejected') {
           renderer.onTextDelta('\n⚠️ Rate limited. Retrying...\n');

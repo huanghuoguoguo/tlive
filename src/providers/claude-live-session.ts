@@ -89,6 +89,8 @@ export class ClaudeLiveSession implements LiveSession {
       effort: effort || undefined,
       // Required for stream_event partials, including thinking/text deltas.
       includePartialMessages: true,
+      // Enable hook lifecycle events (hook_started, hook_progress, hook_response)
+      includeHookEvents: true,
       agentProgressSummaries: true,
       promptSuggestions: true,
       toolConfig: { askUserQuestion: { previewFormat: 'markdown' } },
