@@ -1,8 +1,8 @@
-import type { BaseChannelAdapter } from '../channels/base.js';
-import type { InboundMessage } from '../channels/types.js';
-import type { PermissionCoordinator } from './permission-coordinator.js';
-import type { SessionStateManager } from './session-state.js';
-import type { SDKEngine, SendWithContextResult } from './sdk-engine.js';
+import type { BaseChannelAdapter } from '../../channels/base.js';
+import type { InboundMessage } from '../../channels/types.js';
+import type { PermissionCoordinator } from './permission.js';
+import type { SessionStateManager } from '../state/session-state.js';
+import type { SDKEngine, SendWithContextResult } from '../sdk/engine.js';
 
 interface MessageLoopCoordinatorOptions {
   state: SessionStateManager;

@@ -17,7 +17,7 @@ import type {
   QueueStatusData,
   DiagnoseData,
   FormattableMessage,
-} from '../formatting/message-types.js';
+} from '../../formatting/message-types.js';
 
 export function presentStatus(chatId: string, data: StatusData): FormattableMessage {
   return { type: 'status', chatId, data };

@@ -15,10 +15,10 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { BridgeManager } from './bridge-manager.js';
-import { loadProjectsConfig, type ClaudeSettingSource } from '../config.js';
-import type { ProjectConfig } from '../store/interface.js';
-import { generateId } from '../utils/id.js';
+import type { BridgeManager } from '../coordinators/bridge-manager.js';
+import { loadProjectsConfig, type ClaudeSettingSource } from '../../config.js';
+import type { ProjectConfig } from '../../store/interface.js';
+import { generateId } from '../../utils/id.js';
 
 /** Cron job definition */
 export interface CronJob {

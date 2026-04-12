@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { SDKEngine } from '../../engine/sdk-engine.js';
+import { SDKEngine } from '../../engine/sdk/engine.js';
 import type { LiveSession, LLMProvider } from '../../providers/base.js';
 
 function createMockSession(isAlive = true, isTurnActive = false): LiveSession {

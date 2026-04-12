@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { MessageRenderer } from '../../engine/message-renderer.js';
+import { MessageRenderer } from '../../engine/messages/renderer.js';
 
 describe('MessageRenderer', () => {
   let flushCallback: ReturnType<typeof vi.fn>;

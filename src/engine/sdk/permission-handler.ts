@@ -3,16 +3,16 @@
  * Extracted from QueryOrchestrator for cleaner architecture.
  */
 
-import type { BaseChannelAdapter } from '../channels/base.js';
-import type { InboundMessage } from '../channels/types.js';
-import type { PermissionCoordinator } from './permission-coordinator.js';
-import type { SessionStateManager } from './session-state.js';
-import type { MessageRenderer } from './message-renderer.js';
-import { getToolCommand } from './tool-registry.js';
-import type { ChannelRouter } from './router.js';
-import type { ChannelBinding } from '../store/interface.js';
-import { generateId } from '../utils/id.js';
-import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../utils/constants.js';
+import type { BaseChannelAdapter } from '../../channels/base.js';
+import type { InboundMessage } from '../../channels/types.js';
+import type { PermissionCoordinator } from '../coordinators/permission.js';
+import type { SessionStateManager } from '../state/session-state.js';
+import type { MessageRenderer } from '../messages/renderer.js';
+import { getToolCommand } from '../utils/tool-registry.js';
+import type { ChannelRouter } from '../utils/router.js';
+import type { ChannelBinding } from '../../store/interface.js';
+import { generateId } from '../../utils/id.js';
+import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../../utils/constants.js';
 
 interface SDKPermissionHandlerContext {
   adapter: BaseChannelAdapter;

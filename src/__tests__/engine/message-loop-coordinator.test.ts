@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage } from '../../channels/types.js';
-import { MessageLoopCoordinator } from '../../engine/message-loop-coordinator.js';
-import { SessionStateManager } from '../../engine/session-state.js';
-import type { SendWithContextResult } from '../../engine/sdk-engine.js';
+import { MessageLoopCoordinator } from '../../engine/coordinators/message-loop.js';
+import { SessionStateManager } from '../../engine/state/session-state.js';
+import type { SendWithContextResult } from '../../engine/sdk/engine.js';
 
 function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
   return {

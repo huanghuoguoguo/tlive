@@ -3,13 +3,13 @@
  * Extracted from QueryOrchestrator for cleaner architecture.
  */
 
-import type { BaseChannelAdapter } from '../channels/base.js';
-import type { InboundMessage } from '../channels/types.js';
-import type { PermissionCoordinator } from './permission-coordinator.js';
-import type { InteractionState } from './interaction-state.js';
-import { truncate } from '../utils/string.js';
-import { generateId } from '../utils/id.js';
-import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../utils/constants.js';
+import type { BaseChannelAdapter } from '../../channels/base.js';
+import type { InboundMessage } from '../../channels/types.js';
+import type { PermissionCoordinator } from '../coordinators/permission.js';
+import type { InteractionState } from '../state/interaction-state.js';
+import { truncate } from '../../utils/string.js';
+import { generateId } from '../../utils/id.js';
+import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../../utils/constants.js';
 
 interface SDKAskQuestionHandlerContext {
   adapter: BaseChannelAdapter;

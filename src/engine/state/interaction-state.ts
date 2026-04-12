@@ -1,4 +1,4 @@
-import type { PendingPermissions } from '../permissions/gateway.js';
+import type { PendingPermissions } from '../../permissions/gateway.js';
 
 export interface SdkQuestionPrompt {
   question: string;

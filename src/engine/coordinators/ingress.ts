@@ -1,8 +1,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { BaseChannelAdapter } from '../channels/base.js';
-import type { FileAttachment, InboundMessage } from '../channels/types.js';
-import { getTliveRuntimeDir } from '../utils/path.js';
+import type { BaseChannelAdapter } from '../../channels/base.js';
+import type { FileAttachment, InboundMessage } from '../../channels/types.js';
+import { getTliveRuntimeDir } from '../../utils/path.js';
 
 interface BufferedAttachments {
   attachments: FileAttachment[];

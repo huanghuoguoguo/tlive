@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SessionStaleError, isStaleSessionError } from '../../engine/session-stale-error.js';
+import { SessionStaleError, isStaleSessionError } from '../../engine/state/session-stale-error.js';
 
 describe('SessionStaleError', () => {
   it('creates error with correct name', () => {

@@ -1,8 +1,8 @@
-import type { BaseChannelAdapter } from '../channels/base.js';
-import type { InboundMessage } from '../channels/types.js';
-import type { PermissionCoordinator } from './permission-coordinator.js';
-import type { SDKEngine } from './sdk-engine.js';
-import type { SessionStateManager } from './session-state.js';
+import type { BaseChannelAdapter } from '../../channels/base.js';
+import type { InboundMessage } from '../../channels/types.js';
+import type { PermissionCoordinator } from '../coordinators/permission.js';
+import type { SDKEngine } from '../sdk/engine.js';
+import type { SessionStateManager } from '../state/session-state.js';
 
 interface TextDispatcherOptions {
   permissions: PermissionCoordinator;
