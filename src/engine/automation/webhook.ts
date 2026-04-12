@@ -16,6 +16,7 @@ import type { BridgeManager } from '../coordinators/bridge-manager.js';
 import type { ProjectConfig } from '../../store/interface.js';
 import { generateRequestId, Logger } from '../../logger.js';
 import { isCronApiRequest, handleCronApiRequest } from './cron-api.js';
+import { handleFileSendRequest } from './file-send-api.js';
 
 /** Webhook request body */
 export interface WebhookRequest {
@@ -100,6 +101,8 @@ export interface WebhookServerOptions {
   projects?: ProjectConfig[];
   /** Default project name (used when no target specified) */
   defaultProject?: string;
+  /** Default working directory for file path resolution */
+  defaultWorkdir?: string;
 }
 
 /**
@@ -166,6 +169,11 @@ export class WebhookServer {
 
   constructor(options: WebhookServerOptions) {
     this.options = options;
+  }
+
+  /** Get default workdir for file path resolution */
+  private getDefaultWorkdir(): string {
+    return this.options.defaultWorkdir || process.cwd();
   }
 
   private allowRequestForSource(sourceKey: string, now = Date.now()): boolean {
@@ -235,6 +243,15 @@ export class WebhookServer {
     if (isCronApiRequest(url)) {
       const scheduler = this.options.bridge.getCronScheduler();
       await handleCronApiRequest(req, res, scheduler);
+      return;
+    }
+
+    // Route: /api/files/send
+    if (url === '/api/files/send') {
+      await handleFileSendRequest(req, res, {
+        bridge: this.options.bridge,
+        defaultWorkdir: this.getDefaultWorkdir(),
+      });
       return;
     }
 
