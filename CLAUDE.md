@@ -60,6 +60,18 @@ npm run test:watch     # watch 模式
 
 新增功能时至少要写对应的单元/集成测试。涉及飞书卡片的改动，确保 `feishu-progress-card.test.ts` 覆盖了卡片结构正确性（如 `collapsible_panel` 用 `elements` 而非 `body.elements`）。
 
+### 死代码检测
+```bash
+npm run lint:dead        # 运行 knip 检测未使用的导出/文件
+```
+
+使用 [knip](https://github.com/webpro/knip) 从入口点出发做可达性分析，检测：
+- 未使用的导出（函数、类、类型）
+- 未使用的文件（从 main.ts 不可达）
+- 未使用的依赖
+
+**为什么重要**：曾发生过"同一 class 有两份实现"的问题（测试用一份，生产用另一份），导致测试覆盖无法反映实际行为。knip 能在 CI 中自动发现这类问题。
+
 ### 构建
 ```bash
 npm run build
@@ -150,6 +162,7 @@ grep "\[perm\]" ~/.tlive/logs/bridge-*.log
 # 开发
 npm run build          # 构建
 npm test               # 运行测试
+npm run lint:dead      # 检测死代码（knip）
 npm start              # 构建并启动 bridge（开发用，替代 tlive start）
 npm run build:watch    # watch 模式自动重编译（不重启进程）
 npm run dev            # 热更新模式：编译 + 自动重启（推荐开发时使用）
