@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { BaseChannelAdapter } from '../../channels/base.js';
-import { HookNotificationDispatcher } from '../../engine/hook-notification-dispatcher.js';
+import { HookNotificationDispatcher } from '../../engine/messages/hook-notification.js';
 import { TelegramFormatter } from '../../formatting/telegram-formatter.js';
 import { FeishuFormatter } from '../../formatting/feishu-formatter.js';
 

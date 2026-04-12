@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import { initBridgeContext } from '../../context.js';
-import { QueryOrchestrator } from '../../engine/query-orchestrator.js';
-import { SessionStateManager } from '../../engine/session-state.js';
+import { QueryOrchestrator } from '../../engine/coordinators/query.js';
+import { SessionStateManager } from '../../engine/state/session-state.js';
 import { FeishuFormatter } from '../../formatting/feishu-formatter.js';
 import { QQBotFormatter } from '../../formatting/qqbot-formatter.js';
 import { TelegramFormatter } from '../../formatting/telegram-formatter.js';

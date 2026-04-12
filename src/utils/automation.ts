@@ -1,7 +1,8 @@
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import type { ClaudeSettingSource } from '../config.js';
-import type { BridgeManager } from '../engine/bridge-manager.js';
+import type { BridgeManager } from '../engine/coordinators/bridge-manager.js';
+import type { BaseChannelAdapter } from '../channels/base.js';
 import type { ProjectConfig } from '../store/interface.js';
 
 /** Build a consistent chat key from channelType and chatId */
@@ -84,7 +85,7 @@ export function resolveAutomationRoute(options: ResolveAutomationRouteOptions): 
     }
 
     // Fallback: find last active chat for project's enabled channels
-    const enabledChannels = project.channels || bridge.getAdapters().map(a => a.channelType);
+    const enabledChannels = project.channels || bridge.getAdapters().map((a: BaseChannelAdapter) => a.channelType);
     for (const ct of enabledChannels) {
       const lastChatId = bridge.getLastChatId(ct);
       if (lastChatId) {

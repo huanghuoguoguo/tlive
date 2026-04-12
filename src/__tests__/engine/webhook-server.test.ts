@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { WebhookServer, injectPayload, type WebhookRequest, type WebhookServerOptions, type WebhookResponse, type WebhookCallbackPayload } from '../../engine/webhook-server.js';
-import type { BridgeManager } from '../../engine/bridge-manager.js';
+import { WebhookServer, injectPayload, type WebhookRequest, type WebhookServerOptions, type WebhookResponse, type WebhookCallbackPayload } from '../../engine/automation/webhook.js';
+import type { BridgeManager } from '../../engine/coordinators/bridge-manager.js';
 import type { ProjectConfig } from '../../store/interface.js';
 
 // Mock fetch for callback tests

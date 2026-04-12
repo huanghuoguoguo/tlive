@@ -3,14 +3,26 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { CommandRouter } from '../../engine/command-router.js';
-import { SessionStateManager } from '../../engine/session-state.js';
-import { WorkspaceStateManager } from '../../engine/workspace-state.js';
-import { ChannelRouter } from '../../engine/router.js';
+import { SessionStateManager } from '../../engine/state/session-state.js';
+import { WorkspaceStateManager } from '../../engine/state/workspace-state.js';
+import { ChannelRouter } from '../../engine/utils/router.js';
 import { JsonFileStore } from '../../store/json-file.js';
 import { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
 import { loadProjectsConfig, type ClaudeSettingSource } from '../../config.js';
-import type { SDKEngine } from '../../engine/sdk-engine.js';
+import type { SDKEngine } from '../../engine/sdk/engine.js';
+import type { PermissionCoordinator } from '../../engine/coordinators/permission.js';
 import * as sessionScanner from '../../session-scanner.js';
+
+/** Create a minimal PermissionCoordinator mock for tests */
+function createMockPermissions(): PermissionCoordinator {
+  return {
+    clearSessionWhitelist: vi.fn(),
+    getPermissionStatus: vi.fn().mockReturnValue({
+      rememberedTools: 0,
+      rememberedBashPrefixes: 0,
+    }),
+  } as unknown as PermissionCoordinator;
+}
 
 describe('CommandRouter /settings', () => {
   let tmpDir: string;
@@ -18,7 +30,7 @@ describe('CommandRouter /settings', () => {
   let router: CommandRouter;
   let sdkEngine: Partial<SDKEngine>;
   let workspace: WorkspaceStateManager;
-  let clearSessionWhitelist: (sessionId?: string) => void;
+  let permissions: PermissionCoordinator;
   let adapter: any;
   let originalHome: string | undefined;
 
@@ -26,7 +38,7 @@ describe('CommandRouter /settings', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'tlive-command-router-'));
     originalHome = process.env.HOME;
     store = new JsonFileStore(tmpDir);
-    clearSessionWhitelist = vi.fn<(sessionId?: string) => void>();
+    permissions = createMockPermissions();
     adapter = {
       channelType: 'telegram',
       send: vi.fn().mockResolvedValue(undefined),
@@ -55,13 +67,7 @@ describe('CommandRouter /settings', () => {
       '/tmp/project',
       Object.create(ClaudeSDKProvider.prototype) as ClaudeSDKProvider,
       new Map(),
-      {
-        clearSessionWhitelist,
-        getPermissionStatus: vi.fn().mockReturnValue({
-          rememberedTools: 0,
-          rememberedBashPrefixes: 0,
-        }),
-      },
+      permissions,
       ['user', 'project', 'local'],
       sdkEngine as SDKEngine,
     );
@@ -93,7 +99,7 @@ describe('CommandRouter /settings', () => {
     expect(binding?.claudeSettingSources).toEqual([]);
     expect(binding?.sdkSessionId).toBeUndefined();
     expect(sdkEngine.cleanupSession).toHaveBeenCalledWith('telegram', 'c1', 'settings', undefined);
-    expect(clearSessionWhitelist).toHaveBeenCalledWith('binding-1');
+    expect(permissions.clearSessionWhitelist).toHaveBeenCalledWith('binding-1');
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({ text: expect.stringContaining('isolated') }),
     );
@@ -213,6 +219,7 @@ describe('CommandRouter /settings', () => {
 
     // Create new router with loaded projects config
     const projectsConfig = loadProjectsConfig();
+    const projectPermissions = createMockPermissions();
     const testRouter = new CommandRouter(
       new SessionStateManager(),
       workspace,
@@ -222,13 +229,7 @@ describe('CommandRouter /settings', () => {
       tmpDir,
       Object.create(ClaudeSDKProvider.prototype) as ClaudeSDKProvider,
       new Map(),
-      {
-        clearSessionWhitelist,
-        getPermissionStatus: vi.fn().mockReturnValue({
-          rememberedTools: 0,
-          rememberedBashPrefixes: 0,
-        }),
-      },
+      projectPermissions,
       ['user', 'project', 'local'],
       sdkEngine as SDKEngine,
       projectsConfig,
@@ -284,7 +285,7 @@ describe('CommandRouter /settings', () => {
     } as any);
 
     expect(sdkEngine.cleanupSession).not.toHaveBeenCalled();
-    expect(clearSessionWhitelist).not.toHaveBeenCalled();
+    expect(permissions.clearSessionWhitelist).not.toHaveBeenCalled();
     const binding = await store.getBinding('telegram', 'c1');
     expect(binding?.cwd).toBe(subDir);
     expect(binding?.sdkSessionId).toBe('sdk-1');
@@ -317,7 +318,7 @@ describe('CommandRouter /settings', () => {
     } as any);
 
     expect(sdkEngine.cleanupSession).toHaveBeenCalledWith('telegram', 'c1', 'cd', repoA);
-    expect(clearSessionWhitelist).toHaveBeenCalledWith('binding-1');
+    expect(permissions.clearSessionWhitelist).toHaveBeenCalledWith('binding-1');
     const binding = await store.getBinding('telegram', 'c1');
     expect(binding?.cwd).toBe(repoB);
     expect(binding?.sdkSessionId).toBeUndefined();
@@ -342,6 +343,7 @@ describe('CommandRouter /settings', () => {
 
     // Create new router with loaded projects config
     const projectsConfig = loadProjectsConfig();
+    const projectPermissions = createMockPermissions();
     const testRouter = new CommandRouter(
       new SessionStateManager(),
       workspace,
@@ -351,13 +353,7 @@ describe('CommandRouter /settings', () => {
       repoDir,
       Object.create(ClaudeSDKProvider.prototype) as ClaudeSDKProvider,
       new Map(),
-      {
-        clearSessionWhitelist,
-        getPermissionStatus: vi.fn().mockReturnValue({
-          rememberedTools: 0,
-          rememberedBashPrefixes: 0,
-        }),
-      },
+      projectPermissions,
       ['user', 'project', 'local'],
       sdkEngine as SDKEngine,
       projectsConfig,
@@ -383,7 +379,7 @@ describe('CommandRouter /settings', () => {
     } as any);
 
     expect(sdkEngine.cleanupSession).not.toHaveBeenCalled();
-    expect(clearSessionWhitelist).not.toHaveBeenCalled();
+    expect(projectPermissions.clearSessionWhitelist).not.toHaveBeenCalled();
     const binding = await store.getBinding('telegram', 'c1');
     expect(binding?.projectName).toBe('b');
     expect(binding?.sdkSessionId).toBe('sdk-1');
@@ -408,6 +404,7 @@ describe('CommandRouter /settings', () => {
 
     // Create new router with loaded projects config
     const projectsConfig = loadProjectsConfig();
+    const projectPermissions = createMockPermissions();
     const testRouter = new CommandRouter(
       new SessionStateManager(),
       workspace,
@@ -417,13 +414,7 @@ describe('CommandRouter /settings', () => {
       repoDir,
       Object.create(ClaudeSDKProvider.prototype) as ClaudeSDKProvider,
       new Map(),
-      {
-        clearSessionWhitelist,
-        getPermissionStatus: vi.fn().mockReturnValue({
-          rememberedTools: 0,
-          rememberedBashPrefixes: 0,
-        }),
-      },
+      projectPermissions,
       ['user', 'project', 'local'],
       sdkEngine as SDKEngine,
       projectsConfig,
@@ -449,7 +440,7 @@ describe('CommandRouter /settings', () => {
     } as any);
 
     expect(sdkEngine.cleanupSession).toHaveBeenCalledWith('telegram', 'c1', 'settings', repoDir);
-    expect(clearSessionWhitelist).toHaveBeenCalledWith('binding-1');
+    expect(projectPermissions.clearSessionWhitelist).toHaveBeenCalledWith('binding-1');
     const binding = await store.getBinding('telegram', 'c1');
     expect(binding?.projectName).toBe('b');
     expect(binding?.sdkSessionId).toBeUndefined();
@@ -494,7 +485,7 @@ describe('CommandRouter /settings', () => {
     } as any);
 
     expect(sdkEngine.cleanupSession).toHaveBeenCalledWith('telegram', 'c1', 'switch', repoA);
-    expect(clearSessionWhitelist).toHaveBeenCalledWith('binding-1');
+    expect(permissions.clearSessionWhitelist).toHaveBeenCalledWith('binding-1');
     const binding = await store.getBinding('telegram', 'c1');
     expect(binding?.cwd).toBe(repoB);
     expect(binding?.sdkSessionId).toBe('sdk-target');

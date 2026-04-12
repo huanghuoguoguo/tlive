@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PermissionCoordinator } from '../../engine/permission-coordinator.js';
+import { PermissionCoordinator } from '../../engine/coordinators/permission.js';
 import { PendingPermissions } from '../../permissions/gateway.js';
 import { PermissionBroker } from '../../permissions/broker.js';
 
