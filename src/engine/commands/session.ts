@@ -1,11 +1,10 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentSessionSwitched, presentSessionUsage, presentSessionNotFound } from '../messages/presenter.js';
-import { scanClaudeSessions } from '../../session-scanner.js';
 import { shortPath } from '../../utils/path.js';
 import { generateSessionId } from '../../utils/id.js';
-import { FLAGS, hasFlag, getNonFlagArg } from '../../utils/constants.js';
 import { isSameRepoRoot } from '../../utils/repo.js';
+import { parseSessionIndex } from '../utils/session-format.js';
 
 export class SessionCommand extends BaseCommand {
   readonly name = '/session';
@@ -13,25 +12,21 @@ export class SessionCommand extends BaseCommand {
   readonly description = 'Switch session';
 
   async execute(ctx: CommandContext): Promise<boolean> {
-    const sessionArgs = ctx.parts.slice(1);
-    const showAll = hasFlag(sessionArgs, FLAGS.ALL);
-    const idxToken = getNonFlagArg(sessionArgs, [FLAGS.ALL]);
-    const idx = parseInt(idxToken || '', 10);
-    if (Number.isNaN(idx) || idx < 1) {
-      await this.send(ctx, presentSessionUsage(ctx.msg.chatId));
+    const result = await parseSessionIndex(ctx);
+
+    if (!result.ok) {
+      if (result.error === 'invalid_index') {
+        await this.send(ctx, presentSessionUsage(result.chatId));
+      } else {
+        await this.send(ctx, presentSessionNotFound(result.chatId, result.idx));
+      }
       return true;
     }
 
+    const { target, currentCwd, idx } = result;
+
+    // Get binding for switch operation
     const binding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
-    const currentCwd = binding?.cwd || ctx.defaultWorkdir;
-    const sessions = scanClaudeSessions(10, showAll ? undefined : currentCwd);
-
-    if (idx > sessions.length) {
-      await this.send(ctx, presentSessionNotFound(ctx.msg.chatId, idx));
-      return true;
-    }
-
-    const target = sessions[idx - 1];
     const switchedRepo = !isSameRepoRoot(currentCwd, target.cwd);
 
     const { hadActiveSession } = await ctx.helpers.resetSessionContext(

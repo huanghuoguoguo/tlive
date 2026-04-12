@@ -271,3 +271,40 @@ export class ProgressContentBuilder {
     return content;
   }
 }
+
+import type { ProgressData } from '../../formatting/message-types.js';
+import type { Button } from '../../ui/types.js';
+
+/**
+ * Build ProgressData from MessageRendererState.
+ * Shared helper for query.ts and query-presenter.ts to avoid duplication.
+ */
+export function buildProgressData(
+  state: MessageRendererState,
+  taskSummary: string,
+  buttons?: Button[],
+  renderedTextOverride?: string,
+): ProgressData {
+  return {
+    phase: state.phase,
+    renderedText: renderedTextOverride ?? state.renderedText,
+    taskSummary,
+    elapsedSeconds: state.elapsedSeconds,
+    totalTools: state.totalTools,
+    toolSummary: state.toolSummary,
+    footerLine: state.footerLine,
+    currentTool: state.currentTool,
+    permission: state.permission,
+    permissionRequests: state.permissionRequests,
+    todoItems: state.todoItems,
+    thinkingText: state.thinkingText,
+    toolLogs: state.toolLogs,
+    timeline: state.timeline,
+    isContinuation: state.isContinuation,
+    sessionInfo: state.sessionInfo,
+    toolUseSummaryText: state.toolUseSummaryText,
+    apiRetry: state.apiRetry,
+    compacting: state.compacting,
+    actionButtons: buttons,
+  };
+}
