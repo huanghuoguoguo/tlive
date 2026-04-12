@@ -21,7 +21,7 @@ import { readSessionTranscriptPreview, scanClaudeSessions } from '../session-sca
 import { generateSessionId } from '../utils/id.js';
 import { shortPath } from '../utils/path.js';
 import { isSameRepoRoot, findGitRoot } from '../utils/repo.js';
-import { areSettingSourcesEqual, buildChatKey } from '../utils/automation.js';
+import { areSettingSourcesEqual } from '../utils/automation.js';
 import {
   presentApproveFailure,
   presentApproveSuccess,

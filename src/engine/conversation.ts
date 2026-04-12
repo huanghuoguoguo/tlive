@@ -6,6 +6,9 @@ import type { TodoStatus } from '../utils/types.js';
 
 const TEXT_MIME_PREFIXES = ['text/', 'application/json', 'application/xml', 'application/javascript', 'application/typescript', 'application/x-yaml', 'application/toml'];
 
+/** Maximum file size to decode and inline in prompt (1MB) */
+const MAX_INLINE_FILE_SIZE = 1024 * 1024;
+
 function isTextMime(mime: string): boolean {
   return TEXT_MIME_PREFIXES.some(p => mime.startsWith(p));
 }
@@ -18,8 +21,14 @@ function buildPromptWithAttachments(text: string, attachments?: FileAttachment[]
 
   for (const att of attachments) {
     if (att.type === 'file' && isTextMime(att.mimeType)) {
-      const decoded = Buffer.from(att.base64Data, 'base64').toString('utf-8');
-      parts.push(`\n[File: ${att.name}]\n\`\`\`\n${decoded}\n\`\`\``);
+      const decodedBuffer = Buffer.from(att.base64Data, 'base64');
+      if (decodedBuffer.length > MAX_INLINE_FILE_SIZE) {
+        // File too large, just mention it without content
+        parts.push(`\n[File: ${att.name} (${att.mimeType}) — ${Math.round(decodedBuffer.length / 1024)}KB, too large to inline]`);
+      } else {
+        const decoded = decodedBuffer.toString('utf-8');
+        parts.push(`\n[File: ${att.name}]\n\`\`\`\n${decoded}\n\`\`\``);
+      }
     } else if (att.type === 'file') {
       parts.push(`\n[Attached file: ${att.name} (${att.mimeType}) — binary file, cannot display inline]`);
     }

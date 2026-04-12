@@ -9,4 +9,10 @@ export default defineConfig({
       'dist/**',
     ],
   },
+  coverage: {
+    provider: 'v8',
+    reporter: ['text', 'json-summary', 'html'],
+    include: ['src/**/*.ts'],
+    exclude: ['src/__tests__/**', 'dist/**'],
+  },
 });
