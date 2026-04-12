@@ -6,6 +6,7 @@
  */
 
 import { readFile, stat } from 'node:fs/promises';
+import type { Stats } from 'node:fs';
 import { basename, extname, resolve } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { BridgeManager } from '../coordinators/bridge-manager.js';
@@ -75,7 +76,7 @@ export async function sendFileToChat(
   const resolvedPath = resolve(cwd, filePath);
 
   // Validate file
-  let fileStat;
+  let fileStat: Stats;
   try {
     fileStat = await stat(resolvedPath);
   } catch {
