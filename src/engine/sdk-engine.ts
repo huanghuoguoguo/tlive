@@ -14,6 +14,9 @@ import type { EffortLevel } from '../utils/types.js';
 import { InteractionState, type SdkQuestionState } from './interaction-state.js';
 import { SESSION_STALE_THRESHOLD_MS } from '../utils/constants.js';
 
+/** Reason for closing a session — used for logging and diagnostics */
+export type SessionCleanupReason = 'new' | 'switch' | 'cd' | 'settings' | 'expire' | 'close';
+
 /** Managed session — wraps a LiveSession with per-chat metadata */
 interface ManagedSession {
   session: LiveSession;
@@ -76,10 +79,6 @@ export class SDKEngine {
   private queuePreviewBySession = new Map<string, QueuedMessagePreview[]>();
   /** Maximum queued messages per session (configurable) */
   private maxQueueDepth = 3;
-  /** Default max queue depth */
-  static readonly DEFAULT_MAX_QUEUE_DEPTH = 3;
-  /** Alias for backward compatibility */
-  static readonly MAX_QUEUE_DEPTH = 3;
 
   // SDK AskUserQuestion state — shared with routing / callbacks via InteractionState.
   private interactions = new InteractionState();
@@ -145,36 +144,9 @@ export class SDKEngine {
     return `${channelType}:${chatId}:${workdir}`;
   }
 
-  /** Close a session (on /new, session expiry, workdir change) */
+  /** Close a session (on /new, session expiry, workdir change). Delegates to cleanupSession. */
   closeSession(channelType: string, chatId: string, workdir?: string): void {
-    const chatKey = `${channelType}:${chatId}`;
-    if (workdir) {
-      const key = this.sessionKey(channelType, chatId, workdir);
-      const managed = this.registry.get(key);
-      if (managed) {
-        managed.session.close();
-        this.registry.delete(key);
-        this.cleanupBubblesForSession(key);
-        this.cleanupQueueForSession(key);
-        if (this.activeSessionByChat.get(chatKey) === key) {
-          this.activeSessionByChat.delete(chatKey);
-        }
-        console.log(`[tlive:engine] Closed LiveSession for ${key}`);
-      }
-    } else {
-      // Close ALL sessions for this chat (e.g. on /new)
-      const prefix = `${channelType}:${chatId}:`;
-      for (const [key, managed] of this.registry) {
-        if (key.startsWith(prefix)) {
-          managed.session.close();
-          this.registry.delete(key);
-          this.cleanupBubblesForSession(key);
-          this.cleanupQueueForSession(key);
-          console.log(`[tlive:engine] Closed LiveSession for ${key}`);
-        }
-      }
-      this.activeSessionByChat.delete(chatKey);
-    }
+    this.cleanupSession(channelType, chatId, 'close', workdir);
   }
 
   /**
@@ -182,7 +154,7 @@ export class SDKEngine {
    * Called on /new, session switch, directory change, settings change.
    * Returns true if a session was actually closed.
    */
-  cleanupSession(channelType: string, chatId: string, reason: 'new' | 'switch' | 'cd' | 'settings' | 'expire', workdir?: string): boolean {
+  cleanupSession(channelType: string, chatId: string, reason: SessionCleanupReason, workdir?: string): boolean {
     const chatKey = `${channelType}:${chatId}`;
     let closed = false;
 

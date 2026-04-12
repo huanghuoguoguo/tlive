@@ -18,6 +18,7 @@ import { dirname, join } from 'node:path';
 import type { BridgeManager } from './bridge-manager.js';
 import { loadProjectsConfig, type ClaudeSettingSource } from '../config.js';
 import type { ProjectConfig } from '../store/interface.js';
+import { generateId } from '../utils/id.js';
 
 /** Cron job definition */
 export interface CronJob {
@@ -96,10 +97,10 @@ export function parseCronExpression(expression: string): {
   const parts = expression.trim().split(/\s+/);
   if (parts.length !== 5) return null;
 
-  const parsePart = (part: string, min: number, max: number): number | '*' => {
+  const parsePart = (part: string, min: number, max: number): number | '*' | null => {
     if (part === '*') return '*';
     const num = parseInt(part, 10);
-    if (Number.isNaN(num) || num < min || num > max) return null as any;
+    if (Number.isNaN(num) || num < min || num > max) return null;
     return num;
   };
 
@@ -109,9 +110,8 @@ export function parseCronExpression(expression: string): {
   const month = parsePart(parts[3], 1, 12);
   const weekday = parsePart(parts[4], 0, 6);
 
-  // Validation
-  if (minute === null as any || hour === null as any || day === null as any ||
-      month === null as any || weekday === null as any) {
+  if (minute === null || hour === null || day === null ||
+      month === null || weekday === null) {
     return null;
   }
 
@@ -158,13 +158,6 @@ export function calculateNextRun(expression: string, fromTime?: number): number 
   }
 
   return null; // No match found within limit
-}
-
-/**
- * Generate a unique job ID.
- */
-function generateJobId(): string {
-  return `cron-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
 function calculateNextRunOrUndefined(expression: string, fromTime?: number): number | undefined {
@@ -296,6 +289,7 @@ export class CronScheduler {
   private tick(): void {
     const now = Date.now();
     let launched = 0;
+    let needsSave = false;
 
     for (const [, job] of this.jobs) {
       if (!job.enabled) continue;
@@ -304,7 +298,7 @@ export class CronScheduler {
       // Update nextRun if not set
       if (!job.nextRun) {
         job.nextRun = calculateNextRunOrUndefined(job.schedule, now);
-        this.saveJobs();
+        needsSave = true;
       }
 
       // Check if job is due
@@ -316,6 +310,11 @@ export class CronScheduler {
 
       launched++;
       void this.executeJob(job);
+    }
+
+    // Batch save after processing all jobs
+    if (needsSave) {
+      this.saveJobs();
     }
 
     if (launched > 0) {
@@ -478,7 +477,7 @@ export class CronScheduler {
    * Add a new cron job.
    */
   addJob(job: Omit<CronJob, 'id' | 'createdAt' | 'updatedAt' | 'nextRun'>): CronJob {
-    const id = generateJobId();
+    const id = generateId('cron', 4);
     const now = Date.now();
 
     // Validate schedule

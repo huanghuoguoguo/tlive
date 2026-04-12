@@ -46,8 +46,8 @@ describe('SDKEngine', () => {
       expect(engine.isQueueFull('test-session')).toBe(false);
     });
 
-    it('has MAX_QUEUE_DEPTH of 3', () => {
-      expect(SDKEngine.MAX_QUEUE_DEPTH).toBe(3);
+    it('default max queue depth is 3', () => {
+      expect(engine.getMaxQueueDepth()).toBe(3);
     });
 
     it('decrements queue depth when called', () => {

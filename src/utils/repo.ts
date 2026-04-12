@@ -1,14 +1,37 @@
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
+/** Cache for findGitRoot results — keyed by resolved path */
+const gitRootCache = new Map<string, string | undefined>();
+
+/** Maximum cache size to prevent unbounded growth */
+const MAX_CACHE_SIZE = 100;
+
 /**
  * Find the git repository root directory for a given path.
  * Returns undefined if the path is not inside a git repository.
+ * Results are cached to avoid repeated filesystem walks.
  */
 export function findGitRoot(path: string): string | undefined {
-  let current = resolve(path);
+  const resolved = resolve(path);
+
+  // Check cache first
+  const cached = gitRootCache.get(resolved);
+  if (cached !== undefined || gitRootCache.has(resolved)) {
+    return cached;
+  }
+
+  // Walk up the directory tree
+  let current = resolved;
   while (true) {
     if (existsSync(join(current, '.git'))) {
+      // Cache the result
+      if (gitRootCache.size >= MAX_CACHE_SIZE) {
+        // Evict oldest entry (first key)
+        const oldestKey = gitRootCache.keys().next().value;
+        if (oldestKey) gitRootCache.delete(oldestKey);
+      }
+      gitRootCache.set(resolved, current);
       return current;
     }
     const parent = dirname(current);
@@ -17,11 +40,15 @@ export function findGitRoot(path: string): string | undefined {
     }
     current = parent;
   }
+
+  // Cache negative result too (undefined means no git root)
+  gitRootCache.set(resolved, undefined as any);
   return undefined;
 }
 
 /**
  * Check if two directories belong to the same git repository.
+ * Uses cached findGitRoot results for efficiency.
  * Returns true if:
  * - Both paths are in the same git repo (share the same .git root)
  * - Neither path is in a git repo (treat as same "non-repo" space)

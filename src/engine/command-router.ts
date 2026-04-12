@@ -4,14 +4,14 @@ import type { SessionStateManager } from './session-state.js';
 import type { WorkspaceStateManager } from './workspace-state.js';
 import type { ChannelRouter } from './router.js';
 import type { LLMProvider, QueryControls } from '../providers/base.js';
-import type { SDKEngine } from './sdk-engine.js';
+import type { SDKEngine, SessionCleanupReason } from './sdk-engine.js';
+import type { ProjectsValidationResult } from '../config.js';
 import { basename } from 'node:path';
 import { ClaudeSDKProvider } from '../providers/claude-sdk.js';
 import {
   DEFAULT_CLAUDE_SETTING_SOURCES,
   type ClaudeSettingSource,
   getProjectByName,
-  loadProjectsConfig,
 } from '../config.js';
 import type { BridgeStore } from '../store/interface.js';
 import { existsSync } from 'node:fs';
@@ -21,6 +21,7 @@ import { readSessionTranscriptPreview, scanClaudeSessions } from '../session-sca
 import { generateSessionId } from '../utils/id.js';
 import { shortPath } from '../utils/path.js';
 import { isSameRepoRoot, findGitRoot } from '../utils/repo.js';
+import { areSettingSourcesEqual, buildChatKey } from '../utils/automation.js';
 import {
   presentApproveFailure,
   presentApproveSuccess,
@@ -104,6 +105,9 @@ async function send(
 }
 
 export class CommandRouter {
+  /** Cached projects config — loaded once at construction, refreshed via /project reload */
+  private projectsConfig: ProjectsValidationResult | undefined;
+
   constructor(
     private state: SessionStateManager,
     private workspace: WorkspaceStateManager,
@@ -124,7 +128,10 @@ export class CommandRouter {
     },
     private defaultClaudeSettingSources: ClaudeSettingSource[] = DEFAULT_CLAUDE_SETTING_SOURCES,
     private sdkEngine?: SDKEngine,
-  ) {}
+    projectsConfig?: ProjectsValidationResult,
+  ) {
+    this.projectsConfig = projectsConfig;
+  }
 
   private getSettingsPreset(sources: ClaudeSettingSource[]): string {
     if (sources.length === 0) return 'isolated';
@@ -135,15 +142,6 @@ export class CommandRouter {
     return sources.join(',');
   }
 
-  private sameSettingSources(
-    current: ClaudeSettingSource[] | undefined,
-    next: ClaudeSettingSource[] | undefined,
-  ): boolean {
-    const left = current ?? [];
-    const right = next ?? [];
-    return left.length === right.length && left.every((source, index) => source === right[index]);
-  }
-
   private updateWorkspaceBindingFromPath(channelType: string, chatId: string, cwd: string): void {
     const gitRoot = findGitRoot(cwd);
     if (gitRoot) {
@@ -151,6 +149,46 @@ export class CommandRouter {
       return;
     }
     this.workspace.clearBinding(channelType, chatId);
+  }
+
+  /**
+   * Unified session context reset helper.
+   * Encapsulates the common cleanup pattern used across /new, /session, /cd, /project use, /settings.
+   */
+  private async resetSessionContext(
+    channelType: string,
+    chatId: string,
+    reason: SessionCleanupReason,
+    opts: {
+      previousCwd?: string;
+      clearProject?: boolean;
+      clearLastActive?: boolean;
+      binding?: { sessionId?: string; projectName?: string; sdkSessionId?: string; cwd?: string };
+    } = {},
+  ): Promise<{ hadActiveSession: boolean; binding: Awaited<ReturnType<typeof this.store.getBinding>> }> {
+    const binding = opts.binding ?? await this.store.getBinding(channelType, chatId);
+    const hadActiveSession = this.sdkEngine?.cleanupSession(
+      channelType,
+      chatId,
+      reason,
+      opts.previousCwd ?? binding?.cwd,
+    ) ?? false;
+
+    if (binding) {
+      binding.sdkSessionId = undefined;
+      if (opts.clearProject) {
+        binding.projectName = undefined;
+      }
+      await this.store.saveBinding(binding);
+    }
+
+    this.permissions.clearSessionWhitelist(binding?.sessionId);
+
+    if (opts.clearLastActive) {
+      this.state.clearLastActive(channelType, chatId);
+    }
+
+    return { hadActiveSession, binding };
   }
 
   private async buildHomePayload(channelType: string, chatId: string): Promise<HomeData> {
@@ -166,8 +204,8 @@ export class CommandRouter {
     // Get workspace binding (long-term repo attribution)
     const workspaceBinding = this.workspace.getBinding(channelType, chatId);
 
-    // Get project name from workspace state
-    const projectName = binding?.projectName ?? this.workspace.getProjectName(channelType, chatId);
+    // Project name comes from binding only (single source of truth)
+    const projectName = binding?.projectName;
 
     // Get last active time from SessionStateManager
     const lastActiveTime = this.state.getLastActiveTime(channelType, chatId);
@@ -352,28 +390,22 @@ export class CommandRouter {
         const target = sessions[idx - 1];
         const switchedRepo = !isSameRepoRoot(currentCwd, target.cwd);
 
-        // Close old SDK session if switching to a different workdir
-        const hadActiveSession = this.sdkEngine?.cleanupSession(
+        // Use resetSessionContext helper
+        const { hadActiveSession } = await this.resetSessionContext(
           msg.channelType,
           msg.chatId,
           'switch',
-          currentCwd,
-        ) ?? false;
+          { previousCwd: currentCwd, clearProject: switchedRepo, binding },
+        );
 
         const newBindingId = generateSessionId();
         await this.router.rebind(msg.channelType, msg.chatId, newBindingId, {
           sdkSessionId: target.sdkSessionId,
-          cwd: target.cwd, // update cwd to session's directory
+          cwd: target.cwd,
           claudeSettingSources: binding?.claudeSettingSources,
           projectName: switchedRepo ? undefined : binding?.projectName,
         });
         this.updateWorkspaceBindingFromPath(msg.channelType, msg.chatId, target.cwd);
-        if (switchedRepo) {
-          this.workspace.clearProjectName(msg.channelType, msg.chatId);
-        }
-
-        this.state.clearLastActive(msg.channelType, msg.chatId);
-        this.permissions.clearSessionWhitelist(binding?.sessionId);
 
         const feedbackText = hadActiveSession && switchedRepo
           ? `🔄 已关闭旧工作区的活跃会话`
@@ -435,39 +467,29 @@ export class CommandRouter {
             return true;
           }
 
-          // Switch to previous directory
           const binding = await this.store.getBinding(msg.channelType, msg.chatId);
           const currentCwd = binding?.cwd || this.defaultWorkdir;
           const switchedRepo = !isSameRepoRoot(currentCwd, previousDir);
 
-          // Cross-repo directory switches must reset session context.
+          // Use resetSessionContext helper when crossing repos
           if (switchedRepo) {
-            this.sdkEngine?.cleanupSession(
+            await this.resetSessionContext(
               msg.channelType,
               msg.chatId,
               'cd',
-              currentCwd,
+              { previousCwd: currentCwd, clearProject: true, binding },
             );
           }
 
           // Update binding
           if (binding) {
             binding.cwd = previousDir;
-            if (switchedRepo) {
-              binding.sdkSessionId = undefined;
-              binding.projectName = undefined;
-            }
             await this.store.saveBinding(binding);
           } else {
             await this.router.rebind(msg.channelType, msg.chatId, generateSessionId(), { cwd: previousDir });
           }
           this.workspace.pushHistory(msg.channelType, msg.chatId, previousDir);
           this.updateWorkspaceBindingFromPath(msg.channelType, msg.chatId, previousDir);
-
-          if (switchedRepo) {
-            this.workspace.clearProjectName(msg.channelType, msg.chatId);
-            this.permissions.clearSessionWhitelist(binding?.sessionId);
-          }
 
           const feedbackText = `🔙 已切换到上一目录`;
           await send(adapter, presentDirectory(msg.chatId, shortPath(previousDir), true, feedbackText));
@@ -491,36 +513,26 @@ export class CommandRouter {
         this.workspace.pushHistory(msg.channelType, msg.chatId, baseCwd);
 
         const switchedRepo = !isSameRepoRoot(baseCwd, resolvedPath);
-        // Keep session for same-repo directory changes; reset only when crossing repos.
-        const hadActiveSession = switchedRepo
-          ? (this.sdkEngine?.cleanupSession(
+
+        // Use resetSessionContext helper when crossing repos
+        const { hadActiveSession } = switchedRepo
+          ? await this.resetSessionContext(
             msg.channelType,
             msg.chatId,
             'cd',
-            baseCwd,
-          ) ?? false)
-          : false;
+            { previousCwd: baseCwd, clearProject: true, binding },
+          )
+          : { hadActiveSession: false };
 
         // Update binding
         if (binding) {
           binding.cwd = resolvedPath;
-          // Clear sdkSessionId when switching repo to avoid mismatch
-          if (switchedRepo) {
-            binding.sdkSessionId = undefined;
-            binding.projectName = undefined;
-          }
           await this.store.saveBinding(binding);
         } else {
           await this.router.rebind(msg.channelType, msg.chatId, generateSessionId(), { cwd: resolvedPath });
         }
         this.workspace.pushHistory(msg.channelType, msg.chatId, resolvedPath);
         this.updateWorkspaceBindingFromPath(msg.channelType, msg.chatId, resolvedPath);
-
-        // Clear permission whitelist when switching repo
-        if (switchedRepo) {
-          this.workspace.clearProjectName(msg.channelType, msg.chatId);
-          this.permissions.clearSessionWhitelist(binding?.sessionId);
-        }
 
         const feedbackText = hadActiveSession && switchedRepo
           ? `🔄 已关闭旧仓库的活跃会话`
@@ -567,8 +579,12 @@ export class CommandRouter {
           binding.claudeSettingSources = [...PRESETS[arg]];
           binding.sdkSessionId = undefined;
           await this.store.saveBinding(binding);
-          this.sdkEngine?.cleanupSession(msg.channelType, msg.chatId, 'settings', previousBinding?.cwd);
-          this.permissions.clearSessionWhitelist(binding.sessionId);
+          await this.resetSessionContext(
+            msg.channelType,
+            msg.chatId,
+            'settings',
+            { previousCwd: previousBinding?.cwd, binding },
+          );
           const labels: Record<string, string> = {
             user: '👤 user — current chat uses global auth/model only',
             full: '📦 full — current chat loads project rules, MCP, and skills',
@@ -797,8 +813,8 @@ export class CommandRouter {
       case '/project': {
         const sub = parts[1]?.toLowerCase();
 
-        // Load projects config
-        const projectsConfig = loadProjectsConfig();
+        // Use cached projects config
+        const projectsConfig = this.projectsConfig;
 
         if (!projectsConfig || projectsConfig.valid.length === 0) {
           await send(adapter, presentNoProjects(msg.chatId));
@@ -808,7 +824,7 @@ export class CommandRouter {
         // /project or /project list - show all projects
         if (!sub || sub === 'list') {
           const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-          const currentProjectName = binding?.projectName ?? this.workspace.getProjectName(msg.channelType, msg.chatId);
+          const currentProjectName = binding?.projectName;
           const projects: ProjectListData['projects'] = projectsConfig.valid.map(p => ({
             name: p.name,
             workdir: shortPath(p.workdir),
@@ -838,28 +854,29 @@ export class CommandRouter {
             return true;
           }
 
-          // Get current binding
           const binding = await this.store.getBinding(msg.channelType, msg.chatId);
           const currentCwd = binding?.cwd || this.defaultWorkdir;
-          const previousProjectName = binding?.projectName ?? this.workspace.getProjectName(msg.channelType, msg.chatId);
+          const previousProjectName = binding?.projectName;
 
           // Track directory history before switching
           this.workspace.pushHistory(msg.channelType, msg.chatId, currentCwd);
 
           const switchedRepo = !isSameRepoRoot(currentCwd, project.workdir);
-          const settingsChanged = !this.sameSettingSources(
+          const settingsChanged = !areSettingSourcesEqual(
             binding?.claudeSettingSources,
             project.claudeSettingSources,
           );
           const shouldResetSession = switchedRepo || settingsChanged;
-          const hadActiveSession = shouldResetSession
-            ? (this.sdkEngine?.cleanupSession(
+
+          // Use resetSessionContext helper
+          const { hadActiveSession } = shouldResetSession
+            ? await this.resetSessionContext(
               msg.channelType,
               msg.chatId,
               switchedRepo ? 'cd' : 'settings',
-              currentCwd,
-            ) ?? false)
-            : false;
+              { previousCwd: currentCwd, clearProject: switchedRepo, binding },
+            )
+            : { hadActiveSession: false };
 
           // Update binding with new workdir
           if (binding) {
@@ -868,9 +885,6 @@ export class CommandRouter {
             binding.claudeSettingSources = project.claudeSettingSources
               ? [...project.claudeSettingSources]
               : undefined;
-            if (shouldResetSession) {
-              binding.sdkSessionId = undefined;
-            }
             await this.store.saveBinding(binding);
           } else {
             await this.router.rebind(msg.channelType, msg.chatId, generateSessionId(), {
@@ -882,15 +896,7 @@ export class CommandRouter {
             });
           }
           this.workspace.pushHistory(msg.channelType, msg.chatId, project.workdir);
-
-          // Update workspace state
-          this.workspace.setProjectName(msg.channelType, msg.chatId, project.name);
           this.workspace.setBinding(msg.channelType, msg.chatId, project.workdir);
-
-          // Clear permission whitelist when switching repo
-          if (switchedRepo || settingsChanged) {
-            this.permissions.clearSessionWhitelist(binding?.sessionId);
-          }
 
           const feedbackParts: string[] = [];
           if (previousProjectName && previousProjectName !== project.name) {
@@ -916,7 +922,7 @@ export class CommandRouter {
         // /project status - show current project status
         if (sub === 'status' || sub === 'info') {
           const binding = await this.store.getBinding(msg.channelType, msg.chatId);
-          const currentProjectName = binding?.projectName ?? this.workspace.getProjectName(msg.channelType, msg.chatId);
+          const currentProjectName = binding?.projectName;
           const currentCwd = binding?.cwd || this.defaultWorkdir;
           const workspaceBinding = this.workspace.getBinding(msg.channelType, msg.chatId);
 

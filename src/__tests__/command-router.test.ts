@@ -8,7 +8,7 @@ import { WorkspaceStateManager } from '../engine/workspace-state.js';
 import { ChannelRouter } from '../engine/router.js';
 import { JsonFileStore } from '../store/json-file.js';
 import { ClaudeSDKProvider } from '../providers/claude-sdk.js';
-import type { ClaudeSettingSource } from '../config.js';
+import { loadProjectsConfig, type ClaudeSettingSource } from '../config.js';
 import type { SDKEngine } from '../engine/sdk-engine.js';
 import * as sessionScanner from '../session-scanner.js';
 
@@ -211,6 +211,29 @@ describe('CommandRouter /settings', () => {
     }));
     process.env.HOME = homeDir;
 
+    // Create new router with loaded projects config
+    const projectsConfig = loadProjectsConfig();
+    const testRouter = new CommandRouter(
+      new SessionStateManager(),
+      workspace,
+      () => new Map(),
+      new ChannelRouter(store),
+      store,
+      tmpDir,
+      Object.create(ClaudeSDKProvider.prototype) as ClaudeSDKProvider,
+      new Map(),
+      {
+        clearSessionWhitelist,
+        getPermissionStatus: vi.fn().mockReturnValue({
+          rememberedTools: 0,
+          rememberedBashPrefixes: 0,
+        }),
+      },
+      ['user', 'project', 'local'],
+      sdkEngine as SDKEngine,
+      projectsConfig,
+    );
+
     await store.saveBinding({
       channelType: 'telegram',
       chatId: 'c1',
@@ -220,7 +243,7 @@ describe('CommandRouter /settings', () => {
       createdAt: '',
     });
 
-    await router.handle(adapter, {
+    await testRouter.handle(adapter, {
       channelType: 'telegram',
       chatId: 'c1',
       userId: 'u1',
@@ -284,7 +307,6 @@ describe('CommandRouter /settings', () => {
       projectName: 'repo-a',
       createdAt: '',
     });
-    workspace.setProjectName('telegram', 'c1', 'repo-a');
 
     await router.handle(adapter, {
       channelType: 'telegram',
@@ -300,7 +322,6 @@ describe('CommandRouter /settings', () => {
     expect(binding?.cwd).toBe(repoB);
     expect(binding?.sdkSessionId).toBeUndefined();
     expect(binding?.projectName).toBeUndefined();
-    expect(workspace.getProjectName('telegram', 'c1')).toBeUndefined();
     expect(workspace.getBinding('telegram', 'c1')).toBe(repoB);
   });
 
@@ -319,6 +340,29 @@ describe('CommandRouter /settings', () => {
     }));
     process.env.HOME = homeDir;
 
+    // Create new router with loaded projects config
+    const projectsConfig = loadProjectsConfig();
+    const testRouter = new CommandRouter(
+      new SessionStateManager(),
+      workspace,
+      () => new Map(),
+      new ChannelRouter(store),
+      store,
+      repoDir,
+      Object.create(ClaudeSDKProvider.prototype) as ClaudeSDKProvider,
+      new Map(),
+      {
+        clearSessionWhitelist,
+        getPermissionStatus: vi.fn().mockReturnValue({
+          rememberedTools: 0,
+          rememberedBashPrefixes: 0,
+        }),
+      },
+      ['user', 'project', 'local'],
+      sdkEngine as SDKEngine,
+      projectsConfig,
+    );
+
     await store.saveBinding({
       channelType: 'telegram',
       chatId: 'c1',
@@ -329,9 +373,8 @@ describe('CommandRouter /settings', () => {
       claudeSettingSources: ['user'] as ClaudeSettingSource[],
       createdAt: '',
     });
-    workspace.setProjectName('telegram', 'c1', 'a');
 
-    await router.handle(adapter, {
+    await testRouter.handle(adapter, {
       channelType: 'telegram',
       chatId: 'c1',
       userId: 'u1',
@@ -363,6 +406,29 @@ describe('CommandRouter /settings', () => {
     }));
     process.env.HOME = homeDir;
 
+    // Create new router with loaded projects config
+    const projectsConfig = loadProjectsConfig();
+    const testRouter = new CommandRouter(
+      new SessionStateManager(),
+      workspace,
+      () => new Map(),
+      new ChannelRouter(store),
+      store,
+      repoDir,
+      Object.create(ClaudeSDKProvider.prototype) as ClaudeSDKProvider,
+      new Map(),
+      {
+        clearSessionWhitelist,
+        getPermissionStatus: vi.fn().mockReturnValue({
+          rememberedTools: 0,
+          rememberedBashPrefixes: 0,
+        }),
+      },
+      ['user', 'project', 'local'],
+      sdkEngine as SDKEngine,
+      projectsConfig,
+    );
+
     await store.saveBinding({
       channelType: 'telegram',
       chatId: 'c1',
@@ -373,9 +439,8 @@ describe('CommandRouter /settings', () => {
       claudeSettingSources: ['user'] as ClaudeSettingSource[],
       createdAt: '',
     });
-    workspace.setProjectName('telegram', 'c1', 'a');
 
-    await router.handle(adapter, {
+    await testRouter.handle(adapter, {
       channelType: 'telegram',
       chatId: 'c1',
       userId: 'u1',
@@ -418,7 +483,6 @@ describe('CommandRouter /settings', () => {
       projectName: 'repo-a',
       createdAt: '',
     });
-    workspace.setProjectName('telegram', 'c1', 'repo-a');
     workspace.setBinding('telegram', 'c1', repoA);
 
     await router.handle(adapter, {
@@ -435,7 +499,6 @@ describe('CommandRouter /settings', () => {
     expect(binding?.cwd).toBe(repoB);
     expect(binding?.sdkSessionId).toBe('sdk-target');
     expect(binding?.projectName).toBeUndefined();
-    expect(workspace.getProjectName('telegram', 'c1')).toBeUndefined();
     expect(workspace.getBinding('telegram', 'c1')).toBe(repoB);
 
     scanSpy.mockRestore();

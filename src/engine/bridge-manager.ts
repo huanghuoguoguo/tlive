@@ -27,6 +27,7 @@ import type { BridgeStore } from '../store/interface.js';
 import type { LLMProvider } from '../providers/base.js';
 import { generateRequestId, Logger, type LogContext } from '../logger.js';
 import { truncate } from '../utils/string.js';
+import { areSettingSourcesEqual } from '../utils/automation.js';
 
 /** Bridge commands handled synchronously (don't block adapter loop) */
 const QUICK_COMMANDS = new Set(['/new', '/home', '/status', '/hooks', '/sessions', '/session', '/sessioninfo', '/help', '/help-cli', '/perm', '/stop', '/approve', '/pairings', '/settings', '/cd', '/pwd', '/upgrade', '/restart']);
@@ -107,6 +108,8 @@ export class BridgeManager {
     this.sdkEngine.onSessionPruned = (sessionKey) => {
       this.permissions.clearSessionWhitelist(sessionKey);
     };
+    // Load projects config once for CommandRouter, WebhookServer, and CronScheduler
+    const projectsResult = loadProjectsConfig();
     this.commands = new CommandRouter(
       this.state,
       this.workspace,
@@ -119,6 +122,7 @@ export class BridgeManager {
       this.permissions,
       config.claudeSettingSources,
       this.sdkEngine,
+      projectsResult,
     );
     this.loop = new MessageLoopCoordinator({
       state: this.state,
@@ -148,7 +152,6 @@ export class BridgeManager {
       permissions: this.permissions,
       buildTerminalUrl: (sessionId) => `http://${getLocalIP()}:${this.port}/terminal.html?id=${sessionId}`,
     });
-    const projectsResult = loadProjectsConfig();
     // Initialize webhook server if enabled
     if (config.webhook.enabled && config.webhook.token) {
       this.webhookServer = new WebhookServer({
@@ -217,15 +220,8 @@ export class BridgeManager {
     const previousCwd = binding.cwd;
     const workdirChanged = options.workdir !== undefined && binding.cwd !== options.workdir;
     const projectChanged = options.projectName !== undefined && binding.projectName !== options.projectName;
-    const settingsChanged = (() => {
-      if (options.claudeSettingSources === undefined) {
-        return false;
-      }
-      const nextSources = [...options.claudeSettingSources];
-      const currentSources = binding.claudeSettingSources ?? [];
-      return currentSources.length !== nextSources.length
-        || currentSources.some((source, index) => source !== nextSources[index]);
-    })();
+    const settingsChanged = options.claudeSettingSources !== undefined
+      && !areSettingSourcesEqual(binding.claudeSettingSources, options.claudeSettingSources);
     const sessionContextChanged = workdirChanged || projectChanged || settingsChanged;
 
     let bindingChanged = false;

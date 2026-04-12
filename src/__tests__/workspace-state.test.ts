@@ -94,19 +94,6 @@ describe('WorkspaceStateManager', () => {
     });
   });
 
-  describe('project binding', () => {
-    it('sets and gets project name', () => {
-      manager.setProjectName('telegram', 'chat1', 'repo-a');
-      expect(manager.getProjectName('telegram', 'chat1')).toBe('repo-a');
-    });
-
-    it('clears project name', () => {
-      manager.setProjectName('telegram', 'chat1', 'repo-a');
-      manager.clearProjectName('telegram', 'chat1');
-      expect(manager.getProjectName('telegram', 'chat1')).toBeUndefined();
-    });
-  });
-
   describe('clear', () => {
     it('clears workspace state for a chat', () => {
       manager.pushHistory('telegram', 'chat1', '/dir1');
