@@ -36,6 +36,7 @@ interface QueryOrchestratorOptions {
   defaultWorkdir: string;
   defaultClaudeSettingSources: ClaudeSettingSource[];
   port: number;
+  appendSystemPrompt?: string;
 }
 
 /**
@@ -318,7 +319,7 @@ export class QueryOrchestrator {
         msg.channelType,
         msg.chatId,
         workdir,
-        { sessionId: binding.sdkSessionId, settingSources },
+        { sessionId: binding.sdkSessionId, settingSources, appendSystemPrompt: this.options.appendSystemPrompt },
       );
     } catch (err) {
       console.warn(`[bridge] Failed to create LiveSession, falling back to streamChat: ${err}`);

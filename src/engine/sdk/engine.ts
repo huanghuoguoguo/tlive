@@ -220,7 +220,7 @@ export class SDKEngine {
     channelType: string,
     chatId: string,
     workdir: string,
-    options?: { sessionId?: string; effort?: EffortLevel; model?: string; settingSources?: ClaudeSettingSource[] },
+    options?: { sessionId?: string; effort?: EffortLevel; model?: string; settingSources?: ClaudeSettingSource[]; appendSystemPrompt?: string },
   ): LiveSession | undefined {
     if (!llm.createSession) return undefined;
 
@@ -248,6 +248,7 @@ export class SDKEngine {
       effort: options?.effort,
       model: options?.model,
       settingSources: options?.settingSources,
+      appendSystemPrompt: options?.appendSystemPrompt,
     });
 
     this.registry.set(key, { session, workdir, lastActiveAt: Date.now() });

@@ -108,5 +108,6 @@ export interface LLMProvider {
     effort?: EffortLevel;
     model?: string;
     settingSources?: ClaudeSettingSource[];
+    appendSystemPrompt?: string;
   }): LiveSession;
 }
