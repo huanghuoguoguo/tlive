@@ -27,14 +27,12 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Type check
-        run: npm run typecheck
+      - name: Run QA checks
+        run: npm run check
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Run tests
-        run: npm test
+      - name: Run coverage
+        if: matrix.node-version == '20.x'
+        run: npm run test:coverage
 
       - name: Build
         run: npm run build

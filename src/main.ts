@@ -9,12 +9,13 @@ import type { ChannelType } from './channels/types.js';
 import { checkForUpdates, getCurrentVersion, isVersionNotified, markVersionNotified } from './engine/version-checker.js';
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync, readFileSync, unlinkSync, existsSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { getTliveHome, getTliveRuntimeDir } from './utils/index.js';
 
 // Cached config (loaded once at startup)
 let cachedConfig: ReturnType<typeof loadConfig> | null = null;
 
-function writeStatusFile(data: Record<string, unknown>): void {
+export function writeStatusFile(data: Record<string, unknown>): void {
   try {
     const runtimeDir = getTliveRuntimeDir();
     mkdirSync(runtimeDir, { recursive: true });
@@ -28,7 +29,7 @@ function writeStatusFile(data: Record<string, unknown>): void {
  * Ensure only one bridge instance runs at a time.
  * Uses a PID file lock — kills stale processes if needed.
  */
-function acquireSingletonLock(): void {
+export function acquireSingletonLock(): void {
   const runtimeDir = getTliveRuntimeDir();
   mkdirSync(runtimeDir, { recursive: true });
   const pidFile = join(runtimeDir, 'bridge.pid');
@@ -83,7 +84,7 @@ function acquireSingletonLock(): void {
   process.on('exit', cleanPid);
 }
 
-async function main() {
+export async function main() {
   // Ensure only one bridge instance runs
   acquireSingletonLock();
 
@@ -201,7 +202,21 @@ async function main() {
   const keepAliveInterval = setInterval(() => {}, 60_000);
 }
 
-main().catch((err) => {
-  console.error('Fatal error:', err);
-  process.exit(1);
-});
+export function shouldRunMain(entryArg = process.argv[1]): boolean {
+  if (!entryArg) {
+    return false;
+  }
+
+  try {
+    return import.meta.url === pathToFileURL(entryArg).href;
+  } catch {
+    return false;
+  }
+}
+
+if (shouldRunMain()) {
+  main().catch((err) => {
+    console.error('Fatal error:', err);
+    process.exit(1);
+  });
+}
