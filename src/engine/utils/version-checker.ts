@@ -140,11 +140,3 @@ export async function checkForUpdates(): Promise<VersionInfo | null> {
     return null;
   }
 }
-
-/**
- * Generate upgrade command based on OS
- */
-export function getUpgradeCommand(version?: string): string {
-  const versionArg = version ? ` ${version}` : '';
-  return `curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s --${versionArg}`;
-}

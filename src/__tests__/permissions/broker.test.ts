@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PermissionBroker } from '../../permissions/broker.js';
 import { PendingPermissions } from '../../permissions/gateway.js';
 import type { BaseChannelAdapter } from '../../channels/base.js';
-import { TelegramFormatter } from '../../formatting/telegram-formatter.js';
+import { TelegramFormatter } from '../../platforms/telegram/formatter.js';
 
 function createMockAdapter(): BaseChannelAdapter {
   const formatter = new TelegramFormatter('en');

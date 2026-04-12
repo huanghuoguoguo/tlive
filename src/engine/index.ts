@@ -40,5 +40,4 @@ export { CronScheduler } from './automation/cron.js';
 export { isCronApiRequest, handleCronApiRequest } from './automation/cron-api.js';
 
 // Commands (new - open-closed principle)
-export { commandRegistry, CommandRegistry, registerAllCommands } from './commands/index.js';
-export type { CommandHandler, CommandContext, HelpEntry } from './commands/index.js';
+export { commandRegistry, registerAllCommands } from './commands/index.js';

@@ -47,5 +47,3 @@ export function registerAllCommands(): void {
 }
 
 export { commandRegistry } from './registry.js';
-export { CommandRegistry } from './registry.js';
-export type { CommandHandler, CommandContext, HelpEntry, RouterHelpers } from './types.js';

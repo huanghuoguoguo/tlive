@@ -7,13 +7,11 @@ import type {
   StatusData,
   HomeData,
   PermissionStatusData,
-  TaskStartData,
   SessionsData,
   SessionDetailData,
   HelpData,
   NewSessionData,
   ProjectListData,
-  ProjectInfoData,
   QueueStatusData,
   DiagnoseData,
   FormattableMessage,
@@ -35,10 +33,6 @@ export function presentPermissionStatus(chatId: string, data: PermissionStatusDa
   return { type: 'permissionStatus', chatId, data };
 }
 
-export function presentTaskStart(chatId: string, data: TaskStartData): FormattableMessage {
-  return { type: 'taskStart', chatId, data };
-}
-
 export function presentSessions(chatId: string, data: SessionsData): FormattableMessage {
   return { type: 'sessions', chatId, data };
 }
@@ -55,27 +49,7 @@ export function presentProjectList(chatId: string, data: ProjectListData): Forma
   return { type: 'projectList', chatId, data };
 }
 
-export function presentProjectInfo(chatId: string, data: ProjectInfoData): FormattableMessage {
-  return { type: 'projectInfo', chatId, data };
-}
-
 // --- Simple text messages (no platform-specific formatting needed) ---
-
-export interface SimpleTextData {
-  text: string;
-}
-
-export function presentPermissionModeChanged(chatId: string, mode: 'on' | 'off'): { chatId: string; text: string } {
-  const text = mode === 'on'
-    ? '🔐 Permission prompts: ON — dangerous tools will ask for confirmation'
-    : '⚡ Permission prompts: OFF — all tools auto-allowed';
-  return { chatId, text };
-}
-
-export function presentPermissionModeStatus(chatId: string, current: string): { chatId: string; text: string } {
-  const text = `🔐 Permission mode: **${current}**\nUsage: \`/perm on|off\`\non = prompt for dangerous tools (default)\noff = auto-allow all`;
-  return { chatId, text };
-}
 
 export function presentStopResult(chatId: string, interrupted: boolean): { chatId: string; text: string } {
   return { chatId, text: interrupted ? '⏹ Interrupted current execution' : '⚠️ No active execution to stop' };

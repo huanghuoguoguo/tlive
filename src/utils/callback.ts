@@ -5,13 +5,6 @@ export function parseCallback(callbackData: string): string[] {
   return callbackData.split(':');
 }
 
-/** Check if callback matches a prefix and extract remaining parts */
-export function matchCallback(callbackData: string, prefix: keyof typeof CALLBACK_PREFIXES): string[] | null {
-  const fullPrefix = CALLBACK_PREFIXES[prefix];
-  if (!callbackData.startsWith(fullPrefix)) return null;
-  return callbackData.slice(fullPrefix.length).split(':');
-}
-
 /** Generic callback parser that reduces boilerplate */
 function parseCallbackFields<T extends Record<string, string | number>>(
   callbackData: string,

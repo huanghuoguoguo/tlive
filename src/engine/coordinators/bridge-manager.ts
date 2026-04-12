@@ -171,6 +171,7 @@ export class BridgeManager {
         rateLimitPerMinute: config.webhook.rateLimitPerMinute,
         projects: projectsResult?.valid,
         defaultProject: projectsResult?.defaultProject,
+        defaultWorkdir,
       });
     }
     // Initialize cron scheduler if enabled (Phase 3)
