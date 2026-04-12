@@ -72,6 +72,10 @@ export class ClaudeAdapter {
         this.handleToolProgress(msg, events, parentToolUseId);
         break;
 
+      case 'tool_use_summary':
+        this.handleToolUseSummary(msg, events);
+        break;
+
       case 'rate_limit_event':
         this.handleRateLimit(msg, events);
         break;
@@ -359,10 +363,64 @@ export class ClaudeAdapter {
         if (apiKeySource) {
           console.log(`[claude-sdk] Active auth source: ${apiKeySource}`);
         }
-        const ev: CanonicalEvent = {
+        // Emit legacy status event (for model tracking)
+        const statusEv: CanonicalEvent = {
           kind: 'status',
           sessionId: msg.session_id as string,
           model: msg.model as string,
+        };
+        events.push(statusEv);
+
+        // Emit enriched session_info event with skills, MCP servers, tools
+        const tools = Array.isArray(msg.tools) ? msg.tools as string[] : undefined;
+        const mcpServers = Array.isArray(msg.mcp_servers)
+          ? (msg.mcp_servers as Array<{ name: string; status: string }>)
+          : undefined;
+        const skills = Array.isArray(msg.skills) ? msg.skills as string[] : undefined;
+        if (tools?.length || mcpServers?.length || skills?.length) {
+          const infoEv: CanonicalEvent = {
+            kind: 'session_info',
+            sessionId: msg.session_id as string,
+            model: msg.model as string,
+            ...(tools?.length ? { tools } : {}),
+            ...(mcpServers?.length ? { mcpServers } : {}),
+            ...(skills?.length ? { skills } : {}),
+          };
+          events.push(infoEv);
+        }
+        break;
+      }
+
+      case 'session_state_changed': {
+        const state = msg.state as string | undefined;
+        if (state === 'idle' || state === 'running' || state === 'requires_action') {
+          const ev: CanonicalEvent = {
+            kind: 'session_state',
+            state,
+          };
+          events.push(ev);
+        }
+        break;
+      }
+
+      case 'api_retry': {
+        const ev: CanonicalEvent = {
+          kind: 'api_retry',
+          attempt: (msg.attempt as number) || 1,
+          maxRetries: (msg.max_retries as number) || 3,
+          retryDelayMs: (msg.retry_delay_ms as number) || 0,
+          ...(msg.error ? { error: msg.error as string } : {}),
+        };
+        events.push(ev);
+        break;
+      }
+
+      case 'compact_boundary': {
+        const metadata = msg.compact_metadata as { trigger?: string; pre_tokens?: number } | undefined;
+        const ev: CanonicalEvent = {
+          kind: 'compact_boundary',
+          trigger: (metadata?.trigger === 'manual' ? 'manual' : 'auto') as 'manual' | 'auto',
+          ...(metadata?.pre_tokens != null ? { preTokens: metadata.pre_tokens } : {}),
         };
         events.push(ev);
         break;
@@ -426,6 +484,22 @@ export class ClaudeAdapter {
       toolName,
       elapsed,
       ...(parentToolUseId ? { parentToolUseId } : {}),
+    };
+    events.push(ev);
+  }
+
+  // ── tool_use_summary ──
+
+  private handleToolUseSummary(
+    msg: SDKMessage,
+    events: CanonicalEvent[],
+  ): void {
+    const summary = msg.summary as string | undefined;
+    if (!summary) return;
+
+    const ev: CanonicalEvent = {
+      kind: 'tool_use_summary',
+      summary,
     };
     events.push(ev);
   }

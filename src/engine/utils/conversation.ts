@@ -59,6 +59,11 @@ interface ProcessMessageParams {
   onToolProgress?: (data: { toolName: string; elapsed: number }) => void;
   onRateLimit?: (data: { status: string; utilization?: number; resetsAt?: number }) => void;
   onStatus?: (data: { sessionId: string; model: string }) => void;
+  onSessionInfo?: (data: { sessionId: string; model: string; tools?: string[]; mcpServers?: Array<{ name: string; status: string }>; skills?: string[] }) => void;
+  onToolUseSummary?: (summary: string) => void;
+  onSessionState?: (state: 'idle' | 'running' | 'requires_action') => void;
+  onApiRetry?: (data: { attempt: number; maxRetries: number; retryDelayMs: number; error?: string }) => void;
+  onCompactBoundary?: (data: { trigger: 'manual' | 'auto'; preTokens?: number }) => void;
   onThinkingDelta?: (delta: string) => void;
   onTodoUpdate?: (todos: Array<{ content: string; status: TodoStatus }>) => void;
   /** Receives query controls (interrupt, stopTask) when available */
@@ -171,6 +176,21 @@ export class ConversationEngine {
             break;
           case 'status':
             params.onStatus?.(value);
+            break;
+          case 'session_info':
+            params.onSessionInfo?.(value);
+            break;
+          case 'tool_use_summary':
+            params.onToolUseSummary?.(value.summary);
+            break;
+          case 'session_state':
+            params.onSessionState?.(value.state);
+            break;
+          case 'api_retry':
+            params.onApiRetry?.(value);
+            break;
+          case 'compact_boundary':
+            params.onCompactBoundary?.(value);
             break;
           case 'todo_update':
             params.onTodoUpdate?.(value.todos);

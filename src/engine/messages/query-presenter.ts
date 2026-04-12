@@ -65,6 +65,10 @@ export class QueryExecutionPresenter {
         toolLogs: state.toolLogs,
         timeline: state.timeline,
         isContinuation: state.isContinuation,
+        sessionInfo: state.sessionInfo,
+        toolUseSummaryText: state.toolUseSummaryText,
+        apiRetry: state.apiRetry,
+        compacting: state.compacting,
         actionButtons: castButtons(buttons),
       };
 

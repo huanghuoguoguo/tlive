@@ -201,6 +201,23 @@ export interface ProgressData {
   permissionRequests?: number;
   /** True after bubble split — indicates continuation of previous task */
   isContinuation?: boolean;
+  /** Session info from SDK init (skills, MCP servers, tools) */
+  sessionInfo?: {
+    tools?: string[];
+    mcpServers?: Array<{ name: string; status: string }>;
+    skills?: string[];
+  };
+  /** AI-generated summary of preceding tool calls */
+  toolUseSummaryText?: string;
+  /** API retry state */
+  apiRetry?: {
+    attempt: number;
+    maxRetries: number;
+    retryDelayMs: number;
+    error?: string;
+  };
+  /** Context compaction indicator */
+  compacting?: boolean;
 }
 
 /** Task completion summary card */
