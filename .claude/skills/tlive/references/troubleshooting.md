@@ -35,11 +35,11 @@
 **Symptoms**: Claude Code runs without sending permission requests to phone.
 
 **Steps**:
-1. Verify hooks are configured in `~/.claude/settings.json`
-2. Check hook scripts exist: `ls -la ~/.tlive/bin/hook-handler.sh`
-3. Check Go Core is running: `curl -sf http://localhost:8080/api/status`
-4. Check hooks aren't paused: `tlive hooks`
-5. Test hook script manually: `echo '{}' | ~/.tlive/bin/hook-handler.sh`
+1. Verify the `/tlive` skill is installed: `tlive install skills`
+2. Check Claude Code settings in `~/.claude/settings.json`
+3. Check hooks aren't paused: `tlive hooks`
+4. Verify the bridge is running: `tlive status`
+5. Check recent bridge logs: `/tlive logs 200`
 
 ## Streaming not working
 

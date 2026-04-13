@@ -11,16 +11,43 @@
 
 ## Changes from Original
 
-- **Removed Codex support** — Claude-only, simplified codebase
-- **Enhanced session scanner** — Efficient tail reading (32KB) with 5s cache
-- **Fixed O(n) binding lookup** — Direct session ID indexing
+### Architecture Simplified
+- **Removed Go Core + Web Terminal** — Pure TypeScript, no web terminal, IM-only interaction
+- **Removed Codex + Discord** — Claude-only, Discord adapter removed, cleaner codebase
+
+### Feishu Deep Optimization
+- **Collapsible panels** — Thinking & tool calls fold/unfold, long content doesn't clutter screen
+- **Real-time progress** — Thinking content pushed live, tool execution status instant update
+- **Enhanced permission cards** — Allow Always (auto-allow in session), AskUserQuestion multi-select
+- **Table limit handling** — Large tables auto-truncated to avoid Feishu API errors
+
+### Session Management Enhanced
+- **Session scanning** — Scan `~/.claude/projects/`, list recent sessions, resume any
+- **Efficient tail reading** — 32KB tail read for latest message, 5s cache avoids repeated I/O
+- **Fixed O(n) lookup** — Direct session ID indexing, no iteration
 - **Added `/cd`, `/pwd` commands** — Per-chat directory control
+
+### Agent Capabilities Extended
+- **Proactive file sending** — Agent can send files (images, PDFs) to IM via REST API
+- **Cron job API** — Agent can create/manage scheduled tasks
+- **Entropy control tools** — Dead code detection, duplicate identification, code quality tools
+
+### UX Improvements
+- **Compact Bash display** — Command output in single-line format
 - **Improved daemon mode** — Auto-start on demand, no manual activation needed
 
 ## Install
 
+Linux / macOS:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash
+```
+
+Windows PowerShell:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$tmp = Join-Path $env:TEMP 'tlive-install.ps1'; Invoke-WebRequest 'https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.ps1' -UseBasicParsing -OutFile $tmp; & $tmp"
 ```
 
 Verify:
@@ -55,7 +82,6 @@ That's it! Claude Code will help you:
 |---------|----------|-------------|
 | **IM Chat** | Yes | Phone → Claude → Streaming response with tool visibility |
 | **Permission Approval** | Yes | Approve tool executions from your phone |
-| **Web Terminal** | No | `tlive <cmd>` wraps any command, view in browser |
 
 ## Architecture
 
@@ -69,7 +95,7 @@ That's it! Claude Code will help you:
 └─────────────┘     └──────────────────┘     └─────────────┘
 ```
 
-**Bridge**: TypeScript service that connects IM platforms to Claude Code by scanning session files. Includes built-in `tlive` CLI for web terminal feature.
+**Bridge**: TypeScript service that connects IM platforms to Claude Code by scanning session files and forwarding chat-driven tasks into Claude Code sessions.
 
 ## IM Commands
 

@@ -11,16 +11,43 @@
 
 ## 与原版的差异
 
-- **移除 Codex 支持** — 仅支持 Claude，精简代码
-- **增强会话扫描** — 高效尾部读取（32KB）+ 5秒缓存
-- **修复 O(n) 查找** — 直接按 session ID 索引绑定关系
+### 架构简化
+- **移除 Go Core + Web Terminal** — 纯 TypeScript 实现，移除 Web 终端，仅支持 IM 交互
+- **移除 Codex + Discord** — 仅支持 Claude，移除 Discord 适配器，精简代码
+
+### 飞书深度优化
+- **可折叠面板** — 思考过程、工具调用支持折叠展开，长内容不占屏幕
+- **实时进度显示** — 思考内容实时推送，工具执行状态即时更新
+- **权限卡片改进** — 支持 Allow Always（会话内自动允许）、AskUserQuestion 多选
+- **表格限制处理** — 大表格自动截断，避免飞书 API 报错
+
+### 会话管理增强
+- **Session 会话扫描** — 扫描 `~/.claude/projects/`，列出最近会话，支持任意接替
+- **高效尾部读取** — 32KB 尾部读取获取最新消息，5 秒缓存避免重复 I/O
+- **修复 O(n) 查找** — 直接按 session ID 索引绑定关系，不再遍历
 - **新增 `/cd`、`/pwd` 命令** — 按会话切换工作目录
+
+### Agent 能力扩展
+- **主动发文件** — Agent 可通过 REST API 发送文件（图片、PDF）到 IM
+- **定时任务 API** — Agent 可创建/管理定时任务（cron jobs）
+- **熵控审查工具** — 死代码检测、重复代码识别等代码质量工具
+
+### 体验改进
+- **紧凑 Bash 显示** — 命令输出单行显示，不占用过多空间
 - **改进守护进程** — 按需自动启动，无需手动激活
 
 ## 安装
 
+Linux / macOS：
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash
+```
+
+Windows PowerShell：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$tmp = Join-Path $env:TEMP 'tlive-install.ps1'; Invoke-WebRequest 'https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.ps1' -UseBasicParsing -OutFile $tmp; & $tmp"
 ```
 
 ## 快速开始
@@ -28,7 +55,7 @@ curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.s
 这是中文用户最快上手的默认路径：
 
 ```bash
-# 1. 安装 tlive
+# 1. 安装 tlive（Windows 请使用上面安装章节中的 PowerShell 命令）
 curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash
 
 # 2. 在你的项目目录启动 Claude Code
@@ -74,7 +101,6 @@ claude
 |------|------|------|
 | **IM 对话** | 是 | 手机发消息 → Claude 执行 → 流式返回结果 |
 | **权限审批** | 是 | Claude 需要执行命令时，手机收到审批请求 |
-| **Web 终端** | 否 | `tlive <cmd>` 包装任意命令，手机浏览器查看 |
 
 ## 平台选择
 

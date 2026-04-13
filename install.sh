@@ -56,6 +56,9 @@ main() {
     else
         version=$(get_latest_version)
     fi
+    if [[ ! "$version" =~ ^v ]]; then
+        version="v${version}"
+    fi
     info "Version: ${version}"
 
     # Download tarball
@@ -63,27 +66,40 @@ main() {
     local tmp_dir
     tmp_dir=$(mktemp -d)
     local tarball="${tmp_dir}/tlive.tar.gz"
+    local staged_dir="${tmp_dir}/app"
+    local backup_dir=""
 
     info "Downloading tlive ${version}..."
     if ! curl -fsSL "$download_url" -o "$tarball"; then
         error "Failed to download from ${download_url}"
     fi
 
-    # Extract to app directory
-    info "Installing to ${APP_DIR}..."
-    rm -rf "$APP_DIR"
-    mkdir -p "$APP_DIR"
-    tar xzf "$tarball" -C "$APP_DIR"
+    # Extract to staging directory first so the existing install stays intact on failure
+    info "Preparing staged install..."
+    mkdir -p "$staged_dir"
+    tar xzf "$tarball" -C "$staged_dir"
 
     # Install production dependencies
     info "Installing dependencies..."
-    cd "${APP_DIR}"
+    cd "${staged_dir}"
     npm ci --production --ignore-scripts 2>/dev/null || npm install --production --ignore-scripts 2>/dev/null
     if [ -f "scripts/postinstall.js" ]; then
         info "Running tlive postinstall..."
         node scripts/postinstall.js
     fi
     cd - >/dev/null
+
+    info "Installing to ${APP_DIR}..."
+    if [ -d "$APP_DIR" ]; then
+        backup_dir="${INSTALL_DIR}/app-backup-$(date +%s)"
+        mv "$APP_DIR" "$backup_dir"
+    fi
+    if ! mv "$staged_dir" "$APP_DIR"; then
+        if [ -n "$backup_dir" ] && [ -d "$backup_dir" ]; then
+            mv "$backup_dir" "$APP_DIR"
+        fi
+        error "Failed to activate ${version}"
+    fi
 
     # Create wrapper script
     local bin_dir="${HOME}/.local/bin"
@@ -109,6 +125,9 @@ WRAPPER
 
     echo ""
     info "Installation complete! Run 'tlive --help' to get started."
+    if [ -n "$backup_dir" ] && [ -d "$backup_dir" ]; then
+        info "Previous version backed up to ${backup_dir}"
+    fi
     echo ""
 }
 

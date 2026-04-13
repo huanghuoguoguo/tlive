@@ -23,7 +23,7 @@ allowed-tools:
 
 You are managing the TLive IM Bridge — bidirectional chat with Claude Code from Telegram, Feishu, or QQ Bot.
 
-The Bridge uses the Claude Agent SDK to interact with Claude Code. It is completely independent from the optional Go Core web terminal server.
+The Bridge uses the Claude Agent SDK to interact with Claude Code. It is a pure TypeScript IM bridge with no separate Go Core runtime.
 
 User data: `~/.tlive/`
 

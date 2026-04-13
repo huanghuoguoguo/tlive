@@ -36,7 +36,7 @@ async function main() {
   console.log('\nTLive setup complete.');
   console.log('Next steps:');
   console.log('  1. tlive setup              — configure IM platforms');
-  console.log('  2. tlive install skills      — integrate with Claude Code');
+  console.log('  2. tlive install skills     — install Claude Code skill');
 }
 
 main().catch(console.error);

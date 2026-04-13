@@ -5,7 +5,7 @@ import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { NotificationData } from '../../formatting/message-types.js';
 import { truncate } from '../../utils/string.js';
 
-/** Data shape for hook notifications (stop, idle_prompt, etc.) from Go Core */
+/** Data shape for hook notifications (stop, idle_prompt, etc.) routed through the bridge. */
 export interface HookNotificationData {
   tlive_hook_type?: string;
   tlive_session_id?: string;

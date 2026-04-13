@@ -23,8 +23,12 @@ Log location: `~/.tlive/logs/bridge.log`
 
 Binary download failed. Re-run installation:
 
-```bash
+```text
+Linux / macOS:
 curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash
+
+Windows PowerShell:
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$tmp = Join-Path $env:TEMP 'tlive-install.ps1'; Invoke-WebRequest 'https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.ps1' -UseBasicParsing -OutFile $tmp; & $tmp"
 ```
 
 ### Bridge Won't Start
@@ -60,37 +64,9 @@ curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.s
 - Verify app credentials are correct
 - Check whitelist config
 
-### Hooks Not Working
-
-1. Verify skills installed:
-   ```bash
-   tlive install skills
-   ```
-
-2. Check hook status:
-   ```bash
-   tlive hooks
-   ```
-
-3. Verify Bridge is running:
-   ```bash
-   tlive status
-   ```
-
 ### Permission Approval Timeout
 
 Default timeout is 5 minutes with auto-deny on timeout. On QQ Bot, reply `allow` / `deny` / `always` directly instead of waiting for buttons.
-
-### Web Terminal Unreachable
-
-1. Check port availability:
-   ```bash
-   lsof -i :8080
-   ```
-
-2. Check firewall settings
-
-3. For phone access, ensure same LAN or configure tunneling
 
 ## Reset
 

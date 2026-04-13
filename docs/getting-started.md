@@ -7,12 +7,19 @@ This guide takes you from zero to a working tlive setup. By the end, you'll be a
 - **Node.js 20+** and npm
 - One of: **Telegram** or **Feishu** account (for IM Bridge and Hook Approval)
 - **Claude Code** installed (required for IM Bridge and Hook Approval features)
-- The **Web Terminal** feature works standalone — no IM platform needed
 
 ## Install
 
+Linux / macOS:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash
+```
+
+Windows PowerShell:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$tmp = Join-Path $env:TEMP 'tlive-install.ps1'; Invoke-WebRequest 'https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.ps1' -UseBasicParsing -OutFile $tmp; & $tmp"
 ```
 
 Verify the installation:
@@ -21,7 +28,7 @@ Verify the installation:
 tlive --help
 ```
 
-**What happens during install:** this fork is not published to npm. The installer above downloads the current release from GitHub. If the binary download fails, re-run the same `curl ... | bash` command, or install from source using the repository README.
+**What happens during install:** this fork is not published to npm. The installer above downloads the current release from GitHub. If the download fails, re-run the platform-specific install command above, or install from source using the repository README.
 
 ## Choose Your IM Platform
 
@@ -93,28 +100,11 @@ tlive install skills
 This registers:
 
 - The `/tlive` skill for Claude Code
-- Hook scripts for permission approval (`PreToolUse`, `Notification`)
-- Notification handlers for task completion alerts
+- Reference docs under `~/.tlive/docs/`
 
 ## Try It Out
 
-### Feature 1: Web Terminal
-
-Wrap any command with `tlive` to get a web-accessible terminal:
-
-```bash
-tlive echo "Hello from tlive!"
-```
-
-Open the URL shown in the output — you'll see a live web terminal. Try it with a real workload:
-
-```bash
-tlive claude --model opus
-```
-
-You'll get both a local and network URL. Open the network URL on your phone to monitor the session remotely.
-
-### Feature 2: IM Bridge
+### Feature 1: IM Bridge
 
 In Claude Code, start the bridge:
 
@@ -125,12 +115,6 @@ In Claude Code, start the bridge:
 Now open your IM app on your phone and send a message to the bot. Claude Code will receive it, work on the task, and stream the response back to your phone — including tool usage and progress updates.
 
 Other useful commands: `/perm on|off` (permissions), `/stop` (interrupt), `/sessions` (recent sessions).
-
-### Feature 3: Hook Approval
-
-This one requires no extra steps — just use Claude Code normally. When Claude needs permission to run a tool (like executing a bash command), you'll get a notification on your phone with **Allow** and **Deny** buttons. Tap to respond, and Claude continues.
-
-If the timeout expires, the default action is **deny** (safe by design).
 
 ## Troubleshooting
 
@@ -148,15 +132,12 @@ tlive logs 50
 
 **Common issues:**
 
-- **"Binary not found"** — Installation incomplete. Re-run: `curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash`
+- **"Binary not found"** — Installation incomplete. Re-run the platform-specific install command from the Install section above.
 - **"Bridge not starting"** — Check that `~/.tlive/config.env` exists and has valid credentials. Run `tlive doctor` for details.
 - **"No IM messages"** — Verify your bot token is correct and the bot has been added to the right chat. See the platform-specific troubleshooting in the setup guides above.
-- **Hook not firing** — Make sure you ran `tlive install skills`. Check `tlive hooks` for current hook status.
 
 ## Next Steps
 
 - **Need less noise?** Use `/sessions` and `/session <n>` to resume prior work instead of starting over
-- **Pause hooks when at desk:** `tlive hooks pause` — auto-allows everything so you're not interrupted. `tlive hooks resume` to go back to IM approval.
-- **Access web terminal from phone:** scan the QR code or use the Network URL printed when you start a session
-- **Multiple sessions:** run several `tlive <cmd>` commands — they all show up in a single dashboard
+- **Install the Claude Code command:** run `tlive install skills` if you have not done it yet
 - Read the full [README](../README.md) for all commands and architecture details
