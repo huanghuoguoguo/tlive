@@ -37,6 +37,8 @@ export interface MessageRendererOptions {
   onProgressStalled?: () => void;
   /** Called when progress resumes after stall — remove reaction */
   onProgressResumed?: () => void;
+  /** Called when flush fails (e.g., platform limit exceeded, network error) — notify user */
+  onFlushError?: (error: Error, context: { phase: string; contentPreview: string }) => void;
 }
 
 /** Tools silently ignored — never counted or displayed */
@@ -195,6 +197,7 @@ export class MessageRenderer {
   private verboseLevel: VerboseLevel;
   private onProgressStalled?: MessageRendererOptions['onProgressStalled'];
   private onProgressResumed?: MessageRendererOptions['onProgressResumed'];
+  private onFlushError?: MessageRendererOptions['onFlushError'];
   /** Whether progress is currently stalled (reaction added) */
   private progressStalled = false;
   private shouldSplitState?: MessageRendererOptions['shouldSplitState'];
@@ -224,6 +227,7 @@ export class MessageRenderer {
     this.onPermissionReactionClear = options.onPermissionReactionClear;
     this.onProgressStalled = options.onProgressStalled;
     this.onProgressResumed = options.onProgressResumed;
+    this.onFlushError = options.onFlushError;
     this.cwd = options.cwd;
     this.model = options.model;
     this.sessionId = options.sessionId;
@@ -682,16 +686,21 @@ export class MessageRenderer {
         // Retry once for transient network errors
         const code = err?.code ?? '';
         const retryable = err?.retryable || ['ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'UND_ERR_SOCKET'].includes(code);
+        const phase = this.errorMessage ? 'failed' : this.completed ? 'completed' : this.permissionQueue.length > 0 ? 'waiting_permission' : 'executing';
+        const contentPreview = content.slice(0, 100);
+
         if (retryable) {
           await new Promise(r => setTimeout(r, 1000));
           try {
             result = await this.flushCallback(content, isEdit, flushButtons, state);
-          } catch {
+          } catch (retryErr) {
             // give up after one retry
             console.error('[renderer] Failed to flush after retry:', err);
+            this.onFlushError?.(err, { phase, contentPreview });
           }
         } else {
           console.error('[renderer] Failed to flush:', err);
+          this.onFlushError?.(err, { phase, contentPreview });
         }
       }
       if (!isEdit && typeof result === 'string') {

@@ -264,6 +264,20 @@ export class QueryOrchestrator {
           adapter.addReaction(msg.chatId, renderer.messageId, reactions.processing).catch(() => {});
         }
       },
+      onFlushError: (error, context) => {
+        // Notify user when flush fails (e.g., platform limit exceeded)
+        const errorMsg = error.message || String(error);
+        const phaseText = context.phase === 'completed' ? '完成时' : context.phase === 'failed' ? '失败时' : '执行中';
+        const notifyMsg = adapter.format({
+          type: 'error',
+          chatId: msg.chatId,
+          data: {
+            title: `消息发送失败 (${phaseText})`,
+            message: `${errorMsg.slice(0, 150)}\n\n可能原因：内容超出平台限制（如表格行数、消息长度）。`,
+          },
+        });
+        adapter.send(notifyMsg).catch(() => {});
+      },
       flushCallback: (content, isEdit, buttons, state) => presenter.flush(content, isEdit, buttons, state),
     });
 
