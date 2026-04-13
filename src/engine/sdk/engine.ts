@@ -75,7 +75,6 @@ export class SDKEngine {
   private activeControlsBySession = new Map<string, QueryControls>();
   private activeControlsByChat = new Map<string, QueryControls>();
   private controlChatBySession = new Map<string, string>();
-  private lastControlledSessionByChat = new Map<string, string>();
 
   /** Session registry: sessionKey → ManagedSession */
   private registry = new Map<string, ManagedSession>();
@@ -151,28 +150,16 @@ export class SDKEngine {
     this.activeControlsBySession.delete(sessionKey);
     const chatKey = this.controlChatBySession.get(sessionKey);
     if (!chatKey) return;
-
     this.controlChatBySession.delete(sessionKey);
-    if (this.lastControlledSessionByChat.get(chatKey) === sessionKey) {
-      this.lastControlledSessionByChat.delete(chatKey);
-    }
 
-    const currentSessionKey = this.activeSessionByChat.get(chatKey);
-    if (currentSessionKey) {
-      const currentCtrl = this.activeControlsBySession.get(currentSessionKey);
-      if (currentCtrl) {
-        this.activeControlsByChat.set(chatKey, currentCtrl);
-        this.lastControlledSessionByChat.set(chatKey, currentSessionKey);
+    // Try to find fallback from the current default session
+    const defaultSessionKey = this.activeSessionByChat.get(chatKey);
+    if (defaultSessionKey) {
+      const defaultCtrl = this.activeControlsBySession.get(defaultSessionKey);
+      if (defaultCtrl) {
+        this.activeControlsByChat.set(chatKey, defaultCtrl);
         return;
       }
-    }
-
-    const fallback = Array.from(this.activeControlsBySession.entries())
-      .find(([candidateKey]) => this.controlChatBySession.get(candidateKey) === chatKey);
-    if (fallback) {
-      this.activeControlsByChat.set(chatKey, fallback[1]);
-      this.lastControlledSessionByChat.set(chatKey, fallback[0]);
-      return;
     }
 
     this.activeControlsByChat.delete(chatKey);
@@ -188,6 +175,16 @@ export class SDKEngine {
   /** Build session key: channelType:chatId:bindingSessionId */
   private sessionKey(channelType: string, chatId: string, bindingSessionId: string): string {
     return `${channelType}:${chatId}:${bindingSessionId}`;
+  }
+
+  /** Filter sessions matching a chat and optionally workdir. */
+  private *filterSessions(channelType: string, chatId: string, workdir?: string): Generator<[string, ManagedSession]> {
+    const prefix = `${channelType}:${chatId}:`;
+    for (const [key, managed] of this.registry) {
+      if (!key.startsWith(prefix)) continue;
+      if (workdir && managed.workdir !== workdir) continue;
+      yield [key, managed];
+    }
   }
 
   getSessionKeyForBinding(channelType: string, chatId: string, bindingSessionId: string): string {
@@ -339,14 +336,9 @@ export class SDKEngine {
    */
   cleanupSession(channelType: string, chatId: string, reason: SessionCleanupReason, workdir?: string): boolean {
     let closed = false;
-    const prefix = `${channelType}:${chatId}:`;
-
-    for (const [key, managed] of this.registry) {
-      if (!key.startsWith(prefix)) continue;
-      if (workdir && managed.workdir !== workdir) continue;
+    for (const [key] of this.filterSessions(channelType, chatId, workdir)) {
       closed = this.closeLiveSession(key, reason, { preserveContext: false, preserveBubbles: false }) || closed;
     }
-
     return closed;
   }
 
@@ -354,13 +346,8 @@ export class SDKEngine {
    * Check if a live session exists and is alive for the given chat/workdir.
    */
   hasActiveSession(channelType: string, chatId: string, workdir?: string): boolean {
-    const prefix = `${channelType}:${chatId}:`;
-    for (const [key, managed] of this.registry) {
-      if (!key.startsWith(prefix)) continue;
-      if (workdir && managed.workdir !== workdir) continue;
-      if (managed.session?.isAlive) {
-        return true;
-      }
+    for (const [, managed] of this.filterSessions(channelType, chatId, workdir)) {
+      if (managed.session?.isAlive) return true;
     }
     return false;
   }
@@ -806,7 +793,6 @@ export class SDKEngine {
       this.activeControlsBySession.set(targetSessionKey, controls);
       this.activeControlsByChat.set(chatKey, controls);
       this.controlChatBySession.set(targetSessionKey, chatKey);
-      this.lastControlledSessionByChat.set(chatKey, targetSessionKey);
       return;
     }
 
