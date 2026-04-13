@@ -10,12 +10,10 @@ export class NewCommand extends BaseCommand {
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const previousBinding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
-    const hadActiveSession = ctx.sdkEngine?.cleanupSession(
-      ctx.msg.channelType,
-      ctx.msg.chatId,
-      'new',
-      previousBinding?.cwd,
-    ) ?? false;
+    const hadActiveSession = previousBinding
+      ? (ctx.sdkEngine?.hasSessionContext?.(ctx.msg.channelType, ctx.msg.chatId, previousBinding.sessionId) ?? false)
+        || !!previousBinding.sdkSessionId
+      : false;
 
     const newSessionId = generateSessionId();
     await ctx.router.rebind(ctx.msg.channelType, ctx.msg.chatId, newSessionId, {
@@ -26,10 +24,9 @@ export class NewCommand extends BaseCommand {
 
     ctx.state.clearLastActive(ctx.msg.channelType, ctx.msg.chatId);
     ctx.state.clearThread(ctx.msg.channelType, ctx.msg.chatId);
-    ctx.permissions.clearSessionWhitelist(previousBinding?.sessionId);
 
     const feedbackText = hadActiveSession
-      ? `🔄 已关闭旧会话，开启新会话`
+      ? `🆕 已保留旧会话，开启新会话`
       : undefined;
     await this.send(ctx, presentNewSession(ctx.msg.chatId, { cwd: previousBinding?.cwd, feedbackText }));
 

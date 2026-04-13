@@ -188,7 +188,7 @@ describe('BridgeManager', () => {
     );
   });
 
-  it('resets the stored SDK session when automation changes workdir', async () => {
+  it('rotates the default session when automation changes workdir', async () => {
     const adapter = mockAdapter();
     manager.registerAdapter(adapter);
 
@@ -219,13 +219,14 @@ describe('BridgeManager', () => {
       projectName: 'new-project',
     });
 
-    expect(cleanupSpy).toHaveBeenCalledWith('telegram', 'c1', 'cd', '/repo/old');
-    expect(clearWhitelistSpy).toHaveBeenCalledWith('binding-1');
+    expect(cleanupSpy).not.toHaveBeenCalled();
+    expect(clearWhitelistSpy).not.toHaveBeenCalled();
     expect(binding.sdkSessionId).toBeUndefined();
+    expect(binding.sessionId).not.toBe('binding-1');
     expect(binding.cwd).toBe('/repo/new');
     expect(binding.projectName).toBe('new-project');
     expect(queryRunSpy).toHaveBeenCalled();
-    expect(result.sessionId).toBe('binding-1');
+    expect(result.sessionId).toBe(binding.sessionId);
   });
 
   it('updates /help text to omit removed commands', async () => {

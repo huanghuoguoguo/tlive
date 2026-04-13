@@ -9,8 +9,10 @@ export class QueueCommand extends BaseCommand {
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const sub = ctx.parts[1]?.toLowerCase();
-
-    const activeSessionKey = ctx.sdkEngine?.getActiveSessionKey(ctx.msg.channelType, ctx.msg.chatId);
+    const binding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+    const activeSessionKey = binding?.sessionId
+      ? ctx.sdkEngine?.getSessionKeyForBinding?.(ctx.msg.channelType, ctx.msg.chatId, binding.sessionId)
+      : ctx.sdkEngine?.getActiveSessionKey(ctx.msg.channelType, ctx.msg.chatId);
 
     if (!activeSessionKey) {
       await this.send(ctx, { chatId: ctx.msg.chatId, text: '⚠️ 无活跃会话，队列不可用' });

@@ -703,6 +703,7 @@ describe('QueryOrchestrator', () => {
       expect.anything(),
       'telegram',
       'chat-1',
+      'session-1',
       '/tmp/project',
       expect.objectContaining({ settingSources: ['user'] }),
     );

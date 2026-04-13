@@ -238,5 +238,29 @@ describe('SDKEngine', () => {
 
       expect(mockProvider.createSession).toHaveBeenCalledTimes(1);
     });
+
+    it('preserves reply routing after runtime reset and recreates the live session on demand', () => {
+      const firstSession = createMockSession(true, false);
+      const secondSession = createMockSession(true, false);
+      const provider = {
+        streamChat: vi.fn().mockReturnValue({ stream: new ReadableStream() }),
+        capabilities: vi.fn().mockReturnValue({ slashCommands: true, askUserQuestion: true, liveSession: true, todoTracking: true, costInUsd: true, skills: true, sessionResume: true }),
+        createSession: vi.fn()
+          .mockReturnValueOnce(firstSession)
+          .mockReturnValueOnce(secondSession),
+      } as unknown as LLMProvider;
+
+      engine.getOrCreateSession(provider, 'telegram', 'chat-1', 'session-1', '/workdir');
+      engine.setActiveMessageId('telegram:chat-1', 'bubble-1', 'telegram:chat-1:session-1');
+
+      engine.resetSessionRuntime('telegram:chat-1:session-1', 'expire');
+
+      expect(engine.getSessionForBubble('bubble-1')).toBe('telegram:chat-1:session-1');
+      expect(engine.hasActiveSession('telegram', 'chat-1', '/workdir')).toBe(false);
+
+      const recreated = engine.getOrCreateSession(provider, 'telegram', 'chat-1', 'session-1', '/workdir');
+      expect(recreated).toBe(secondSession);
+      expect(provider.createSession).toHaveBeenCalledTimes(2);
+    });
   });
 });

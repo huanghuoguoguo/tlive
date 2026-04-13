@@ -97,7 +97,7 @@ export class CdCommand extends BaseCommand {
     ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, ctx.msg.chatId, resolvedPath);
 
     const feedbackText = hadActiveSession && switchedRepo
-      ? `🔄 已关闭旧仓库的活跃会话`
+      ? `🧭 已保留旧仓库会话，默认切到新目录`
       : undefined;
     await this.send(ctx, presentDirectory(ctx.msg.chatId, shortPath(resolvedPath), true, feedbackText));
     return true;

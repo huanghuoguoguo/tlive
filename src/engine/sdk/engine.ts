@@ -2,7 +2,7 @@
  * SDKEngine — manages LiveSessions plus steer/queue state for SDK conversations.
  *
  * Core responsibilities:
- * - Session registry: manage LiveSessions per chat+workdir
+ * - Session registry: manage LiveSessions per logical chat session
  * - Steer/Queue: inject messages into active turns or queue for later using SDK native priority
  * - Bubble tracking: map progress bubble messageId to session for multi-session steering
  * - Queue depth tracking: limit queued messages and provide user feedback
@@ -19,9 +19,13 @@ export type SessionCleanupReason = 'new' | 'switch' | 'cd' | 'settings' | 'expir
 
 /** Managed session — wraps a LiveSession with per-chat metadata */
 interface ManagedSession {
-  session: LiveSession;
+  channelType: string;
+  chatId: string;
+  bindingSessionId: string;
   workdir: string;
+  sdkSessionId?: string;
   lastActiveAt: number;
+  session?: LiveSession;
 }
 
 /** Queued message preview for user feedback */
@@ -54,17 +58,27 @@ export interface QueueStats {
   maxDepth: number;
 }
 
+export interface ResolvedSessionTarget {
+  sessionKey: string;
+  bindingSessionId: string;
+  workdir: string;
+  sdkSessionId?: string;
+  source: 'reply' | 'current';
+}
+
 /**
  * Handles shared SDK session state for live turns and follow-up steering.
  *
  * Provider-agnostic — works with both Claude SDK (LiveSession) and fallback streamChat.
  */
 export class SDKEngine {
-  private activeControls = new Map<string, QueryControls>();
+  private activeControlsBySession = new Map<string, QueryControls>();
+  private activeControlsByChat = new Map<string, QueryControls>();
+  private controlChatBySession = new Map<string, string>();
 
   /** Session registry: sessionKey → ManagedSession */
   private registry = new Map<string, ManagedSession>();
-  /** Active session per chat: channelType:chatId → sessionKey (fallback when no replyTo) */
+  /** Current default session per chat: channelType:chatId → sessionKey */
   private activeSessionByChat = new Map<string, string>();
   /** Progress bubble → session: messageId → sessionKey (for multi-session steering) */
   private bubbleToSession = new Map<string, string>();
@@ -86,7 +100,7 @@ export class SDKEngine {
   /** Idle timeout for LiveSessions (30 minutes) */
   private static SESSION_IDLE_MS = 30 * 60 * 1000;
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
-  /** Optional callback to clean up permission whitelist when session is pruned */
+  /** Optional callback after an idle live session is pruned */
   onSessionPruned?: (sessionKey: string) => void;
 
   /** Start periodic cleanup of idle LiveSessions */
@@ -99,28 +113,23 @@ export class SDKEngine {
     if (this.pruneTimer) { clearInterval(this.pruneTimer); this.pruneTimer = null; }
   }
 
-  /** Close sessions idle longer than SESSION_IDLE_MS */
+  /** Close only the in-memory LiveSession for idle sessions, but keep logical routing metadata. */
   private pruneIdleSessions(): void {
     const now = Date.now();
     for (const [key, managed] of this.registry) {
-      if (!managed.session.isAlive) {
-        this.registry.delete(key);
-        this.cleanupBubblesForSession(key);
-        this.cleanupQueueForSession(key);
+      if (!managed.session?.isAlive) {
+        managed.session = undefined;
         continue;
       }
       if (!managed.session.isTurnActive && (now - managed.lastActiveAt) > SDKEngine.SESSION_IDLE_MS) {
         console.log(`[tlive:engine] Pruning idle LiveSession: ${key} (idle ${Math.round((now - managed.lastActiveAt) / 60000)}m)`);
-        managed.session.close();
-        this.registry.delete(key);
-        this.cleanupBubblesForSession(key);
-        this.cleanupQueueForSession(key);
+        this.closeLiveSession(key, 'close', { preserveContext: true, preserveBubbles: true });
         this.onSessionPruned?.(key);
       }
     }
   }
 
-  /** Clean up bubble → session mappings when session is closed */
+  /** Clean up bubble → session mappings when a logical session is removed */
   private cleanupBubblesForSession(sessionKey: string): void {
     const bubbles = this.sessionToBubbles.get(sessionKey);
     if (bubbles) {
@@ -131,84 +140,216 @@ export class SDKEngine {
     }
   }
 
-  /** Clean up queue depth when session is closed */
+  /** Clean up queue depth when a live session is closed */
   private cleanupQueueForSession(sessionKey: string): void {
     this.queueDepthBySession.delete(sessionKey);
     this.queuePreviewBySession.delete(sessionKey);
   }
 
-  // ── Session Registry ──
+  private cleanupControlsForSession(sessionKey: string): void {
+    this.activeControlsBySession.delete(sessionKey);
+    const chatKey = this.controlChatBySession.get(sessionKey);
+    if (!chatKey) return;
+    this.controlChatBySession.delete(sessionKey);
 
-  /** Build session key: channelType:chatId:workdir */
-  private sessionKey(channelType: string, chatId: string, workdir: string): string {
-    return `${channelType}:${chatId}:${workdir}`;
+    // Try to find fallback from the current default session
+    const defaultSessionKey = this.activeSessionByChat.get(chatKey);
+    if (defaultSessionKey) {
+      const defaultCtrl = this.activeControlsBySession.get(defaultSessionKey);
+      if (defaultCtrl) {
+        this.activeControlsByChat.set(chatKey, defaultCtrl);
+        return;
+      }
+    }
+
+    this.activeControlsByChat.delete(chatKey);
   }
 
-  /** Close a session (on /new, session expiry, workdir change). Delegates to cleanupSession. */
+  // ── Session Registry ──
+
+  /** Build chat key: channelType:chatId */
+  private chatKey(channelType: string, chatId: string): string {
+    return `${channelType}:${chatId}`;
+  }
+
+  /** Build session key: channelType:chatId:bindingSessionId */
+  private sessionKey(channelType: string, chatId: string, bindingSessionId: string): string {
+    return `${channelType}:${chatId}:${bindingSessionId}`;
+  }
+
+  /** Filter sessions matching a chat and optionally workdir. */
+  private *filterSessions(channelType: string, chatId: string, workdir?: string): Generator<[string, ManagedSession]> {
+    const prefix = `${channelType}:${chatId}:`;
+    for (const [key, managed] of this.registry) {
+      if (!key.startsWith(prefix)) continue;
+      if (workdir && managed.workdir !== workdir) continue;
+      yield [key, managed];
+    }
+  }
+
+  getSessionKeyForBinding(channelType: string, chatId: string, bindingSessionId: string): string {
+    return this.sessionKey(channelType, chatId, bindingSessionId);
+  }
+
+  registerSessionContext(
+    channelType: string,
+    chatId: string,
+    bindingSessionId: string,
+    workdir: string,
+    sdkSessionId?: string,
+    opts?: { setAsCurrent?: boolean },
+  ): string {
+    const key = this.sessionKey(channelType, chatId, bindingSessionId);
+    const existing = this.registry.get(key);
+    const now = Date.now();
+
+    if (existing) {
+      existing.workdir = workdir;
+      existing.sdkSessionId = sdkSessionId ?? existing.sdkSessionId;
+      existing.lastActiveAt = now;
+    } else {
+      this.registry.set(key, {
+        channelType,
+        chatId,
+        bindingSessionId,
+        workdir,
+        sdkSessionId,
+        lastActiveAt: now,
+      });
+    }
+
+    if (opts?.setAsCurrent !== false) {
+      this.activeSessionByChat.set(this.chatKey(channelType, chatId), key);
+    }
+    return key;
+  }
+
+  hasSessionContext(channelType: string, chatId: string, bindingSessionId: string): boolean {
+    return this.registry.has(this.sessionKey(channelType, chatId, bindingSessionId));
+  }
+
+  getSessionContext(sessionKey: string): ManagedSession | undefined {
+    return this.registry.get(sessionKey);
+  }
+
+  updateSessionSdkSessionId(sessionKey: string, sdkSessionId?: string): void {
+    const managed = this.registry.get(sessionKey);
+    if (managed) {
+      managed.sdkSessionId = sdkSessionId;
+      managed.lastActiveAt = Date.now();
+    }
+  }
+
+  resolveSessionTarget(
+    channelType: string,
+    chatId: string,
+    binding: { sessionId: string; cwd?: string; sdkSessionId?: string },
+    defaultWorkdir: string,
+    replyToMessageId?: string,
+  ): { target?: ResolvedSessionTarget; failureReason?: SendWithContextResult['failureReason'] } {
+    if (replyToMessageId) {
+      const sessionKey = this.getSessionForBubble(replyToMessageId);
+      if (!sessionKey) {
+        return { failureReason: 'reply_target_missing' };
+      }
+      const managed = this.registry.get(sessionKey);
+      if (!managed) {
+        this.bubbleToSession.delete(replyToMessageId);
+        return { failureReason: 'reply_target_missing' };
+      }
+      return {
+        target: {
+          sessionKey,
+          bindingSessionId: managed.bindingSessionId,
+          workdir: managed.workdir,
+          sdkSessionId: managed.sdkSessionId,
+          source: 'reply',
+        },
+      };
+    }
+
+    const workdir = binding.cwd || defaultWorkdir;
+    const sessionKey = this.registerSessionContext(
+      channelType,
+      chatId,
+      binding.sessionId,
+      workdir,
+      binding.sdkSessionId,
+      { setAsCurrent: true },
+    );
+    return {
+      target: {
+        sessionKey,
+        bindingSessionId: binding.sessionId,
+        workdir,
+        sdkSessionId: binding.sdkSessionId,
+        source: 'current',
+      },
+    };
+  }
+
+  /** Close a session runtime but keep logical context available for future resume. */
+  resetSessionRuntime(sessionKey: string, reason: SessionCleanupReason): boolean {
+    return this.closeLiveSession(sessionKey, reason, { preserveContext: true, preserveBubbles: true });
+  }
+
+  /** Close a session (explicit cleanup). Delegates to cleanupSession. */
   closeSession(channelType: string, chatId: string, workdir?: string): void {
     this.cleanupSession(channelType, chatId, 'close', workdir);
   }
 
-  /**
-   * Unified session cleanup with reason logging.
-   * Called on /new, session switch, directory change, settings change.
-   * Returns true if a session was actually closed.
-   */
-  cleanupSession(channelType: string, chatId: string, reason: SessionCleanupReason, workdir?: string): boolean {
-    const chatKey = `${channelType}:${chatId}`;
-    let closed = false;
+  private closeLiveSession(
+    sessionKey: string,
+    reason: SessionCleanupReason,
+    opts: { preserveContext: boolean; preserveBubbles: boolean },
+  ): boolean {
+    const managed = this.registry.get(sessionKey);
+    if (!managed) return false;
 
-    if (workdir) {
-      // Close specific session
-      const key = this.sessionKey(channelType, chatId, workdir);
-      const managed = this.registry.get(key);
-      if (managed) {
-        managed.session.close();
-        this.registry.delete(key);
-        this.cleanupBubblesForSession(key);
-        this.cleanupQueueForSession(key);
-        if (this.activeSessionByChat.get(chatKey) === key) {
-          this.activeSessionByChat.delete(chatKey);
-        }
-        console.log(`[tlive:engine] Session cleanup (${reason}): ${key}`);
-        closed = true;
+    if (managed.session?.isAlive) {
+      managed.session.close();
+    }
+    managed.session = undefined;
+    this.cleanupQueueForSession(sessionKey);
+    this.cleanupControlsForSession(sessionKey);
+
+    if (!opts.preserveContext) {
+      this.registry.delete(sessionKey);
+      if (!opts.preserveBubbles) {
+        this.cleanupBubblesForSession(sessionKey);
       }
-    } else {
-      // Close ALL sessions for this chat
-      const prefix = `${channelType}:${chatId}:`;
-      for (const [key, managed] of this.registry) {
-        if (key.startsWith(prefix)) {
-          managed.session.close();
-          this.registry.delete(key);
-          this.cleanupBubblesForSession(key);
-          this.cleanupQueueForSession(key);
-          console.log(`[tlive:engine] Session cleanup (${reason}): ${key}`);
-          closed = true;
-        }
-      }
-      if (closed) {
+      const chatKey = this.chatKey(managed.channelType, managed.chatId);
+      if (this.activeSessionByChat.get(chatKey) === sessionKey) {
         this.activeSessionByChat.delete(chatKey);
       }
     }
 
+    console.log(`[tlive:engine] Session cleanup (${reason}): ${sessionKey}`);
+    return true;
+  }
+
+  /**
+   * Unified session cleanup with reason logging.
+   * When workdir is provided, closes all logical sessions for that chat/workdir.
+   * When omitted, closes all logical sessions for the chat.
+   * Cleanup removes reply-routing state; use resetSessionRuntime() to preserve resume metadata.
+   */
+  cleanupSession(channelType: string, chatId: string, reason: SessionCleanupReason, workdir?: string): boolean {
+    let closed = false;
+    for (const [key] of this.filterSessions(channelType, chatId, workdir)) {
+      closed = this.closeLiveSession(key, reason, { preserveContext: false, preserveBubbles: false }) || closed;
+    }
     return closed;
   }
 
   /**
-   * Check if a session exists and is alive for the given chat/workdir.
+   * Check if a live session exists and is alive for the given chat/workdir.
    */
   hasActiveSession(channelType: string, chatId: string, workdir?: string): boolean {
-    if (workdir) {
-      const key = this.sessionKey(channelType, chatId, workdir);
-      const managed = this.registry.get(key);
-      return managed?.session.isAlive ?? false;
+    for (const [, managed] of this.filterSessions(channelType, chatId, workdir)) {
+      if (managed.session?.isAlive) return true;
     }
-    // Check if any session exists for this chat
-    const chatKey = `${channelType}:${chatId}`;
-    const sessionKey = this.activeSessionByChat.get(chatKey);
-    if (!sessionKey) return false;
-    const managed = this.registry.get(sessionKey);
-    return managed?.session.isAlive ?? false;
+    return false;
   }
 
   /**
@@ -220,50 +361,121 @@ export class SDKEngine {
     channelType: string,
     chatId: string,
     workdir: string,
-    options?: { sessionId?: string; effort?: EffortLevel; model?: string; settingSources?: ClaudeSettingSource[]; appendSystemPrompt?: string },
+    options?: {
+      sessionId?: string;
+      effort?: EffortLevel;
+      model?: string;
+      settingSources?: ClaudeSettingSource[];
+      appendSystemPrompt?: string;
+      setAsCurrent?: boolean;
+    },
+  ): LiveSession | undefined;
+  getOrCreateSession(
+    llm: LLMProvider,
+    channelType: string,
+    chatId: string,
+    bindingSessionId: string,
+    workdir: string,
+    options?: {
+      sessionId?: string;
+      effort?: EffortLevel;
+      model?: string;
+      settingSources?: ClaudeSettingSource[];
+      appendSystemPrompt?: string;
+      setAsCurrent?: boolean;
+    },
+  ): LiveSession | undefined;
+  getOrCreateSession(
+    llm: LLMProvider,
+    channelType: string,
+    chatId: string,
+    bindingSessionIdOrWorkdir: string,
+    workdirOrOptions?: string | {
+      sessionId?: string;
+      effort?: EffortLevel;
+      model?: string;
+      settingSources?: ClaudeSettingSource[];
+      appendSystemPrompt?: string;
+      setAsCurrent?: boolean;
+    },
+    maybeOptions?: {
+      sessionId?: string;
+      effort?: EffortLevel;
+      model?: string;
+      settingSources?: ClaudeSettingSource[];
+      appendSystemPrompt?: string;
+      setAsCurrent?: boolean;
+    },
   ): LiveSession | undefined {
     if (!llm.createSession) return undefined;
 
-    const key = this.sessionKey(channelType, chatId, workdir);
-    const chatKey = `${channelType}:${chatId}`;
+    const actualBindingSessionId = typeof workdirOrOptions === 'string'
+      ? bindingSessionIdOrWorkdir
+      : bindingSessionIdOrWorkdir;
+    const actualWorkdir = typeof workdirOrOptions === 'string'
+      ? workdirOrOptions
+      : bindingSessionIdOrWorkdir;
+    const actualOptions = (typeof workdirOrOptions === 'string' ? maybeOptions : workdirOrOptions) ?? {};
 
-    // Check existing session
-    const existing = this.registry.get(key);
-    if (existing?.session.isAlive) {
-      existing.lastActiveAt = Date.now();
-      this.activeSessionByChat.set(chatKey, key);
-      return existing.session;
+    const existingKey = this.sessionKey(channelType, chatId, actualBindingSessionId);
+    const previousManaged = this.registry.get(existingKey);
+    const previousSdkSessionId = previousManaged?.sdkSessionId;
+    const previousWorkdir = previousManaged?.workdir;
+    const key = this.registerSessionContext(
+      channelType,
+      chatId,
+      actualBindingSessionId,
+      actualWorkdir,
+      actualOptions.sessionId,
+      { setAsCurrent: actualOptions.setAsCurrent !== false },
+    );
+    const managed = this.registry.get(key);
+    if (!managed) return undefined;
+
+    const existing = managed.session;
+    const sessionIdChanged = actualOptions.sessionId !== undefined
+      && previousSdkSessionId !== undefined
+      && actualOptions.sessionId !== previousSdkSessionId;
+    const workdirChanged = previousWorkdir !== undefined && previousWorkdir !== actualWorkdir;
+
+    if (existing?.isAlive && !sessionIdChanged && !workdirChanged) {
+      managed.lastActiveAt = Date.now();
+      return existing;
     }
 
-    // Clean up dead session if any
-    if (existing) {
-      this.registry.delete(key);
+    if (existing?.isAlive && (sessionIdChanged || workdirChanged)) {
+      existing.close();
+      managed.session = undefined;
+      this.cleanupQueueForSession(key);
+      this.cleanupControlsForSession(key);
     }
 
-    // Create new session
     console.log(`[tlive:engine] Creating LiveSession for ${key}`);
     const session = llm.createSession({
-      workingDirectory: workdir,
-      sessionId: options?.sessionId,
-      effort: options?.effort,
-      model: options?.model,
-      settingSources: options?.settingSources,
-      appendSystemPrompt: options?.appendSystemPrompt,
+      workingDirectory: actualWorkdir,
+      sessionId: actualOptions.sessionId,
+      effort: actualOptions.effort,
+      model: actualOptions.model,
+      settingSources: actualOptions.settingSources,
+      appendSystemPrompt: actualOptions.appendSystemPrompt,
     });
 
-    this.registry.set(key, { session, workdir, lastActiveAt: Date.now() });
+    managed.session = session;
+    managed.workdir = actualWorkdir;
+    managed.sdkSessionId = actualOptions.sessionId ?? managed.sdkSessionId;
+    managed.lastActiveAt = Date.now();
     session.setLifecycleCallbacks?.({
       onTurnComplete: () => {
-        const managed = this.registry.get(key);
-        if (managed) {
-          managed.lastActiveAt = Date.now();
+        const current = this.registry.get(key);
+        if (current) {
+          current.lastActiveAt = Date.now();
         }
         if (this.getQueueDepth(key) > 0) {
           this.decrementQueueDepth(key);
         }
       },
     });
-    this.activeSessionByChat.set(chatKey, key);
+    this.activeSessionByChat.set(this.chatKey(channelType, chatId), key);
     return session;
   }
 
@@ -336,7 +548,6 @@ export class SDKEngine {
     const newDepth = current + 1;
     this.queueDepthBySession.set(sessionKey, newDepth);
 
-    // Track message preview (truncate to 100 chars)
     const truncatedPreview = preview.length > 100 ? preview.slice(0, 100) + '...' : preview;
     const previews = this.queuePreviewBySession.get(sessionKey) ?? [];
     previews.push({ preview: truncatedPreview, timestamp: Date.now() });
@@ -359,7 +570,6 @@ export class SDKEngine {
         this.queuePreviewBySession.delete(sessionKey);
       } else {
         this.queueDepthBySession.set(sessionKey, newDepth);
-        // Remove the oldest preview
         const previews = this.queuePreviewBySession.get(sessionKey);
         if (previews && previews.length > 0) {
           previews.shift();
@@ -375,7 +585,7 @@ export class SDKEngine {
    */
   getQueueInfo(sessionKey: string): { depth: number; max: number } | undefined {
     const managed = this.registry.get(sessionKey);
-    if (!managed?.session.isAlive) return undefined;
+    if (!managed) return undefined;
     const depth = this.getQueueDepth(sessionKey);
     if (depth === 0) return undefined;
     return { depth, max: this.maxQueueDepth };
@@ -384,23 +594,22 @@ export class SDKEngine {
   // ── Session Stale Detection ──
 
   /**
-   * Check if a session is stale (inactive for too long).
+   * Check if a live session is stale (inactive for too long).
    * Uses SESSION_STALE_THRESHOLD_MS (default 2 hours).
    */
   isSessionStale(sessionKey: string): boolean {
     const managed = this.registry.get(sessionKey);
-    if (!managed?.session.isAlive) return false; // Dead session is not "stale", it's closed
+    if (!managed?.session?.isAlive) return false;
     const idleTime = Date.now() - managed.lastActiveAt;
     return idleTime > SESSION_STALE_THRESHOLD_MS;
   }
 
   /**
-   * Check if a chat's active session is stale.
+   * Check if a chat's current default session is stale.
    * Convenience method for use in command-router.
    */
   isChatSessionStale(channelType: string, chatId: string): boolean {
-    const chatKey = `${channelType}:${chatId}`;
-    const sessionKey = this.activeSessionByChat.get(chatKey);
+    const sessionKey = this.activeSessionByChat.get(this.chatKey(channelType, chatId));
     if (!sessionKey) return false;
     return this.isSessionStale(sessionKey);
   }
@@ -415,17 +624,16 @@ export class SDKEngine {
   }
 
   /**
-   * Get the active session key for a chat.
+   * Get the current default session key for a chat.
    */
   getActiveSessionKey(channelType: string, chatId: string): string | undefined {
-    return this.activeSessionByChat.get(`${channelType}:${chatId}`);
+    return this.activeSessionByChat.get(this.chatKey(channelType, chatId));
   }
 
   // ── Steer / Queue ──
 
   /** Internal: link bubble messageId to session, maintaining reverse index and cap */
   private linkBubble(messageId: string, sessionKey: string): void {
-    // Evict oldest entries if at cap
     if (this.bubbleToSession.size >= SDKEngine.MAX_BUBBLE_MAPPINGS) {
       const oldest = this.bubbleToSession.keys().next().value;
       if (oldest) {
@@ -445,16 +653,13 @@ export class SDKEngine {
 
   /**
    * Get session key for a bubble (replyToMessageId).
-   * Returns undefined if bubble not tracked or session no longer alive.
+   * Returns undefined if the logical session no longer exists.
    */
   getSessionForBubble(messageId: string): string | undefined {
     const sessionKey = this.bubbleToSession.get(messageId);
     if (!sessionKey) return undefined;
-    const managed = this.registry.get(sessionKey);
-    if (!managed?.session.isAlive) {
-      // Clean up stale mapping
+    if (!this.registry.has(sessionKey)) {
       this.bubbleToSession.delete(messageId);
-      this.sessionToBubbles.get(sessionKey)?.delete(messageId);
       return undefined;
     }
     return sessionKey;
@@ -470,10 +675,9 @@ export class SDKEngine {
       if (bubbleSession) {
         return { sessionKey: bubbleSession };
       }
-      // Explicit reply target should not silently fall back to another session.
       return { failureReason: 'reply_target_missing' };
     }
-    const active = this.activeSessionByChat.get(`${channelType}:${chatId}`);
+    const active = this.activeSessionByChat.get(this.chatKey(channelType, chatId));
     if (!active) {
       return { failureReason: 'no_session' };
     }
@@ -483,13 +687,13 @@ export class SDKEngine {
   /** Check if a specific session can be steered (alive + turn active) */
   canSteerSession(sessionKey: string): boolean {
     const managed = this.registry.get(sessionKey);
-    return (managed?.session.isAlive && managed?.session.isTurnActive) ?? false;
+    return (managed?.session?.isAlive && managed.session.isTurnActive) ?? false;
   }
 
   /** Send message to a specific session with SDK native priority */
   async sendToSession(sessionKey: string, text: string, priority: MessagePriority): Promise<boolean> {
     const managed = this.registry.get(sessionKey);
-    if (!managed?.session.isAlive) return false;
+    if (!managed?.session?.isAlive) return false;
     try {
       await managed.session.sendWithPriority(text, priority);
       managed.lastActiveAt = Date.now();
@@ -503,7 +707,7 @@ export class SDKEngine {
   /**
    * Steer or queue based on reply context.
    * - If replyToMessageId → steer/queue to that bubble's session
-   * - Otherwise → steer/queue to active session
+   * - Otherwise → steer/queue to current default session
    * - Tracks queue depth and rejects when queue is full
    * - Tracks message previews for queue status display
    */
@@ -522,7 +726,6 @@ export class SDKEngine {
       return { sent: false, mode: 'none', failureReason: failureReason ?? 'no_session' };
     }
 
-    // Steer if turn active
     if (this.canSteerSession(sessionKey)) {
       const sent = await this.sendToSession(sessionKey, text, 'now');
       return {
@@ -533,7 +736,6 @@ export class SDKEngine {
       };
     }
 
-    // Check queue depth before queueing
     if (this.isQueueFull(sessionKey)) {
       console.log(`[tlive:engine] Queue full for ${sessionKey}, rejecting message`);
       return {
@@ -546,7 +748,6 @@ export class SDKEngine {
       };
     }
 
-    // Queue the message
     const sent = await this.sendToSession(sessionKey, text, 'later');
     if (sent) {
       const queuePosition = this.incrementQueueDepth(sessionKey, text);
@@ -574,23 +775,28 @@ export class SDKEngine {
     return this.interactions;
   }
 
-  /** Get active controls for a chat (for /stop command) */
+  /** Get active controls for a chat (legacy /stop wiring). */
   getActiveControls(): Map<string, QueryControls> {
-    return this.activeControls;
+    return this.activeControlsByChat;
   }
 
   /** Get active controls for a specific chat */
   getControlsForChat(chatKey: string): QueryControls | undefined {
-    return this.activeControls.get(chatKey);
+    return this.activeControlsByChat.get(chatKey);
   }
 
-  /** Set active controls for a chat */
-  setControlsForChat(chatKey: string, controls: QueryControls | undefined): void {
+  /** Track controls per session while preserving chat-level compatibility. */
+  setControlsForChat(chatKey: string, controls: QueryControls | undefined, sessionKey?: string): void {
+    const targetSessionKey = sessionKey ?? this.activeSessionByChat.get(chatKey) ?? chatKey;
+
     if (controls) {
-      this.activeControls.set(chatKey, controls);
-    } else {
-      this.activeControls.delete(chatKey);
+      this.activeControlsBySession.set(targetSessionKey, controls);
+      this.activeControlsByChat.set(chatKey, controls);
+      this.controlChatBySession.set(targetSessionKey, chatKey);
+      return;
     }
+
+    this.cleanupControlsForSession(targetSessionKey);
   }
 
   /** Track progress bubble messageId → sessionKey mapping */
@@ -602,11 +808,11 @@ export class SDKEngine {
 
   // ── Diagnostics ──
 
-  /** Get number of active (alive) sessions */
+  /** Get number of active (alive) live sessions */
   getActiveSessionCount(): number {
     let count = 0;
     for (const managed of this.registry.values()) {
-      if (managed.session.isAlive) count++;
+      if (managed.session?.isAlive) count++;
     }
     return count;
   }
@@ -615,7 +821,7 @@ export class SDKEngine {
   getIdleSessionCount(): number {
     let count = 0;
     for (const managed of this.registry.values()) {
-      if (managed.session.isAlive && !managed.session.isTurnActive) count++;
+      if (managed.session?.isAlive && !managed.session.isTurnActive) count++;
     }
     return count;
   }
@@ -632,12 +838,11 @@ export class SDKEngine {
       snapshot.push({
         sessionKey: key,
         workdir: managed.workdir,
-        isAlive: managed.session.isAlive,
-        isTurnActive: managed.session.isTurnActive,
+        isAlive: managed.session?.isAlive ?? false,
+        isTurnActive: managed.session?.isTurnActive ?? false,
         lastActiveAt: managed.lastActiveAt,
       });
     }
     return snapshot;
   }
-
 }

@@ -15,6 +15,7 @@ import { DEFAULT_CLAUDE_SETTING_SOURCES } from '../config.js';
 import { scanClaudeSessions } from '../session-scanner.js';
 import { shortPath } from '../utils/path.js';
 import { findGitRoot } from '../utils/repo.js';
+import { generateSessionId } from '../utils/id.js';
 
 // Register all commands on module load
 registerAllCommands();
@@ -90,7 +91,7 @@ export class CommandRouter {
   private async resetSessionContext(
     channelType: string,
     chatId: string,
-    reason: SessionCleanupReason,
+    _reason: SessionCleanupReason,
     opts: {
       previousCwd?: string;
       clearProject?: boolean;
@@ -99,22 +100,18 @@ export class CommandRouter {
     } = {},
   ): Promise<{ hadActiveSession: boolean; binding: ChannelBinding | null }> {
     const binding = opts.binding ?? await this.store.getBinding(channelType, chatId);
-    const hadActiveSession = this.sdkEngine?.cleanupSession(
-      channelType,
-      chatId,
-      reason,
-      opts.previousCwd ?? binding?.cwd,
-    ) ?? false;
+    const hadActiveSession = binding
+      ? (this.sdkEngine?.hasSessionContext?.(channelType, chatId, binding.sessionId) ?? false) || !!binding.sdkSessionId
+      : false;
 
     if (binding) {
+      binding.sessionId = generateSessionId();
       binding.sdkSessionId = undefined;
       if (opts.clearProject) {
         binding.projectName = undefined;
       }
       await this.store.saveBinding(binding);
     }
-
-    this.permissions.clearSessionWhitelist(binding?.sessionId);
 
     if (opts.clearLastActive) {
       this.state.clearLastActive(channelType, chatId);
@@ -134,9 +131,11 @@ export class CommandRouter {
     const workspaceBinding = this.workspace.getBinding(channelType, chatId);
     const projectName = binding?.projectName;
     const lastActiveTime = this.state.getLastActiveTime(channelType, chatId);
-    const activeSessionKey = this.sdkEngine?.getActiveSessionKey(channelType, chatId);
-    const queueInfo = activeSessionKey ? this.sdkEngine?.getQueueInfo(activeSessionKey) : undefined;
-    const sessionStale = this.sdkEngine?.isChatSessionStale(channelType, chatId) ?? false;
+    const currentSessionKey = binding?.sessionId
+      ? this.sdkEngine?.getSessionKeyForBinding?.(channelType, chatId, binding.sessionId)
+      : this.sdkEngine?.getActiveSessionKey(channelType, chatId);
+    const queueInfo = currentSessionKey ? this.sdkEngine?.getQueueInfo(currentSessionKey) : undefined;
+    const sessionStale = currentSessionKey ? this.sdkEngine?.isSessionStale(currentSessionKey) ?? false : false;
 
     return {
       cwd: shortPath(currentCwd),

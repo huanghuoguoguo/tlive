@@ -29,6 +29,7 @@ import type { LLMProvider } from '../../providers/base.js';
 import { generateRequestId, Logger, type LogContext } from '../../logger.js';
 import { truncate } from '../../utils/string.js';
 import { areSettingSourcesEqual } from '../../utils/automation.js';
+import { generateSessionId } from '../../utils/id.js';
 
 /** Bridge commands handled synchronously (don't block adapter loop) */
 const QUICK_COMMANDS = new Set(['/new', '/home', '/status', '/hooks', '/sessions', '/session', '/sessioninfo', '/help', '/help-cli', '/perm', '/stop', '/approve', '/pairings', '/settings', '/cd', '/pwd', '/bash', '/upgrade', '/restart']);
@@ -111,9 +112,6 @@ export class BridgeManager {
     this.permissions = new PermissionCoordinator(gateway, broker);
     this.engine = new ConversationEngine(store, llm);
     this.sdkEngine = new SDKEngine();
-    this.sdkEngine.onSessionPruned = (sessionKey) => {
-      this.permissions.clearSessionWhitelist(sessionKey);
-    };
     // Load projects config once for CommandRouter, WebhookServer, and CronScheduler
     const projectsResult = loadProjectsConfig();
     this.commands = new CommandRouter(
@@ -136,6 +134,14 @@ export class BridgeManager {
       permissions: this.permissions,
       quickCommands: QUICK_COMMANDS,
       hasPendingSdkQuestion: (channelType, chatId) => this.text.hasPendingSdkQuestion(channelType, chatId),
+      resolveProcessingKey: async (msg) => {
+        const binding = await this.router.resolve(msg.channelType, msg.chatId);
+        if (msg.replyToMessageId) {
+          return this.sdkEngine.getSessionForBubble(msg.replyToMessageId)
+            ?? this.sdkEngine.getSessionKeyForBinding(msg.channelType, msg.chatId, binding.sessionId);
+        }
+        return this.sdkEngine.getSessionKeyForBinding(msg.channelType, msg.chatId, binding.sessionId);
+      },
     });
     this.text = new TextDispatcher({
       permissions: this.permissions,
@@ -225,7 +231,6 @@ export class BridgeManager {
     }
 
     const binding = await this.router.resolve(options.channelType, options.chatId);
-    const previousCwd = binding.cwd;
     const workdirChanged = options.workdir !== undefined && binding.cwd !== options.workdir;
     const projectChanged = options.projectName !== undefined && binding.projectName !== options.projectName;
     const settingsChanged = options.claudeSettingSources !== undefined
@@ -249,14 +254,8 @@ export class BridgeManager {
     }
 
     if (sessionContextChanged) {
-      this.sdkEngine.cleanupSession(
-        options.channelType,
-        options.chatId,
-        workdirChanged || projectChanged ? 'cd' : 'settings',
-        previousCwd,
-      );
+      binding.sessionId = generateSessionId();
       binding.sdkSessionId = undefined;
-      this.permissions.clearSessionWhitelist(binding.sessionId);
       bindingChanged = true;
     }
 

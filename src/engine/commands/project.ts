@@ -113,9 +113,9 @@ export class ProjectCommand extends BaseCommand {
       }
       feedbackParts.push(`工作区更新为 ${shortPath(project.workdir)}`);
       if (hadActiveSession && switchedRepo) {
-        feedbackParts.push('已关闭旧项目的活跃会话');
+        feedbackParts.push('已保留旧项目会话，并切换默认会话');
       } else if (hadActiveSession && settingsChanged) {
-        feedbackParts.push('已应用项目设置并重置会话');
+        feedbackParts.push('已应用项目设置，并开启新的默认会话');
       }
 
       await this.send(ctx, presentProjectSwitched(ctx.msg.chatId, {

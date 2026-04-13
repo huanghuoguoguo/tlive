@@ -23,6 +23,23 @@ function createMessage(text: string, overrides: Partial<InboundMessage> = {}): I
   };
 }
 
+function createCoordinator(
+  state: SessionStateManager,
+  sdkEngine: any,
+  permissions: any,
+  resolveProcessingKey?: (msg: InboundMessage) => Promise<string>,
+): MessageLoopCoordinator {
+  return new MessageLoopCoordinator({
+    state,
+    sdkEngine,
+    permissions,
+    quickCommands: new Set(),
+    hasPendingSdkQuestion: () => false,
+    resolveProcessingKey: resolveProcessingKey
+      ?? (async (msg) => msg.replyToMessageId ? 'session-2' : state.stateKey(msg.channelType, msg.chatId)),
+  });
+}
+
 describe('MessageLoopCoordinator', () => {
   it('classifies commands and pending questions as quick messages', () => {
     const state = new SessionStateManager();
@@ -41,6 +58,7 @@ describe('MessageLoopCoordinator', () => {
       permissions,
       quickCommands: new Set(['/status']),
       hasPendingSdkQuestion: () => false,
+      resolveProcessingKey: async (msg) => state.stateKey(msg.channelType, msg.chatId),
     });
 
     expect(coordinator.isQuickMessage(createAdapter(), createMessage('/status'))).toBe(true);
@@ -63,13 +81,7 @@ describe('MessageLoopCoordinator', () => {
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
 
-    const coordinator = new MessageLoopCoordinator({
-      state,
-      sdkEngine,
-      permissions,
-      quickCommands: new Set(),
-      hasPendingSdkQuestion: () => false,
-    });
+    const coordinator = createCoordinator(state, sdkEngine, permissions);
     const adapter = createAdapter();
 
     await coordinator.dispatchSlowMessage({
@@ -100,13 +112,7 @@ describe('MessageLoopCoordinator', () => {
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
 
-    const coordinator = new MessageLoopCoordinator({
-      state,
-      sdkEngine,
-      permissions,
-      quickCommands: new Set(),
-      hasPendingSdkQuestion: () => false,
-    });
+    const coordinator = createCoordinator(state, sdkEngine, permissions);
     const adapter = createAdapter();
 
     await coordinator.dispatchSlowMessage({
@@ -137,13 +143,7 @@ describe('MessageLoopCoordinator', () => {
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
 
-    const coordinator = new MessageLoopCoordinator({
-      state,
-      sdkEngine,
-      permissions,
-      quickCommands: new Set(),
-      hasPendingSdkQuestion: () => false,
-    });
+    const coordinator = createCoordinator(state, sdkEngine, permissions);
     const adapter = createAdapter();
 
     await coordinator.dispatchSlowMessage({
@@ -174,13 +174,7 @@ describe('MessageLoopCoordinator', () => {
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
 
-    const coordinator = new MessageLoopCoordinator({
-      state,
-      sdkEngine,
-      permissions,
-      quickCommands: new Set(),
-      hasPendingSdkQuestion: () => false,
-    });
+    const coordinator = createCoordinator(state, sdkEngine, permissions);
     const adapter = createAdapter();
 
     await coordinator.dispatchSlowMessage({
@@ -199,8 +193,7 @@ describe('MessageLoopCoordinator', () => {
 
   it('warns when reply target session is missing', async () => {
     const state = new SessionStateManager();
-    const chatKey = state.stateKey('telegram', 'chat-1');
-    state.setProcessing(chatKey, true);
+    state.setProcessing('session-2', true);
 
     const sdkEngine = {
       sendWithContext: vi.fn().mockResolvedValue({
@@ -215,13 +208,7 @@ describe('MessageLoopCoordinator', () => {
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
 
-    const coordinator = new MessageLoopCoordinator({
-      state,
-      sdkEngine,
-      permissions,
-      quickCommands: new Set(),
-      hasPendingSdkQuestion: () => false,
-    });
+    const coordinator = createCoordinator(state, sdkEngine, permissions);
     const adapter = createAdapter();
 
     await coordinator.dispatchSlowMessage({
@@ -256,13 +243,7 @@ describe('MessageLoopCoordinator', () => {
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
 
-    const coordinator = new MessageLoopCoordinator({
-      state,
-      sdkEngine,
-      permissions,
-      quickCommands: new Set(),
-      hasPendingSdkQuestion: () => false,
-    });
+    const coordinator = createCoordinator(state, sdkEngine, permissions);
     const adapter = createAdapter();
 
     await coordinator.dispatchSlowMessage({
@@ -280,8 +261,7 @@ describe('MessageLoopCoordinator', () => {
 
   it('steers to specific session when replying to a bubble', async () => {
     const state = new SessionStateManager();
-    const chatKey = state.stateKey('telegram', 'chat-1');
-    state.setProcessing(chatKey, true);
+    state.setProcessing('session-2', true);
 
     const sdkEngine = {
       sendWithContext: vi.fn().mockResolvedValue({ sent: true, mode: 'steer', sessionKey: 'session-2' }),
@@ -292,13 +272,7 @@ describe('MessageLoopCoordinator', () => {
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
 
-    const coordinator = new MessageLoopCoordinator({
-      state,
-      sdkEngine,
-      permissions,
-      quickCommands: new Set(),
-      hasPendingSdkQuestion: () => false,
-    });
+    const coordinator = createCoordinator(state, sdkEngine, permissions);
     const adapter = createAdapter();
 
     await coordinator.dispatchSlowMessage({
@@ -329,13 +303,7 @@ describe('MessageLoopCoordinator', () => {
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
 
-    const coordinator = new MessageLoopCoordinator({
-      state,
-      sdkEngine,
-      permissions,
-      quickCommands: new Set(),
-      hasPendingSdkQuestion: () => false,
-    });
+    const coordinator = createCoordinator(state, sdkEngine, permissions);
     const adapter = createAdapter();
 
     await coordinator.dispatchSlowMessage({
@@ -349,5 +317,38 @@ describe('MessageLoopCoordinator', () => {
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({ text: '⚠️ 无活跃会话，请先开始任务' }),
     );
+  });
+
+  it('allows a different reply-target session to run in parallel', async () => {
+    const state = new SessionStateManager();
+    state.setProcessing('session-1', true);
+
+    const sdkEngine = {
+      sendWithContext: vi.fn(),
+      MAX_QUEUE_DEPTH: 3,
+    } as any;
+    const permissions = {
+      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
+      parsePermissionText: vi.fn().mockReturnValue(null),
+    } as any;
+    const coordinator = createCoordinator(
+      state,
+      sdkEngine,
+      permissions,
+      async (msg) => msg.replyToMessageId === 'bubble-2' ? 'session-2' : 'session-1',
+    );
+    const adapter = createAdapter();
+    const handleMessage = vi.fn().mockResolvedValue(undefined);
+
+    await coordinator.dispatchSlowMessage({
+      adapter,
+      msg: createMessage('run on another session', { replyToMessageId: 'bubble-2' }),
+      coalesceMessage: async (_adapter, msg) => msg,
+      handleMessage,
+      onError: vi.fn(),
+    });
+
+    expect(handleMessage).toHaveBeenCalled();
+    expect(sdkEngine.sendWithContext).not.toHaveBeenCalled();
   });
 });
