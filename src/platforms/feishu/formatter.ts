@@ -699,8 +699,12 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     const elements: FeishuCardElement[] = [
       this.md(`**结果摘要**\n${data.summary}`),
       this.md(`**执行结果**\n改动文件：${data.changedFiles}\n权限审批：${data.permissionRequests}\n状态：${data.hasError ? '有错误' : '已完成'}`),
-      this.md(`**下一步建议**\n${data.nextStep}`),
     ];
+
+    // Footer line with model, cwd, sessionId
+    if (data.footerLine) {
+      elements.push(this.md(`<font color='grey'>${data.footerLine}</font>`));
+    }
 
     const buttons: Button[] = [
       { label: '🏠 首页', callbackData: 'cmd:home', style: 'primary' },
@@ -899,27 +903,6 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       if (data.totalTools > 0) statusParts.push(`${data.totalTools} tools`);
       statusParts.push(`${data.elapsedSeconds}s`);
       elements.push(this.md(`⏳ ${statusParts.join(' · ')}`));
-    }
-
-    // Session info panel (skills, MCP servers) — shown once at start
-    if (data.sessionInfo && (data.sessionInfo.skills?.length || data.sessionInfo.mcpServers?.length)) {
-      const infoParts: string[] = [];
-      if (data.sessionInfo.skills?.length) {
-        infoParts.push(`**Skills** ${data.sessionInfo.skills.join(', ')}`);
-      }
-      if (data.sessionInfo.mcpServers?.length) {
-        const serverLines = data.sessionInfo.mcpServers.map(s => {
-          const icon = s.status === 'connected' ? '🟢' : s.status === 'failed' ? '🔴' : '🟡';
-          return `${icon} ${s.name}`;
-        });
-        infoParts.push(`**MCP** ${serverLines.join(' · ')}`);
-      }
-      elements.push({
-        tag: 'collapsible_panel',
-        expanded: false,
-        header: { title: { tag: 'plain_text', content: '🔌 会话环境' } },
-        elements: [this.mdPanel(infoParts.join('\n'))],
-      });
     }
 
     // API retry indicator
