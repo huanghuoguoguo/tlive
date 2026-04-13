@@ -21,6 +21,7 @@ import { SDKDeferredToolHandler } from '../sdk/deferred-tool-handler.js';
 import { buildProgressData } from '../messages/progress-builder.js';
 import type { MessageRendererState } from '../messages/renderer.js';
 import { SessionStaleError, isStaleSessionError } from '../state/session-stale-error.js';
+import { invalidateSessionCache } from '../../session-scanner.js';
 
 const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
 
@@ -448,6 +449,8 @@ export class QueryOrchestrator {
           cost_usd: event.usage.costUsd,
         });
         console.log(`[query] ${ctx.requestId} COMPLETE tokens=${event.usage.inputTokens}+${event.usage.outputTokens} cost=${event.usage.costUsd?.toFixed(4) || '?'}$`);
+        // Invalidate session cache so next home/sessions shows latest task
+        invalidateSessionCache();
         if (DEBUG_EVENTS) {
           const state = renderer.getDebugSnapshot();
           console.log(`[bridge] final timeline: thinking=${state.thinkingEntries} text=${state.textEntries} tool=${state.toolEntries}`);
@@ -469,6 +472,8 @@ export class QueryOrchestrator {
           throw new SessionStaleError(err);
         }
         console.error(`[query] ${ctx.requestId} ERROR ${err.slice(0, 200)}`);
+        // Invalidate session cache on error too (task ended)
+        invalidateSessionCache();
         if (DEBUG_EVENTS) {
           const state = renderer.getDebugSnapshot();
           console.log(`[bridge] error timeline: thinking=${state.thinkingEntries} text=${state.textEntries} tool=${state.toolEntries}`);
