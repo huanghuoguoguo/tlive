@@ -4,6 +4,7 @@ import { chunkByParagraph } from '../../delivery/delivery.js';
 import type { ProgressData } from '../../formatting/message-types.js';
 import type { MessageRendererState } from './renderer.js';
 import { truncate } from '../../utils/string.js';
+import { buildProgressData } from './progress-builder.js';
 
 type ButtonStyle = 'primary' | 'danger' | 'default';
 type RawButton = { label: string; callbackData: string; style: string };
@@ -49,28 +50,7 @@ export class QueryExecutionPresenter {
 
     let outMsg: RenderedMessage;
     if (state) {
-      const progressData: ProgressData = {
-        phase: state.phase,
-        renderedText: content,
-        taskSummary: this.inbound.text || '继续当前任务',
-        elapsedSeconds: state.elapsedSeconds,
-        totalTools: state.totalTools,
-        toolSummary: state.toolSummary,
-        footerLine: state.footerLine,
-        currentTool: state.currentTool,
-        permission: state.permission,
-        permissionRequests: state.permissionRequests,
-        todoItems: state.todoItems,
-        thinkingText: state.thinkingText,
-        toolLogs: state.toolLogs,
-        timeline: state.timeline,
-        isContinuation: state.isContinuation,
-        sessionInfo: state.sessionInfo,
-        toolUseSummaryText: state.toolUseSummaryText,
-        apiRetry: state.apiRetry,
-        compacting: state.compacting,
-        actionButtons: castButtons(buttons),
-      };
+      const progressData = buildProgressData(state, this.inbound.text || '继续当前任务', castButtons(buttons), content);
 
       if (state.phase === 'completed' && this.shouldSplitCompletedTrace(state)) {
         const traceMsg = this.adapter.format({

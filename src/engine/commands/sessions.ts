@@ -5,16 +5,7 @@ import { scanClaudeSessions } from '../../session-scanner.js';
 import { shortPath } from '../../utils/path.js';
 import { FLAGS, hasFlag } from '../../utils/constants.js';
 import { SESSION_STALE_THRESHOLD_MS } from '../../utils/constants.js';
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
-}
-
-function formatSessionDate(mtime: number): string {
-  return new Date(mtime).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
+import { formatSize, formatSessionDate } from '../utils/session-format.js';
 
 export class SessionsCommand extends BaseCommand {
   readonly name = '/sessions';

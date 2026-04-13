@@ -20,6 +20,7 @@ import { QueryExecutionPresenter } from '../messages/query-presenter.js';
 import { SDKPermissionHandler } from '../sdk/permission-handler.js';
 import { SDKAskQuestionHandler } from '../sdk/ask-question-handler.js';
 import type { ProgressData } from '../../formatting/message-types.js';
+import { buildProgressData } from '../messages/progress-builder.js';
 import type { MessageRendererState } from '../messages/renderer.js';
 import { SessionStaleError, isStaleSessionError } from '../state/session-stale-error.js';
 
@@ -289,27 +290,7 @@ export class QueryOrchestrator {
     inbound: InboundMessage,
     state: MessageRendererState,
   ): boolean {
-    const progressData: ProgressData = {
-      phase: state.phase,
-      renderedText: state.renderedText,
-      taskSummary: inbound.text || '继续当前任务',
-      elapsedSeconds: state.elapsedSeconds,
-      totalTools: state.totalTools,
-      toolSummary: state.toolSummary,
-      footerLine: state.footerLine,
-      currentTool: state.currentTool,
-      permission: state.permission,
-      permissionRequests: state.permissionRequests,
-      todoItems: state.todoItems,
-      thinkingText: state.thinkingText,
-      toolLogs: state.toolLogs,
-      timeline: state.timeline,
-      isContinuation: state.isContinuation,
-      sessionInfo: state.sessionInfo,
-      toolUseSummaryText: state.toolUseSummaryText,
-      apiRetry: state.apiRetry,
-      compacting: state.compacting,
-    };
+    const progressData = buildProgressData(state, inbound.text || '继续当前任务');
     const outMsg = adapter.format({ type: 'progress', chatId: inbound.chatId, data: progressData });
     return adapter.shouldSplitProgressMessage(outMsg);
   }
