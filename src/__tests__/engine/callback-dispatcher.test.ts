@@ -38,6 +38,7 @@ function createDeps() {
       sdkEngine: {
         getInteractionState: () => ({
           getSdkQuestion: (permId: string) => sdkQuestionData.get(permId),
+          getDeferredTool: (permId: string) => undefined,
           setSdkQuestionOptionAnswer: (permId: string, optionIndex: number) => {
             sdkQuestionAnswers.set(permId, optionIndex);
           },

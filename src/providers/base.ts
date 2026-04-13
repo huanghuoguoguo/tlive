@@ -18,6 +18,13 @@ export type AskUserQuestionHandler = (
   signal?: AbortSignal,
 ) => Promise<Record<string, string>>;
 
+/** Deferred tool handler type — for EnterPlanMode, EnterWorktree, etc. */
+export type DeferredToolHandler = (
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  signal?: AbortSignal,
+) => Promise<{ behavior: 'allow' | 'deny'; updatedInput?: Record<string, unknown>; message?: string }>;
+
 export interface StreamChatParams {
   prompt: string;
   workingDirectory: string;
@@ -48,6 +55,8 @@ export interface TurnParams {
   onPermissionRequest?: PermissionRequestHandler;
   /** AskUserQuestion handler for this turn */
   onAskUserQuestion?: AskUserQuestionHandler;
+  /** Deferred tool handler for EnterPlanMode, EnterWorktree, etc. */
+  onDeferredTool?: DeferredToolHandler;
   effort?: EffortLevel;
   model?: string;
 }

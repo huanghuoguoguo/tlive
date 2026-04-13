@@ -51,9 +51,13 @@ describe('TextDispatcher', () => {
     const sdkEngine = {
       getInteractionState: vi.fn().mockReturnValue({
         findPendingSdkQuestion: vi.fn().mockReturnValue(null),
+        findPendingDeferredTool: vi.fn().mockReturnValue(null),
         setSdkQuestionOptionAnswer: vi.fn(),
         setSdkQuestionTextAnswer: vi.fn(),
         getSdkQuestion: vi.fn().mockReturnValue(undefined),
+        getDeferredTool: vi.fn().mockReturnValue(undefined),
+        setDeferredToolInput: vi.fn(),
+        cleanupDeferredTool: vi.fn(),
       }),
       getQuestionState: vi.fn().mockReturnValue({
         sdkQuestionData: new Map(),
@@ -92,9 +96,13 @@ describe('TextDispatcher', () => {
     const sdkEngine = {
       getInteractionState: vi.fn().mockReturnValue({
         findPendingSdkQuestion: vi.fn().mockReturnValue(null),
+        findPendingDeferredTool: vi.fn().mockReturnValue(null),
         setSdkQuestionOptionAnswer: vi.fn(),
         setSdkQuestionTextAnswer: vi.fn(),
         getSdkQuestion: vi.fn().mockReturnValue(undefined),
+        getDeferredTool: vi.fn().mockReturnValue(undefined),
+        setDeferredToolInput: vi.fn(),
+        cleanupDeferredTool: vi.fn(),
       }),
       getQuestionState: vi.fn().mockReturnValue({
         sdkQuestionData: new Map(),
@@ -137,6 +145,7 @@ describe('TextDispatcher', () => {
     const sdkEngine = {
       getInteractionState: vi.fn().mockReturnValue({
         findPendingSdkQuestion: vi.fn().mockReturnValue({ permId: 'askq-1' }),
+        findPendingDeferredTool: vi.fn().mockReturnValue(null),
         setSdkQuestionOptionAnswer: vi.fn((permId: string, optionIndex: number) => {
           sdkQuestionAnswers.set(permId, optionIndex);
         }),
@@ -150,6 +159,9 @@ describe('TextDispatcher', () => {
             multiSelect: false,
           }],
         }),
+        getDeferredTool: vi.fn().mockReturnValue(undefined),
+        setDeferredToolInput: vi.fn(),
+        cleanupDeferredTool: vi.fn(),
       }),
       getQuestionState: vi.fn().mockReturnValue({
         sdkQuestionData: new Map([
@@ -203,9 +215,13 @@ describe('TextDispatcher', () => {
     const sdkEngine = {
       getInteractionState: vi.fn().mockReturnValue({
         findPendingSdkQuestion: vi.fn().mockReturnValue(null),
+        findPendingDeferredTool: vi.fn().mockReturnValue(null),
         setSdkQuestionOptionAnswer: vi.fn(),
         setSdkQuestionTextAnswer: vi.fn(),
         getSdkQuestion: vi.fn().mockReturnValue(undefined),
+        getDeferredTool: vi.fn().mockReturnValue(undefined),
+        setDeferredToolInput: vi.fn(),
+        cleanupDeferredTool: vi.fn(),
       }),
       getQuestionState: vi.fn().mockReturnValue({
         sdkQuestionData: new Map(),

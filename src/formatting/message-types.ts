@@ -325,6 +325,23 @@ export interface ProjectInfoData {
   isCurrent?: boolean;
 }
 
+/** Deferred tool input request (EnterPlanMode, EnterWorktree, etc.) */
+export interface DeferredToolInputData {
+  toolName: 'EnterPlanMode' | 'EnterWorktree' | string;
+  /** Prompt/description shown to user */
+  prompt: string;
+  /** Permission ID for tracking */
+  permId: string;
+  /** Session ID context */
+  sessionId: string;
+  /** Whether text input is required (vs optional) */
+  inputRequired?: boolean;
+  /** Placeholder for text input */
+  inputPlaceholder?: string;
+  /** Default value suggestion */
+  defaultValue?: string;
+}
+
 /** Union type of all formattable messages */
 export type FormattableMessage =
   | { type: 'status'; chatId: string; data: StatusData }
@@ -347,4 +364,5 @@ export type FormattableMessage =
   | { type: 'queueStatus'; chatId: string; data: QueueStatusData }
   | { type: 'diagnose'; chatId: string; data: DiagnoseData }
   | { type: 'projectList'; chatId: string; data: ProjectListData }
-  | { type: 'projectInfo'; chatId: string; data: ProjectInfoData };
+  | { type: 'projectInfo'; chatId: string; data: ProjectInfoData }
+  | { type: 'deferredToolInput'; chatId: string; data: DeferredToolInputData };

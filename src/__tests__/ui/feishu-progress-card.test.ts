@@ -64,17 +64,14 @@ describe('FeishuFormatter.formatQuestion', () => {
     const input = formElements.find(e => e.tag === 'input' && e.name === '_text_answer');
     expect(input).toBeDefined();
 
-    // Should have hidden interaction ID input
-    const hiddenInput = formElements.find(e => e.tag === 'input' && e.name === '_interaction_id');
-    expect(hiddenInput).toBeDefined();
-    expect(hiddenInput!.default_value).toBe('test-123');
-
     // Submit button with form_action_type: submit (embedded in column_set inside form)
     const columnSets = formElements.filter(e => e.tag === 'column_set');
     expect(columnSets.length).toBeGreaterThan(0);
     const submitBtn = columnSets[0]?.columns?.[0]?.elements?.[0];
     expect(submitBtn?.tag).toBe('button');
     expect(submitBtn?.form_action_type).toBe('submit');
+    // permId comes from button name (derived from callbackData)
+    expect(submitBtn?.name).toBe('test-123');
   });
 
   it('uses buttons for few options', () => {
@@ -117,7 +114,7 @@ describe('FeishuFormatter.formatQuestion', () => {
     expect(callbackBtn).toBeDefined();
   });
 
-  it('includes hidden _interaction_id input', () => {
+  it('permId is embedded in submit button name', () => {
     const msg = formatter.formatQuestion('chat1', {
       question: 'Test',
       options: [{ label: 'A' }],
@@ -127,9 +124,22 @@ describe('FeishuFormatter.formatQuestion', () => {
     });
 
     const formElements = getFormElements(msg as any);
+    // No hidden input - permId comes from submit button
     const hiddenInput = formElements.find(e => e.tag === 'input' && e.name === '_interaction_id');
-    expect(hiddenInput).toBeDefined();
-    expect(hiddenInput!.default_value).toBe('perm-xyz');
+    expect(hiddenInput).toBeUndefined();
+
+    // Find submit button and check its name contains permId
+    const columnSets = formElements.filter(e => e.tag === 'column_set');
+    for (const cs of columnSets) {
+      for (const col of cs.columns || []) {
+        for (const el of col.elements || []) {
+          if (el.tag === 'button' && el.form_action_type === 'submit') {
+            expect(el.name).toBe('perm-xyz');
+            return;
+          }
+        }
+      }
+    }
   });
 
   it('uses form container for all components', () => {

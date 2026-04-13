@@ -371,10 +371,13 @@ export class BridgeManager {
     }
     this.permissions.startPruning();
     this.sdkEngine.startSessionPruning();
-    // Periodic cleanup of SDK question data (5 minute TTL) and stale attachments
+    // Periodic cleanup of SDK question data and deferred tool data (5 minute TTL) and stale attachments
     // Use 5-minute interval to avoid iterating all entries every minute
     this.sdkQuestionCleanupTimer = setInterval(() => {
-      this.sdkEngine.getInteractionState().pruneResolvedSdkQuestions(this.permissions.getGateway());
+      const interactionState = this.sdkEngine.getInteractionState();
+      const gateway = this.permissions.getGateway();
+      interactionState.pruneResolvedSdkQuestions(gateway);
+      interactionState.pruneResolvedDeferredTools(gateway);
       this.ingress.pruneStaleState();
     }, 5 * 60 * 1000);
     // Start webhook server if configured

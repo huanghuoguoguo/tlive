@@ -72,6 +72,8 @@ interface ProcessMessageParams {
   sdkPermissionHandler?: PermissionRequestHandler;
   /** SDK-level AskUserQuestion handler — forwarded to streamChat */
   sdkAskQuestionHandler?: AskUserQuestionHandler;
+  /** SDK-level deferred tool handler — forwarded to streamChat */
+  sdkDeferredToolHandler?: import('../../providers/base.js').DeferredToolHandler;
   effort?: EffortLevel;
   /** Override model for this query */
   model?: string;

@@ -100,3 +100,17 @@ export function parseFormCallback(callbackData: string): { interactionId: string
     return null;
   }
 }
+
+/** Parse deferred submit callback: deferred:submit:permId */
+export function parseDeferredSubmitCallback(callbackData: string): { permId: string } | null {
+  return parseCallbackFields(callbackData, CALLBACK_PREFIXES.DEFERRED_SUBMIT, 2, {
+    1: { name: 'permId' },
+  });
+}
+
+/** Parse deferred skip callback: deferred:skip:permId */
+export function parseDeferredSkipCallback(callbackData: string): { permId: string } | null {
+  return parseCallbackFields(callbackData, CALLBACK_PREFIXES.DEFERRED_SKIP, 2, {
+    1: { name: 'permId' },
+  });
+}
