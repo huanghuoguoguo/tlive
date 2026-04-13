@@ -114,6 +114,7 @@ export class QueryExecutionPresenter {
     toolLogs: Array<{ name: string; input: string }>;
     permissionRequests: number;
     errorMessage?: string;
+    footerLine?: string;
   }): import('../../formatting/message-types.js').TaskSummaryData {
     const summarySource = (state.responseText || state.renderedText || '').trim();
     // Allow full summary for task completion (up to 5000 chars)
@@ -124,18 +125,13 @@ export class QueryExecutionPresenter {
         .map(log => log.input.trim()),
     );
     const hasError = !!state.errorMessage;
-    const nextStep = hasError
-      ? '查看失败原因后继续追问，或重新发起一个更小的修改任务。'
-      : changedFileKeys.size > 0
-        ? '如果结果符合预期，可以继续追问、测试变更，或切回最近会话继续处理。'
-        : '可以继续追问细节，或切回最近会话处理下一步任务。';
 
     return {
       summary,
       changedFiles: changedFileKeys.size,
       permissionRequests: state.permissionRequests,
       hasError,
-      nextStep,
+      footerLine: state.footerLine,
     };
   }
 

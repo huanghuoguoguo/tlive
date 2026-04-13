@@ -226,7 +226,8 @@ export interface TaskSummaryData {
   changedFiles: number;
   permissionRequests: number;
   hasError: boolean;
-  nextStep: string;
+  /** Footer line with model, cwd, sessionId (e.g., '[claude-sonnet] │ ~/workspace │ #ea22') */
+  footerLine?: string;
 }
 
 /** Card resolution state update (after button click) */

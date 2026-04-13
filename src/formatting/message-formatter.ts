@@ -493,8 +493,6 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
           `改动文件：${data.changedFiles}`,
           `权限审批：${data.permissionRequests}`,
           `状态：${data.hasError ? '有错误' : '已完成'}`,
-          '',
-          `下一步：${data.nextStep}`,
         ]
       : [
           `✅ **Task Summary**`,
@@ -504,9 +502,12 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
           `Changed files: ${data.changedFiles}`,
           `Permission prompts: ${data.permissionRequests}`,
           `Status: ${data.hasError ? 'Has errors' : 'Completed'}`,
-          '',
-          `Next step: ${data.nextStep}`,
         ];
+
+    // Footer line with model, cwd, sessionId
+    if (data.footerLine) {
+      lines.push('', data.footerLine);
+    }
 
     const buttons = this.locale === 'zh'
       ? [
