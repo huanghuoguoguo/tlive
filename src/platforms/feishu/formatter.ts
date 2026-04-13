@@ -20,6 +20,7 @@ import type {
   TaskSummaryData,
   PermissionData,
   QuestionData,
+  DeferredToolInputData,
   CardResolutionData,
   VersionUpdateData,
   MultiSelectToggleData,
@@ -392,16 +393,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       required: false,
     } as FeishuCardElement);
 
-    // Hidden interaction ID input
-    formElements.push({
-      tag: 'input',
-      name: '_interaction_id',
-      placeholder: { tag: 'plain_text', content: '' },
-      required: false,
-      default_value: permId,
-    } as FeishuCardElement);
-
-    // Buttons based on mode
+    // Buttons based on mode - Feishu form requires at least one submit button with form:${permId}
     const formButtons: Button[] = [];
 
     if (useSelectDropdown) {
@@ -419,16 +411,46 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
         row: 0,
       });
     } else if (multiSelect) {
-      // Multi-select uses toggle buttons + submit
-      formButtons.push(...this.buildMultiSelectButtons(permId, sessionId, options));
-    } else {
-      // Few options: direct option buttons
-      formButtons.push(...this.buildSingleSelectButtons(permId, options));
+      // Multi-select: toggle buttons + form submit
+      formButtons.push(...options.map((opt, idx) => ({
+        label: `☐ ${opt.label}`,
+        callbackData: `askq_toggle:${permId}:${idx}:${sessionId}`,
+        style: 'primary' as const,
+        row: idx,
+      })));
+      // Submit button MUST use form:${permId} for Feishu form
+      formButtons.push({
+        label: '✅ 提交',
+        callbackData: `form:${permId}`,
+        style: 'primary',
+        row: options.length,
+      });
       formButtons.push({
         label: '⏭️ 跳过',
         callbackData: `askq_skip:${permId}:${sessionId}`,
         style: 'default',
-        row: Math.floor(options.length / 2),
+        row: options.length,
+      });
+    } else {
+      // Few options single-select: option buttons + form submit for text input
+      formButtons.push(...options.map((opt, idx) => ({
+        label: `${idx + 1}. ${opt.label}`,
+        callbackData: `perm:allow:${permId}:askq:${idx}`,
+        style: 'primary' as const,
+        row: idx,
+      })));
+      // Form submit button for text input
+      formButtons.push({
+        label: '✅ 提交文字',
+        callbackData: `form:${permId}`,
+        style: 'primary',
+        row: options.length,
+      });
+      formButtons.push({
+        label: '⏭️ 跳过',
+        callbackData: `askq_skip:${permId}:${sessionId}`,
+        style: 'default',
+        row: options.length,
       });
     }
 
@@ -464,6 +486,52 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
 
     return this.createCardMessage(chatId,
       { template: 'blue', title: '❓ 等待回答' },
+      cardElements,
+      undefined // buttons are inside form container
+    );
+  }
+
+  override formatDeferredToolInput(chatId: string, data: DeferredToolInputData): FeishuRenderedMessage {
+    const { toolName, prompt, permId, sessionId, inputPlaceholder } = data;
+
+    // Build form elements for user input
+    const formElements: FeishuCardElement[] = [
+      // Text input for user's plan/input
+      {
+        tag: 'input',
+        name: '_deferred_input',
+        placeholder: { tag: 'plain_text', content: inputPlaceholder || '输入内容...' },
+        required: false,
+      } as FeishuCardElement,
+    ];
+
+    // Buttons: submit uses form:${permId} to trigger form submission with data
+    const formButtons: Button[] = [
+      { label: '✅ 提交', callbackData: `form:${permId}`, style: 'primary' as const, row: 0 },
+      { label: '⏭ 跳过', callbackData: `deferred:skip:${permId}`, style: 'default' as const, row: 0 },
+    ];
+
+    const cardElements: FeishuCardElement[] = [
+      this.md(`**工具请求**\n${toolName}`),
+      this.md(`**说明**\n${prompt}`),
+      this.md(`**会话**\n${sessionId}`),
+      this.md('💡 输入内容后点击提交，或直接回复文字。'),
+    ];
+
+    // Add form container with form elements and buttons
+    const formContainer: FeishuCardElement = {
+      tag: 'form',
+      name: `form_deferred_${permId}`,
+      elements: [
+        ...formElements as unknown as { tag: string; content: string }[],
+        ...buildFeishuButtonElements(formButtons) as unknown as { tag: string; content: string }[],
+      ] as unknown as { tag: string; content: string }[],
+    };
+
+    cardElements.push(formContainer);
+
+    return this.createCardMessage(chatId,
+      { template: 'purple', title: '⏳ 等待输入' },
       cardElements,
       undefined // buttons are inside form container
     );

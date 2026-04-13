@@ -14,6 +14,11 @@ type PendingSdkQuestion = {
   permId: string;
 };
 
+type PendingDeferredTool = {
+  permId: string;
+  toolName: string;
+};
+
 type HookQuestion = {
   hookId: string;
   sessionId: string;
@@ -24,6 +29,7 @@ type HookQuestion = {
  * Handles text-driven control flows before a message reaches the main Claude turn:
  * - plain-text permission approvals
  * - AskUserQuestion numeric/text answers
+ * - Deferred tool input (EnterPlanMode, EnterWorktree, etc.)
  */
 export class TextDispatcher {
   constructor(private options: TextDispatcherOptions) {}
@@ -32,8 +38,16 @@ export class TextDispatcher {
     return this.findPendingSdkQuestion(chatId) !== null;
   }
 
+  hasPendingDeferredTool(_channelType: string, chatId: string): boolean {
+    return this.findPendingDeferredTool(chatId) !== null;
+  }
+
   async handle(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
     if (msg.text && await this.handlePermissionText(adapter, msg)) {
+      return true;
+    }
+
+    if (msg.text && await this.handleDeferredToolInput(adapter, msg)) {
       return true;
     }
 
@@ -54,6 +68,33 @@ export class TextDispatcher {
     return this.options.sdkEngine
       .getInteractionState()
       .findPendingSdkQuestion(chatId, this.options.permissions.getGateway());
+  }
+
+  private findPendingDeferredTool(chatId: string): PendingDeferredTool | null {
+    return this.options.sdkEngine
+      .getInteractionState()
+      .findPendingDeferredTool(chatId, this.options.permissions.getGateway());
+  }
+
+  private async handleDeferredToolInput(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
+    const pendingDeferred = this.findPendingDeferredTool(msg.chatId);
+    if (!pendingDeferred) {
+      return false;
+    }
+
+    const trimmed = msg.text.trim();
+    if (trimmed.toLowerCase() === 'skip' || trimmed.toLowerCase() === '跳过') {
+      this.options.permissions.getGateway().resolve(pendingDeferred.permId, 'deny', 'Skipped');
+      this.options.sdkEngine.getInteractionState().cleanupDeferredTool(pendingDeferred.permId);
+      await adapter.send({ chatId: msg.chatId, text: '⏭ 已跳过' });
+      return true;
+    }
+
+    // Store user input and resolve permission
+    this.options.sdkEngine.getInteractionState().setDeferredToolInput(pendingDeferred.permId, trimmed);
+    this.options.permissions.getGateway().resolve(pendingDeferred.permId, 'allow');
+    await adapter.send({ chatId: msg.chatId, text: `✅ 已提交输入: ${trimmed.slice(0, 50)}${trimmed.length > 50 ? '...' : ''}` });
+    return true;
   }
 
   private async handlePermissionText(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {

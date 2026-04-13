@@ -18,11 +18,12 @@ import { ClaudeAdapter } from '../messages/claude-adapter.js';
 import type { CanonicalEvent } from '../messages/schema.js';
 import type {
   LiveSession, StreamChatResult, QueryControls, TurnParams,
-  PermissionRequestHandler, AskUserQuestionHandler, EffortLevel,
+  PermissionRequestHandler, AskUserQuestionHandler, DeferredToolHandler, EffortLevel,
 } from './base.js';
 import type { ClaudeSettingSource } from '../config.js';
 import type { PermissionTimeoutCallback } from './claude-shared.js';
 import { buildSubprocessEnv, preparePromptWithImages, SAFE_PERMISSIONS } from './claude-shared.js';
+import { DEFERRED_TOOLS, type DeferredToolName } from '../engine/sdk/deferred-tool-handler.js';
 const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
 
 export interface ClaudeLiveSessionOptions {
@@ -53,6 +54,7 @@ export class ClaudeLiveSession implements LiveSession {
   // Per-turn callback handlers (set by startTurn, read by canUseTool)
   private turnPermissionHandler: PermissionRequestHandler | undefined;
   private turnAskQuestionHandler: AskUserQuestionHandler | undefined;
+  private turnDeferredToolHandler: DeferredToolHandler | undefined;
 
   // Controls extracted from the query object
   private queryControls: QueryControls | null = null;
@@ -109,6 +111,19 @@ export class ClaudeLiveSession implements LiveSession {
         input: Record<string, unknown>,
         cbOptions: { decisionReason?: string; title?: string; suggestions?: unknown[]; signal?: AbortSignal; blockedPath?: string; toolUseID?: string; agentID?: string } = {},
       ): Promise<PermissionResult> => {
+        // Deferred tools (EnterPlanMode, EnterWorktree) — route to per-turn handler
+        if (DEFERRED_TOOLS.includes(toolName as DeferredToolName) && self.turnDeferredToolHandler) {
+          try {
+            const result = await self.turnDeferredToolHandler(toolName, input, cbOptions.signal);
+            if (result.behavior === 'allow') {
+              return { behavior: 'allow' as const, updatedInput: result.updatedInput ?? input, toolUseID: cbOptions.toolUseID };
+            }
+            return { behavior: 'deny' as const, message: result.message ?? 'User denied', toolUseID: cbOptions.toolUseID };
+          } catch {
+            return { behavior: 'deny' as const, message: 'User cancelled' };
+          }
+        }
+
         // AskUserQuestion — route to per-turn handler
         if (toolName === 'AskUserQuestion' && self.turnAskQuestionHandler) {
           const questions = (input as Record<string, unknown>).questions as Array<{
@@ -246,6 +261,7 @@ export class ClaudeLiveSession implements LiveSession {
     // Set per-turn handlers (read by canUseTool callback)
     this.turnPermissionHandler = params?.onPermissionRequest;
     this.turnAskQuestionHandler = params?.onAskUserQuestion;
+    this.turnDeferredToolHandler = params?.onDeferredTool;
 
     // Apply per-turn model/effort changes via SDK Query methods
     if (params?.model && this._query) {

@@ -15,6 +15,8 @@ import {
   parseCallback,
   parseHookCallback,
   parseFormCallback,
+  parseDeferredSubmitCallback,
+  parseDeferredSkipCallback,
 } from '../../utils/callback.js';
 
 interface CallbackDispatcherDeps {
@@ -131,12 +133,62 @@ export async function handleCallbackMessage(
     return true;
   }
 
+  // Deferred tool callbacks
+  const deferredSubmitParsed = parseDeferredSubmitCallback(msg.callbackData);
+  if (deferredSubmitParsed) {
+    const permId = deferredSubmitParsed.permId;
+    const interactionState = deps.sdkEngine.getInteractionState();
+    // Check for form input with deferred tool input
+    const deferredData = interactionState.getDeferredTool(permId);
+    if (deferredData) {
+      // The form submission will be handled separately with formData
+      // This callback just confirms the user wants to submit
+      adapter.editCardResolution(msg.chatId, msg.messageId, {
+        resolution: 'answered',
+        label: '✅ Submitted',
+      }).catch(() => {});
+    }
+    deps.permissions.getGateway().resolve(permId, 'allow');
+    return true;
+  }
+
+  const deferredSkipParsed = parseDeferredSkipCallback(msg.callbackData);
+  if (deferredSkipParsed) {
+    const permId = deferredSkipParsed.permId;
+    deps.permissions.getGateway().resolve(permId, 'deny', 'Skipped');
+    deps.sdkEngine.getInteractionState().cleanupDeferredTool(permId);
+    adapter.editCardResolution(msg.chatId, msg.messageId, {
+      resolution: 'skipped',
+      label: '⏭ Skipped',
+    }).catch(() => {});
+    return true;
+  }
+
   // Form submission callback (from Feishu form_input/form_select)
   const formParsed = parseFormCallback(msg.callbackData);
   if (formParsed) {
     const { interactionId, formData } = formParsed;
     const permId = interactionId;
     const interactionState = deps.sdkEngine.getInteractionState();
+
+    // Check for deferred tool input first
+    const deferredData = interactionState.getDeferredTool(permId);
+    if (deferredData) {
+      const deferredInput = (formData._deferred_input || formData.deferred_input || '').trim();
+      if (deferredInput) {
+        interactionState.setDeferredToolInput(permId, deferredInput);
+        adapter.editCardResolution(msg.chatId, msg.messageId, {
+          resolution: 'answered',
+          label: `✅ Input: ${truncate(deferredInput, 50)}`,
+        }).catch(() => {});
+        deps.permissions.getGateway().resolve(permId, 'allow');
+        return true;
+      }
+      // No input provided, allow without input
+      deps.permissions.getGateway().resolve(permId, 'allow');
+      return true;
+    }
+
     const qData = interactionState.getSdkQuestion(permId);
 
     if (qData) {

@@ -13,10 +13,11 @@ import { shortPath } from '../../utils/path.js';
 import type { BridgeStore, ChannelBinding } from '../../store/interface.js';
 import type { ClaudeSettingSource } from '../../config.js';
 import { Logger, type LogContext } from '../../logger.js';
-import type { LLMProvider, LiveSession } from '../../providers/base.js';
+import type { LLMProvider, LiveSession, DeferredToolHandler } from '../../providers/base.js';
 import { QueryExecutionPresenter } from '../messages/query-presenter.js';
 import { SDKPermissionHandler } from '../sdk/permission-handler.js';
 import { SDKAskQuestionHandler } from '../sdk/ask-question-handler.js';
+import { SDKDeferredToolHandler } from '../sdk/deferred-tool-handler.js';
 import { buildProgressData } from '../messages/progress-builder.js';
 import type { MessageRendererState } from '../messages/renderer.js';
 import { SessionStaleError, isStaleSessionError } from '../state/session-stale-error.js';
@@ -135,11 +136,20 @@ export class QueryOrchestrator {
         interactionState: this.options.sdkEngine.getInteractionState(),
       });
 
+      const deferredToolHandler = new SDKDeferredToolHandler({
+        adapter,
+        msg,
+        binding: currentBinding,
+        permissions: this.options.permissions,
+        interactionState: this.options.sdkEngine.getInteractionState(),
+      });
+
       // Wire up askQuestionApproved: when AskUserQuestion approved, auto-allow next tool
       askQuestionHandler.setOnApproved(() => permissionHandler.setAskQuestionApproved(true));
 
       const sdkPermissionHandler = permissionHandler.handle.bind(permissionHandler);
       const sdkAskQuestionHandler = askQuestionHandler.handle.bind(askQuestionHandler);
+      const sdkDeferredToolHandler = deferredToolHandler.handle.bind(deferredToolHandler);
 
       try {
         await this.executeQuery(
@@ -151,6 +161,7 @@ export class QueryOrchestrator {
           costTracker,
           sdkPermissionHandler,
           sdkAskQuestionHandler,
+          sdkDeferredToolHandler,
           ctx,
         );
 
@@ -327,6 +338,7 @@ export class QueryOrchestrator {
     costTracker: CostTracker,
     sdkPermissionHandler: (toolName: string, toolInput: Record<string, unknown>, promptSentence: string, signal?: AbortSignal) => Promise<'allow' | 'allow_always' | 'deny'>,
     sdkAskQuestionHandler: (questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }>, signal?: AbortSignal) => Promise<Record<string, string>>,
+    sdkDeferredToolHandler: DeferredToolHandler,
     ctx: LogContext,
   ): Promise<void> {
     const workdir = binding.cwd || this.options.defaultWorkdir;
@@ -358,6 +370,7 @@ export class QueryOrchestrator {
       streamResult = liveSession.startTurn(msg.text, {
         onPermissionRequest: sdkPermissionHandler,
         onAskUserQuestion: sdkAskQuestionHandler,
+        onDeferredTool: sdkDeferredToolHandler,
         attachments: msg.attachments?.filter(a => a.type === 'image'),
       });
     }
@@ -371,6 +384,7 @@ export class QueryOrchestrator {
       streamResult,
       sdkPermissionHandler: streamResult ? undefined : sdkPermissionHandler,
       sdkAskQuestionHandler: streamResult ? undefined : sdkAskQuestionHandler,
+      sdkDeferredToolHandler: streamResult ? undefined : sdkDeferredToolHandler,
       onControls: (ctrl) => this.options.sdkEngine.setControlsForChat(chatKey, ctrl, sessionKey),
       onSdkSessionId: async (id) => {
         binding.sdkSessionId = id;

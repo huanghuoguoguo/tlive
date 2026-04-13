@@ -13,16 +13,32 @@ export interface PendingSdkQuestionEntry {
   createdAt: number;
 }
 
+export interface PendingDeferredToolEntry {
+  toolName: string;
+  permId: string;
+  chatId: string;
+  createdAt: number;
+}
+
 export interface SdkQuestionState {
   sdkQuestionData: Map<string, PendingSdkQuestionEntry>;
   sdkQuestionAnswers: Map<string, number>;
   sdkQuestionTextAnswers: Map<string, string>;
 }
 
+export interface DeferredToolState {
+  deferredToolData: Map<string, PendingDeferredToolEntry>;
+  deferredToolInputs: Map<string, string>;
+}
+
 export class InteractionState {
   private sdkQuestionData = new Map<string, PendingSdkQuestionEntry>();
   private sdkQuestionAnswers = new Map<string, number>();
   private sdkQuestionTextAnswers = new Map<string, string>();
+  private deferredToolData = new Map<string, PendingDeferredToolEntry>();
+  private deferredToolInputs = new Map<string, string>();
+
+  // ── SDK Question methods ──
 
   beginSdkQuestion(permId: string, questions: SdkQuestionPrompt[], chatId: string): void {
     this.sdkQuestionData.set(permId, {
@@ -87,6 +103,60 @@ export class InteractionState {
       sdkQuestionData: this.sdkQuestionData,
       sdkQuestionAnswers: this.sdkQuestionAnswers,
       sdkQuestionTextAnswers: this.sdkQuestionTextAnswers,
+    };
+  }
+
+  // ── Deferred Tool methods ──
+
+  beginDeferredTool(permId: string, toolName: string, chatId: string): void {
+    this.deferredToolData.set(permId, {
+      toolName,
+      permId,
+      chatId,
+      createdAt: Date.now(),
+    });
+  }
+
+  getDeferredTool(permId: string): PendingDeferredToolEntry | undefined {
+    return this.deferredToolData.get(permId);
+  }
+
+  findPendingDeferredTool(chatId: string, gateway: PendingPermissions): { permId: string; toolName: string } | null {
+    for (const [permId, data] of this.deferredToolData) {
+      if (data.chatId === chatId && gateway.isPending(permId)) {
+        return { permId, toolName: data.toolName };
+      }
+    }
+    return null;
+  }
+
+  setDeferredToolInput(permId: string, input: string): void {
+    this.deferredToolInputs.set(permId, input);
+  }
+
+  consumeDeferredToolInput(permId: string): string | undefined {
+    const input = this.deferredToolInputs.get(permId);
+    this.deferredToolInputs.delete(permId);
+    return input;
+  }
+
+  cleanupDeferredTool(permId: string): void {
+    this.deferredToolData.delete(permId);
+    this.deferredToolInputs.delete(permId);
+  }
+
+  pruneResolvedDeferredTools(gateway: PendingPermissions): void {
+    for (const [permId] of this.deferredToolData) {
+      if (!gateway.isPending(permId)) {
+        this.cleanupDeferredTool(permId);
+      }
+    }
+  }
+
+  deferredToolSnapshot(): DeferredToolState {
+    return {
+      deferredToolData: this.deferredToolData,
+      deferredToolInputs: this.deferredToolInputs,
     };
   }
 }

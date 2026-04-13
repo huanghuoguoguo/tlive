@@ -10,6 +10,7 @@ import type {
   StatusData,
   PermissionData,
   QuestionData,
+  DeferredToolInputData,
   NotificationData,
   HomeData,
   PermissionStatusData,
@@ -67,6 +68,8 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
         return this.formatPermission(chatId, msg.data);
       case 'question':
         return this.formatQuestion(chatId, msg.data);
+      case 'deferredToolInput':
+        return this.formatDeferredToolInput(chatId, msg.data);
       case 'notification':
         return this.formatNotification(chatId, msg.data);
       case 'home':
@@ -204,6 +207,35 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
       : (this.locale === 'zh' ? '\n\n💬 回复数字选择，或直接输入内容' : '\n\n💬 Reply with number to select, or type your answer');
 
     return this.createMessage(chatId, text + hint, buttons);
+  }
+
+  formatDeferredToolInput(chatId: string, data: DeferredToolInputData): TRendered {
+    const { toolName, prompt, permId } = data;
+
+    const text = this.locale === 'zh'
+      ? [
+          `⏳ **等待输入**`,
+          '',
+          `**工具:** ${toolName}`,
+          `**说明:** ${prompt}`,
+          '',
+          `💬 输入内容或回复 "跳过"`,
+        ].join('\n')
+      : [
+          `⏳ **Input Required**`,
+          '',
+          `**Tool:** ${toolName}`,
+          `**Description:** ${prompt}`,
+          '',
+          `💬 Type your input or reply "skip"`,
+        ].join('\n');
+
+    const buttons: Button[] = [
+      { label: '✅ Submit', callbackData: `deferred:submit:${permId}`, style: 'primary', row: 0 },
+      { label: '⏭ Skip', callbackData: `deferred:skip:${permId}`, style: 'default', row: 0 },
+    ];
+
+    return this.createMessage(chatId, text, buttons);
   }
 
   formatNotification(chatId: string, data: NotificationData): TRendered {
