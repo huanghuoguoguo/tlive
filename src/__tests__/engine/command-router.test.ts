@@ -45,14 +45,17 @@ describe('CommandRouter /settings', () => {
       sendFormatted: vi.fn().mockResolvedValue(undefined),
     };
 
-    // Mock SDKEngine with cleanupSession method
+    // Minimal SDKEngine mock for command routing tests
     sdkEngine = {
       cleanupSession: vi.fn<(channelType: string, chatId: string, reason: 'new' | 'switch' | 'cd' | 'settings' | 'expire', workdir?: string) => boolean>()
         .mockReturnValue(false),
+      hasSessionContext: vi.fn().mockReturnValue(true),
       getActiveControls: vi.fn().mockReturnValue(new Map()),
       getActiveSessionKey: vi.fn().mockReturnValue(undefined),
       getQueueInfo: vi.fn().mockReturnValue(undefined),
       isChatSessionStale: vi.fn().mockReturnValue(false),
+      getSessionKeyForBinding: vi.fn().mockImplementation((channelType: string, chatId: string, sessionId: string) => `${channelType}:${chatId}:${sessionId}`),
+      isSessionStale: vi.fn().mockReturnValue(false),
     };
 
     // Create WorkspaceStateManager (no persistence for tests)
@@ -78,7 +81,7 @@ describe('CommandRouter /settings', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('stores settings overrides per chat and closes live sessions on change', async () => {
+  it('stores settings overrides per chat and rotates the default session on change', async () => {
     await store.saveBinding({
       channelType: 'telegram',
       chatId: 'c1',
@@ -98,8 +101,9 @@ describe('CommandRouter /settings', () => {
     const binding = await store.getBinding('telegram', 'c1');
     expect(binding?.claudeSettingSources).toEqual([]);
     expect(binding?.sdkSessionId).toBeUndefined();
-    expect(sdkEngine.cleanupSession).toHaveBeenCalledWith('telegram', 'c1', 'settings', undefined);
-    expect(permissions.clearSessionWhitelist).toHaveBeenCalledWith('binding-1');
+    expect(binding?.sessionId).not.toBe('binding-1');
+    expect(sdkEngine.cleanupSession).not.toHaveBeenCalled();
+    expect(permissions.clearSessionWhitelist).not.toHaveBeenCalled();
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({ text: expect.stringContaining('isolated') }),
     );
@@ -317,11 +321,12 @@ describe('CommandRouter /settings', () => {
       messageId: 'm9',
     } as any);
 
-    expect(sdkEngine.cleanupSession).toHaveBeenCalledWith('telegram', 'c1', 'cd', repoA);
-    expect(permissions.clearSessionWhitelist).toHaveBeenCalledWith('binding-1');
+    expect(sdkEngine.cleanupSession).not.toHaveBeenCalled();
+    expect(permissions.clearSessionWhitelist).not.toHaveBeenCalled();
     const binding = await store.getBinding('telegram', 'c1');
     expect(binding?.cwd).toBe(repoB);
     expect(binding?.sdkSessionId).toBeUndefined();
+    expect(binding?.sessionId).not.toBe('binding-1');
     expect(binding?.projectName).toBeUndefined();
     expect(workspace.getBinding('telegram', 'c1')).toBe(repoB);
   });
@@ -439,11 +444,12 @@ describe('CommandRouter /settings', () => {
       messageId: 'm11',
     } as any);
 
-    expect(sdkEngine.cleanupSession).toHaveBeenCalledWith('telegram', 'c1', 'settings', repoDir);
-    expect(projectPermissions.clearSessionWhitelist).toHaveBeenCalledWith('binding-1');
+    expect(sdkEngine.cleanupSession).not.toHaveBeenCalled();
+    expect(projectPermissions.clearSessionWhitelist).not.toHaveBeenCalled();
     const binding = await store.getBinding('telegram', 'c1');
     expect(binding?.projectName).toBe('b');
     expect(binding?.sdkSessionId).toBeUndefined();
+    expect(binding?.sessionId).not.toBe('binding-1');
     expect(binding?.claudeSettingSources).toEqual(['user', 'project', 'local']);
 
     rmSync(homeDir, { recursive: true, force: true });
@@ -484,11 +490,12 @@ describe('CommandRouter /settings', () => {
       messageId: 'm12',
     } as any);
 
-    expect(sdkEngine.cleanupSession).toHaveBeenCalledWith('telegram', 'c1', 'switch', repoA);
-    expect(permissions.clearSessionWhitelist).toHaveBeenCalledWith('binding-1');
+    expect(sdkEngine.cleanupSession).not.toHaveBeenCalled();
+    expect(permissions.clearSessionWhitelist).not.toHaveBeenCalled();
     const binding = await store.getBinding('telegram', 'c1');
     expect(binding?.cwd).toBe(repoB);
     expect(binding?.sdkSessionId).toBe('sdk-target');
+    expect(binding?.sessionId).not.toBe('binding-1');
     expect(binding?.projectName).toBeUndefined();
     expect(workspace.getBinding('telegram', 'c1')).toBe(repoB);
 

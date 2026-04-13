@@ -10,6 +10,7 @@ interface MessageLoopCoordinatorOptions {
   permissions: PermissionCoordinator;
   quickCommands: Set<string>;
   hasPendingSdkQuestion: (channelType: string, chatId: string) => boolean;
+  resolveProcessingKey: (msg: InboundMessage) => Promise<string>;
 }
 
 interface SlowMessageDispatchOptions {
@@ -49,17 +50,17 @@ export class MessageLoopCoordinator {
     onError,
   }: SlowMessageDispatchOptions): Promise<void> {
     const coalesced = await coalesceMessage(adapter, msg);
-    const chatKey = this.options.state.stateKey(coalesced.channelType, coalesced.chatId);
+    const processingKey = await this.options.resolveProcessingKey(coalesced);
 
-    if (this.options.state.isProcessing(chatKey)) {
+    if (this.options.state.isProcessing(processingKey)) {
       await this.handleBusyChat(adapter, coalesced);
       return;
     }
 
-    this.options.state.setProcessing(chatKey, true);
+    this.options.state.setProcessing(processingKey, true);
     handleMessage(adapter, coalesced, requestId)
       .catch((err) => onError(err, requestId))
-      .finally(() => this.options.state.setProcessing(chatKey, false));
+      .finally(() => this.options.state.setProcessing(processingKey, false));
   }
 
   private async handleBusyChat(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<void> {

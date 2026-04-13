@@ -53,7 +53,6 @@ export class QueryOrchestrator {
     let previousSessionPreview: string | undefined;
     if (expired) {
       const previousBinding = await this.options.store.getBinding(msg.channelType, msg.chatId);
-      this.options.permissions.clearSessionWhitelist(previousBinding?.sessionId);
       console.log(`[query] ${ctx.requestId} SESSION_EXPIRED sid=${previousBinding?.sessionId?.slice(-4) || '?'}`);
       // Get preview of previous session before rebind
       const sessions = scanClaudeSessions(3, previousBinding?.cwd || this.options.defaultWorkdir);
@@ -67,11 +66,46 @@ export class QueryOrchestrator {
     }
 
     const binding = await this.options.router.resolve(msg.channelType, msg.chatId);
-    ctx.sessionId = binding.sessionId;
-    console.log(`[query] ${ctx.requestId} START session=${binding.sessionId.slice(-4)} cwd=${shortPath(binding.cwd || this.options.defaultWorkdir)}`);
+    const targetResult = this.options.sdkEngine.resolveSessionTarget?.(
+      msg.channelType,
+      msg.chatId,
+      binding,
+      this.options.defaultWorkdir,
+      msg.replyToMessageId,
+    ) ?? {
+      target: {
+        sessionKey: `${msg.channelType}:${msg.chatId}:${binding.sessionId}`,
+        bindingSessionId: binding.sessionId,
+        workdir: binding.cwd || this.options.defaultWorkdir,
+        sdkSessionId: binding.sdkSessionId,
+        source: 'current' as const,
+      },
+    };
+    if (!targetResult.target) {
+      await adapter.send({
+        chatId: msg.chatId,
+        text: '⚠️ 引用的会话已失效，请直接发送消息或切换会话后重试',
+      }).catch(() => {});
+      return true;
+    }
+
+    let sessionTarget = targetResult.target;
+    let routeBinding: ChannelBinding = sessionTarget.source === 'current'
+      ? binding
+      : {
+        ...binding,
+        sessionId: sessionTarget.bindingSessionId,
+        sdkSessionId: sessionTarget.sdkSessionId,
+        cwd: sessionTarget.workdir,
+      };
+
+    ctx.sessionId = routeBinding.sessionId;
+    console.log(
+      `[query] ${ctx.requestId} START session=${routeBinding.sessionId.slice(-4)} cwd=${shortPath(routeBinding.cwd || this.options.defaultWorkdir)} source=${sessionTarget.source}`,
+    );
 
     // Send task start notification card for session reset
-    if (expired) {
+    if (expired && !msg.replyToMessageId) {
       const taskStartMsg = adapter.format({
         type: 'taskStart',
         chatId: msg.chatId,
@@ -102,7 +136,12 @@ export class QueryOrchestrator {
 
     while (attemptCount < maxAttempts) {
       attemptCount++;
-      const currentBinding = attemptCount > 1 ? await this.options.router.resolve(msg.channelType, msg.chatId) : binding;
+      const currentBinding = attemptCount > 1 && sessionTarget.source === 'current'
+        ? await this.options.router.resolve(msg.channelType, msg.chatId)
+        : routeBinding;
+      if (attemptCount > 1 && sessionTarget.source === 'current') {
+        routeBinding = currentBinding;
+      }
 
       const { renderer, presenter } = this.createRendererAndPresenter(adapter, msg, currentBinding, reactions, typingInterval);
 
@@ -134,14 +173,25 @@ export class QueryOrchestrator {
       const sdkAskQuestionHandler = askQuestionHandler.handle.bind(askQuestionHandler);
 
       try {
-        await this.executeQuery(adapter, msg, currentBinding, renderer, costTracker, sdkPermissionHandler, sdkAskQuestionHandler, ctx);
+        await this.executeQuery(
+          adapter,
+          msg,
+          currentBinding,
+          sessionTarget.sessionKey,
+          renderer,
+          costTracker,
+          sdkPermissionHandler,
+          sdkAskQuestionHandler,
+          ctx,
+        );
 
         // Track progress bubble → session for multi-session steering
-        const chatKey = this.options.state.stateKey(msg.channelType, msg.chatId);
-        const workdir = currentBinding.cwd || this.options.defaultWorkdir;
-        const sessionKey = `${msg.channelType}:${msg.chatId}:${workdir}`;
         if (renderer.messageId) {
-          this.options.sdkEngine.setActiveMessageId(chatKey, renderer.messageId, sessionKey);
+          this.options.sdkEngine.setActiveMessageId(
+            this.options.state.stateKey(msg.channelType, msg.chatId),
+            renderer.messageId,
+            sessionTarget.sessionKey,
+          );
           console.log(`[query] ${ctx.requestId} SENT msgId=${renderer.messageId.slice(-8)}`);
         }
 
@@ -164,11 +214,15 @@ export class QueryOrchestrator {
           console.log(`[query] ${ctx.requestId} SESSION_STALE retrying with fresh session`);
           resumeFallbackMessage = '🔄 旧会话无法恢复，已为你开启新会话';
 
-          // Clear sdkSessionId and close the stale session
+          // Clear sdkSessionId and recycle the stale live session
           currentBinding.sdkSessionId = undefined;
-          await this.options.store.saveBinding(currentBinding);
-          this.options.sdkEngine.cleanupSession(msg.channelType, msg.chatId, 'expire', currentBinding.cwd);
-          this.options.permissions.clearSessionWhitelist(currentBinding.sessionId);
+          this.options.sdkEngine.updateSessionSdkSessionId?.(sessionTarget.sessionKey, undefined);
+          this.options.sdkEngine.resetSessionRuntime?.(sessionTarget.sessionKey, 'expire');
+          sessionTarget = { ...sessionTarget, sdkSessionId: undefined };
+          routeBinding = { ...currentBinding };
+          if (sessionTarget.source === 'current') {
+            await this.options.store.saveBinding(currentBinding);
+          }
 
           // Send task start notification card for stale session recovery
           const staleTaskStartMsg = adapter.format({
@@ -190,6 +244,7 @@ export class QueryOrchestrator {
           this.options.sdkEngine.setControlsForChat(
             this.options.state.stateKey(msg.channelType, msg.chatId),
             undefined,
+            sessionTarget.sessionKey,
           );
 
           // Restart typing indicator for retry
@@ -298,6 +353,7 @@ export class QueryOrchestrator {
     adapter: BaseChannelAdapter,
     msg: InboundMessage,
     binding: ChannelBinding,
+    sessionKey: string,
     renderer: MessageRenderer,
     costTracker: CostTracker,
     sdkPermissionHandler: (toolName: string, toolInput: Record<string, unknown>, promptSentence: string, signal?: AbortSignal) => Promise<'allow' | 'allow_always' | 'deny'>,
@@ -316,8 +372,14 @@ export class QueryOrchestrator {
         this.options.llm,
         msg.channelType,
         msg.chatId,
+        binding.sessionId,
         workdir,
-        { sessionId: binding.sdkSessionId, settingSources, appendSystemPrompt: this.options.appendSystemPrompt },
+        {
+          sessionId: binding.sdkSessionId,
+          settingSources,
+          appendSystemPrompt: this.options.appendSystemPrompt,
+          setAsCurrent: sessionKey === this.options.sdkEngine.getActiveSessionKey?.(msg.channelType, msg.chatId),
+        },
       );
     } catch (err) {
       console.warn(`[bridge] Failed to create LiveSession, falling back to streamChat: ${err}`);
@@ -340,10 +402,17 @@ export class QueryOrchestrator {
       streamResult,
       sdkPermissionHandler: streamResult ? undefined : sdkPermissionHandler,
       sdkAskQuestionHandler: streamResult ? undefined : sdkAskQuestionHandler,
-      onControls: (ctrl) => this.options.sdkEngine.setControlsForChat(chatKey, ctrl),
+      onControls: (ctrl) => this.options.sdkEngine.setControlsForChat(chatKey, ctrl, sessionKey),
       onSdkSessionId: async (id) => {
         binding.sdkSessionId = id;
-        await this.options.store.saveBinding(binding);
+        this.options.sdkEngine.updateSessionSdkSessionId?.(sessionKey, id);
+        if (binding.channelType === msg.channelType && binding.chatId === msg.chatId) {
+          const currentBinding = await this.options.store.getBinding(msg.channelType, msg.chatId);
+          if (currentBinding?.sessionId === binding.sessionId) {
+            currentBinding.sdkSessionId = id;
+            await this.options.store.saveBinding(currentBinding);
+          }
+        }
       },
       onTextDelta: (delta) => renderer.onTextDelta(delta),
       onThinkingDelta: (delta) => renderer.onThinkingDelta(delta),

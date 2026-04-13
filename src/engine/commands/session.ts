@@ -28,13 +28,10 @@ export class SessionCommand extends BaseCommand {
     // Get binding for switch operation
     const binding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
     const switchedRepo = !isSameRepoRoot(currentCwd, target.cwd);
-
-    const { hadActiveSession } = await ctx.helpers.resetSessionContext(
-      ctx.msg.channelType,
-      ctx.msg.chatId,
-      'switch',
-      { previousCwd: currentCwd, clearProject: switchedRepo, binding },
-    );
+    const hadActiveSession = binding
+      ? (ctx.sdkEngine?.hasSessionContext?.(ctx.msg.channelType, ctx.msg.chatId, binding.sessionId) ?? false)
+        || !!binding.sdkSessionId
+      : false;
 
     const newBindingId = generateSessionId();
     await ctx.router.rebind(ctx.msg.channelType, ctx.msg.chatId, newBindingId, {
@@ -47,7 +44,7 @@ export class SessionCommand extends BaseCommand {
     ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, ctx.msg.chatId, target.cwd);
 
     const feedbackText = hadActiveSession && switchedRepo
-      ? `🔄 已关闭旧工作区的活跃会话`
+      ? `🧭 已保留旧工作区会话，并切换默认会话`
       : undefined;
     await this.send(ctx, presentSessionSwitched(ctx.msg.chatId, idx, shortPath(target.cwd), target.preview, feedbackText));
     return true;

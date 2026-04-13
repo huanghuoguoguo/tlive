@@ -31,15 +31,13 @@ export class SettingsCommand extends BaseCommand {
 
     if (arg && arg in PRESETS) {
       const binding = await ctx.router.resolve(ctx.msg.channelType, ctx.msg.chatId);
-      const previousBinding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
       binding.claudeSettingSources = [...PRESETS[arg]];
-      binding.sdkSessionId = undefined;
       await ctx.store.saveBinding(binding);
       await ctx.helpers.resetSessionContext(
         ctx.msg.channelType,
         ctx.msg.chatId,
         'settings',
-        { previousCwd: previousBinding?.cwd, binding },
+        { previousCwd: binding.cwd, binding },
       );
       await this.send(ctx, presentSettingsChanged(ctx.msg.chatId, LABELS[arg]));
     } else {
