@@ -19,8 +19,16 @@
 
 ## Install
 
+Linux / macOS:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash
+```
+
+Windows PowerShell:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$tmp = Join-Path $env:TEMP 'tlive-install.ps1'; Invoke-WebRequest 'https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.ps1' -UseBasicParsing -OutFile $tmp; & $tmp"
 ```
 
 Verify:
@@ -55,7 +63,6 @@ That's it! Claude Code will help you:
 |---------|----------|-------------|
 | **IM Chat** | Yes | Phone → Claude → Streaming response with tool visibility |
 | **Permission Approval** | Yes | Approve tool executions from your phone |
-| **Web Terminal** | No | `tlive <cmd>` wraps any command, view in browser |
 
 ## Architecture
 

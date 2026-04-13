@@ -19,8 +19,16 @@
 
 ## 安装
 
+Linux / macOS：
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash
+```
+
+Windows PowerShell：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$tmp = Join-Path $env:TEMP 'tlive-install.ps1'; Invoke-WebRequest 'https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.ps1' -UseBasicParsing -OutFile $tmp; & $tmp"
 ```
 
 ## 快速开始
@@ -28,7 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.s
 这是中文用户最快上手的默认路径：
 
 ```bash
-# 1. 安装 tlive
+# 1. 安装 tlive（Windows 请使用上面安装章节中的 PowerShell 命令）
 curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash
 
 # 2. 在你的项目目录启动 Claude Code
@@ -74,7 +82,6 @@ claude
 |------|------|------|
 | **IM 对话** | 是 | 手机发消息 → Claude 执行 → 流式返回结果 |
 | **权限审批** | 是 | Claude 需要执行命令时，手机收到审批请求 |
-| **Web 终端** | 否 | `tlive <cmd>` 包装任意命令，手机浏览器查看 |
 
 ## 平台选择
 

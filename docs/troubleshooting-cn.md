@@ -23,8 +23,12 @@ tlive logs 100      # 最近 100 行
 
 二进制文件下载失败。重新运行安装：
 
-```bash
+```text
+Linux / macOS:
 curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash
+
+Windows PowerShell:
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$tmp = Join-Path $env:TEMP 'tlive-install.ps1'; Invoke-WebRequest 'https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.ps1' -UseBasicParsing -OutFile $tmp; & $tmp"
 ```
 
 ### Bridge 无法启动
@@ -60,37 +64,9 @@ curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.s
 - 确认应用凭证正确
 - 检查白名单配置
 
-### Hook 不生效
-
-1. 确认已安装技能：
-   ```bash
-   tlive install skills
-   ```
-
-2. 检查 Hook 状态：
-   ```bash
-   tlive hooks
-   ```
-
-3. 确认 Bridge 正在运行：
-   ```bash
-   tlive status
-   ```
-
 ### 权限审批超时
 
 默认 5 分钟超时，超时后自动拒绝。QQ Bot 请直接回复 `allow` / `deny` / `always`；不要等待按钮。
-
-### Web 终端无法访问
-
-1. 检查端口是否被占用：
-   ```bash
-   lsof -i :8080
-   ```
-
-2. 检查防火墙设置
-
-3. 手机访问时确认在同一局域网，或配置了内网穿透
 
 ## 重置
 

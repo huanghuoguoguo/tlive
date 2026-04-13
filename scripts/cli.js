@@ -9,7 +9,6 @@ import { homedir } from 'node:os';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const [,, command, ...args] = process.argv;
 
-const SCRIPTS_DIR = __dirname;
 const PACKAGE_ROOT = join(__dirname, '..');
 const isWindows = process.platform === 'win32';
 const REPO = 'huanghuoguoguo/tlive';
@@ -19,7 +18,6 @@ const LOG_DIR = join(TLIVE_HOME, 'logs');
 const BRIDGE_PID = join(RUNTIME_DIR, 'bridge.pid');
 const BRIDGE_ENTRY = join(PACKAGE_ROOT, 'dist', 'main.mjs');
 const CONFIG_FILE = join(TLIVE_HOME, 'config.env');
-const CORE_BIN = join(TLIVE_HOME, 'bin', isWindows ? 'tlive-core.exe' : 'tlive-core');
 
 function getVersion() {
   try {
@@ -27,8 +25,36 @@ function getVersion() {
   } catch { return 'unknown'; }
 }
 
+function normalizeRequestedVersion(version) {
+  if (!version) return null;
+  const trimmed = String(version).trim();
+  if (!trimmed) return null;
+  return trimmed.replace(/^v/i, '');
+}
+
+function toReleaseTag(version) {
+  const normalized = normalizeRequestedVersion(version);
+  if (!normalized) {
+    throw new Error('Release version is required');
+  }
+  return `v${normalized}`;
+}
+
 function getReleaseDownloadUrl(version) {
-  return `https://github.com/${REPO}/releases/download/v${version}/tlive-v${version}.tar.gz`;
+  const tag = toReleaseTag(version);
+  return `https://github.com/${REPO}/releases/download/${tag}/tlive-${tag}.tar.gz`;
+}
+
+function getManualInstallCommand(version = null, platform = process.platform) {
+  const normalizedVersion = normalizeRequestedVersion(version);
+  if (platform === 'win32') {
+    const versionArg = normalizedVersion ? ` '${normalizedVersion}'` : '';
+    return `powershell -NoProfile -ExecutionPolicy Bypass -Command "$tmp = Join-Path $env:TEMP 'tlive-install.ps1'; Invoke-WebRequest 'https://raw.githubusercontent.com/${REPO}/main/install.ps1' -UseBasicParsing -OutFile $tmp; & $tmp${versionArg}"`;
+  }
+
+  return normalizedVersion
+    ? `curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- v${normalizedVersion}`
+    : `curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash`;
 }
 
 async function downloadFile(url, dest) {
@@ -59,7 +85,8 @@ function runPostinstall(appDir) {
 async function upgradeFromRelease(version) {
   mkdirSync(TLIVE_HOME, { recursive: true });
   const tempRoot = mkdtempSync(join(TLIVE_HOME, 'upgrade-'));
-  const tarball = join(tempRoot, `tlive-v${version}.tar.gz`);
+  const tag = toReleaseTag(version);
+  const tarball = join(tempRoot, `tlive-${tag}.tar.gz`);
   const stagedDir = join(tempRoot, 'app');
   const backupDir = `${PACKAGE_ROOT}-backup-${Date.now()}`;
   let movedCurrentInstall = false;
@@ -95,6 +122,18 @@ async function upgradeFromRelease(version) {
     rmSync(tempRoot, { recursive: true, force: true });
     throw err;
   }
+}
+
+async function waitForProcessExit(pid, timeoutMs = 15000) {
+  if (!Number.isFinite(pid) || pid <= 0) return;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (!isProcessRunning(pid)) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+
+  throw new Error(`Timed out waiting for process ${pid} to exit`);
 }
 
 // ---------------------------------------------------------------------------
@@ -191,28 +230,6 @@ function daemonStart() {
 
   console.log(`Bridge started (PID ${child.pid})`);
 
-  // Also start Go Core for web terminal (lightweight daemon)
-  // Both Bridge and Core are lightweight - mainly just message/conn forwarding
-  if (existsSync(CORE_BIN)) {
-    const port = process.env.TL_PORT || config.TL_PORT || '8080';
-    const coreLog = join(LOG_DIR, 'core.log');
-    const coreLogFd = openSync(coreLog, 'a');
-
-    const coreChild = spawn(CORE_BIN, ['daemon', '--port', port], {
-      detached: true,
-      windowsHide: true,
-      stdio: ['ignore', coreLogFd, coreLogFd],
-      env: {
-        ...process.env,
-        ...config,
-        TL_PORT: port,
-      },
-    });
-
-    coreChild.unref();
-    closeSync(coreLogFd);
-    console.log(`Web terminal started (port ${port})`);
-  }
 }
 
 function daemonStop() {
@@ -349,46 +366,6 @@ function getDailyLogPath(baseName, date = new Date()) {
 }
 
 // ---------------------------------------------------------------------------
-// ensureBridgeRunning — silent auto-start for Go Core wrapping
-// ---------------------------------------------------------------------------
-
-function ensureBridgeRunning() {
-  if (getBridgePid()) return; // already running
-  if (!existsSync(CONFIG_FILE)) return; // no config, skip
-
-  ensureDirs();
-
-  if (!existsSync(BRIDGE_ENTRY)) return;
-
-  const config = loadConfigEnv();
-  const runtime = process.env.TL_RUNTIME || config.TL_RUNTIME || 'claude';
-  const logFile = join(LOG_DIR, 'bridge.log');
-  const logFd = openSync(logFile, 'a');
-
-  const env = {
-    ...process.env,
-    ...config,
-    TL_RUNTIME: runtime,
-    TL_DEFAULT_WORKDIR: process.env.TL_DEFAULT_WORKDIR || process.cwd(),
-  };
-
-  try {
-    const child = spawn(process.execPath, [BRIDGE_ENTRY], {
-      detached: true,
-      windowsHide: true,
-      stdio: ['ignore', logFd, logFd],
-      env,
-    });
-    writeFileSync(BRIDGE_PID, String(child.pid));
-    child.unref();
-    closeSync(logFd);
-    console.log('  Bridge auto-started in background');
-  } catch (e) {
-    console.error(`  Bridge auto-start failed: ${e.message || e}`);
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Doctor
 // ---------------------------------------------------------------------------
 
@@ -417,16 +394,6 @@ async function runDoctor() {
   console.log(checkCmd('curl') ? '  curl:    OK' : '  curl:    NOT FOUND (optional)');
   console.log(checkCmd('jq') ? '  jq:      OK' : '  jq:      NOT FOUND (optional)');
   console.log(gitVersion ? `  git:     ${gitVersion}` : '  git:     NOT FOUND');
-
-  console.log('');
-
-  // Go Core binary
-  console.log('Go Core:');
-  if (existsSync(CORE_BIN)) {
-    console.log(`  binary:  OK (${CORE_BIN})`);
-  } else {
-    console.log('  binary:  NOT FOUND');
-  }
 
   console.log('');
 
@@ -462,67 +429,26 @@ async function runDoctor() {
 
   console.log('');
 
-  // Hook scripts (in npm package directory)
-  console.log('Hooks:');
-  for (const name of ['hook-handler.mjs', 'notify-handler.mjs', 'stop-handler.mjs']) {
-    const p = join(SCRIPTS_DIR, name);
-    console.log(existsSync(p) ? `  ${name}: OK` : `  ${name}: NOT FOUND`);
-  }
-
-  // hooks-paused
-  const pauseFile = join(TLIVE_HOME, 'hooks-paused');
-  console.log(existsSync(pauseFile) ? '  status: paused (auto-allow)' : '  status: active');
-
   console.log('\n=== Done ===');
 }
-
-// ---------------------------------------------------------------------------
-// Go Core forwarding
-// ---------------------------------------------------------------------------
-
-function runCore(coreArgs) {
-  if (!existsSync(CORE_BIN)) {
-    console.error(`Go Core not found at ${CORE_BIN}`);
-    console.error('Install from GitHub Release or build this fork from source first.');
-    process.exit(1);
-  }
-  ensureBridgeRunning();
-  const result = spawnSync(CORE_BIN, coreArgs, { stdio: 'inherit' });
-  process.exit(result.status ?? 1);
-}
-
-// ---------------------------------------------------------------------------
-// UI
-// ---------------------------------------------------------------------------
 
 const HELP_TEXT = `TLive — Terminal live monitoring + IM bridge for AI coding tools
 
 Usage:
-  tlive <cmd> [args]         Wrap any command with web terminal
   tlive <subcommand>         Manage TLive services
-
-Web Terminal:
-  tlive claude               Wrap Claude Code with web-accessible terminal
-  tlive python train.py      Wrap any long-running command
-  tlive npm run build        Access from phone browser via QR code
 
 Setup (one-time):
   tlive setup                Configure IM platforms (Telegram/Feishu/QQ Bot)
-  tlive install skills       Install /tlive skill + hooks to Claude Code
+  tlive install skills       Install /tlive skill to Claude Code
 
 Service Management:
   tlive start [--runtime R]  Start IM Bridge (R: claude|codex, default: claude)
   tlive stop                 Stop IM Bridge daemon
-  tlive status               Show Bridge + Web Terminal status
+  tlive status               Show Bridge status
   tlive logs [N]             Show last N log lines (default: 50)
   tlive doctor               Run diagnostic checks
-  tlive upgrade              Upgrade to latest version (hot reload)
+  tlive upgrade [version]    Upgrade to latest or specified version
   tlive version              Show version info
-
-Hook Control:
-  tlive hooks                Show hook approval status
-  tlive hooks pause          Auto-allow all, no IM notifications
-  tlive hooks resume         Resume IM approval flow
 
 IM Commands (in Telegram/Feishu/QQ Bot):
   /new                       New conversation
@@ -631,16 +557,7 @@ switch (command) {
 
   case 'version': {
     const ver = getVersion();
-    const coreExists = existsSync(CORE_BIN);
-    let coreVer = 'not installed';
-    if (coreExists) {
-      try {
-        const vFile = join(TLIVE_HOME, 'bin', '.core-version');
-        coreVer = readFileSync(vFile, 'utf-8').trim();
-      } catch { coreVer = 'unknown'; }
-    }
     console.log(`tlive          ${ver}`);
-    console.log(`tlive-core     ${coreVer}`);
     console.log(`node           ${process.version}`);
     // Check for updates
     try {
@@ -665,26 +582,30 @@ switch (command) {
   case 'update':
   case 'upgrade': {
     const current = getVersion();
+    const requestedVersion = normalizeRequestedVersion(args[0]);
+    const bridgeWasRunning = Boolean(getBridgePid()) || Boolean(process.env.TLIVE_UPGRADE_PARENT_PID);
     console.log(`Current version: ${current}`);
 
     // Check latest version from GitHub
-    let latest;
-    try {
-      const resp = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
-        headers: { 'Accept': 'application/vnd.github.v3+json' },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!resp.ok) {
-        throw new Error(`GitHub API returned ${resp.status}`);
+    let latest = requestedVersion;
+    if (!latest) {
+      try {
+        const resp = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
+          headers: { 'Accept': 'application/vnd.github.v3+json' },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!resp.ok) {
+          throw new Error(`GitHub API returned ${resp.status}`);
+        }
+        const data = await resp.json();
+        latest = normalizeRequestedVersion(data.tag_name || data.name);
+        if (!latest) {
+          throw new Error('Latest version not found in release metadata');
+        }
+      } catch (e) {
+        console.error('Failed to check latest version. Are you online?');
+        process.exit(1);
       }
-      const data = await resp.json();
-      latest = data.tag_name?.replace(/^v/, '') || data.name?.replace(/^v/, '');
-      if (!latest) {
-        throw new Error('Latest version not found in release metadata');
-      }
-    } catch (e) {
-      console.error('Failed to check latest version. Are you online?');
-      process.exit(1);
     }
 
     if (latest === current) {
@@ -692,7 +613,7 @@ switch (command) {
       break;
     }
 
-    console.log(`Latest version: ${latest}`);
+    console.log(`${requestedVersion ? 'Target' : 'Latest'} version: ${latest}`);
     console.log('\nUpgrading from GitHub...');
 
     // Check if installed via git clone
@@ -704,9 +625,14 @@ switch (command) {
         console.error('\nThis tlive command is running from a git checkout.');
         console.error('Auto-upgrade now uses GitHub Release packages and will not overwrite a working tree.');
         console.error(`Update this checkout manually with git, or install the packaged build with:`);
-        console.error(`  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash`);
+        console.error(`  ${getManualInstallCommand()}`);
         process.exit(1);
       } else {
+        const parentPid = Number.parseInt(process.env.TLIVE_UPGRADE_PARENT_PID || '', 10);
+        if (Number.isFinite(parentPid) && parentPid > 0) {
+          console.log(`Waiting for running bridge (PID ${parentPid}) to exit...`);
+          await waitForProcessExit(parentPid);
+        }
         console.log('Upgrading from GitHub Release package...');
         const backupDir = await upgradeFromRelease(latest);
         console.log(`\nNew version installed at: ${PACKAGE_ROOT}`);
@@ -716,13 +642,13 @@ switch (command) {
       console.log(`\n✅ Upgraded to ${latest}.`);
       console.log('\nChangelog: https://github.com/huanghuoguoguo/tlive/releases');
 
-      // Restart bridge if running
-      if (getBridgePid()) {
+      if (bridgeWasRunning) {
         console.log('\nRestarting bridge...');
-        daemonStop();
-        setTimeout(() => {
-          daemonStart();
-        }, 1000);
+        if (getBridgePid()) {
+          daemonStop();
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+        daemonStart();
       }
     } catch (err) {
       console.error(`Upgrade failed: ${err.message || err}`);
@@ -767,7 +693,7 @@ switch (command) {
       }
       console.log(`Reference docs synced: ${docsDir}`);
 
-      // Auto-configure hooks in ~/.claude/settings.json
+      // Remove legacy TLive hook entries from ~/.claude/settings.json
       if (target === 'claude') {
         const settingsPath = join(homedir(), '.claude', 'settings.json');
         let settings = {};
@@ -777,14 +703,7 @@ switch (command) {
 
         if (!settings.hooks) settings.hooks = {};
 
-        // Point hooks directly to npm package scripts — no copy needed
-        const hookHandlerCmd = `node "${join(SCRIPTS_DIR, 'hook-handler.mjs')}"`;
-        const notifyHandlerCmd = `node "${join(SCRIPTS_DIR, 'notify-handler.mjs')}"`;
-        const stopHandlerCmd = `node "${join(SCRIPTS_DIR, 'stop-handler.mjs')}"`;
-
-
         // Remove ALL existing TLive hooks (both .sh and .mjs, any path)
-        // then re-add with current paths — ensures hooks always point to this install
         const isTliveHook = (cmd) =>
           cmd?.includes('hook-handler') || cmd?.includes('notify-handler') || cmd?.includes('stop-handler');
 
@@ -800,46 +719,8 @@ switch (command) {
           if (settings.hooks[hookType].length === 0) delete settings.hooks[hookType];
         }
 
-        // Add hooks with current paths
-        if (!settings.hooks.PostToolUse) settings.hooks.PostToolUse = [];
-        settings.hooks.PostToolUse.push({
-          matcher: 'AskUserQuestion',
-          hooks: [{
-            type: 'command',
-            command: hookHandlerCmd,
-            timeout: 10,
-          }],
-        });
-
-        if (!settings.hooks.PermissionRequest) settings.hooks.PermissionRequest = [];
-        settings.hooks.PermissionRequest.push({
-          hooks: [{
-            type: 'command',
-            command: hookHandlerCmd,
-            timeout: 300,
-          }],
-        });
-
-        if (!settings.hooks.Notification) settings.hooks.Notification = [];
-        settings.hooks.Notification.push({
-          hooks: [{
-            type: 'command',
-            command: notifyHandlerCmd,
-            timeout: 10,
-          }],
-        });
-
-        if (!settings.hooks.Stop) settings.hooks.Stop = [];
-        settings.hooks.Stop.push({
-          hooks: [{
-            type: 'command',
-            command: stopHandlerCmd,
-            async: true,
-          }],
-        });
-
         writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
-        console.log(`Hooks configured in: ${settingsPath}`);
+        console.log(`Removed legacy TLive hook entries from: ${settingsPath}`);
       }
     } else {
       console.log('Usage: tlive install skills [--codex]');
@@ -848,7 +729,7 @@ switch (command) {
   }
 
   default: {
-    // Check for typos of known commands before forwarding to Go Core
+    // Check for typos of known commands before failing
     const known = ['setup', 'start', 'stop', 'status', 'logs', 'hooks', 'doctor', 'install', 'help', 'version', 'update', 'upgrade'];
     const similar = known.find(k => {
       if (Math.abs(k.length - command.length) > 2) return false;
@@ -863,8 +744,8 @@ switch (command) {
       console.error(`Did you mean: tlive ${similar}?`);
       process.exit(1);
     }
-    // Unknown command → wrap with Go Core web terminal
-    runCore([command, ...args]);
-    break;
+    console.error(`Unknown command: ${command}`);
+    console.error('Run `tlive --help` to see available subcommands.');
+    process.exit(1);
   }
 }

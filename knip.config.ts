@@ -3,10 +3,6 @@ import type { KnipConfig } from 'knip';
 const config: KnipConfig = {
   // Scripts are standalone entrypoints (invoked by shell, not imported by src/)
   entry: [
-    'scripts/hook-handler.mjs',
-    'scripts/notify-handler.mjs',
-    'scripts/stop-handler.mjs',
-    'scripts/statusline.mjs',
     'src/main.ts',
     'src/setup-wizard.ts',
     'src/platforms/telegram/adapter.ts',

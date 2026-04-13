@@ -1,33 +1,68 @@
 #!/bin/bash
-# TermLive diagnostic checks
+# TLive diagnostic checks for Unix-like environments
 set -uo pipefail
 
-TERMLIVE_HOME="${HOME}/.tlive"
+TLIVE_HOME="${TLIVE_HOME:-$HOME/.tlive}"
+RUNTIME_DIR="${TLIVE_HOME}/runtime"
+LOG_DIR="${TLIVE_HOME}/logs"
+DATA_DIR="${TLIVE_HOME}/data"
+CONFIG_FILE="${TLIVE_HOME}/config.env"
 
-echo "=== TermLive Doctor ==="
+check_cmd() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+is_running() {
+  local pid_file="$1"
+  [ -f "$pid_file" ] && kill -0 "$(cat "$pid_file")" 2>/dev/null
+}
+
+print_json_key_count() {
+  local file="$1"
+  if [ ! -f "$file" ]; then
+    echo "(no data)"
+    return
+  fi
+
+  if check_cmd node; then
+    local count
+    count=$(node -e "const fs=require('node:fs'); try { const data=JSON.parse(fs.readFileSync(process.argv[1],'utf8')); console.log(Object.keys(data).length); } catch { process.exit(1); }" "$file" 2>/dev/null) || true
+    if [ -n "${count:-}" ]; then
+      if [ "$count" -gt 0 ] 2>/dev/null; then
+        echo "$count active"
+      else
+        echo "none"
+      fi
+      return
+    fi
+  fi
+
+  echo "(no data)"
+}
+
+echo "=== TLive Doctor ==="
 echo ""
 
-# Check dependencies
 echo "Dependencies:"
-if command -v node &>/dev/null; then
+if check_cmd node; then
   echo "  node:    $(node -v)"
 else
-  echo "  node:    NOT FOUND (required for Bridge)"
+  echo "  node:    NOT FOUND"
 fi
 
-if command -v curl &>/dev/null; then
+if check_cmd curl; then
   echo "  curl:    OK"
 else
-  echo "  curl:    NOT FOUND"
+  echo "  curl:    NOT FOUND (optional)"
 fi
 
-if command -v jq &>/dev/null; then
+if check_cmd jq; then
   echo "  jq:      OK"
 else
-  echo "  jq:      NOT FOUND (needed for statusline)"
+  echo "  jq:      NOT FOUND (optional)"
 fi
 
-if command -v git &>/dev/null; then
+if check_cmd git; then
   echo "  git:     $(git --version | head -1)"
 else
   echo "  git:     NOT FOUND"
@@ -35,22 +70,13 @@ fi
 
 echo ""
 
-# Check Go Core binary
-echo "Go Core:"
-if [ -x "$TERMLIVE_HOME/bin/tlive" ]; then
-  echo "  binary:  OK ($TERMLIVE_HOME/bin/tlive)"
-else
-  echo "  binary:  NOT FOUND"
-fi
-
-echo ""
-
-# Check config
 echo "Config:"
-if [ -f "$TERMLIVE_HOME/config.env" ]; then
+if [ -f "$CONFIG_FILE" ]; then
   echo "  config.env: OK"
-  # Check key vars without revealing values
-  source "$TERMLIVE_HOME/config.env" 2>/dev/null
+  set -a
+  # shellcheck disable=SC1090
+  source "$CONFIG_FILE" 2>/dev/null || true
+  set +a
   [ -n "${TL_TOKEN:-}" ] && echo "  TL_TOKEN: set" || echo "  TL_TOKEN: NOT SET"
   [ -n "${TL_TG_BOT_TOKEN:-}" ] && echo "  Telegram: configured" || echo "  Telegram: not configured"
   [ -n "${TL_FS_APP_ID:-}" ] && echo "  Feishu:   configured" || echo "  Feishu:   not configured"
@@ -61,32 +87,22 @@ fi
 
 echo ""
 
-# Check processes
 echo "Processes:"
-if [ -f "$TERMLIVE_HOME/runtime/core.pid" ] && kill -0 "$(cat "$TERMLIVE_HOME/runtime/core.pid")" 2>/dev/null; then
-  echo "  Go Core:  running (PID $(cat "$TERMLIVE_HOME/runtime/core.pid"))"
-else
-  echo "  Go Core:  not running"
-fi
-
-if [ -f "$TERMLIVE_HOME/runtime/bridge.pid" ] && kill -0 "$(cat "$TERMLIVE_HOME/runtime/bridge.pid")" 2>/dev/null; then
-  echo "  Bridge:   running (PID $(cat "$TERMLIVE_HOME/runtime/bridge.pid"))"
+BRIDGE_PID_FILE="${RUNTIME_DIR}/bridge.pid"
+if is_running "$BRIDGE_PID_FILE"; then
+  echo "  Bridge:   running (PID $(cat "$BRIDGE_PID_FILE"))"
 else
   echo "  Bridge:   not running"
 fi
 
-echo ""
+BINDINGS_FILE="${DATA_DIR}/bindings.json"
+echo "  Sessions: $(print_json_key_count "$BINDINGS_FILE")"
 
-# Check API if running
-TL_PORT="${TL_PORT:-8080}"
-TL_TOKEN="${TL_TOKEN:-}"
-if curl -sf "http://localhost:${TL_PORT}/api/status" -H "Authorization: Bearer ${TL_TOKEN}" >/dev/null 2>&1; then
-  echo "API:"
-  curl -sf "http://localhost:${TL_PORT}/api/status" -H "Authorization: Bearer ${TL_TOKEN}" 2>/dev/null
-  echo ""
-else
-  echo "API: unreachable (port ${TL_PORT})"
-fi
+echo ""
+echo "Paths:"
+echo "  home:     $TLIVE_HOME"
+echo "  runtime:  $RUNTIME_DIR"
+echo "  logs:     $LOG_DIR"
 
 echo ""
 echo "=== Done ==="

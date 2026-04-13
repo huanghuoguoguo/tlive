@@ -64,7 +64,7 @@ function maskSecret(value: string): string {
 
 function printNextSteps(platforms: string[]): void {
   console.log('\nNext steps:');
-  console.log('  tlive install skills    Install Claude Code skill + hooks');
+  console.log('  tlive install skills    Install Claude Code skill');
   console.log('  tlive start             Start services');
 
   if (platforms.includes('feishu')) {

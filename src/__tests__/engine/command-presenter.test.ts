@@ -8,6 +8,7 @@ import {
   presentHome,
   presentQueueStatus,
   presentDiagnose,
+  presentUpgradeCommand,
 } from '../../engine/messages/presenter.js';
 import { TelegramFormatter } from '../../platforms/telegram/formatter.js';
 import { FeishuFormatter } from '../../platforms/feishu/formatter.js';
@@ -233,6 +234,20 @@ describe('command presenter', () => {
         expect(msg.data.queueUtilizationRatio).toBeUndefined();
         expect(msg.data.busiestSession).toBeUndefined();
       }
+    });
+  });
+
+  describe('presentUpgradeCommand', () => {
+    it('uses the Unix installer on linux-like platforms', () => {
+      const msg = presentUpgradeCommand('chat-1', 'linux');
+      expect(msg.text).toContain('install.sh');
+      expect(msg.text).toContain('curl -fsSL');
+    });
+
+    it('uses the PowerShell installer on Windows', () => {
+      const msg = presentUpgradeCommand('chat-1', 'win32');
+      expect(msg.text).toContain('install.ps1');
+      expect(msg.text).toContain('powershell -NoProfile');
     });
   });
 });

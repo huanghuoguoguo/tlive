@@ -182,6 +182,18 @@ export interface UpgradeResultData {
   error?: string;
 }
 
+function getManualInstallCommand(platform: NodeJS.Platform = process.platform, version?: string): string {
+  const normalizedVersion = version?.trim() ? version.trim().replace(/^v/i, '') : '';
+  if (platform === 'win32') {
+    const versionArg = normalizedVersion ? ` '${normalizedVersion}'` : '';
+    return `powershell -NoProfile -ExecutionPolicy Bypass -Command "$tmp = Join-Path $env:TEMP 'tlive-install.ps1'; Invoke-WebRequest 'https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.ps1' -UseBasicParsing -OutFile $tmp; & $tmp${versionArg}"`;
+  }
+
+  return normalizedVersion
+    ? `curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash -s -- v${normalizedVersion}`
+    : 'curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash';
+}
+
 export function presentVersionCheck(chatId: string, info: VersionCheckData): FormattableMessage {
   // Use a generic 'notification' type for version check
   // The formatter will handle platform-specific rendering
@@ -214,8 +226,8 @@ export function presentUpgradeResult(chatId: string, result: UpgradeResultData):
   };
 }
 
-export function presentUpgradeCommand(chatId: string): { chatId: string; text: string } {
-  const cmd = 'curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash';
+export function presentUpgradeCommand(chatId: string, platform: NodeJS.Platform = process.platform): { chatId: string; text: string } {
+  const cmd = getManualInstallCommand(platform);
   return { chatId, text: `Manual upgrade:\n\`\`\`\n${cmd}\n\`\`\`` };
 }
 
