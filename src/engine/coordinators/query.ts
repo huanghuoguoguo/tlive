@@ -8,10 +8,8 @@ import type { SessionStateManager } from '../state/session-state.js';
 import type { PermissionCoordinator } from './permission.js';
 import type { SDKEngine } from '../sdk/engine.js';
 import { PLATFORM_LIMITS, type ChannelType } from '../../utils/constants.js';
-import { generateSessionId } from '../../utils/id.js';
 import { truncate } from '../../utils/string.js';
 import { shortPath } from '../../utils/path.js';
-import { scanClaudeSessions } from '../../session-scanner.js';
 import type { BridgeStore, ChannelBinding } from '../../store/interface.js';
 import type { ClaudeSettingSource } from '../../config.js';
 import { Logger, type LogContext } from '../../logger.js';
@@ -49,21 +47,8 @@ export class QueryOrchestrator {
 
   async run(adapter: BaseChannelAdapter, msg: InboundMessage, requestId?: string): Promise<boolean> {
     const ctx: LogContext = { requestId, chatId: msg.chatId };
-    const expired = this.options.state.checkAndUpdateLastActive(msg.channelType, msg.chatId);
-    let previousSessionPreview: string | undefined;
-    if (expired) {
-      const previousBinding = await this.options.store.getBinding(msg.channelType, msg.chatId);
-      console.log(`[query] ${ctx.requestId} SESSION_EXPIRED sid=${previousBinding?.sessionId?.slice(-4) || '?'}`);
-      // Get preview of previous session before rebind
-      const sessions = scanClaudeSessions(3, previousBinding?.cwd || this.options.defaultWorkdir);
-      previousSessionPreview = sessions.find(s => s.sdkSessionId === previousBinding?.sdkSessionId)?.preview;
-      await this.options.router.rebind(msg.channelType, msg.chatId, generateSessionId(), {
-        cwd: previousBinding?.cwd,
-        claudeSettingSources: previousBinding?.claudeSettingSources,
-        projectName: previousBinding?.projectName,
-      });
-      this.options.state.clearThread(msg.channelType, msg.chatId);
-    }
+    // Update last active time (no session reset - let SDK decide via SessionStaleError)
+    this.options.state.checkAndUpdateLastActive(msg.channelType, msg.chatId);
 
     const binding = await this.options.router.resolve(msg.channelType, msg.chatId);
     const targetResult = this.options.sdkEngine.resolveSessionTarget?.(
@@ -103,22 +88,6 @@ export class QueryOrchestrator {
     console.log(
       `[query] ${ctx.requestId} START session=${routeBinding.sessionId.slice(-4)} cwd=${shortPath(routeBinding.cwd || this.options.defaultWorkdir)} source=${sessionTarget.source}`,
     );
-
-    // Send task start notification card for session reset
-    if (expired && !msg.replyToMessageId) {
-      const taskStartMsg = adapter.format({
-        type: 'taskStart',
-        chatId: msg.chatId,
-        data: {
-          cwd: shortPath(binding.cwd || this.options.defaultWorkdir),
-          permissionMode: this.options.state.getPermMode(msg.channelType, msg.chatId),
-          isNewSession: true,
-          previousSessionPreview,
-          reason: 'idle',
-        },
-      });
-      await adapter.send(taskStartMsg);
-    }
 
     const reactions = adapter.getLifecycleReactions();
     adapter.addReaction(msg.chatId, msg.messageId, reactions.processing).catch(() => {});
