@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// TermLive CLI entry point
+// TLive CLI entry point
 import { execSync, spawn, spawnSync } from 'node:child_process';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -370,7 +370,7 @@ function getDailyLogPath(baseName, date = new Date()) {
 // ---------------------------------------------------------------------------
 
 async function runDoctor() {
-  console.log('=== TermLive Doctor ===\n');
+  console.log('=== TLive Doctor ===\n');
 
   // Dependencies
   console.log('Dependencies:');

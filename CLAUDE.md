@@ -110,7 +110,6 @@ gh release create v0.x.x
 ~/.tlive/logs/
 ├── bridge-YYYY-MM-DD.log      # 当日全量日志
 ├── bridge-YYYY-MM-DD-error.log # 当日错误日志（WARN/ERROR）
-└── core.log                    # daemon 启动日志
 ```
 
 ### 日志格式

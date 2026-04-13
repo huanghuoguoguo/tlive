@@ -49,7 +49,7 @@ function isPrivateIPv4(ip: string): boolean {
   return false;
 }
 
-/** Detect LAN IP address, matching Go Core's getLocalIP() logic */
+/** Detect a private LAN IP address for local bridge links. */
 function getLocalIP(): string {
   try {
     // Prefer iterating interfaces for a private IPv4 address

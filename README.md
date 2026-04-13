@@ -95,7 +95,7 @@ That's it! Claude Code will help you:
 └─────────────┘     └──────────────────┘     └─────────────┘
 ```
 
-**Bridge**: TypeScript service that connects IM platforms to Claude Code by scanning session files. Includes built-in `tlive` CLI for web terminal feature.
+**Bridge**: TypeScript service that connects IM platforms to Claude Code by scanning session files and forwarding chat-driven tasks into Claude Code sessions.
 
 ## IM Commands
 
