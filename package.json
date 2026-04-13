@@ -1,6 +1,6 @@
 {
   "name": "tlive",
-  "version": "0.13.1",
+  "version": "0.13.2",
   "description": "IM bridge for Claude Code — chat from Telegram, Feishu, or QQ Bot",
   "type": "module",
   "main": "dist/main.mjs",
