@@ -19,7 +19,6 @@ import type { LLMProvider, LiveSession } from '../../providers/base.js';
 import { QueryExecutionPresenter } from '../messages/query-presenter.js';
 import { SDKPermissionHandler } from '../sdk/permission-handler.js';
 import { SDKAskQuestionHandler } from '../sdk/ask-question-handler.js';
-import type { ProgressData } from '../../formatting/message-types.js';
 import { buildProgressData } from '../messages/progress-builder.js';
 import type { MessageRendererState } from '../messages/renderer.js';
 import { SessionStaleError, isStaleSessionError } from '../state/session-stale-error.js';

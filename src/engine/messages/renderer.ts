@@ -693,7 +693,7 @@ export class MessageRenderer {
           await new Promise(r => setTimeout(r, 1000));
           try {
             result = await this.flushCallback(content, isEdit, flushButtons, state);
-          } catch (retryErr) {
+          } catch (_retryErr) {
             // give up after one retry
             console.error('[renderer] Failed to flush after retry:', err);
             this.onFlushError?.(err, { phase, contentPreview });
