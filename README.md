@@ -11,10 +11,29 @@
 
 ## Changes from Original
 
-- **Removed Codex support** — Claude-only, simplified codebase
-- **Enhanced session scanner** — Efficient tail reading (32KB) with 5s cache
-- **Fixed O(n) binding lookup** — Direct session ID indexing
+### Architecture Simplified
+- **Removed Go Core + Web Terminal** — Pure TypeScript, no web terminal, IM-only interaction
+- **Removed Codex + Discord** — Claude-only, Discord adapter removed, cleaner codebase
+
+### Feishu Deep Optimization
+- **Collapsible panels** — Thinking & tool calls fold/unfold, long content doesn't clutter screen
+- **Real-time progress** — Thinking content pushed live, tool execution status instant update
+- **Enhanced permission cards** — Allow Always (auto-allow in session), AskUserQuestion multi-select
+- **Table limit handling** — Large tables auto-truncated to avoid Feishu API errors
+
+### Session Management Enhanced
+- **Session scanning** — Scan `~/.claude/projects/`, list recent sessions, resume any
+- **Efficient tail reading** — 32KB tail read for latest message, 5s cache avoids repeated I/O
+- **Fixed O(n) lookup** — Direct session ID indexing, no iteration
 - **Added `/cd`, `/pwd` commands** — Per-chat directory control
+
+### Agent Capabilities Extended
+- **Proactive file sending** — Agent can send files (images, PDFs) to IM via REST API
+- **Cron job API** — Agent can create/manage scheduled tasks
+- **Entropy control tools** — Dead code detection, duplicate identification, code quality tools
+
+### UX Improvements
+- **Compact Bash display** — Command output in single-line format
 - **Improved daemon mode** — Auto-start on demand, no manual activation needed
 
 ## Install
