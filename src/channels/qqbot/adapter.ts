@@ -213,7 +213,7 @@ export class QQBotAdapter extends BaseChannelAdapter<QQBotRenderedMessage> {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw classifyError('qqbot', new Error(`API error ${response.status}: ${errorText}`));
+      throw this.classifyError(new Error(`API error ${response.status}: ${errorText}`));
     }
 
     return response.json() as T;
@@ -711,7 +711,7 @@ export class QQBotAdapter extends BaseChannelAdapter<QQBotRenderedMessage> {
               lastMessageId = result.id;
               this.chatTypeMap.set(message.chatId, 'channel');
             } catch (channelErr) {
-              throw classifyError('qqbot', channelErr);
+              throw this.classifyError(channelErr);
             }
           }
         }

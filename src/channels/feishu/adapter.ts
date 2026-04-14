@@ -431,7 +431,7 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
         }
       } catch (err) {
         // Fall through to text-only if media fails
-        if (!message.text && !message.html) throw classifyError('feishu', err);
+        if (!message.text && !message.html) throw this.classifyError(err);
       }
     }
 
@@ -477,7 +477,7 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
       const messageId = result?.data?.message_id ?? '';
       return { messageId: String(messageId), success: true };
     } catch (err) {
-      throw classifyError('feishu', err);
+      throw this.classifyError(err);
     }
   }
 

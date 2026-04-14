@@ -297,7 +297,7 @@ export class TelegramAdapter extends BaseChannelAdapter<TelegramRenderedMessage>
           return { messageId: String(result.message_id), success: true };
         }
       } catch (err) {
-        if (!message.text && !message.html) throw classifyError('telegram', err);
+        if (!message.text && !message.html) throw this.classifyError(err);
       }
     }
 
@@ -346,7 +346,7 @@ export class TelegramAdapter extends BaseChannelAdapter<TelegramRenderedMessage>
         }
       }
     } catch (err) {
-      throw classifyError('telegram', err);
+      throw this.classifyError(err);
     }
 
     return { messageId: lastMessageId, success: true };

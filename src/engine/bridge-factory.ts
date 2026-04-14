@@ -1,25 +1,25 @@
-import type { BridgeStore } from '../../store/interface.js';
-import type { LLMProvider } from '../../providers/base.js';
-import type { Config, ClaudeSettingSource } from '../../config.js';
-import type { BaseChannelAdapter } from '../../channels/base.js';
-import { ChannelRouter } from '../utils/router.js';
-import { PermissionBroker } from '../../permissions/broker.js';
-import { PendingPermissions } from '../../permissions/gateway.js';
-import { SessionStateManager } from '../state/session-state.js';
-import { WorkspaceStateManager } from '../state/workspace-state.js';
-import { PermissionCoordinator } from './permission.js';
-import { CommandRouter } from '../command-router.js';
-import { SDKEngine } from '../sdk/engine.js';
-import { IngressCoordinator } from './ingress.js';
-import { MessageLoopCoordinator } from './message-loop.js';
-import { TextDispatcher } from '../messages/text-dispatcher.js';
-import { QueryOrchestrator } from './query.js';
-import { ConversationEngine } from '../utils/conversation.js';
-import { HookNotificationDispatcher } from '../messages/hook-notification.js';
-import { getTliveRuntimeDir } from '../../utils/path.js';
-import { loadProjectsConfig } from '../../config.js';
+import type { BridgeStore } from '../store/interface.js';
+import type { ClaudeSDKProvider } from '../providers/claude-sdk.js';
+import type { Config, ProjectsValidationResult } from '../config.js';
+import type { BaseChannelAdapter } from '../channels/base.js';
+import type { InboundMessage } from '../channels/types.js';
+import { ChannelRouter } from './utils/router.js';
+import { PermissionBroker } from '../permissions/broker.js';
+import { PendingPermissions } from '../permissions/gateway.js';
+import { SessionStateManager } from './state/session-state.js';
+import { WorkspaceStateManager } from './state/workspace-state.js';
+import { PermissionCoordinator } from './coordinators/permission.js';
+import { CommandRouter } from './command-router.js';
+import { SDKEngine } from './sdk/engine.js';
+import { IngressCoordinator } from './coordinators/ingress.js';
+import { MessageLoopCoordinator } from './coordinators/message-loop.js';
+import { TextDispatcher } from './messages/text-dispatcher.js';
+import { QueryOrchestrator } from './coordinators/query.js';
+import { ConversationEngine } from './utils/conversation.js';
+import { HookNotificationDispatcher } from './messages/hook-notification.js';
+import { getTliveRuntimeDir } from '../utils/path.js';
+import { loadProjectsConfig } from '../config.js';
 import { networkInterfaces } from 'node:os';
-import type { ProjectsConfigResult } from '../../config.js';
 
 /** Bridge commands handled synchronously (don't block adapter loop) */
 const QUICK_COMMANDS = new Set(['/new', '/home', '/status', '/hooks', '/sessions', '/session', '/sessioninfo', '/help', '/help-cli', '/perm', '/stop', '/approve', '/pairings', '/settings', '/cd', '/pwd', '/bash', '/upgrade', '/restart']);
@@ -67,13 +67,13 @@ export interface BridgeComponents {
   engine: ConversationEngine;
   port: number;
   localUrl: string;
-  projectsConfig: ProjectsConfigResult | null;
+  projectsConfig: ProjectsValidationResult | undefined;
 }
 
 /** Dependencies needed to create BridgeComponents */
 export interface BridgeFactoryDeps {
   store: BridgeStore;
-  llm: LLMProvider;
+  llm: ClaudeSDKProvider;
   defaultWorkdir: string;
   config: Config;
 }
@@ -115,8 +115,8 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
     sdkEngine,
     permissions,
     quickCommands: QUICK_COMMANDS,
-    hasPendingSdkQuestion: (channelType, chatId) => text.hasPendingSdkQuestion(channelType, chatId),
-    resolveProcessingKey: async (msg) => {
+    hasPendingSdkQuestion: (channelType: string, chatId: string) => text.hasPendingSdkQuestion(channelType, chatId),
+    resolveProcessingKey: async (msg: InboundMessage) => {
       const binding = await router.resolve(msg.channelType, msg.chatId);
       if (msg.replyToMessageId) {
         return sdkEngine.getSessionForBubble(msg.replyToMessageId)
@@ -157,7 +157,7 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
 
   const notifications = new HookNotificationDispatcher({
     permissions,
-    buildTerminalUrl: (sessionId) => `http://${getLocalIP()}:${port}/terminal.html?id=${sessionId}`,
+    buildTerminalUrl: (sessionId: string) => `http://${getLocalIP()}:${port}/terminal.html?id=${sessionId}`,
   });
 
   return {
