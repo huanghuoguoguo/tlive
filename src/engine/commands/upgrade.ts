@@ -32,7 +32,7 @@ function resolvePackageRoot(entryPath = process.argv[1], override = process.env.
   return join(dirname(entryPath), '..');
 }
 
-export function resolveCliPath(): string {
+function resolveCliPath(): string {
   const override = process.env.TLIVE_CLI_PATH?.trim();
   if (override) return override;
 

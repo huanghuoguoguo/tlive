@@ -16,7 +16,7 @@ export const DEFERRED_TOOLS = ['EnterPlanMode', 'EnterWorktree'] as const;
 export type DeferredToolName = typeof DEFERRED_TOOLS[number];
 
 /** Configuration for each deferred tool's input requirements */
-export const DEFERRED_TOOL_CONFIG: Record<DeferredToolName, {
+const DEFERRED_TOOL_CONFIG: Record<DeferredToolName, {
   prompt: string;
   inputRequired: boolean;
   inputPlaceholder: string;
