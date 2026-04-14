@@ -157,7 +157,7 @@ describe('command presenter', () => {
         ],
       });
       const formatted = feishuFormatter.format(msg);
-      expect(formatted.feishuHeader?.template).toBe('indigo');
+      expect(formatted.feishuHeader?.template).toBe('blue');
       expect(formatted.feishuElements?.length).toBeGreaterThan(0);
     });
   });

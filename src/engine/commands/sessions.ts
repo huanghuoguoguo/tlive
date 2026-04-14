@@ -44,6 +44,7 @@ export class SessionsCommand extends BaseCommand {
       workspaceBinding: workspaceBinding ? shortPath(workspaceBinding) : undefined,
       sessions: sessionData,
       filterHint,
+      showAll,
     }));
     return true;
   }

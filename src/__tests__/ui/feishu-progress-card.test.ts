@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { FeishuFormatter } from '../../platforms/feishu/formatter.js';
-import type { ProgressData } from '../../formatting/message-types.js';
+import type { ProgressData, SessionsData } from '../../formatting/message-types.js';
 
 function createProgressData(overrides: Partial<ProgressData> = {}): ProgressData {
   return {
@@ -10,6 +10,19 @@ function createProgressData(overrides: Partial<ProgressData> = {}): ProgressData
     renderedText: '',
     todoItems: [],
     totalTools: 0,
+    ...overrides,
+  };
+}
+
+function createSessionsData(overrides: Partial<SessionsData> = {}): SessionsData {
+  return {
+    sessions: [
+      { index: 1, date: '2026-04-14 10:00', cwd: '/home/user/workspace', size: '1.2KB', preview: 'session 1 preview', isCurrent: true },
+      { index: 2, date: '2026-04-13 15:30', cwd: '/home/user/workspace', size: '800B', preview: 'session 2 preview', isCurrent: false },
+      { index: 3, date: '2026-04-12 09:00', cwd: '/home/user/other', size: '2.1KB', preview: 'session 3 preview', isCurrent: false },
+      { index: 4, date: '2026-04-11 08:00', cwd: '/home/user/old', size: '500B', preview: 'session 4 preview', isCurrent: false },
+    ],
+    filterHint: '',
     ...overrides,
   };
 }
@@ -155,6 +168,117 @@ describe('FeishuFormatter.formatQuestion', () => {
     const formContainer = elements.find(e => e.tag === 'form');
     expect(formContainer).toBeDefined();
     expect(formContainer!.name).toContain('form_');
+  });
+});
+
+describe('FeishuFormatter.formatSessions', () => {
+  const formatter = new FeishuFormatter('zh');
+
+  it('uses collapsible panels for each session', () => {
+    const msg = formatter.formatSessions('chat1', createSessionsData());
+    const elements = getElements(msg as any);
+
+    const panels = findByTag(elements, 'collapsible_panel');
+    expect(panels.length).toBe(4); // 4 sessions
+  });
+
+  it('toggle button is at top (column_set)', () => {
+    const msg = formatter.formatSessions('chat1', createSessionsData({ showAll: false }));
+    const elements = getElements(msg as any);
+
+    // First element after title markdown should be column_set with toggle button
+    const columnSets = findByTag(elements, 'column_set');
+    expect(columnSets.length).toBeGreaterThan(0);
+
+    // Find toggle button
+    const firstColSet = columnSets[0];
+    const toggleBtn = firstColSet?.columns?.[0]?.elements?.[0];
+    expect(toggleBtn?.tag).toBe('button');
+    expect(toggleBtn?.text?.content).toContain('所有会话');
+  });
+
+  it('current session panel is expanded by default', () => {
+    const msg = formatter.formatSessions('chat1', createSessionsData());
+    const elements = getElements(msg as any);
+
+    const panels = findByTag(elements, 'collapsible_panel');
+    const currentPanel = panels.find(p => p.header?.title?.content?.includes('◀ 当前'));
+    expect(currentPanel?.expanded).toBe(true);
+
+    const otherPanels = panels.filter(p => !p.header?.title?.content?.includes('◀ 当前'));
+    for (const p of otherPanels) {
+      expect(p.expanded).toBe(false);
+    }
+  });
+
+  it('switch button inside panel for all sessions', () => {
+    const msg = formatter.formatSessions('chat1', createSessionsData());
+    const elements = getElements(msg as any);
+
+    const panels = findByTag(elements, 'collapsible_panel');
+
+    // All panels should have switch button inside
+    for (let i = 0; i < panels.length; i++) {
+      const panel = panels[i];
+      const panelElements = panel.elements || [];
+      const columnSets = panelElements.filter(e => e.tag === 'column_set');
+      expect(columnSets.length).toBeGreaterThan(0);
+
+      const btn = columnSets[0]?.columns?.[0]?.elements?.[0];
+      expect(btn?.tag).toBe('button');
+      expect(btn?.text?.content).toContain(`切换到 #${i + 1}`);
+    }
+  });
+
+  it('recent sessions mode (showAll=false) hides cwd in panel', () => {
+    const msg = formatter.formatSessions('chat1', createSessionsData({ showAll: false }));
+    const elements = getElements(msg as any);
+
+    const panels = findByTag(elements, 'collapsible_panel');
+    const panelContent = (panels[0]?.elements || []).find(e => e.tag === 'markdown')?.content || '';
+
+    // Should NOT show cwd in recent mode panel content
+    expect(panelContent).not.toContain('**目录**');
+  });
+
+  it('all sessions mode (showAll=true) shows cwd in panel', () => {
+    const msg = formatter.formatSessions('chat1', createSessionsData({ showAll: true }));
+    const elements = getElements(msg as any);
+
+    const panels = findByTag(elements, 'collapsible_panel');
+    const panelContent = (panels[0]?.elements || []).find(e => e.tag === 'markdown')?.content || '';
+
+    // Should show cwd in all mode panel content
+    expect(panelContent).toContain('**目录**');
+  });
+
+  it('toggle button switches correctly', () => {
+    // Recent mode → shows "所有会话" button
+    const msgRecent = formatter.formatSessions('chat1', createSessionsData({ showAll: false }));
+    const elementsRecent = getElements(msgRecent as any);
+    const colSetsRecent = findByTag(elementsRecent, 'column_set');
+    const toggleBtnRecent = colSetsRecent[0]?.columns?.[0]?.elements?.[0];
+    expect(toggleBtnRecent?.behaviors?.[0]?.value?.action).toBe('cmd:sessions --all');
+
+    // All mode → shows "最近会话" button
+    const msgAll = formatter.formatSessions('chat1', createSessionsData({ showAll: true }));
+    const elementsAll = getElements(msgAll as any);
+    const colSetsAll = findByTag(elementsAll, 'column_set');
+    const toggleBtnAll = colSetsAll[0]?.columns?.[0]?.elements?.[0];
+    expect(toggleBtnAll?.behaviors?.[0]?.value?.action).toBe('cmd:sessions');
+  });
+
+  it('form input at bottom for arbitrary session number', () => {
+    const msg = formatter.formatSessions('chat1', createSessionsData());
+    const elements = getElements(msg as any);
+
+    const formContainer = elements.find(e => e.tag === 'form');
+    expect(formContainer).toBeDefined();
+    expect(formContainer!.name).toBe('form_session_select');
+
+    const formElements = formContainer!.elements || [];
+    const input = formElements.find(e => e.tag === 'input' && e.name === '_session_idx');
+    expect(input).toBeDefined();
   });
 });
 

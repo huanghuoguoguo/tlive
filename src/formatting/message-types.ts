@@ -74,13 +74,47 @@ export interface HomeData {
   permissionMode: 'on' | 'off';
   /** Current project name (if multi-project mode) */
   currentProject?: string;
+  /** Current bridge session info */
+  currentBridgeSession?: {
+    sessionId: string;
+    sdkSessionId?: string;
+    cwd: string;
+    isActive: boolean;
+    queueDepth?: number;
+    lastActiveAt?: string;
+  };
   recentSummary?: string;
+  /** Recent sessions in current workspace (for collapsible panel) */
   recentSessions?: Array<{
     index: number;
     date: string;
+    cwd?: string;
+    size?: string;
     preview: string;
+    transcript?: Array<{ role: string; text: string }>;
     isCurrent: boolean;
+    /** Whether this sdkSession is bound to another active bridge session */
+    boundToActiveSession?: {
+      channelType: string;
+      chatId: string;
+    };
   }>;
+  /** All sessions across all projects (for collapsible panel) */
+  allSessions?: Array<{
+    index: number;
+    date: string;
+    cwd: string;
+    size?: string;
+    preview: string;
+    transcript?: Array<{ role: string; text: string }>;
+    isCurrent: boolean;
+    boundToActiveSession?: {
+      channelType: string;
+      chatId: string;
+    };
+  }>;
+  /** Help entries from command registry */
+  helpEntries?: Array<{ cmd: string; desc: string }>;
   /** Pending permission request (if any) */
   pendingPermission?: {
     toolName: string;
@@ -145,6 +179,8 @@ export interface SessionsData {
     isStale?: boolean;
   }>;
   filterHint: string;
+  /** Whether this is showing all sessions (global) or current workspace only */
+  showAll?: boolean;
 }
 
 /** Session detail for /sessioninfo command */

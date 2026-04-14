@@ -171,6 +171,28 @@ export async function handleCallbackMessage(
     const permId = interactionId;
     const interactionState = deps.sdkEngine.getInteractionState();
 
+    // Handle session selection form: form:session_select:{JSON}
+    if (interactionId === 'session_select') {
+      const sessionIdx = (formData._session_idx || formData.session_idx || '').trim();
+      const idx = parseInt(sessionIdx, 10);
+      // Only validate that input is a positive number - let /session command handle range validation
+      if (idx > 0) {
+        // Valid input - execute /session command
+        const cmdMsg: InboundMessage = {
+          channelType: msg.channelType,
+          chatId: msg.chatId,
+          text: `/session ${idx}`,
+          userId: msg.userId,
+          messageId: msg.messageId,
+        };
+        await deps.replayMessage(adapter, cmdMsg);
+        return true;
+      }
+      // Invalid input - show error
+      await adapter.send({ chatId: msg.chatId, text: `⚠️ 无效编号: "${sessionIdx}"，请输入正整数。` });
+      return true;
+    }
+
     // Check for deferred tool input first
     const deferredData = interactionState.getDeferredTool(permId);
     if (deferredData) {

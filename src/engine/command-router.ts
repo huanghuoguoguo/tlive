@@ -12,10 +12,12 @@ import type { RouterHelpers } from './commands/types.js';
 import type { PermissionCoordinator } from './coordinators/permission.js';
 import { commandRegistry, registerAllCommands } from './commands/index.js';
 import { DEFAULT_CLAUDE_SETTING_SOURCES } from '../config.js';
-import { scanClaudeSessions } from '../session-scanner.js';
+import { scanClaudeSessions, readSessionTranscriptPreview } from '../session-scanner.js';
 import { shortPath } from '../utils/path.js';
 import { findGitRoot } from '../utils/repo.js';
 import { generateSessionId } from '../utils/id.js';
+import { SESSION_STALE_THRESHOLD_MS } from '../utils/constants.js';
+import { formatSize } from './utils/session-format.js';
 
 // Register all commands on module load
 registerAllCommands();
@@ -124,7 +126,28 @@ export class CommandRouter {
     const binding = await this.store.getBinding(channelType, chatId);
     const currentCwd = binding?.cwd || this.defaultWorkdir;
     const chatKey = this.state.stateKey(channelType, chatId);
-    const recentSessions = scanClaudeSessions(3, currentCwd);
+    const now = Date.now();
+
+    // Scan recent sessions (current workspace) and all sessions (global)
+    const recentSessions = scanClaudeSessions(10, currentCwd);
+    const allSessions = scanClaudeSessions(10, undefined);
+
+    // Get all bindings to check which sdkSessions are bound to active bridge sessions
+    const allBindings = await this.store.listBindings();
+
+    // Build map: sdkSessionId -> binding that owns it (if active)
+    const activeSdkSessionBindings = new Map<string, { channelType: string; chatId: string; isActive: boolean }>();
+    for (const b of allBindings) {
+      if (b.sdkSessionId) {
+        const bChatKey = this.state.stateKey(b.channelType, b.chatId);
+        const isActive = this.activeControls.has(bChatKey);
+        activeSdkSessionBindings.set(b.sdkSessionId, {
+          channelType: b.channelType,
+          chatId: b.chatId,
+          isActive,
+        });
+      }
+    }
 
     const permStatus = this.permissions.getPermissionStatus(chatKey, binding?.sessionId);
     const activeChannels = Array.from(this.getAdapters().keys());
@@ -137,19 +160,60 @@ export class CommandRouter {
     const queueInfo = currentSessionKey ? this.sdkEngine?.getQueueInfo(currentSessionKey) : undefined;
     const sessionStale = currentSessionKey ? this.sdkEngine?.isSessionStale(currentSessionKey) ?? false : false;
 
+    // Current bridge session info
+    const currentBridgeSession = binding ? {
+      sessionId: binding.sessionId,
+      sdkSessionId: binding.sdkSessionId,
+      cwd: shortPath(binding.cwd || currentCwd),
+      isActive: this.activeControls.has(chatKey),
+      queueDepth: queueInfo?.depth,
+      lastActiveAt: lastActiveTime ? formatRelativeTime(lastActiveTime) : undefined,
+    } : undefined;
+
     return {
       cwd: shortPath(currentCwd),
       workspaceBinding: workspaceBinding ? shortPath(workspaceBinding) : undefined,
       currentProject: projectName,
       hasActiveTask: this.activeControls.has(chatKey),
       permissionMode: this.state.getPermMode(channelType, chatId),
+      currentBridgeSession,
       recentSummary: recentSessions[0]?.preview,
-      recentSessions: recentSessions.map((session, index) => ({
-        index: index + 1,
-        date: formatSessionDate(session.mtime),
-        preview: session.preview,
-        isCurrent: binding?.sdkSessionId === session.sdkSessionId,
-      })),
+      recentSessions: recentSessions.map((session, index) => {
+        const boundInfo = activeSdkSessionBindings.get(session.sdkSessionId);
+        // Skip if it's current session (already shown in currentBridgeSession)
+        const boundToActiveSession = (boundInfo && !boundInfo.isActive && boundInfo.channelType === channelType && boundInfo.chatId === chatId)
+          ? undefined
+          : boundInfo && boundInfo.isActive ? boundInfo : undefined;
+        return {
+          index: index + 1,
+          date: formatSessionDate(session.mtime),
+          cwd: shortPath(session.cwd),
+          size: formatSize(session.size),
+          preview: session.preview,
+          transcript: readSessionTranscriptPreview(session, 4),
+          isCurrent: binding?.sdkSessionId === session.sdkSessionId,
+          boundToActiveSession,
+          isStale: (now - session.mtime) > SESSION_STALE_THRESHOLD_MS,
+        };
+      }),
+      allSessions: allSessions.map((session, index) => {
+        const boundInfo = activeSdkSessionBindings.get(session.sdkSessionId);
+        const boundToActiveSession = boundInfo && boundInfo.isActive
+          && !(boundInfo.channelType === channelType && boundInfo.chatId === chatId && binding?.sdkSessionId === session.sdkSessionId)
+          ? boundInfo : undefined;
+        return {
+          index: index + 1,
+          date: formatSessionDate(session.mtime),
+          cwd: shortPath(session.cwd),
+          size: formatSize(session.size),
+          preview: session.preview,
+          transcript: readSessionTranscriptPreview(session, 4),
+          isCurrent: binding?.sdkSessionId === session.sdkSessionId,
+          boundToActiveSession,
+          isStale: (now - session.mtime) > SESSION_STALE_THRESHOLD_MS,
+        };
+      }),
+      helpEntries: commandRegistry.getHelpEntries(),
       pendingPermission: permStatus.pending,
       lastPermissionDecision: permStatus.lastDecision,
       sessionWhitelistCount: permStatus.rememberedTools + permStatus.rememberedBashPrefixes,

@@ -559,70 +559,143 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
   }
 
   override formatHome(chatId: string, data: HomeData): FeishuRenderedMessage {
-    // Header section: Bridge status
-    const bridgeStatus = data.bridgeHealthy ? '🟢 已连接' : '🔴 已断开';
+    // Global status - minimal
+    const bridgeStatus = data.bridgeHealthy ? '🟢' : '🔴';
     const channels = data.activeChannels?.join(', ') || '无';
-    const taskStatus = data.hasActiveTask
-      ? '⏳ 有任务正在执行'
-      : '✅ 当前无执行任务';
+    const taskStatus = data.hasActiveTask ? '⏳' : '✅';
 
     const elements: FeishuCardElement[] = [
-      // Status overview panel
-      this.md(`**系统状态**\n${bridgeStatus} · 通道: ${channels}`),
-      this.md(`**任务状态**\n${taskStatus}`),
-      this.md(`**项目目录**\n\`${data.cwd}\``),
-      this.md(`**权限模式**\n${data.permissionMode === 'on' ? '🔐 开启审批' : '⚡ 关闭审批'}`),
+      this.md(`${bridgeStatus} ${channels} · ${taskStatus}`),
     ];
 
-    // Permission details (if relevant)
-    if (data.pendingPermission) {
-      elements.push(this.md(`**待处理审批**\n${data.pendingPermission.toolName}\n\`\`\`\n${truncate(data.pendingPermission.input, 180)}\n\`\`\``));
-    } else {
-      elements.push(this.md('**待处理审批**\n暂无'));
+    // Current bridge session info (always show)
+    if (data.currentBridgeSession) {
+      const sessionInfo = data.currentBridgeSession;
+      const sdkInfo = sessionInfo.sdkSessionId
+        ? `\n**SDK会话** \`${sessionInfo.sdkSessionId.slice(0, 8)}…\``
+        : '\n**SDK会话** (未绑定)';
+      const queueInfo = sessionInfo.queueDepth
+        ? `\n**队列** ${sessionInfo.queueDepth} 条待处理`
+        : '';
+      elements.push({
+        tag: 'collapsible_panel',
+        expanded: sessionInfo.isActive, // expand if active
+        header: { title: { tag: 'plain_text', content: `📍 当前会话 ${sessionInfo.isActive ? '⏳' : '✅'}` } },
+        elements: [this.md(`**目录** \`${sessionInfo.cwd}\`${sdkInfo}${queueInfo}\n**权限** ${data.permissionMode === 'on' ? '🔐 开启' : '⚡ 关闭'}`)],
+      } as FeishuCardElement);
     }
 
-    // Last permission decision
-    if (data.lastPermissionDecision) {
-      const decisionLabel = {
-        allow: '✅ 允许一次',
-        allow_always: '📌 本会话始终允许',
-        deny: '❌ 拒绝',
-        cancelled: '⏭ 已取消',
-      }[data.lastPermissionDecision.decision];
-      elements.push(this.md(`**最近审批**\n${data.lastPermissionDecision.toolName} → ${decisionLabel}`));
+    // Recent sessions (current workspace)
+    if (data.recentSessions?.length) {
+      const recentElements: FeishuCardElement[] = [];
+      for (const s of data.recentSessions) {
+        // Skip current session (already shown above)
+        if (s.isCurrent) continue;
+
+        const boundMarker = s.boundToActiveSession
+          ? ` 🔒 (${s.boundToActiveSession.chatId.slice(-4)})`
+          : '';
+        const headerText = `${s.index}. ${s.date} · ${truncate(s.preview, 30)}${boundMarker}`;
+        const transcriptLines = s.transcript?.map(t => {
+          const icon = t.role === 'user' ? '👤' : '🤖';
+          return `${icon} ${truncate(t.text, 80)}`;
+        }).join('\n') || s.preview;
+
+        const panelContent: FeishuCardElement[] = [
+          this.md(`**大小** ${s.size || '-'}\n**最近对话**\n${transcriptLines}`),
+        ];
+
+        // If bound to active session, show info instead of switch button
+        if (s.boundToActiveSession) {
+          panelContent.push(this.md(`⚠️ 正在 ${s.boundToActiveSession.chatId.slice(-4)} 活跃中`));
+        } else {
+          panelContent.push(...buildFeishuButtonElements([
+            { label: `▶️`, callbackData: `cmd:session ${s.index}`, style: 'default', row: 0 },
+          ]));
+        }
+
+        recentElements.push({
+          tag: 'collapsible_panel',
+          expanded: false,
+          header: { title: { tag: 'plain_text', content: headerText } },
+          elements: panelContent,
+        } as FeishuCardElement);
+      }
+      if (recentElements.length > 0) {
+        elements.push({
+          tag: 'collapsible_panel',
+          expanded: false,
+          header: { title: { tag: 'plain_text', content: `📋 历史 (${data.cwd})` } },
+          elements: recentElements,
+        } as FeishuCardElement);
+      }
     }
 
-    // Session whitelist count
-    if (data.sessionWhitelistCount && data.sessionWhitelistCount > 0) {
-      elements.push(this.md(`**会话白名单**\n已记忆 ${data.sessionWhitelistCount} 项工具/Bash 前缀`));
+    // All sessions (global)
+    if (data.allSessions?.length) {
+      const allElements: FeishuCardElement[] = [];
+      for (const s of data.allSessions) {
+        // Skip current session
+        if (s.isCurrent) continue;
+
+        const boundMarker = s.boundToActiveSession
+          ? ` 🔒 (${s.boundToActiveSession.chatId.slice(-4)})`
+          : '';
+        const headerText = `${s.index}. ${truncate(s.cwd, 20)} · ${truncate(s.preview, 20)}${boundMarker}`;
+        const transcriptLines = s.transcript?.map(t => {
+          const icon = t.role === 'user' ? '👤' : '🤖';
+          return `${icon} ${truncate(t.text, 80)}`;
+        }).join('\n') || s.preview;
+
+        const panelContent: FeishuCardElement[] = [
+          this.md(`**目录** \`${s.cwd}\`\n**时间** ${s.date}\n**最近对话**\n${transcriptLines}`),
+        ];
+
+        if (s.boundToActiveSession) {
+          panelContent.push(this.md(`⚠️ 正在 ${s.boundToActiveSession.chatId.slice(-4)} 活跃中`));
+        } else {
+          panelContent.push(...buildFeishuButtonElements([
+            { label: `▶️`, callbackData: `cmd:session ${s.index} --all`, style: 'default', row: 0 },
+          ]));
+        }
+
+        allElements.push({
+          tag: 'collapsible_panel',
+          expanded: false,
+          header: { title: { tag: 'plain_text', content: headerText } },
+          elements: panelContent,
+        } as FeishuCardElement);
+      }
+      if (allElements.length > 0) {
+        elements.push({
+          tag: 'collapsible_panel',
+          expanded: false,
+          header: { title: { tag: 'plain_text', content: '📋 全局' } },
+          elements: allElements,
+        } as FeishuCardElement);
+      }
     }
 
-    // Recent task summary
-    if (data.recentSummary) {
-      elements.push(this.md(`**最近任务**\n${truncate(data.recentSummary, 150)}`));
+    // Help as collapsible (dynamic from registry)
+    if (data.helpEntries?.length) {
+      const helpText = data.helpEntries
+        .map(e => `/${e.cmd} — ${e.desc}`)
+        .join('\n');
+      elements.push({
+        tag: 'collapsible_panel',
+        expanded: false,
+        header: { title: { tag: 'plain_text', content: '❓ 帮助' } },
+        elements: [this.md(helpText)],
+      } as FeishuCardElement);
     }
 
-    // Recent sessions
-    const recentSessions = data.recentSessions?.length
-      ? data.recentSessions
-        .map(session => `${session.index}. ${session.date} · ${truncate(session.preview, 50)}${session.isCurrent ? ' ◀' : ''}`)
-        .join('\n')
-      : '暂无最近会话';
-    elements.push(this.md(`**最近会话**\n${recentSessions}`));
-
-    // Usage hint
-    elements.push(this.md('💡 点击下方按钮快速操作；也可直接发送消息让 AI 处理。'));
-
+    // Only one button: new session
     const buttons: Button[] = [
-      { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'primary' },
-      { label: '🔐 权限设置', callbackData: 'cmd:perm', style: 'default' },
-      { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default' },
-      { label: '📊 状态详情', callbackData: 'cmd:status', style: 'default' },
-      { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default' },
+      { label: '🆕 新会话', callbackData: 'cmd:new', style: 'primary', row: 0 },
     ];
 
     return this.createCardMessage(chatId,
-      { template: 'indigo', title: '🏠 TLive 工作台' },
+      { template: 'blue', title: '🏠 工作台' },
       elements,
       buttons
     );
@@ -719,33 +792,76 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
   }
 
   override formatSessions(chatId: string, data: SessionsData): FeishuRenderedMessage {
-    const lines: string[] = [];
-    for (const s of data.sessions) {
-      const marker = s.isCurrent ? ' ◀ 当前' : '';
-      // Show cwd like base class, but truncate preview more for Feishu card layout
-      const cwdDisplay = s.cwd ? `\`${s.cwd.replace(/^\/home\/[^/]+\//, '~/')}\`` : '';
-      lines.push(`${s.index}. ${s.date} · ${cwdDisplay} · ${truncate(s.preview, 40)}${marker}`);
-    }
+    const showAll = data.showAll ?? false;
+    const title = showAll ? '📋 所有会话' : '📋 最近会话';
+    const subtitle = showAll ? '(全局)' : '(当前工作区)';
 
     const elements: FeishuCardElement[] = [
-      this.md(`**最近会话** ${data.filterHint}\n\n${lines.join('\n')}`),
-      this.md('💡 点击"继续"恢复会话；长按可查看详情。'),
+      this.md(`**${title}** ${subtitle}`),
     ];
 
-    const buttons: Button[] = [];
-    for (let i = 0; i < Math.min(data.sessions.length, 10); i++) {
-      const s = data.sessions[i];
-      const style = s.isCurrent ? 'primary' : 'default';
-      buttons.push(
-        { label: `▶️ #${i + 1}`, callbackData: `cmd:session ${i + 1}`, style, row: i },
-        { label: `ℹ️`, callbackData: `cmd:sessioninfo ${i + 1}`, style: 'default', row: i }
-      );
+    // Toggle button row at top
+    const toggleButton: Button = showAll
+      ? { label: '📋 最近会话', callbackData: 'cmd:sessions', style: 'primary', row: 0 }
+      : { label: '📋 所有会话', callbackData: 'cmd:sessions --all', style: 'default', row: 0 };
+    elements.push(...buildFeishuButtonElements([toggleButton]));
+
+    // Each session as collapsible panel
+    for (const s of data.sessions) {
+      const marker = s.isCurrent ? ' ◀ 当前' : '';
+      const cwdDisplay = showAll ? `**目录**\n\`${s.cwd}\`\n` : '';
+      const headerText = `${s.index}. ${s.date} · ${truncate(s.preview, 35)}${marker}`;
+
+      // Panel content: details + switch button
+      const panelContent: FeishuCardElement[] = [
+        this.md(`${cwdDisplay}**时间**\n${s.date}\n**大小**\n${s.size}\n**预览**\n${truncate(s.preview, 200)}`),
+      ];
+
+      // Switch button inside panel for all sessions
+      const switchBtn: Button = {
+        label: `▶️ 切换到 #${s.index}`,
+        callbackData: `cmd:session ${s.index}`,
+        style: s.isCurrent ? 'primary' : 'default',
+        row: 0,
+      };
+      panelContent.push(...buildFeishuButtonElements([switchBtn]));
+
+      elements.push({
+        tag: 'collapsible_panel',
+        expanded: s.isCurrent, // auto-expand current session
+        header: { title: { tag: 'plain_text', content: headerText } },
+        elements: panelContent,
+      } as FeishuCardElement);
     }
 
+    // Form input for arbitrary session number
+    const formElements: FeishuCardElement[] = [
+      {
+        tag: 'input',
+        name: '_session_idx',
+        placeholder: { tag: 'plain_text', content: '输入编号切换其他会话' },
+        required: false,
+      } as FeishuCardElement,
+    ];
+
+    const formButtons: Button[] = [
+      { label: '✅ 切换', callbackData: 'form:session_select', style: 'primary', row: 0 },
+    ];
+
+    const formContainer: FeishuCardElement = {
+      tag: 'form',
+      name: 'form_session_select',
+      elements: [
+        ...formElements as unknown as { tag: string; content: string }[],
+        ...buildFeishuButtonElements(formButtons) as unknown as { tag: string; content: string }[],
+      ],
+    };
+    elements.push(formContainer);
+
     return this.createCardMessage(chatId,
-      { template: 'blue', title: '📋 会话列表' },
+      { template: 'blue', title },
       elements,
-      buttons.length > 0 ? buttons : undefined
+      undefined
     );
   }
 
