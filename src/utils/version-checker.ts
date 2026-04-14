@@ -6,7 +6,7 @@
 
 import { join } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { getTliveHome } from '../../utils/path.js';
+import { getTliveHome } from './path.js';
 
 // Version is injected at build time via esbuild define
 declare const process: { env: { npm_package_version: string } };

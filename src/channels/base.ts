@@ -49,6 +49,18 @@ export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = Ren
     return false;
   }
 
+  // --- Capability checks ---
+
+  /** Whether this platform supports pairing flow (requestPairing method). */
+  supportsPairing(): boolean {
+    return false;
+  }
+
+  /** Whether this platform supports streaming responses (streaming cards). */
+  supportsStreaming(): boolean {
+    return false;
+  }
+
   // --- Policy support ---
 
   /** Platform behavior policy. Default is Telegram-like behavior. */

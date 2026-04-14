@@ -2,10 +2,10 @@
  * Session formatting utilities — shared across session commands.
  */
 
-import type { CommandContext } from '../commands/types.js';
-import type { ScannedSession } from '../../providers/session-scanner.js';
-import { scanClaudeSessions } from '../../providers/session-scanner.js';
-import { FLAGS, hasFlag, getNonFlagArg } from '../../utils/constants.js';
+import type { CommandContext } from '../engine/commands/types.js';
+import type { ScannedSession } from '../providers/session-scanner.js';
+import { scanClaudeSessions } from '../providers/session-scanner.js';
+import { FLAGS, hasFlag, getNonFlagArg } from './constants.js';
 
 /** Format file size in human-readable form */
 export function formatSize(bytes: number): string {

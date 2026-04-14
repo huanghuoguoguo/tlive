@@ -1,8 +1,8 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentStatus } from '../messages/presenter.js';
-import { getCurrentVersion } from '../utils/version-checker.js';
-import { formatSize } from '../utils/session-format.js';
+import { getCurrentVersion } from '../../utils/version-checker.js';
+import { formatSize } from '../../utils/session-format.js';
 
 export class StatusCommand extends BaseCommand {
   readonly name = '/status';
