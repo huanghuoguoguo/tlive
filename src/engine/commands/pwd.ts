@@ -9,10 +9,10 @@ export class PwdCommand extends BaseCommand {
   readonly description = 'Show current directory';
 
   async execute(ctx: CommandContext): Promise<boolean> {
-    const binding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
-    const current = binding?.cwd || ctx.defaultWorkdir;
-    const history = ctx.workspace.getHistory(ctx.msg.channelType, ctx.msg.chatId);
-    const workspaceBinding = ctx.workspace.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+    const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+    const current = binding?.cwd || ctx.services.defaultWorkdir;
+    const history = ctx.services.workspace.getHistory(ctx.msg.channelType, ctx.msg.chatId);
+    const workspaceBinding = ctx.services.workspace.getBinding(ctx.msg.channelType, ctx.msg.chatId);
 
     if (history.length > 1 || workspaceBinding) {
       await this.send(ctx, presentDirectoryHistory(

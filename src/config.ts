@@ -1,7 +1,7 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { homedir } from 'node:os';
 import type { ProjectConfig, ClaudeSettingSource } from './store/interface.js';
+import { expandTilde, getTliveHome } from './utils/path.js';
 
 export type { ClaudeSettingSource } from './store/interface.js';
 
@@ -134,9 +134,7 @@ function validateProjectConfig(project: ProjectConfig, index: number): { valid: 
   }
 
   // Resolve workdir (handle ~ expansion)
-  const resolvedWorkdir = project.workdir.startsWith('~')
-    ? join(homedir(), project.workdir.slice(1))
-    : resolve(project.workdir);
+  const resolvedWorkdir = resolve(expandTilde(project.workdir));
 
   // Check if workdir exists
   if (!existsSync(resolvedWorkdir)) {
@@ -158,7 +156,7 @@ function validateProjectConfig(project: ProjectConfig, index: number): { valid: 
 
 /** Load and validate projects configuration from projects.json (optional) */
 export function loadProjectsConfig(): ProjectsValidationResult | undefined {
-  const projectsPath = join(homedir(), '.tlive', 'projects.json');
+  const projectsPath = join(getTliveHome(), 'projects.json');
   try {
     const content = readFileSync(projectsPath, 'utf-8');
     const data: ProjectsFileConfig = JSON.parse(content);
@@ -178,9 +176,7 @@ export function loadProjectsConfig(): ProjectsValidationResult | undefined {
         // Resolve workdir path for valid projects
         valid.push({
           ...project,
-          workdir: project.workdir.startsWith('~')
-            ? join(homedir(), project.workdir.slice(1))
-            : resolve(project.workdir),
+          workdir: resolve(expandTilde(project.workdir)),
         });
       } else {
         invalid.push({ name: result.name, reason: result.reason || 'unknown' });
@@ -261,7 +257,7 @@ function loadEnvFile(path: string): Record<string, string> {
 
 export function loadConfig(): Config {
   // 1. Load env file
-  const envFile = loadEnvFile(join(homedir(), '.tlive', 'config.env'));
+  const envFile = loadEnvFile(join(getTliveHome(), 'config.env'));
 
   // 2. Inject non-TL_ vars into process.env so providers can access them
   //    (e.g. ANTHROPIC_API_KEY) — process.env takes precedence

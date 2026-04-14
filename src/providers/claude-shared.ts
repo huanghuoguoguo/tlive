@@ -2,10 +2,10 @@
  * Shared code between ClaudeSDKProvider and ClaudeLiveSession.
  */
 
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import type { FileAttachment } from './base.js';
+import { getTliveHome } from '../utils/path.js';
 
 // ── Environment isolation ──
 
@@ -54,7 +54,7 @@ export function preparePromptWithImages(
   }
 
   const imagePaths: string[] = [];
-  const imgDir = tmpImageDir || join(homedir(), '.tlive', 'tmp-images');
+  const imgDir = tmpImageDir || join(getTliveHome(), 'tmp-images');
 
   try {
     mkdirSync(imgDir, { recursive: true });

@@ -61,18 +61,18 @@ export class TelegramFormatter extends MessageFormatter<TelegramRenderedMessage>
   }
 
   override formatHome(chatId: string, data: HomeData): TelegramRenderedMessage {
-    const taskStatus = data.hasActiveTask
+const taskStatus = data.task.active
       ? this.t('home.taskActive')
-      : this.t('home.taskIdle');
+      : this.t('home.taskIdle'); (refactor: improve architecture and reduce code duplication)
 
     const lines = [
       `🏠 **TLive**`,
       ``,
       `**Status:** ${taskStatus}`,
-      `**Directory:** \`${data.cwd}\``,
+      `**Directory:** \`${data.workspace.cwd}\``,
     ];
-    if (data.recentSummary) {
-      lines.push(``, `**Recent:** ${truncate(data.recentSummary, 100)}`);
+    if (data.help?.recentSummary) {
+      lines.push(``, `**Recent:** ${truncate(data.help.recentSummary, 100)}`);
     }
 
     return { chatId, html: this.formatMarkdown(lines.join('\n')) };

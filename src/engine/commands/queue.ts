@@ -9,10 +9,10 @@ export class QueueCommand extends BaseCommand {
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const sub = ctx.parts[1]?.toLowerCase();
-    const binding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+    const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
     const activeSessionKey = binding?.sessionId
-      ? ctx.sdkEngine?.getSessionKeyForBinding?.(ctx.msg.channelType, ctx.msg.chatId, binding.sessionId)
-      : ctx.sdkEngine?.getActiveSessionKey(ctx.msg.channelType, ctx.msg.chatId);
+      ? ctx.services.sdkEngine?.getSessionKeyForBinding?.(ctx.msg.channelType, ctx.msg.chatId, binding.sessionId)
+      : ctx.services.sdkEngine?.getActiveSessionKey(ctx.msg.channelType, ctx.msg.chatId);
 
     if (!activeSessionKey) {
       await this.send(ctx, { chatId: ctx.msg.chatId, text: '⚠️ 无活跃会话，队列不可用' });
@@ -21,7 +21,7 @@ export class QueueCommand extends BaseCommand {
 
     // /queue clear - clear the queue
     if (sub === 'clear') {
-      const cleared = ctx.sdkEngine?.clearQueue(activeSessionKey) ?? 0;
+      const cleared = ctx.services.sdkEngine?.clearQueue(activeSessionKey) ?? 0;
       if (cleared > 0) {
         await this.send(ctx, { chatId: ctx.msg.chatId, text: `✅ 已清空队列 (${cleared} 条消息)` });
       } else {
@@ -37,15 +37,15 @@ export class QueueCommand extends BaseCommand {
         await this.send(ctx, { chatId: ctx.msg.chatId, text: '⚠️ 队列深度需为 1-10 的整数' });
         return true;
       }
-      ctx.sdkEngine?.setMaxQueueDepth(depth);
+      ctx.services.sdkEngine?.setMaxQueueDepth(depth);
       await this.send(ctx, { chatId: ctx.msg.chatId, text: `✅ 已设置队列深度为 ${depth}` });
       return true;
     }
 
     // /queue or /queue status - show queue status
-    const queueDepth = ctx.sdkEngine?.getQueueDepth(activeSessionKey) ?? 0;
-    const maxDepth = ctx.sdkEngine?.getMaxQueueDepth() ?? 3;
-    const queuedMessages = ctx.sdkEngine?.getQueuedMessages(activeSessionKey) ?? [];
+    const queueDepth = ctx.services.sdkEngine?.getQueueDepth(activeSessionKey) ?? 0;
+    const maxDepth = ctx.services.sdkEngine?.getMaxQueueDepth() ?? 3;
+    const queuedMessages = ctx.services.sdkEngine?.getQueuedMessages(activeSessionKey) ?? [];
 
     await this.send(ctx, presentQueueStatus(ctx.msg.chatId, {
       sessionKey: activeSessionKey,

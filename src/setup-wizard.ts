@@ -4,11 +4,11 @@
 
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
 import { createInterface } from 'node:readline';
 import { randomBytes } from 'node:crypto';
+import { getTliveHome } from './utils/path.js';
 
-const TERMLIVE_HOME = join(homedir(), '.tlive');
+const TERMLIVE_HOME = getTliveHome();
 const CONFIG_PATH = join(TERMLIVE_HOME, 'config.env');
 
 export function isClaudeCodeEnvironment(): boolean {

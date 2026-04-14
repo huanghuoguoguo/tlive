@@ -1,6 +1,7 @@
 import type { SessionMode } from '../../messages/types.js';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { chatKey } from '../../utils/key.js';
 
 export type VerboseLevel = 0 | 1;
 
@@ -41,25 +42,30 @@ export class SessionStateManager {
 
   /** Combine channelType + chatId into a single map key */
   stateKey(channelType: string, chatId: string): string {
-    return `${channelType}:${chatId}`;
+    return chatKey(channelType, chatId);
   }
 
-  getPermMode(channelType: string, chatId: string): 'on' | 'off' {
-    const mode = this.modes.get(this.stateKey(channelType, chatId));
+  /** Build key for permission mode (per bsession when sessionId provided, per chat as fallback) */
+  permKey(channelType: string, chatId: string, sessionId?: string): string {
+    return sessionId ? `${channelType}:${chatId}:${sessionId}` : `${channelType}:${chatId}`;
+  }
+
+  getPermMode(channelType: string, chatId: string, sessionId?: string): 'on' | 'off' {
+    const mode = this.modes.get(this.permKey(channelType, chatId, sessionId));
     if (!mode) return 'on';
     return mode.permissionMode === 'bypassPermissions' ? 'off' : 'on';
   }
 
-  setPermMode(channelType: string, chatId: string, mode: 'on' | 'off'): void {
-    const key = this.stateKey(channelType, chatId);
+  setPermMode(channelType: string, chatId: string, sessionId: string | undefined, mode: 'on' | 'off'): void {
+    const key = this.permKey(channelType, chatId, sessionId);
     const current = this.modes.get(key) || this.defaultMode();
     current.permissionMode = mode === 'off' ? 'bypassPermissions' : 'default';
     this.modes.set(key, current);
     this.savePersisted();
   }
 
-  getSessionMode(channelType: string, chatId: string): SessionMode {
-    return this.modes.get(this.stateKey(channelType, chatId)) || this.defaultMode();
+  getSessionMode(channelType: string, chatId: string, sessionId?: string): SessionMode {
+    return this.modes.get(this.permKey(channelType, chatId, sessionId)) || this.defaultMode();
   }
 
   isProcessing(chatKey: string): boolean {

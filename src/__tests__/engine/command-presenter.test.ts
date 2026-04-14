@@ -135,26 +135,29 @@ describe('command presenter', () => {
   describe('presentHome', () => {
     it('returns semantic message data', () => {
       const msg = presentHome('chat-1', {
-        cwd: '/home/user/project',
-        hasActiveTask: true,
-        permissionMode: 'on',
-        recentSummary: 'Working on feature X',
+        workspace: { cwd: '/home/user/project' },
+        task: { active: true },
+        permission: { mode: 'on' },
+        help: { recentSummary: 'Working on feature X' },
       });
       expect(msg.type).toBe('home');
       if (msg.type === 'home') {
-        expect(msg.data.cwd).toBe('/home/user/project');
-        expect(msg.data.hasActiveTask).toBe(true);
+        expect(msg.data.workspace.cwd).toBe('/home/user/project');
+        expect(msg.data.task.active).toBe(true);
       }
     });
 
     it('formats for Feishu with rich card', () => {
       const msg = presentHome('chat-1', {
-        cwd: '/home/user/project',
-        hasActiveTask: false,
-        permissionMode: 'off',
-        recentSessions: [
-          { index: 1, date: '1月1日 12:00', preview: 'Recent task', isCurrent: true },
-        ],
+        workspace: { cwd: '/home/user/project' },
+        task: { active: false },
+        permission: { mode: 'off' },
+        bridge: { healthy: true },
+        session: {
+          recent: [
+            { index: 1, date: '1月1日 12:00', preview: 'Recent task', isCurrent: true, cwd: '/home/user/project' },
+          ],
+        },
       });
       const formatted = feishuFormatter.format(msg);
       expect(formatted.feishuHeader?.template).toBe('blue');

@@ -9,21 +9,21 @@ export class NewCommand extends BaseCommand {
   readonly description = 'New conversation';
 
   async execute(ctx: CommandContext): Promise<boolean> {
-    const previousBinding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+    const previousBinding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
     const hadActiveSession = previousBinding
-      ? (ctx.sdkEngine?.hasSessionContext?.(ctx.msg.channelType, ctx.msg.chatId, previousBinding.sessionId) ?? false)
+      ? (ctx.services.sdkEngine?.hasSessionContext?.(ctx.msg.channelType, ctx.msg.chatId, previousBinding.sessionId) ?? false)
         || !!previousBinding.sdkSessionId
       : false;
 
     const newSessionId = generateSessionId();
-    await ctx.router.rebind(ctx.msg.channelType, ctx.msg.chatId, newSessionId, {
+    await ctx.services.router.rebind(ctx.msg.channelType, ctx.msg.chatId, newSessionId, {
       cwd: previousBinding?.cwd,
       claudeSettingSources: previousBinding?.claudeSettingSources,
       projectName: previousBinding?.projectName,
     });
 
-    ctx.state.clearLastActive(ctx.msg.channelType, ctx.msg.chatId);
-    ctx.state.clearThread(ctx.msg.channelType, ctx.msg.chatId);
+    ctx.services.state.clearLastActive(ctx.msg.channelType, ctx.msg.chatId);
+    ctx.services.state.clearThread(ctx.msg.channelType, ctx.msg.chatId);
 
     const feedbackText = hadActiveSession
       ? `🆕 已保留旧会话，开启新会话`

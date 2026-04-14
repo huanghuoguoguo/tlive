@@ -24,15 +24,15 @@ export class SettingsCommand extends BaseCommand {
   async execute(ctx: CommandContext): Promise<boolean> {
     const arg = ctx.parts[1]?.toLowerCase();
 
-    if (!(ctx.llm instanceof ClaudeSDKProvider)) {
+    if (!(ctx.services.llm instanceof ClaudeSDKProvider)) {
       await this.send(ctx, presentSettingsUnavailable(ctx.msg.chatId));
       return true;
     }
 
     if (arg && arg in PRESETS) {
-      const binding = await ctx.router.resolve(ctx.msg.channelType, ctx.msg.chatId);
+      const binding = await ctx.services.router.resolve(ctx.msg.channelType, ctx.msg.chatId);
       binding.claudeSettingSources = [...PRESETS[arg]];
-      await ctx.store.saveBinding(binding);
+      await ctx.services.store.saveBinding(binding);
       await ctx.helpers.resetSessionContext(
         ctx.msg.channelType,
         ctx.msg.chatId,
@@ -41,8 +41,8 @@ export class SettingsCommand extends BaseCommand {
       );
       await this.send(ctx, presentSettingsChanged(ctx.msg.chatId, LABELS[arg]));
     } else {
-      const binding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
-      const current = binding?.claudeSettingSources ?? ctx.defaultClaudeSettingSources;
+      const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+      const current = binding?.claudeSettingSources ?? ctx.services.defaultClaudeSettingSources;
       const preset = ctx.helpers.getSettingsPreset(current);
       await this.send(ctx, presentSettingsStatus(
         ctx.msg.chatId,

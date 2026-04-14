@@ -8,7 +8,7 @@ export class PairingsCommand extends BaseCommand {
   readonly description = 'List pending pairings';
 
   async execute(ctx: CommandContext): Promise<boolean> {
-    const tgAdapter = ctx.getAdapters().get('telegram');
+    const tgAdapter = ctx.services.getAdapters().get('telegram');
     if (tgAdapter && 'listPairings' in tgAdapter) {
       const pairings = (tgAdapter as any).listPairings() as Array<{ code: string; userId: string; username: string }>;
       if (pairings.length === 0) {

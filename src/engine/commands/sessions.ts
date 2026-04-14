@@ -13,14 +13,14 @@ export class SessionsCommand extends BaseCommand {
   readonly description = 'List sessions';
 
   async execute(ctx: CommandContext): Promise<boolean> {
-    const binding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
-    const currentCwd = binding?.cwd || ctx.defaultWorkdir;
+    const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+    const currentCwd = binding?.cwd || ctx.services.defaultWorkdir;
     const showAll = hasFlag(ctx.parts.slice(1), FLAGS.ALL);
 
     const sessions = scanClaudeSessions(10, showAll ? undefined : currentCwd);
     const currentSdkId = binding?.sdkSessionId;
 
-    const workspaceBinding = ctx.workspace.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+    const workspaceBinding = ctx.services.workspace.getBinding(ctx.msg.channelType, ctx.msg.chatId);
 
     if (sessions.length === 0) {
       const hint = showAll ? '' : ` in ${shortPath(currentCwd)}\nUse /sessions --all to see all projects.`;

@@ -8,8 +8,9 @@ import type { SDKEngine, SessionCleanupReason } from './sdk/engine.js';
 import type { ProjectsValidationResult, ClaudeSettingSource } from '../config.js';
 import type { BridgeStore, ChannelBinding } from '../store/interface.js';
 import type { HomeData } from '../formatting/message-types.js';
-import type { RouterHelpers } from './commands/types.js';
+import type { RouterHelpers, CommandServices } from './commands/types.js';
 import type { PermissionCoordinator } from './coordinators/permission.js';
+import type { ScannedSession } from '../session-scanner.js';
 import { commandRegistry, registerAllCommands } from './commands/index.js';
 import { DEFAULT_CLAUDE_SETTING_SOURCES } from '../config.js';
 import { scanClaudeSessions, readSessionTranscriptPreview } from '../session-scanner.js';
@@ -40,8 +41,39 @@ function formatRelativeTime(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 }
 
+type BoundInfo = { channelType: string; chatId: string; isActive: boolean };
+
+/** Shared mapping for scanned sessions (used by both recentSessions and allSessions) */
+function mapScannedSession(
+  session: ScannedSession,
+  index: number,
+  opts: {
+    binding: ChannelBinding | null | undefined;
+    activeSdkSessionBindings: Map<string, BoundInfo>;
+    channelType: string;
+    chatId: string;
+    now: number;
+    boundFilter: (boundInfo: BoundInfo | undefined, sdkSessionId: string) => BoundInfo | undefined;
+  },
+) {
+  const boundInfo = opts.activeSdkSessionBindings.get(session.sdkSessionId);
+  const boundToActiveSession = opts.boundFilter(boundInfo, session.sdkSessionId);
+  return {
+    index: index + 1,
+    date: formatSessionDate(session.mtime),
+    cwd: shortPath(session.cwd),
+    size: formatSize(session.size),
+    preview: session.preview,
+    transcript: readSessionTranscriptPreview(session, 4),
+    isCurrent: opts.binding?.sdkSessionId === session.sdkSessionId,
+    boundToActiveSession,
+    isStale: (opts.now - session.mtime) > SESSION_STALE_THRESHOLD_MS,
+  };
+}
+
 export class CommandRouter {
   private projectsConfig: ProjectsValidationResult | undefined;
+  private services: CommandServices;
 
   constructor(
     private state: SessionStateManager,
@@ -58,6 +90,10 @@ export class CommandRouter {
     projectsConfig?: ProjectsValidationResult,
   ) {
     this.projectsConfig = projectsConfig;
+    this.services = {
+      store, router, state, workspace, permissions, sdkEngine, llm,
+      activeControls, defaultWorkdir, defaultClaudeSettingSources, getAdapters,
+    };
   }
 
   /** Build RouterHelpers implementation for command context */
@@ -170,58 +206,73 @@ export class CommandRouter {
       lastActiveAt: lastActiveTime ? formatRelativeTime(lastActiveTime) : undefined,
     } : undefined;
 
+    // Managed sessions in SDKEngine for this chat
+    const rawManagedSessions = this.sdkEngine?.getSessionsForChat(channelType, chatId) ?? [];
+    let managedSessions = rawManagedSessions.map(s => ({ ...s, workdir: shortPath(s.workdir) }));
+
+    // Ensure current binding always appears in managedSessions (it may not be in registry yet if no query was sent)
+    if (binding && !managedSessions.some(s => s.bindingSessionId === binding.sessionId)) {
+      managedSessions.unshift({
+        sessionKey: `${channelType}:${chatId}:${binding.sessionId}`,
+        bindingSessionId: binding.sessionId,
+        workdir: shortPath(binding.cwd || currentCwd),
+        sdkSessionId: binding.sdkSessionId,
+        isAlive: false,
+        isTurnActive: false,
+        lastActiveAt: Date.now(),
+        isCurrent: true,
+        queueDepth: 0,
+      });
+    }
+
     return {
-      cwd: shortPath(currentCwd),
-      workspaceBinding: workspaceBinding ? shortPath(workspaceBinding) : undefined,
-      currentProject: projectName,
-      hasActiveTask: this.activeControls.has(chatKey),
-      permissionMode: this.state.getPermMode(channelType, chatId),
-      currentBridgeSession,
-      recentSummary: recentSessions[0]?.preview,
-      recentSessions: recentSessions.map((session, index) => {
-        const boundInfo = activeSdkSessionBindings.get(session.sdkSessionId);
-        // Skip if it's current session (already shown in currentBridgeSession)
-        const boundToActiveSession = (boundInfo && !boundInfo.isActive && boundInfo.channelType === channelType && boundInfo.chatId === chatId)
-          ? undefined
-          : boundInfo && boundInfo.isActive ? boundInfo : undefined;
-        return {
-          index: index + 1,
-          date: formatSessionDate(session.mtime),
-          cwd: shortPath(session.cwd),
-          size: formatSize(session.size),
-          preview: session.preview,
-          transcript: readSessionTranscriptPreview(session, 4),
-          isCurrent: binding?.sdkSessionId === session.sdkSessionId,
-          boundToActiveSession,
-          isStale: (now - session.mtime) > SESSION_STALE_THRESHOLD_MS,
-        };
-      }),
-      allSessions: allSessions.map((session, index) => {
-        const boundInfo = activeSdkSessionBindings.get(session.sdkSessionId);
-        const boundToActiveSession = boundInfo && boundInfo.isActive
-          && !(boundInfo.channelType === channelType && boundInfo.chatId === chatId && binding?.sdkSessionId === session.sdkSessionId)
-          ? boundInfo : undefined;
-        return {
-          index: index + 1,
-          date: formatSessionDate(session.mtime),
-          cwd: shortPath(session.cwd),
-          size: formatSize(session.size),
-          preview: session.preview,
-          transcript: readSessionTranscriptPreview(session, 4),
-          isCurrent: binding?.sdkSessionId === session.sdkSessionId,
-          boundToActiveSession,
-          isStale: (now - session.mtime) > SESSION_STALE_THRESHOLD_MS,
-        };
-      }),
-      helpEntries: commandRegistry.getHelpEntries(),
-      pendingPermission: permStatus.pending,
-      lastPermissionDecision: permStatus.lastDecision,
-      sessionWhitelistCount: permStatus.rememberedTools + permStatus.rememberedBashPrefixes,
-      bridgeHealthy: activeChannels.length > 0,
-      activeChannels,
-      lastActiveAt: lastActiveTime ? formatRelativeTime(lastActiveTime) : undefined,
-      queueInfo,
-      sessionStale,
+      workspace: {
+        cwd: shortPath(currentCwd),
+        binding: workspaceBinding ? shortPath(workspaceBinding) : undefined,
+        project: projectName,
+      },
+      task: {
+        active: this.activeControls.has(chatKey),
+      },
+      session: {
+        current: currentBridgeSession,
+        managed: managedSessions.length > 0 ? managedSessions : undefined,
+        recent: recentSessions.map((session, index) =>
+          mapScannedSession(session, index, {
+            binding, activeSdkSessionBindings, channelType, chatId, now,
+            boundFilter: (bi) =>
+              (bi && !bi.isActive && bi.channelType === channelType && bi.chatId === chatId)
+                ? undefined
+                : bi && bi.isActive ? bi : undefined,
+          }),
+        ),
+        all: allSessions.map((session, index) =>
+          mapScannedSession(session, index, {
+            binding, activeSdkSessionBindings, channelType, chatId, now,
+            boundFilter: (bi, sdkSessionId) =>
+              bi && bi.isActive
+                && !(bi.channelType === channelType && bi.chatId === chatId && binding?.sdkSessionId === sdkSessionId)
+                ? bi : undefined,
+          }),
+        ),
+        stale: sessionStale,
+        lastActiveAt: lastActiveTime ? formatRelativeTime(lastActiveTime) : undefined,
+      },
+      permission: {
+        mode: this.state.getPermMode(channelType, chatId, binding?.sessionId),
+        pending: permStatus.pending,
+        lastDecision: permStatus.lastDecision,
+        whitelistCount: permStatus.rememberedTools + permStatus.rememberedBashPrefixes,
+      },
+      bridge: {
+        healthy: activeChannels.length > 0,
+        channels: activeChannels,
+        queueInfo,
+      },
+      help: {
+        entries: commandRegistry.getHelpEntries(),
+        recentSummary: recentSessions[0]?.preview,
+      },
     };
   }
 
@@ -237,17 +288,7 @@ export class CommandRouter {
         adapter,
         msg,
         parts,
-        store: this.store,
-        router: this.router,
-        state: this.state,
-        workspace: this.workspace,
-        permissions: this.permissions,
-        sdkEngine: this.sdkEngine,
-        llm: this.llm,
-        activeControls: this.activeControls,
-        defaultWorkdir: this.defaultWorkdir,
-        defaultClaudeSettingSources: this.defaultClaudeSettingSources,
-        getAdapters: this.getAdapters,
+        services: this.services,
         helpers: this.buildHelpers(),
       };
       return handler.execute(ctx);

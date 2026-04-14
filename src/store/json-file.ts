@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BridgeStore, ChannelBinding } from './interface.js';
+import { chatKey as buildChatKey } from '../utils/key.js';
 
 /** Max entries to keep in processed IDs (prevents unbounded growth) */
 const MAX_PROCESSED_IDS = 10000;
@@ -20,7 +21,7 @@ export class JsonFileStore implements BridgeStore {
   // ---- Helpers ----
 
   private bindingKey(channelType: string, chatId: string): string {
-    return `${channelType}:${chatId}`;
+    return buildChatKey(channelType, chatId);
   }
 
   private atomicWrite(filePath: string, data: unknown): void {

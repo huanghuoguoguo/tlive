@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { chatKey as buildChatKey } from '../../utils/key.js';
 
 /**
  * Per-chat workspace history and binding state.
@@ -40,7 +41,7 @@ export class WorkspaceStateManager {
 
   /** Combine channelType + chatId into a single map key */
   chatKey(channelType: string, chatId: string): string {
-    return `${channelType}:${chatId}`;
+    return buildChatKey(channelType, chatId);
   }
 
   /**

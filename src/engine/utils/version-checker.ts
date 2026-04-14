@@ -4,16 +4,16 @@
  * Each version is only notified once automatically.
  */
 
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { getTliveHome } from '../../utils/path.js';
 
 // Version is injected at build time via esbuild define
 declare const process: { env: { npm_package_version: string } };
 
 const REPO = 'huanghuoguoguo/tlive';
 const GITHUB_API = `https://api.github.com/repos/${REPO}/releases/latest`;
-const NOTIFIED_FILE = join(homedir(), '.tlive', 'data', 'notified-versions.json');
+const NOTIFIED_FILE = join(getTliveHome(), 'data', 'notified-versions.json');
 
 export interface VersionInfo {
   current: string;
@@ -78,7 +78,7 @@ export function isVersionNotified(version: string): boolean {
  */
 export function markVersionNotified(version: string): void {
   try {
-    const dir = join(homedir(), '.tlive', 'data');
+    const dir = join(getTliveHome(), 'data');
     mkdirSync(dir, { recursive: true });
     const versions = getNotifiedVersions();
     if (!versions.includes(version)) {

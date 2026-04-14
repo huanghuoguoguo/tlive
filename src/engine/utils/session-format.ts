@@ -44,8 +44,8 @@ export async function parseSessionIndex(ctx: CommandContext): Promise<SessionPar
     return { ok: false, error: 'invalid_index', chatId: ctx.msg.chatId };
   }
 
-  const binding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
-  const currentCwd = binding?.cwd || ctx.defaultWorkdir;
+  const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+  const currentCwd = binding?.cwd || ctx.services.defaultWorkdir;
   const sessions = scanClaudeSessions(10, showAll ? undefined : currentCwd);
 
   if (idx > sessions.length) {

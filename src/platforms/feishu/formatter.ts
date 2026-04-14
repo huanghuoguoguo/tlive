@@ -27,7 +27,22 @@ import type {
   StatusData,
 } from '../../formatting/message-types.js';
 import type { Button } from '../../ui/types.js';
+import {
+  permissionButtons,
+  navNew,
+  permStatusButtons,
+  taskStartButtons,
+  taskSummaryButtons,
+  helpButtons,
+} from '../../ui/buttons.js';
 import { truncate } from '../../utils/string.js';
+
+/** Unified session status label for consistent display across /status and /home */
+function sessionStatusLabel(isTurnActive: boolean, isAlive: boolean): { icon: string; text: string } {
+  if (isTurnActive) return { icon: '⏳', text: '执行中' };
+  if (isAlive) return { icon: '🟢', text: '活跃' };
+  return { icon: '💤', text: '空闲' };
+}
 
 type TimelineToolDisplay = {
   toolName: string;
@@ -277,8 +292,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       if (data.sessionSnapshots?.length) {
         const now = Date.now();
         const lines = data.sessionSnapshots.map(s => {
-          const stateIcon = s.isTurnActive ? '🔄' : s.isAlive ? '💤' : '💀';
-          const stateText = s.isTurnActive ? '执行中' : s.isAlive ? '空闲' : '已断开';
+          const { icon: stateIcon, text: stateText } = sessionStatusLabel(s.isTurnActive, s.isAlive);
           const ago = this.formatElapsed(now - s.lastActiveAt);
           const dir = s.workdir.replace(/^\/home\/[^/]+\//, '~/');
           const sid = s.sessionKey.length > 12 ? `…${s.sessionKey.slice(-8)}` : s.sessionKey;
@@ -349,11 +363,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     }
     elements.push(this.md('💬 也可以直接回复 **allow** / **deny** / **always**。'));
 
-    const buttons: Button[] = [
-      { label: '✅ 允许本次', callbackData: `perm:allow:${data.permissionId}`, style: 'primary', row: 0 },
-      { label: '📌 本会话始终允许', callbackData: `perm:allow_session:${data.permissionId}`, style: 'default', row: 0 },
-      { label: '❌ 拒绝', callbackData: `perm:deny:${data.permissionId}`, style: 'danger', row: 1 },
-    ];
+    const buttons = permissionButtons(data.permissionId, this.locale);
 
     return this.createCardMessage(chatId,
       { template: 'orange', title: '🔐 待审批动作' },
@@ -560,17 +570,17 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
 
   override formatHome(chatId: string, data: HomeData): FeishuRenderedMessage {
     // Global status - minimal
-    const bridgeStatus = data.bridgeHealthy ? '🟢' : '🔴';
-    const channels = data.activeChannels?.join(', ') || '无';
-    const taskStatus = data.hasActiveTask ? '⏳' : '✅';
+    const bridgeStatus = data.bridge.healthy ? '🟢' : '🔴';
+    const channels = data.bridge.channels?.join(', ') || '无';
+    const taskStatus = data.task.active ? '⏳' : '✅';
 
     const elements: FeishuCardElement[] = [
       this.md(`${bridgeStatus} ${channels} · ${taskStatus}`),
     ];
 
     // Current bridge session info (always show)
-    if (data.currentBridgeSession) {
-      const sessionInfo = data.currentBridgeSession;
+    if (data.session.current) {
+      const sessionInfo = data.session.current;
       const sdkInfo = sessionInfo.sdkSessionId
         ? `\n**SDK会话** \`${sessionInfo.sdkSessionId.slice(0, 8)}…\``
         : '\n**SDK会话** (未绑定)';
@@ -581,14 +591,51 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
         tag: 'collapsible_panel',
         expanded: sessionInfo.isActive, // expand if active
         header: { title: { tag: 'plain_text', content: `📍 当前会话 ${sessionInfo.isActive ? '⏳' : '✅'}` } },
-        elements: [this.md(`**目录** \`${sessionInfo.cwd}\`${sdkInfo}${queueInfo}\n**权限** ${data.permissionMode === 'on' ? '🔐 开启' : '⚡ 关闭'}`)],
+        elements: [this.md(`**目录** \`${sessionInfo.cwd}\`${sdkInfo}${queueInfo}\n**权限** ${data.permission.mode === 'on' ? '🔐 开启' : '⚡ 关闭'}`)],
+      } as FeishuCardElement);
+    }
+
+    // Active sessions (in-memory managed sessions for this chat)
+    if (data.session.managed && data.session.managed.length > 1) {
+      const bsessionElements: FeishuCardElement[] = [];
+      for (const s of data.session.managed) {
+        const { icon: statusIcon, text: statusText } = sessionStatusLabel(s.isTurnActive, s.isAlive);
+        const status = `${statusIcon} ${statusText}`;
+        const currentMark = s.isCurrent ? ' ◀' : '';
+        const queueText = s.queueDepth > 0 ? ` · 队列 ${s.queueDepth}` : '';
+        const sdkShort = s.sdkSessionId ? s.sdkSessionId.slice(0, 8) : '-';
+        const headerText = `${status} \`${sdkShort}\` ${truncate(s.workdir, 20)}${queueText}${currentMark}`;
+
+        const panelContent: FeishuCardElement[] = [
+          this.md(`**目录** \`${s.workdir}\`\n**SDK** \`${sdkShort}\`\n**状态** ${status}${queueText}`),
+        ];
+
+        // Show switch button for non-current sessions
+        if (!s.isCurrent) {
+          panelContent.push(...buildFeishuButtonElements([
+            { label: '切换 ▶️', callbackData: `cmd:rebind ${s.bindingSessionId}`, style: 'default', row: 0 },
+          ]));
+        }
+
+        bsessionElements.push({
+          tag: 'collapsible_panel',
+          expanded: false,
+          header: { title: { tag: 'plain_text', content: headerText } },
+          elements: panelContent,
+        } as FeishuCardElement);
+      }
+      elements.push({
+        tag: 'collapsible_panel',
+        expanded: true,
+        header: { title: { tag: 'plain_text', content: `🔄 活跃会话 (${data.session.managed.length})` } },
+        elements: bsessionElements,
       } as FeishuCardElement);
     }
 
     // Recent sessions (current workspace)
-    if (data.recentSessions?.length) {
+    if (data.session.recent?.length) {
       const recentElements: FeishuCardElement[] = [];
-      for (const s of data.recentSessions) {
+      for (const s of data.session.recent) {
         // Skip current session (already shown above)
         if (s.isCurrent) continue;
 
@@ -625,16 +672,16 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
         elements.push({
           tag: 'collapsible_panel',
           expanded: false,
-          header: { title: { tag: 'plain_text', content: `📋 历史 (${data.cwd})` } },
+          header: { title: { tag: 'plain_text', content: `📋 历史 (${data.workspace.cwd})` } },
           elements: recentElements,
         } as FeishuCardElement);
       }
     }
 
     // All sessions (global)
-    if (data.allSessions?.length) {
+    if (data.session.all?.length) {
       const allElements: FeishuCardElement[] = [];
-      for (const s of data.allSessions) {
+      for (const s of data.session.all) {
         // Skip current session
         if (s.isCurrent) continue;
 
@@ -677,8 +724,8 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     }
 
     // Help as collapsible (dynamic from registry)
-    if (data.helpEntries?.length) {
-      const helpText = data.helpEntries
+    if (data.help?.entries?.length) {
+      const helpText = data.help.entries
         .map(e => `/${e.cmd} — ${e.desc}`)
         .join('\n');
       elements.push({
@@ -690,9 +737,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     }
 
     // Only one button: new session
-    const buttons: Button[] = [
-      { label: '🆕 新会话', callbackData: 'cmd:new', style: 'primary', row: 0 },
-    ];
+    const buttons: Button[] = [navNew(this.locale)];
 
     return this.createCardMessage(chatId,
       { template: 'blue', title: '🏠 工作台' },
@@ -726,15 +771,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       elements.push(this.md(`**最近处理**\n${data.lastDecision.toolName} · ${decisionLabel}`));
     }
 
-    const buttons: Button[] = data.mode === 'on'
-      ? [
-          { label: '⚡ 关闭审批', callbackData: 'cmd:perm off', style: 'danger' },
-          { label: '🏠 首页', callbackData: 'cmd:home', style: 'default' },
-        ]
-      : [
-          { label: '🔐 开启审批', callbackData: 'cmd:perm on', style: 'primary' },
-          { label: '🏠 首页', callbackData: 'cmd:home', style: 'default' },
-        ];
+    const buttons = permStatusButtons(data.mode, this.locale);
 
     return this.createCardMessage(chatId,
       { template: data.mode === 'on' ? 'orange' : 'grey', title: '🔐 权限状态' },
@@ -755,10 +792,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
 
     elements.push(this.md('💡 任务已开始执行。如需调整配置，点击下方按钮。'));
 
-    const buttons: Button[] = [
-      { label: '🏠 调整配置', callbackData: 'cmd:home', style: 'default', row: 0 },
-      { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default', row: 0 },
-    ];
+    const buttons = taskStartButtons(this.locale);
 
     return this.createCardMessage(chatId,
       { template: 'blue', title },
@@ -779,10 +813,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       elements.push(this.md(`<font color='grey'>${data.footerLine}</font>`));
     }
 
-    const buttons: Button[] = [
-      { label: '🏠 首页', callbackData: 'cmd:home', style: 'primary' },
-      { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'default' },
-    ];
+    const buttons = taskSummaryButtons(this.locale);
 
     return this.createCardMessage(chatId,
       { template: data.hasError ? 'red' : 'green', title: data.hasError ? '⚠️ 任务结束' : '✅ 任务摘要' },
@@ -893,10 +924,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       this.md(`**命令列表**\n${lines.join('\n')}`),
     ];
 
-    const buttons: Button[] = [
-      { label: '🆕 新会话', callbackData: 'cmd:new', style: 'primary', row: 0 },
-      { label: '📋 会话列表', callbackData: 'cmd:sessions', style: 'default', row: 0 },
-    ];
+    const buttons = helpButtons(this.locale);
 
     return this.createCardMessage(chatId,
       { template: 'blue', title: '❓ 常用帮助' },

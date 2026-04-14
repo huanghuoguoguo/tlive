@@ -56,6 +56,7 @@ describe('CommandRouter /settings', () => {
       isChatSessionStale: vi.fn().mockReturnValue(false),
       getSessionKeyForBinding: vi.fn().mockImplementation((channelType: string, chatId: string, sessionId: string) => `${channelType}:${chatId}:${sessionId}`),
       isSessionStale: vi.fn().mockReturnValue(false),
+      getSessionsForChat: vi.fn().mockReturnValue([]),
     };
 
     // Create WorkspaceStateManager (no persistence for tests)
