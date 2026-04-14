@@ -1,0 +1,58 @@
+schema: spec-driven
+
+# Project context - shown to AI when creating artifacts
+context: |
+  Project: tlive - IM bridge for Claude Code
+
+  Tech stack:
+    - TypeScript (ES2022 target, strict mode)
+    - Node.js 20+
+    - esbuild for bundling
+    - Vitest for testing
+    - Claude Agent SDK for AI interaction
+
+  Architecture:
+    - src/channels/ - IM platform adapters (Telegram, Feishu, QQ Bot)
+    - src/providers/ - AI provider integrations (Claude SDK, live session)
+    - src/engine/ - Core engine (commands, coordinators, automation)
+    - src/messages/ - Message processing and formatting
+    - src/permissions/ - Permission gateway and broker
+    - src/utils/ - Utility functions
+    - src/__tests__/ - Unit/integration tests
+
+  Key dependencies:
+    - @anthropic-ai/claude-agent-sdk
+    - grammy (Telegram)
+    - @larksuiteoapi/node-sdk (Feishu/Lark)
+    - ws, zod
+
+  Code conventions:
+    - Utility functions go in src/utils/
+    - Constants go in src/utils/constants.ts
+    - New features must have unit tests in src/__tests__/
+    - Use Biome for linting, knip for dead code detection
+
+  Git workflow:
+    - main branch is protected, no direct pushes
+    - Feature branches: feat/xxx
+    - Fix branches: fix/xxx
+    - All changes via Pull Request (squash merge)
+    - Do NOT publish versions without user approval
+
+  Important rules:
+    - Do NOT create documentation files (.md, README) unless explicitly requested
+    - Do NOT add docstrings/comments unless logic is non-obvious
+    - Do NOT add error handling for scenarios that can't happen
+    - Trust internal code and framework guarantees
+    - Only validate at system boundaries (user input, external APIs)
+
+# Per-artifact rules (optional)
+rules:
+  proposal:
+    - Keep proposals focused and concise
+    - Consider the existing architecture before proposing changes
+    - New features should include test plan
+  tasks:
+    - Break tasks into small, actionable steps
+    - Reference existing files and patterns where possible
+    - Include test requirements for new functionality
