@@ -3,8 +3,8 @@
  */
 
 import type { CommandContext } from '../commands/types.js';
-import type { ScannedSession } from '../../session-scanner.js';
-import { scanClaudeSessions } from '../../session-scanner.js';
+import type { ScannedSession } from '../../providers/session-scanner.js';
+import { scanClaudeSessions } from '../../providers/session-scanner.js';
 import { FLAGS, hasFlag, getNonFlagArg } from '../../utils/constants.js';
 
 /** Format file size in human-readable form */
