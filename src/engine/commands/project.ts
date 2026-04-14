@@ -33,7 +33,7 @@ export class ProjectCommand extends BaseCommand {
 
     // /project or /project list - show all projects
     if (!sub || sub === 'list') {
-      const binding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+      const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
       const currentProjectName = binding?.projectName;
       const projects: ProjectListData['projects'] = projectsConfig.valid.map(p => ({
         name: p.name,
@@ -64,11 +64,11 @@ export class ProjectCommand extends BaseCommand {
         return true;
       }
 
-      const binding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
-      const currentCwd = binding?.cwd || ctx.defaultWorkdir;
+      const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+      const currentCwd = binding?.cwd || ctx.services.defaultWorkdir;
       const previousProjectName = binding?.projectName;
 
-      ctx.workspace.pushHistory(ctx.msg.channelType, ctx.msg.chatId, currentCwd);
+      ctx.services.workspace.pushHistory(ctx.msg.channelType, ctx.msg.chatId, currentCwd);
 
       const switchedRepo = !isSameRepoRoot(currentCwd, project.workdir);
       const settingsChanged = !areSettingSourcesEqual(
@@ -92,9 +92,9 @@ export class ProjectCommand extends BaseCommand {
         binding.claudeSettingSources = project.claudeSettingSources
           ? [...project.claudeSettingSources]
           : undefined;
-        await ctx.store.saveBinding(binding);
+        await ctx.services.store.saveBinding(binding);
       } else {
-        await ctx.router.rebind(ctx.msg.channelType, ctx.msg.chatId, generateSessionId(), {
+        await ctx.services.router.rebind(ctx.msg.channelType, ctx.msg.chatId, generateSessionId(), {
           cwd: project.workdir,
           projectName: project.name,
           claudeSettingSources: project.claudeSettingSources
@@ -102,8 +102,8 @@ export class ProjectCommand extends BaseCommand {
             : undefined,
         });
       }
-      ctx.workspace.pushHistory(ctx.msg.channelType, ctx.msg.chatId, project.workdir);
-      ctx.workspace.setBinding(ctx.msg.channelType, ctx.msg.chatId, project.workdir);
+      ctx.services.workspace.pushHistory(ctx.msg.channelType, ctx.msg.chatId, project.workdir);
+      ctx.services.workspace.setBinding(ctx.msg.channelType, ctx.msg.chatId, project.workdir);
 
       const feedbackParts: string[] = [];
       if (previousProjectName && previousProjectName !== project.name) {
@@ -128,10 +128,10 @@ export class ProjectCommand extends BaseCommand {
 
     // /project status - show current project status
     if (sub === 'status' || sub === 'info') {
-      const binding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+      const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
       const currentProjectName = binding?.projectName;
-      const currentCwd = binding?.cwd || ctx.defaultWorkdir;
-      const workspaceBinding = ctx.workspace.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+      const currentCwd = binding?.cwd || ctx.services.defaultWorkdir;
+      const workspaceBinding = ctx.services.workspace.getBinding(ctx.msg.channelType, ctx.msg.chatId);
 
       if (!currentProjectName) {
         const implicitName = basename(currentCwd);

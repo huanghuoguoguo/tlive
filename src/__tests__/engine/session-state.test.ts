@@ -24,9 +24,20 @@ describe('SessionStateManager', () => {
       expect(state.getPermMode('qqbot', '1')).toBe('on');
     });
 
-    it('set and get', () => {
-      state.setPermMode('feishu', '1', 'off');
+    it('set and get with sessionId (per bsession)', () => {
+      state.setPermMode('feishu', '1', 'session-abc', 'off');
+      expect(state.getPermMode('feishu', '1', 'session-abc')).toBe('off');
+      // Different session in same chat defaults to on
+      expect(state.getPermMode('feishu', '1', 'session-xyz')).toBe('on');
+      // Without sessionId also defaults to on (no fallback to per-chat)
+      expect(state.getPermMode('feishu', '1')).toBe('on');
+    });
+
+    it('set without sessionId (legacy per-chat)', () => {
+      state.setPermMode('feishu', '1', undefined, 'off');
       expect(state.getPermMode('feishu', '1')).toBe('off');
+      // Per-bsession query does not inherit from per-chat
+      expect(state.getPermMode('feishu', '1', 'session-abc')).toBe('on');
     });
   });
 
@@ -67,8 +78,8 @@ describe('SessionStateManager', () => {
     });
 
     it('stores permission mode changes in SessionMode', () => {
-      state.setPermMode('telegram', '1', 'off');
-      const mode = state.getSessionMode('telegram', '1');
+      state.setPermMode('telegram', '1', 'session-1', 'off');
+      const mode = state.getSessionMode('telegram', '1', 'session-1');
       expect(mode.permissionMode).toBe('bypassPermissions');
     });
   });

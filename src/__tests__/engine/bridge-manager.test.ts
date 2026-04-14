@@ -63,7 +63,7 @@ describe('BridgeManager', () => {
         renewLock: vi.fn().mockResolvedValue(true),
         releaseLock: vi.fn(),
         getBinding: vi.fn().mockResolvedValue({ channelType: 'telegram', chatId: 'c1', sessionId: 's1', createdAt: '' }),
-        saveBinding: vi.fn(), deleteBinding: vi.fn(), listBindings: vi.fn(),
+        saveBinding: vi.fn(), deleteBinding: vi.fn(), listBindings: vi.fn().mockResolvedValue([]),
         isDuplicate: vi.fn().mockResolvedValue(false), markProcessed: vi.fn(),
       } as any,
       llm: {

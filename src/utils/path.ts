@@ -11,6 +11,11 @@ export function getTliveRuntimeDir(): string {
   return join(getTliveHome(), 'runtime');
 }
 
+/** Expand ~ in path to actual home directory */
+export function expandTilde(path: string): string {
+  return path.startsWith('~') ? join(homedir(), path.slice(1)) : path;
+}
+
 /** Shorten path by replacing home directory with ~ */
 export function shortPath(path: string): string {
   const home = homedir();

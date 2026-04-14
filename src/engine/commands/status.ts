@@ -2,12 +2,7 @@ import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentStatus } from '../messages/presenter.js';
 import { getCurrentVersion } from '../utils/version-checker.js';
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
-}
+import { formatSize } from '../utils/session-format.js';
 
 export class StatusCommand extends BaseCommand {
   readonly name = '/status';
@@ -15,7 +10,7 @@ export class StatusCommand extends BaseCommand {
   readonly description = 'Bridge status';
 
   async execute(ctx: CommandContext): Promise<boolean> {
-    const adapters = ctx.getAdapters();
+    const adapters = ctx.services.getAdapters();
     const channelList = Array.from(adapters.keys()).join(', ') || 'none';
 
     // Gather channel info (bot name/id if available)
@@ -27,9 +22,9 @@ export class StatusCommand extends BaseCommand {
     });
 
     // Gather session stats
-    const activeSessions = ctx.sdkEngine?.getActiveSessionCount() ?? 0;
-    const idleSessions = ctx.sdkEngine?.getIdleSessionCount() ?? 0;
-    const sessionSnapshots = ctx.sdkEngine?.getSessionRegistrySnapshot() ?? [];
+    const activeSessions = ctx.services.sdkEngine?.getActiveSessionCount() ?? 0;
+    const idleSessions = ctx.services.sdkEngine?.getIdleSessionCount() ?? 0;
+    const sessionSnapshots = ctx.services.sdkEngine?.getSessionRegistrySnapshot() ?? [];
 
     // Memory usage
     const memUsage = process.memoryUsage();

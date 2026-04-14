@@ -36,11 +36,8 @@ export interface RouterHelpers {
   defaultClaudeSettingSources: ClaudeSettingSource[];
 }
 
-/** Context passed to each command handler */
-export interface CommandContext {
-  adapter: BaseChannelAdapter;
-  msg: InboundMessage;
-  parts: string[];
+/** Stable service dependencies shared across all commands */
+export interface CommandServices {
   store: BridgeStore;
   router: ChannelRouter;
   state: SessionStateManager;
@@ -52,6 +49,14 @@ export interface CommandContext {
   defaultWorkdir: string;
   defaultClaudeSettingSources: ClaudeSettingSource[];
   getAdapters: () => Map<string, BaseChannelAdapter>;
+}
+
+/** Context passed to each command handler */
+export interface CommandContext {
+  adapter: BaseChannelAdapter;
+  msg: InboundMessage;
+  parts: string[];
+  services: CommandServices;
   /** Router helpers for complex operations */
   helpers: RouterHelpers;
 }

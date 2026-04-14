@@ -19,8 +19,8 @@ export class BashCommand extends BaseCommand {
       return true;
     }
 
-    const binding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
-    const cwd = binding?.cwd || ctx.defaultWorkdir;
+    const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+    const cwd = binding?.cwd || ctx.services.defaultWorkdir;
 
     try {
       const { stdout, stderr } = await execAsync(cmdText, {

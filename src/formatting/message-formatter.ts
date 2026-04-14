@@ -6,6 +6,17 @@
  */
 
 import type { Button } from '../ui/types.js';
+import {
+  permissionButtons,
+  deferredSubmit,
+  deferredSkip,
+  homeButtons,
+  progressDoneButtons,
+  progressRunningButtons,
+  taskStartButtons,
+  taskSummaryButtons,
+  permStatusButtons,
+} from '../ui/buttons.js';
 import type {
   StatusData,
   PermissionData,
@@ -46,7 +57,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
     return t(this.locale, key);
   }
 
-  // --- Abstract methods that subclasses must implement ---
+  // --- Abstract methods that subclasses must implement --
 
   /** Format markdown content for this platform (e.g., HTML for Telegram) */
   protected abstract formatMarkdown(text: string): string;
@@ -62,7 +73,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
     return this.locale;
   }
 
-  // --- Generic format method ---
+  // --- Generic format method --
 
   /** Format a semantic message into a platform-specific rendered message */
   format(msg: FormattableMessage): TRendered {
@@ -117,7 +128,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
     }
   }
 
-  // --- Public formatting methods ---
+  // --- Public formatting methods --
 
   formatStatus(chatId: string, data: StatusData): TRendered {
     const status = data.healthy ? '🟢 running' : '🔴 disconnected';
@@ -170,11 +181,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
   formatPermission(chatId: string, data: PermissionData): TRendered {
     const input = truncate(data.toolInput, 300);
     const expires = data.expiresInMinutes ?? 5;
-    const buttons: Button[] = [
-      { label: '✅ Allow', callbackData: `perm:allow:${data.permissionId}`, style: 'primary', row: 0 },
-      { label: '📌 Always in Session', callbackData: `perm:allow_session:${data.permissionId}`, style: 'default', row: 0 },
-      { label: '❌ Deny', callbackData: `perm:deny:${data.permissionId}`, style: 'danger', row: 1 },
-    ];
+    const buttons = permissionButtons(data.permissionId, this.locale);
 
     const lines = [
       `🔐 **Permission Required**`,
@@ -228,8 +235,8 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
     ].join('\n');
 
     const buttons: Button[] = [
-      { label: '✅ Submit', callbackData: `deferred:submit:${permId}`, style: 'primary', row: 0 },
-      { label: '⏭ Skip', callbackData: `deferred:skip:${permId}`, style: 'default', row: 0 },
+      deferredSubmit(permId, this.locale),
+      deferredSkip(permId, this.locale),
     ];
 
     return this.createMessage(chatId, text, buttons);
@@ -248,7 +255,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
   }
 
   formatHome(chatId: string, data: HomeData): TRendered {
-    const taskStatus = data.hasActiveTask
+    const taskStatus = data.task.active
       ? this.t('home.taskActive')
       : this.t('home.taskIdle');
 
@@ -256,32 +263,35 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
       `🏠 **TLive**`,
       ``,
       `**Status:** ${taskStatus}`,
-      `**Directory:** \`${data.cwd}\``,
+      `**Directory:** \`${data.workspace.cwd}\``,
     ];
 
     // Show workspace binding if different from current cwd
-    if (data.workspaceBinding && data.workspaceBinding !== data.cwd) {
-      lines.push(`**${this.t('home.workspaceBinding')}:** \`${data.workspaceBinding}\``);
+    if (data.workspace.binding && data.workspace.binding !== data.workspace.cwd) {
+      lines.push(`**${this.t('home.workspaceBinding')}:** \`${data.workspace.binding}\``);
     }
 
-    lines.push(`**Permissions:** ${data.permissionMode}`);
-    if (data.recentSummary) {
-      lines.push(``, `**Recent:** ${truncate(data.recentSummary, 100)}`);
+    lines.push(`**Permissions:** ${data.permission.mode}`);
+
+    // Show active sessions count
+    if (data.session.managed && data.session.managed.length > 1) {
+      const activeCount = data.session.managed.filter(s => s.isAlive).length;
+      const label = this.t('home.activeSessions');
+      lines.push(`**${label}:** ${data.session.managed.length} (${activeCount} alive)`);
     }
-    if (data.recentSessions?.length) {
+
+    if (data.help?.recentSummary) {
+      lines.push(``, `**Recent:** ${truncate(data.help.recentSummary, 100)}`);
+    }
+    if (data.session.recent?.length) {
       lines.push('', this.t('home.recentSessions'));
-      for (const session of data.recentSessions) {
+      for (const session of data.session.recent) {
         const marker = session.isCurrent ? ' ◀' : '';
         lines.push(`${session.index}. ${session.date} · ${truncate(session.preview, 50)}${marker}`);
       }
     }
 
-    const buttons: Button[] = [
-      { label: this.t('home.btnSessions'), callbackData: 'cmd:sessions --all', style: 'primary', row: 0 },
-      { label: this.t('home.btnPermissions'), callbackData: 'cmd:perm', style: 'default', row: 0 },
-      { label: this.t('home.btnNew'), callbackData: 'cmd:new', style: 'default', row: 1 },
-      { label: this.t('home.btnHelp'), callbackData: 'cmd:help', style: 'default', row: 1 },
-    ];
+    const buttons: Button[] = homeButtons(this.locale);
 
     return this.createMessage(chatId, lines.join('\n'), buttons);
   }
@@ -318,15 +328,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
       );
     }
 
-    const buttons: Button[] = data.mode === 'on'
-      ? [
-          { label: this.t('perm.btnTurnOff'), callbackData: 'cmd:perm off', style: 'danger', row: 0 },
-          { label: this.t('perm.btnHome'), callbackData: 'cmd:home', style: 'default', row: 0 },
-        ]
-      : [
-          { label: this.t('perm.btnTurnOn'), callbackData: 'cmd:perm on', style: 'primary', row: 0 },
-          { label: this.t('perm.btnHome'), callbackData: 'cmd:home', style: 'default', row: 0 },
-        ];
+    const buttons: Button[] = permStatusButtons(data.mode, this.locale);
 
     return this.createMessage(chatId, lines.join('\n'), buttons);
   }
@@ -343,10 +345,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
       lines.push('', `**${this.t('taskStart.previousSession')}:** ${truncate(data.previousSessionPreview, 80)}`);
     }
 
-    const buttons: Button[] = [
-      { label: this.t('taskStart.btnSettings'), callbackData: 'cmd:home', style: 'default', row: 0 },
-      { label: this.t('taskStart.btnNew'), callbackData: 'cmd:new', style: 'default', row: 0 },
-    ];
+    const buttons: Button[] = taskStartButtons(this.locale);
 
     return this.createMessage(chatId, lines.join('\n'), buttons);
   }
@@ -444,10 +443,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
       lines.push('', data.footerLine);
     }
 
-    const buttons = [
-      { label: this.t('taskSummary.btnHome'), callbackData: 'cmd:home', style: 'primary' as const, row: 0 },
-      { label: this.t('taskSummary.btnRecent'), callbackData: 'cmd:sessions --all', style: 'default' as const, row: 0 },
-    ];
+    const buttons = taskSummaryButtons(this.locale);
 
     return this.createMessage(chatId, lines.join('\n'), buttons);
   }
@@ -455,16 +451,9 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
   /** Generate default action buttons for a progress phase. */
   protected defaultProgressButtons(phase: ProgressData['phase']): Button[] {
     if (phase === 'completed' || phase === 'failed') {
-      return [
-        { label: this.t('progress.btnSessions'), callbackData: 'cmd:sessions --all', style: 'primary', row: 0 },
-        { label: this.t('progress.btnNew'), callbackData: 'cmd:new', style: 'default', row: 0 },
-        { label: this.t('progress.btnHelp'), callbackData: 'cmd:help', style: 'default', row: 1 },
-      ];
+      return progressDoneButtons(this.locale);
     }
-    return [
-      { label: this.t('progress.btnStop'), callbackData: 'cmd:stop', style: 'danger', row: 0 },
-      { label: this.t('progress.btnHelp'), callbackData: 'cmd:help', style: 'default', row: 1 },
-    ];
+    return progressRunningButtons(this.locale);
   }
 
   /** Format raw markdown content into a platform-appropriate message. */
@@ -628,7 +617,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
     return this.createMessage(chatId, lines.join('\n'));
   }
 
-  // --- Helper methods ---
+  // --- Helper methods --
 
   protected buildSingleSelectButtons(permId: string, options: Array<{ label: string }>): Button[] {
     return [

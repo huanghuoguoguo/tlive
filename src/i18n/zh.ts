@@ -15,6 +15,7 @@ export const zh: Translations = {
   'home.taskActive': '有任务正在执行',
   'home.taskIdle': '无执行中任务',
   'home.workspaceBinding': '工作区绑定',
+  'home.activeSessions': '活跃会话',
   'home.recentSessions': '**最近会话**',
   'home.btnSessions': '🕘 最近会话',
   'home.btnPermissions': '🔐 权限设置',

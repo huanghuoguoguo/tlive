@@ -45,8 +45,8 @@ describe('MessageRenderer', () => {
   }
 
   const defaultButtons = [
-    { label: 'Allow', callbackData: 'perm:allow:abc', style: 'primary' },
-    { label: 'Deny', callbackData: 'perm:deny:abc', style: 'danger' },
+    { label: 'Allow', callbackData: 'perm:allow:abc', style: 'primary' as const },
+    { label: 'Deny', callbackData: 'perm:deny:abc', style: 'danger' as const },
   ];
 
   // ─── Executing phase ─────────────────────────────
@@ -272,8 +272,8 @@ describe('MessageRenderer', () => {
       await advance(300);
 
       const buttons = [
-        { label: '✅ Yes', callbackData: 'perm:allow:123', style: 'primary' },
-        { label: '❌ No', callbackData: 'perm:deny:123', style: 'danger' },
+        { label: '✅ Yes', callbackData: 'perm:allow:123', style: 'primary' as const },
+        { label: '❌ No', callbackData: 'perm:deny:123', style: 'danger' as const },
       ];
       r.onPermissionNeeded('Bash', 'npm test', '123', buttons);
 
@@ -302,8 +302,8 @@ describe('MessageRenderer', () => {
       await advance(300);
 
       const buttons = [
-        { label: '✅ Yes', callbackData: 'perm:allow:123', style: 'primary' },
-        { label: '❌ No', callbackData: 'perm:deny:123', style: 'danger' },
+        { label: '✅ Yes', callbackData: 'perm:allow:123', style: 'primary' as const },
+        { label: '❌ No', callbackData: 'perm:deny:123', style: 'danger' as const },
       ];
       r.onPermissionNeeded('Bash', 'npm test', '123', buttons);
       await advance(30000); // 30s

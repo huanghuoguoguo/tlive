@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { homedir } from 'node:os';
+import { getTliveHome } from '../../utils/path.js';
 
 function hooksPauseFile(): string {
-  return join(homedir(), '.tlive', 'hooks-paused');
+  return join(getTliveHome(), 'hooks-paused');
 }
 
 export function pauseHooks(): void {

@@ -9,15 +9,16 @@ export class PermCommand extends BaseCommand {
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const sub = ctx.parts[1]?.toLowerCase();
-    const mode = (sub === 'on' || sub === 'off') ? sub : ctx.state.getPermMode(ctx.msg.channelType, ctx.msg.chatId);
+    const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+    const sessionId = binding?.sessionId;
+    const mode = (sub === 'on' || sub === 'off') ? sub : ctx.services.state.getPermMode(ctx.msg.channelType, ctx.msg.chatId, sessionId);
     if (sub === 'on' || sub === 'off') {
-      ctx.state.setPermMode(ctx.msg.channelType, ctx.msg.chatId, sub);
+      ctx.services.state.setPermMode(ctx.msg.channelType, ctx.msg.chatId, sessionId, sub);
     }
-    const binding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
-    const chatKey = ctx.state.stateKey(ctx.msg.channelType, ctx.msg.chatId);
+    const chatKey = ctx.services.state.stateKey(ctx.msg.channelType, ctx.msg.chatId);
     await this.send(ctx, presentPermissionStatus(ctx.msg.chatId, {
       mode,
-      ...ctx.permissions.getPermissionStatus(chatKey, binding?.sessionId),
+      ...ctx.services.permissions.getPermissionStatus(chatKey, binding?.sessionId),
     }));
     return true;
   }

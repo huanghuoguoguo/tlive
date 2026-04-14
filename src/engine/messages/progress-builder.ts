@@ -8,6 +8,7 @@ import { getToolIcon } from '../utils/tool-registry.js';
 import { shortPath } from '../../utils/path.js';
 import type { TodoStatus } from '../../utils/types.js';
 import type { MessageRendererState, TimelineEntry, ToolLogEntry } from './renderer.js';
+import type { Button } from '../../ui/types.js';
 
 const SEPARATOR = '───────────────';
 
@@ -28,7 +29,7 @@ export interface RenderInput {
     toolName: string;
     input: string;
     permId: string;
-    buttons: Array<{ label: string; callbackData: string; style: string }>;
+    buttons: Button[];
   }>;
   permissionRequests: number;
   errorMessage?: string;
@@ -273,7 +274,6 @@ export class ProgressContentBuilder {
 }
 
 import type { ProgressData } from '../../formatting/message-types.js';
-import type { Button } from '../../ui/types.js';
 
 /**
  * Build ProgressData from MessageRendererState.

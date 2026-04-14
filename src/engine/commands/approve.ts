@@ -13,7 +13,7 @@ export class ApproveCommand extends BaseCommand {
       await this.send(ctx, presentApproveUsage(ctx.msg.chatId));
       return true;
     }
-    const tgAdapter = ctx.getAdapters().get('telegram');
+    const tgAdapter = ctx.services.getAdapters().get('telegram');
     if (tgAdapter && 'approvePairing' in tgAdapter) {
       const result = (tgAdapter as any).approvePairing(code);
       if (result) {

@@ -11,8 +11,10 @@
 import type { QueryControls, LiveSession, LLMProvider, MessagePriority } from '../../providers/base.js';
 import type { ClaudeSettingSource } from '../../config.js';
 import type { EffortLevel } from '../../utils/types.js';
+import type { ManagedSessionSnapshot } from '../../formatting/message-types.js';
 import { InteractionState, type SdkQuestionState } from '../state/interaction-state.js';
 import { SESSION_STALE_THRESHOLD_MS } from '../../utils/constants.js';
+import { chatKey as buildChatKey } from '../../utils/key.js';
 
 /** Reason for closing a session — used for logging and diagnostics */
 export type SessionCleanupReason = 'new' | 'switch' | 'cd' | 'settings' | 'expire' | 'close';
@@ -169,7 +171,7 @@ export class SDKEngine {
 
   /** Build chat key: channelType:chatId */
   private chatKey(channelType: string, chatId: string): string {
-    return `${channelType}:${chatId}`;
+    return buildChatKey(channelType, chatId);
   }
 
   /** Build session key: channelType:chatId:bindingSessionId */
@@ -831,17 +833,45 @@ export class SDKEngine {
     return this.bubbleToSession.size;
   }
 
+  /** Extract base snapshot fields from a managed session entry */
+  private _snapshotSession(key: string, managed: ManagedSession): { sessionKey: string; workdir: string; isAlive: boolean; isTurnActive: boolean; lastActiveAt: number } {
+    return {
+      sessionKey: key,
+      workdir: managed.workdir,
+      isAlive: managed.session?.isAlive ?? false,
+      isTurnActive: managed.session?.isTurnActive ?? false,
+      lastActiveAt: managed.lastActiveAt,
+    };
+  }
+
+  /** Get all managed sessions for a specific chat (for /home display) */
+  getSessionsForChat(channelType: string, chatId: string): ManagedSessionSnapshot[] {
+    const currentKey = this.activeSessionByChat.get(this.chatKey(channelType, chatId));
+    const results: ManagedSessionSnapshot[] = [];
+    for (const [key, managed] of this.registry) {
+      if (managed.channelType === channelType && managed.chatId === chatId) {
+        results.push({
+          ...this._snapshotSession(key, managed),
+          bindingSessionId: managed.bindingSessionId,
+          sdkSessionId: managed.sdkSessionId,
+          isCurrent: key === currentKey,
+          queueDepth: this.queueDepthBySession.get(key) ?? 0,
+        });
+      }
+    }
+    // Sort: current first, then by lastActiveAt descending
+    results.sort((a, b) => {
+      if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
+      return b.lastActiveAt - a.lastActiveAt;
+    });
+    return results;
+  }
+
   /** Get session registry snapshot for diagnostics */
   getSessionRegistrySnapshot(): Array<{ sessionKey: string; workdir: string; isAlive: boolean; isTurnActive: boolean; lastActiveAt: number }> {
     const snapshot = [];
     for (const [key, managed] of this.registry) {
-      snapshot.push({
-        sessionKey: key,
-        workdir: managed.workdir,
-        isAlive: managed.session?.isAlive ?? false,
-        isTurnActive: managed.session?.isTurnActive ?? false,
-        lastActiveAt: managed.lastActiveAt,
-      });
+      snapshot.push(this._snapshotSession(key, managed));
     }
     return snapshot;
   }

@@ -3,8 +3,8 @@ import type { CommandContext } from './types.js';
 import { presentVersionCheck, presentUpgradeResult, presentUpgradeCommand } from '../messages/presenter.js';
 import { checkForUpdates } from '../utils/version-checker.js';
 import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { getTliveHome } from '../../utils/path.js';
 
 function normalizeRequestedVersion(raw?: string): string | null {
   const trimmed = raw?.trim();
@@ -27,12 +27,12 @@ export function parseRequestedUpgradeVersion(parts: string[]): string | null {
 function resolvePackageRoot(entryPath = process.argv[1], override = process.env.TLIVE_PACKAGE_ROOT): string {
   if (override?.trim()) return override.trim();
   if (!entryPath) {
-    return join(homedir(), '.tlive', 'app');
+    return join(getTliveHome(), 'app');
   }
   return join(dirname(entryPath), '..');
 }
 
-export function resolveCliPath(): string {
+function resolveCliPath(): string {
   const override = process.env.TLIVE_CLI_PATH?.trim();
   if (override) return override;
 
@@ -40,7 +40,7 @@ export function resolveCliPath(): string {
   const packagedCli = join(packageRoot, 'scripts', 'cli.js');
   if (existsSync(packagedCli)) return packagedCli;
 
-  return join(homedir(), '.tlive', 'app', 'scripts', 'cli.js');
+  return join(getTliveHome(), 'app', 'scripts', 'cli.js');
 }
 
 export class UpgradeCommand extends BaseCommand {

@@ -11,6 +11,7 @@ export interface ScannedSession {
   mtime: number;          // file mtime (ms)
   size: number;           // file size in bytes
   preview: string;        // last user message content, truncated to 40 chars
+  transcript?: SessionTranscriptMessage[]; // last few messages for expanded preview
 }
 
 export interface SessionTranscriptMessage {

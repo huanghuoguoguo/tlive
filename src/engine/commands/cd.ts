@@ -1,11 +1,10 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentDirectory, presentDirectoryHistory, presentDirectoryNotFound } from '../messages/presenter.js';
-import { shortPath } from '../../utils/path.js';
+import { shortPath, expandTilde } from '../../utils/path.js';
 import { generateSessionId } from '../../utils/id.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
 import { isSameRepoRoot } from '../../utils/repo.js';
 
 export class CdCommand extends BaseCommand {
@@ -18,24 +17,24 @@ export class CdCommand extends BaseCommand {
 
     if (!path) {
       // Show current directory and history
-      const binding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
-      const current = binding?.cwd || ctx.defaultWorkdir;
-      const history = ctx.workspace.getHistory(ctx.msg.channelType, ctx.msg.chatId);
-      const workspaceBinding = ctx.workspace.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+      const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+      const current = binding?.cwd || ctx.services.defaultWorkdir;
+      const history = ctx.services.workspace.getHistory(ctx.msg.channelType, ctx.msg.chatId);
+      const workspaceBinding = ctx.services.workspace.getBinding(ctx.msg.channelType, ctx.msg.chatId);
       await this.send(ctx, presentDirectoryHistory(ctx.msg.chatId, shortPath(current), history.map(shortPath), workspaceBinding ? shortPath(workspaceBinding) : undefined));
       return true;
     }
 
     // Handle /cd - (back to previous directory)
     if (path === '-') {
-      const previousDir = ctx.workspace.getPreviousDirectory(ctx.msg.channelType, ctx.msg.chatId);
+      const previousDir = ctx.services.workspace.getPreviousDirectory(ctx.msg.channelType, ctx.msg.chatId);
       if (!previousDir) {
         await this.send(ctx, { chatId: ctx.msg.chatId, text: '⚠️ 没有历史目录可返回' });
         return true;
       }
 
-      const binding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
-      const currentCwd = binding?.cwd || ctx.defaultWorkdir;
+      const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+      const currentCwd = binding?.cwd || ctx.services.defaultWorkdir;
       const switchedRepo = !isSameRepoRoot(currentCwd, previousDir);
 
       if (switchedRepo) {
@@ -49,11 +48,11 @@ export class CdCommand extends BaseCommand {
 
       if (binding) {
         binding.cwd = previousDir;
-        await ctx.store.saveBinding(binding);
+        await ctx.services.store.saveBinding(binding);
       } else {
-        await ctx.router.rebind(ctx.msg.channelType, ctx.msg.chatId, generateSessionId(), { cwd: previousDir });
+        await ctx.services.router.rebind(ctx.msg.channelType, ctx.msg.chatId, generateSessionId(), { cwd: previousDir });
       }
-      ctx.workspace.pushHistory(ctx.msg.channelType, ctx.msg.chatId, previousDir);
+      ctx.services.workspace.pushHistory(ctx.msg.channelType, ctx.msg.chatId, previousDir);
       ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, ctx.msg.chatId, previousDir);
 
       const feedbackText = `🔙 已切换到上一目录`;
@@ -62,11 +61,11 @@ export class CdCommand extends BaseCommand {
     }
 
     // Handle ~ expansion
-    const expandedPath = path.startsWith('~') ? join(homedir(), path.slice(1)) : path;
+    const expandedPath = expandTilde(path);
 
     // Resolve relative paths
-    const binding = await ctx.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
-    const baseCwd = binding?.cwd || ctx.defaultWorkdir;
+    const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+    const baseCwd = binding?.cwd || ctx.services.defaultWorkdir;
     const resolvedPath = expandedPath.startsWith('/') ? expandedPath : join(baseCwd, expandedPath);
 
     if (!existsSync(resolvedPath)) {
@@ -74,7 +73,7 @@ export class CdCommand extends BaseCommand {
       return true;
     }
 
-    ctx.workspace.pushHistory(ctx.msg.channelType, ctx.msg.chatId, baseCwd);
+    ctx.services.workspace.pushHistory(ctx.msg.channelType, ctx.msg.chatId, baseCwd);
 
     const switchedRepo = !isSameRepoRoot(baseCwd, resolvedPath);
 
@@ -89,11 +88,11 @@ export class CdCommand extends BaseCommand {
 
     if (binding) {
       binding.cwd = resolvedPath;
-      await ctx.store.saveBinding(binding);
+      await ctx.services.store.saveBinding(binding);
     } else {
-      await ctx.router.rebind(ctx.msg.channelType, ctx.msg.chatId, generateSessionId(), { cwd: resolvedPath });
+      await ctx.services.router.rebind(ctx.msg.channelType, ctx.msg.chatId, generateSessionId(), { cwd: resolvedPath });
     }
-    ctx.workspace.pushHistory(ctx.msg.channelType, ctx.msg.chatId, resolvedPath);
+    ctx.services.workspace.pushHistory(ctx.msg.channelType, ctx.msg.chatId, resolvedPath);
     ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, ctx.msg.chatId, resolvedPath);
 
     const feedbackText = hadActiveSession && switchedRepo

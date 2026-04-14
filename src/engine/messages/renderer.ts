@@ -7,6 +7,7 @@ import { truncate } from '../../utils/string.js';
 import { shortPath } from '../../utils/path.js';
 import type { TodoStatus } from '../../utils/types.js';
 import type { VerboseLevel } from '../state/session-state.js';
+import type { Button } from '../../ui/types.js';
 import { ProgressContentBuilder, type RenderInput } from './progress-builder.js';
 
 export interface MessageRendererOptions {
@@ -24,11 +25,11 @@ export interface MessageRendererOptions {
   flushCallback: (
     content: string,
     isEdit: boolean,
-    buttons?: Array<{ label: string; callbackData: string; style: string }>,
+    buttons?: Button[],
     state?: MessageRendererState,
   ) => Promise<string | undefined>;
   /** Called when permission waits >60s without response */
-  onPermissionTimeout?: (toolName: string, input: string, buttons: Array<{ label: string; callbackData: string; style: string }>) => void;
+  onPermissionTimeout?: (toolName: string, input: string, buttons: Button[]) => void;
   /** Called when permission is first requested — add reaction to progress message */
   onPermissionReaction?: () => void;
   /** Called when all permissions resolved — remove permission reaction */
@@ -60,7 +61,7 @@ interface PermissionState {
   toolName: string;
   input: string;
   permId: string;
-  buttons: Array<{ label: string; callbackData: string; style: string }>;
+  buttons: Button[];
 }
 
 /** Current tool execution state for progress display */
@@ -419,7 +420,7 @@ export class MessageRenderer {
     toolName: string,
     input: string,
     permId: string,
-    buttons: Array<{ label: string; callbackData: string; style: string }>,
+    buttons: Button[],
   ): void {
     this.permissionRequests++;
     this.permissionQueue.push({ toolName, input, permId, buttons });

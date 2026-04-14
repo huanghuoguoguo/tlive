@@ -4,14 +4,11 @@ import { chunkByParagraph } from '../../delivery/delivery.js';
 import type { MessageRendererState } from './renderer.js';
 import { truncate } from '../../utils/string.js';
 import { buildProgressData } from './progress-builder.js';
+import type { Button } from '../../ui/types.js';
 
-type ButtonStyle = 'primary' | 'danger' | 'default';
-type RawButton = { label: string; callbackData: string; style: string };
-type CastedButton = { label: string; callbackData: string; style: ButtonStyle };
-
-/** Cast button style from string to typed union */
-function castButtons(buttons?: RawButton[]): CastedButton[] | undefined {
-  return buttons?.map(b => ({ ...b, style: b.style as ButtonStyle }));
+/** Pass buttons through unchanged */
+function castButtons(buttons?: Button[]): Button[] | undefined {
+  return buttons;
 }
 
 interface QueryExecutionPresenterOptions {
@@ -40,7 +37,7 @@ export class QueryExecutionPresenter {
   async flush(
     content: string,
     isEdit: boolean,
-    buttons?: Array<{ label: string; callbackData: string; style: string }>,
+    buttons?: Button[],
     state?: MessageRendererState,
   ): Promise<string | undefined> {
     if (state && !this.adapter.shouldRenderProgressPhase(state.phase)) {
