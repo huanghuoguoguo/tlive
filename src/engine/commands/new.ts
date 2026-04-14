@@ -32,7 +32,7 @@ export class NewCommand extends BaseCommand {
 
     // Send home screen after session reset
     const homeData = await ctx.helpers.buildHomePayload(ctx.msg.channelType, ctx.msg.chatId);
-    homeData.hasActiveTask = false;
+    homeData.task.active = false;
     await this.send(ctx, presentHome(ctx.msg.chatId, homeData));
     return true;
   }

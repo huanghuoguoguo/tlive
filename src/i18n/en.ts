@@ -15,6 +15,7 @@ export const en: Translations = {
   'home.taskActive': 'Task in progress',
   'home.taskIdle': 'No active task',
   'home.workspaceBinding': 'Workspace binding',
+  'home.activeSessions': 'Active sessions',
   'home.recentSessions': '**Recent sessions**',
   'home.btnSessions': '🕘 Recent',
   'home.btnPermissions': '🔐 Permissions',

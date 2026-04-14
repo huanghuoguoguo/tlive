@@ -25,11 +25,11 @@ export interface MessageRendererOptions {
   flushCallback: (
     content: string,
     isEdit: boolean,
-    buttons?: Array<{ label: string; callbackData: string; style: string }>,
+    buttons?: Button[],
     state?: MessageRendererState,
   ) => Promise<string | undefined>;
   /** Called when permission waits >60s without response */
-  onPermissionTimeout?: (toolName: string, input: string, buttons: Array<{ label: string; callbackData: string; style: string }>) => void;
+  onPermissionTimeout?: (toolName: string, input: string, buttons: Button[]) => void;
   /** Called when permission is first requested — add reaction to progress message */
   onPermissionReaction?: () => void;
   /** Called when all permissions resolved — remove permission reaction */

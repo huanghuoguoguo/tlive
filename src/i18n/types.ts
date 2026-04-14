@@ -17,6 +17,7 @@ export interface Translations {
   'home.taskActive': string;
   'home.taskIdle': string;
   'home.workspaceBinding': string;
+  'home.activeSessions': string;
   'home.recentSessions': string;
   'home.btnSessions': string;
   'home.btnPermissions': string;

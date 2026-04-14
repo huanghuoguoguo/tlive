@@ -137,7 +137,9 @@ describe('command presenter', () => {
       const msg = presentHome('chat-1', {
         workspace: { cwd: '/home/user/project' },
         task: { active: true },
+        session: {},
         permission: { mode: 'on' },
+        bridge: {},
         help: { recentSummary: 'Working on feature X' },
       });
       expect(msg.type).toBe('home');

@@ -221,7 +221,7 @@ describe('FeishuFormatter.formatSessions', () => {
     for (let i = 0; i < panels.length; i++) {
       const panel = panels[i];
       const panelElements = panel.elements || [];
-      const columnSets = panelElements.filter(e => e.tag === 'column_set');
+      const columnSets = panelElements.filter((e: any) => e.tag === 'column_set');
       expect(columnSets.length).toBeGreaterThan(0);
 
       const btn = columnSets[0]?.columns?.[0]?.elements?.[0];
@@ -235,7 +235,7 @@ describe('FeishuFormatter.formatSessions', () => {
     const elements = getElements(msg as any);
 
     const panels = findByTag(elements, 'collapsible_panel');
-    const panelContent = (panels[0]?.elements || []).find(e => e.tag === 'markdown')?.content || '';
+    const panelContent = (panels[0]?.elements || []).find((e: any) => e.tag === 'markdown')?.content || '';
 
     // Should NOT show cwd in recent mode panel content
     expect(panelContent).not.toContain('**目录**');
@@ -246,7 +246,7 @@ describe('FeishuFormatter.formatSessions', () => {
     const elements = getElements(msg as any);
 
     const panels = findByTag(elements, 'collapsible_panel');
-    const panelContent = (panels[0]?.elements || []).find(e => e.tag === 'markdown')?.content || '';
+    const panelContent = (panels[0]?.elements || []).find((e: any) => e.tag === 'markdown')?.content || '';
 
     // Should show cwd in all mode panel content
     expect(panelContent).toContain('**目录**');
@@ -277,7 +277,7 @@ describe('FeishuFormatter.formatSessions', () => {
     expect(formContainer!.name).toBe('form_session_select');
 
     const formElements = formContainer!.elements || [];
-    const input = formElements.find(e => e.tag === 'input' && e.name === '_session_idx');
+    const input = formElements.find((e: any) => e.tag === 'input' && e.name === '_session_idx');
     expect(input).toBeDefined();
   });
 });
