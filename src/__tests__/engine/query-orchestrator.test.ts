@@ -3,9 +3,9 @@ import type { BaseChannelAdapter } from '../../channels/base.js';
 import { initBridgeContext } from '../../context.js';
 import { QueryOrchestrator } from '../../engine/coordinators/query.js';
 import { SessionStateManager } from '../../engine/state/session-state.js';
-import { FeishuFormatter } from '../../platforms/feishu/formatter.js';
-import { QQBotFormatter } from '../../platforms/qqbot/formatter.js';
-import { TelegramFormatter } from '../../platforms/telegram/formatter.js';
+import { FeishuFormatter } from '../../channels/feishu/formatter.js';
+import { QQBotFormatter } from '../../channels/qqbot/formatter.js';
+import { TelegramFormatter } from '../../channels/telegram/formatter.js';
 
 const telegramFormatter = new TelegramFormatter('en');
 const feishuFormatter = new FeishuFormatter('zh');

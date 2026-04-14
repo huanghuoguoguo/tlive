@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { FeishuFormatter } from '../../platforms/feishu/formatter.js';
+import { FeishuFormatter } from '../../channels/feishu/formatter.js';
 import type { ProgressData, SessionsData } from '../../formatting/message-types.js';
 
 function createProgressData(overrides: Partial<ProgressData> = {}): ProgressData {

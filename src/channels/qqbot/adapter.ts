@@ -1,10 +1,10 @@
 import WebSocket from 'ws';
-import { BaseChannelAdapter, registerAdapterFactory } from '../../channels/base.js';
-import type { InboundMessage, SendResult, FileAttachment } from '../../channels/types.js';
+import { BaseChannelAdapter, registerAdapterFactory } from '../base.js';
+import type { InboundMessage, SendResult, FileAttachment } from '../types.js';
 import { loadConfig } from '../../config.js';
 import { markdownToQQBot } from './markdown.js';
 import { chunkMarkdown } from '../../delivery/delivery.js';
-import { classifyError } from '../../channels/errors.js';
+import { classifyError } from '../errors.js';
 import { maskProxyUrl } from '../../proxy.js';
 import { QQBotFormatter } from './formatter.js';
 import { QQBOT_POLICY } from './policy.js';

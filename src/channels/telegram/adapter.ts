@@ -2,12 +2,12 @@ import { Bot, InputFile, type Api, type RawApi } from 'grammy';
 import { run, type RunnerHandle } from '@grammyjs/runner';
 import { apiThrottler } from '@grammyjs/transformer-throttler';
 import { createServer, type Server } from 'node:http';
-import { BaseChannelAdapter, registerAdapterFactory } from '../../channels/base.js';
-import type { InboundMessage, SendResult, FileAttachment } from '../../channels/types.js';
+import { BaseChannelAdapter, registerAdapterFactory } from '../base.js';
+import type { InboundMessage, SendResult, FileAttachment } from '../types.js';
 import { loadConfig } from '../../config.js';
 import { createNodeAgent, maskProxyUrl } from '../../proxy.js';
 import { chunkMarkdown } from '../../delivery/delivery.js';
-import { classifyError } from '../../channels/errors.js';
+import { classifyError } from '../errors.js';
 import { TelegramFormatter } from './formatter.js';
 import type { TelegramRenderedMessage } from './types.js';
 

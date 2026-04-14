@@ -38,9 +38,9 @@ export interface MediaAttachment {
 
 /** Union type for all platform-specific rendered messages */
 export type RenderedMessage =
-  | import('../platforms/telegram/types.js').TelegramRenderedMessage
-  | import('../platforms/feishu/types.js').FeishuRenderedMessage
-  | import('../platforms/qqbot/types.js').QQBotRenderedMessage;
+  | import('./telegram/types.js').TelegramRenderedMessage
+  | import('./feishu/types.js').FeishuRenderedMessage
+  | import('./qqbot/types.js').QQBotRenderedMessage;
 
 /** Legacy type alias for backwards compatibility - will be removed */
 export type OutboundMessage = RenderedMessage;

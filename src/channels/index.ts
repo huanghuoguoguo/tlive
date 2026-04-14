@@ -18,29 +18,29 @@ export type {
 export type { Button } from '../ui/types.js';
 
 // Re-export platform-specific types for convenience
-export type { TelegramRenderedMessage } from '../platforms/telegram/types.js';
-export type { FeishuRenderedMessage } from '../platforms/feishu/types.js';
-export type { QQBotRenderedMessage } from '../platforms/qqbot/types.js';
+export type { TelegramRenderedMessage } from './telegram/types.js';
+export type { FeishuRenderedMessage } from './feishu/types.js';
+export type { QQBotRenderedMessage } from './qqbot/types.js';
 
-// Re-export formatters and adapters from platforms (for tests and legacy imports)
-export { TelegramFormatter, TelegramAdapter } from '../platforms/telegram/index.js';
-export { FeishuFormatter, FeishuAdapter, buildFeishuCard, buildFeishuButtonElements, FeishuStreamingSession, FEISHU_POLICY } from '../platforms/feishu/index.js';
-export { QQBotFormatter, QQBotAdapter, QQBOT_POLICY } from '../platforms/qqbot/index.js';
+// Re-export formatters and adapters (for tests and legacy imports)
+export { TelegramFormatter, TelegramAdapter } from './telegram/index.js';
+export { FeishuFormatter, FeishuAdapter, buildFeishuCard, buildFeishuButtonElements, FeishuStreamingSession, FEISHU_POLICY } from './feishu/index.js';
+export { QQBotFormatter, QQBotAdapter, QQBOT_POLICY } from './qqbot/index.js';
 
 // Dynamic adapter loader — called by main.ts after config is loaded
 export async function loadAdapters(enabledChannels: string[]): Promise<void> {
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const importPromises: Promise<void>[] = [];
 
-  // Import from dist/platforms/*.mjs (built separately for lazy loading)
+  // Import from dist/channels/*.mjs (built separately for lazy loading)
   if (enabledChannels.includes('telegram')) {
-    importPromises.push(import(join(__dirname, 'platforms', 'telegram.mjs')).then(() => {}));
+    importPromises.push(import(join(__dirname, 'channels', 'telegram.mjs')).then(() => {}));
   }
   if (enabledChannels.includes('feishu')) {
-    importPromises.push(import(join(__dirname, 'platforms', 'feishu.mjs')).then(() => {}));
+    importPromises.push(import(join(__dirname, 'channels', 'feishu.mjs')).then(() => {}));
   }
   if (enabledChannels.includes('qqbot')) {
-    importPromises.push(import(join(__dirname, 'platforms', 'qqbot.mjs')).then(() => {}));
+    importPromises.push(import(join(__dirname, 'channels', 'qqbot.mjs')).then(() => {}));
   }
 
   await Promise.all(importPromises);

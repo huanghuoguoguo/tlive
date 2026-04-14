@@ -10,8 +10,8 @@ import {
   presentDiagnose,
   presentUpgradeCommand,
 } from '../../engine/messages/presenter.js';
-import { TelegramFormatter } from '../../platforms/telegram/formatter.js';
-import { FeishuFormatter } from '../../platforms/feishu/formatter.js';
+import { TelegramFormatter } from '../../channels/telegram/formatter.js';
+import { FeishuFormatter } from '../../channels/feishu/formatter.js';
 import type { FormattableMessage } from '../../formatting/message-types.js';
 
 describe('command presenter', () => {

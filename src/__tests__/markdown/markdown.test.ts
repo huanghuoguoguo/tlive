@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { markdownToHtml, truncateLongCodeBlocks } from '../../markdown/index.js';
-import { markdownToTelegram } from '../../platforms/telegram/markdown.js';
-import { markdownToFeishu } from '../../platforms/feishu/markdown.js';
+import { markdownToTelegram } from '../../channels/telegram/markdown.js';
+import { markdownToFeishu } from '../../channels/feishu/markdown.js';
 
 describe('Telegram rendering', () => {
   it('converts bold', () => {

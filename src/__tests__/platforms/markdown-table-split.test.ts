@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitLargeTables } from '../../platforms/feishu/markdown.js';
+import { splitLargeTables } from '../../channels/feishu/markdown.js';
 
 describe('splitLargeTables', () => {
   it('should keep small tables unchanged', () => {

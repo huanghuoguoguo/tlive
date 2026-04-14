@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import { HookNotificationDispatcher } from '../../engine/messages/hook-notification.js';
-import { TelegramFormatter } from '../../platforms/telegram/formatter.js';
-import { FeishuFormatter } from '../../platforms/feishu/formatter.js';
+import { TelegramFormatter } from '../../channels/telegram/formatter.js';
+import { FeishuFormatter } from '../../channels/feishu/formatter.js';
 
 function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
   const formatter = channelType === 'feishu'

@@ -1,8 +1,8 @@
 import { Client, WSClient, EventDispatcher } from '@larksuiteoapi/node-sdk';
-import { BaseChannelAdapter, registerAdapterFactory } from '../../channels/base.js';
-import type { InboundMessage, SendResult, FileAttachment } from '../../channels/types.js';
+import { BaseChannelAdapter, registerAdapterFactory } from '../base.js';
+import type { InboundMessage, SendResult, FileAttachment } from '../types.js';
 import { loadConfig } from '../../config.js';
-import { classifyError } from '../../channels/errors.js';
+import { classifyError } from '../errors.js';
 import { markdownToFeishu, downgradeHeadings } from './markdown.js';
 import { buildFeishuCard, buildFeishuButtonElements } from './card-builder.js';
 import { FeishuStreamingSession } from './streaming.js';
