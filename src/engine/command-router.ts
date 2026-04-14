@@ -11,63 +11,30 @@ import type { BridgeStore, ChannelBinding } from '../store/interface.js';
 import type { HomeData } from '../formatting/message-types.js';
 import type { RouterHelpers, CommandServices } from './commands/types.js';
 import type { PermissionCoordinator } from './coordinators/permission.js';
-import type { ScannedSession } from '../providers/session-scanner.js';
 import { commandRegistry, registerAllCommands } from './commands/index.js';
 import { DEFAULT_CLAUDE_SETTING_SOURCES } from '../config.js';
-import { scanClaudeSessions, readSessionTranscriptPreview } from '../providers/session-scanner.js';
-import { shortPath } from '../utils/path.js';
 import { findGitRoot } from '../utils/repo.js';
 import { generateSessionId } from '../utils/id.js';
-import { SESSION_STALE_THRESHOLD_MS } from '../utils/constants.js';
-import { formatSize, formatSessionDate, formatRelativeTime } from './utils/session-format.js';
+import { HomePayloadBuilder } from './presenters/home-payload-builder.js';
 
 // Register all commands on module load
 registerAllCommands();
 
-type BoundInfo = { channelType: string; chatId: string; isActive: boolean };
-
-/** Shared mapping for scanned sessions (used by both recentSessions and allSessions) */
-function mapScannedSession(
-  session: ScannedSession,
-  index: number,
-  opts: {
-    binding: ChannelBinding | null | undefined;
-    activeSdkSessionBindings: Map<string, BoundInfo>;
-    channelType: string;
-    chatId: string;
-    now: number;
-    boundFilter: (boundInfo: BoundInfo | undefined, sdkSessionId: string) => BoundInfo | undefined;
-  },
-) {
-  const boundInfo = opts.activeSdkSessionBindings.get(session.sdkSessionId);
-  const boundToActiveSession = opts.boundFilter(boundInfo, session.sdkSessionId);
-  return {
-    index: index + 1,
-    date: formatSessionDate(session.mtime),
-    cwd: shortPath(session.cwd),
-    size: formatSize(session.size),
-    preview: session.preview,
-    transcript: readSessionTranscriptPreview(session, 4),
-    isCurrent: opts.binding?.sdkSessionId === session.sdkSessionId,
-    boundToActiveSession,
-    isStale: (opts.now - session.mtime) > SESSION_STALE_THRESHOLD_MS,
-  };
-}
-
 export class CommandRouter {
   private projectsConfig: ProjectsValidationResult | undefined;
   private services: CommandServices;
+  private homePayloadBuilder: HomePayloadBuilder;
 
   constructor(
     private state: SessionStateManager,
     private workspace: WorkspaceStateManager,
-    private getAdapters: () => Map<string, BaseChannelAdapter>,
+    getAdapters: () => Map<string, BaseChannelAdapter>,
     router: ChannelRouter,
     private store: BridgeStore,
-    private defaultWorkdir: string,
+    defaultWorkdir: string,
     llm: ClaudeSDKProvider,
-    private activeControls: Map<string, QueryControls>,
-    private permissions: PermissionCoordinator,
+    activeControls: Map<string, QueryControls>,
+    permissions: PermissionCoordinator,
     private defaultClaudeSettingSources: ClaudeSettingSource[] = DEFAULT_CLAUDE_SETTING_SOURCES,
     private sdkEngine?: SDKEngine,
     projectsConfig?: ProjectsValidationResult,
@@ -77,6 +44,16 @@ export class CommandRouter {
       store, router, state, workspace, permissions, sdkEngine, llm,
       activeControls, defaultWorkdir, defaultClaudeSettingSources, getAdapters,
     };
+    this.homePayloadBuilder = new HomePayloadBuilder({
+      store,
+      state,
+      workspace,
+      sdkEngine,
+      permissions,
+      activeControls,
+      getAdapters,
+      defaultWorkdir,
+    });
   }
 
   /** Build RouterHelpers implementation for command context */
@@ -142,119 +119,13 @@ export class CommandRouter {
   }
 
   private async buildHomePayload(channelType: string, chatId: string): Promise<HomeData> {
-    const binding = await this.store.getBinding(channelType, chatId);
-    const currentCwd = binding?.cwd || this.defaultWorkdir;
-    const chatKey = this.state.stateKey(channelType, chatId);
-    const now = Date.now();
-
-    // Scan recent sessions (current workspace) and all sessions (global)
-    const recentSessions = scanClaudeSessions(10, currentCwd);
-    const allSessions = scanClaudeSessions(10, undefined);
-
-    // Get all bindings to check which sdkSessions are bound to active bridge sessions
-    const allBindings = await this.store.listBindings();
-
-    // Build map: sdkSessionId -> binding that owns it (if active)
-    const activeSdkSessionBindings = new Map<string, { channelType: string; chatId: string; isActive: boolean }>();
-    for (const b of allBindings) {
-      if (b.sdkSessionId) {
-        const bChatKey = this.state.stateKey(b.channelType, b.chatId);
-        const isActive = this.activeControls.has(bChatKey);
-        activeSdkSessionBindings.set(b.sdkSessionId, {
-          channelType: b.channelType,
-          chatId: b.chatId,
-          isActive,
-        });
-      }
-    }
-
-    const permStatus = this.permissions.getPermissionStatus(chatKey, binding?.sessionId);
-    const activeChannels = Array.from(this.getAdapters().keys());
-    const workspaceBinding = this.workspace.getBinding(channelType, chatId);
-    const projectName = binding?.projectName;
-    const lastActiveTime = this.state.getLastActiveTime(channelType, chatId);
-    const currentSessionKey = binding?.sessionId
-      ? this.sdkEngine?.getSessionKeyForBinding?.(channelType, chatId, binding.sessionId)
-      : this.sdkEngine?.getActiveSessionKey(channelType, chatId);
-    const queueInfo = currentSessionKey ? this.sdkEngine?.getQueueInfo(currentSessionKey) : undefined;
-    const sessionStale = currentSessionKey ? this.sdkEngine?.isSessionStale(currentSessionKey) ?? false : false;
-
-    // Current bridge session info
-    const currentBridgeSession = binding ? {
-      sessionId: binding.sessionId,
-      sdkSessionId: binding.sdkSessionId,
-      cwd: shortPath(binding.cwd || currentCwd),
-      isActive: this.activeControls.has(chatKey),
-      queueDepth: queueInfo?.depth,
-      lastActiveAt: lastActiveTime ? formatRelativeTime(lastActiveTime) : undefined,
-    } : undefined;
-
-    // Managed sessions in SDKEngine for this chat
-    const rawManagedSessions = this.sdkEngine?.getSessionsForChat(channelType, chatId) ?? [];
-    const managedSessions = rawManagedSessions.map(s => ({ ...s, workdir: shortPath(s.workdir) }));
-
-    // Ensure current binding always appears in managedSessions (it may not be in registry yet if no query was sent)
-    if (binding && !managedSessions.some(s => s.bindingSessionId === binding.sessionId)) {
-      managedSessions.unshift({
-        sessionKey: `${channelType}:${chatId}:${binding.sessionId}`,
-        bindingSessionId: binding.sessionId,
-        workdir: shortPath(binding.cwd || currentCwd),
-        sdkSessionId: binding.sdkSessionId,
-        isAlive: false,
-        isTurnActive: false,
-        lastActiveAt: Date.now(),
-        isCurrent: true,
-        queueDepth: 0,
-      });
-    }
-
+    const data = await this.homePayloadBuilder.build(channelType, chatId);
+    // Add help entries from registry
     return {
-      workspace: {
-        cwd: shortPath(currentCwd),
-        binding: workspaceBinding ? shortPath(workspaceBinding) : undefined,
-        project: projectName,
-      },
-      task: {
-        active: this.activeControls.has(chatKey),
-      },
-      session: {
-        current: currentBridgeSession,
-        managed: managedSessions.length > 0 ? managedSessions : undefined,
-        recent: recentSessions.map((session, index) =>
-          mapScannedSession(session, index, {
-            binding, activeSdkSessionBindings, channelType, chatId, now,
-            boundFilter: (bi) =>
-              (bi && !bi.isActive && bi.channelType === channelType && bi.chatId === chatId)
-                ? undefined
-                : bi?.isActive ? bi : undefined,
-          }),
-        ),
-        all: allSessions.map((session, index) =>
-          mapScannedSession(session, index, {
-            binding, activeSdkSessionBindings, channelType, chatId, now,
-            boundFilter: (bi, sdkSessionId) =>
-              bi?.isActive
-                && !(bi.channelType === channelType && bi.chatId === chatId && binding?.sdkSessionId === sdkSessionId)
-              ? bi : undefined,
-          }),
-        ),
-        stale: sessionStale,
-        lastActiveAt: lastActiveTime ? formatRelativeTime(lastActiveTime) : undefined,
-      },
-      permission: {
-        mode: this.state.getPermMode(channelType, chatId, binding?.sessionId),
-        pending: permStatus.pending,
-        lastDecision: permStatus.lastDecision,
-        whitelistCount: permStatus.rememberedTools + permStatus.rememberedBashPrefixes,
-      },
-      bridge: {
-        healthy: activeChannels.length > 0,
-        channels: activeChannels,
-        queueInfo,
-      },
+      ...data,
       help: {
         entries: commandRegistry.getHelpEntries(),
-        recentSummary: recentSessions[0]?.preview,
+        recentSummary: data.help?.recentSummary,
       },
     };
   }

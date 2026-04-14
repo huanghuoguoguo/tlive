@@ -14,8 +14,6 @@ const config: KnipConfig = {
     'src/ui/index.ts',
     'src/channels/index.ts',
     'src/channels/*/index.ts',
-    // BridgeFactory created for Phase 2, will be used in follow-up PR
-    'src/engine/bridge-factory.ts',
   ],
   // Only ignore type exports used in the same file (interface/type definitions).
   // Function/const exports used only in the same file ARE flagged.

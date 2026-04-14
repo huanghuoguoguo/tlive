@@ -115,7 +115,7 @@ describe('BridgeManager', () => {
   it('falls back menu events to the same user last chat only', async () => {
     const adapter = mockAdapter('feishu');
     manager.registerAdapter(adapter);
-    (manager as any).state.setUserLastChat('u1', 'feishu', 'user-chat');
+    manager.getState().setUserLastChat('u1', 'feishu', 'user-chat');
 
     const handled = await manager.handleInboundMessage(adapter, {
       channelType: 'feishu', userId: 'u1', text: '/home', messageId: 'm1',
@@ -130,7 +130,7 @@ describe('BridgeManager', () => {
   it('drops menu events without a user-scoped chat even if another chat was recently active', async () => {
     const adapter = mockAdapter('feishu');
     manager.registerAdapter(adapter);
-    (manager as any).ingress.recordChat('feishu', 'other-users-chat');
+    manager.getIngress().recordChat('feishu', 'other-users-chat');
 
     const handled = await manager.handleInboundMessage(adapter, {
       channelType: 'feishu', userId: 'u1', text: '/home', messageId: 'm1',
@@ -207,9 +207,9 @@ describe('BridgeManager', () => {
       Object.assign(binding, nextBinding);
     });
 
-    const cleanupSpy = vi.spyOn((manager as any).sdkEngine, 'cleanupSession');
-    const clearWhitelistSpy = vi.spyOn((manager as any).permissions, 'clearSessionWhitelist');
-    const queryRunSpy = vi.spyOn((manager as any).query, 'run').mockResolvedValue(true);
+    const cleanupSpy = vi.spyOn(manager.getSdkEngine(), 'cleanupSession');
+    const clearWhitelistSpy = vi.spyOn(manager.getPermissions(), 'clearSessionWhitelist');
+    const queryRunSpy = vi.spyOn(manager.getQuery(), 'run').mockResolvedValue(true);
 
     const result = await manager.injectAutomationPrompt({
       channelType: 'telegram',
@@ -251,7 +251,7 @@ describe('BridgeManager', () => {
     await manager.handleInboundMessage(adapter, {
       channelType: 'telegram', chatId: 'c1', userId: 'u1', text: 'first', messageId: 'm1',
     });
-    const firstSaveBinding = vi.mocked((manager as any).router).rebind;
+    const firstSaveBinding = vi.mocked(manager.getRouter()).rebind;
 
     // Advance 31 minutes
     vi.advanceTimersByTime(31 * 60 * 1000);
@@ -390,8 +390,8 @@ describe('BridgeManager', () => {
 
       // mockAdapter.send returns { messageId: '1' }
       // hookMessages now live inside PermissionCoordinator
-      expect((manager as any).permissions.isHookMessage('1')).toBe(true);
-      expect((manager as any).permissions.getHookMessage('1').sessionId).toBe('sess-1');
+      expect(manager.getPermissions().isHookMessage('1')).toBe(true);
+      expect(manager.getPermissions().getHookMessage('1')?.sessionId).toBe('sess-1');
     });
   });
 

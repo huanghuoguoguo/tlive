@@ -7,7 +7,8 @@ import type { InboundMessage, SendResult, FileAttachment } from '../types.js';
 import { loadConfig } from '../../config.js';
 import { createNodeAgent, maskProxyUrl } from '../../proxy.js';
 import { chunkMarkdown } from '../../delivery/delivery.js';
-import { BridgeError, RateLimitError, FormatError, AuthError, PlatformError } from '../errors.js';
+import type { BridgeError } from '../errors.js';
+import { RateLimitError, FormatError, AuthError, PlatformError } from '../errors.js';
 import { TelegramFormatter } from './formatter.js';
 import type { TelegramRenderedMessage } from './types.js';
 

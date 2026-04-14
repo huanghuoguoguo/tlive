@@ -11,7 +11,8 @@ import type { Button } from '../ui/types.js';
 import type { ProgressPhase, ProgressTraceStats, PermissionDecision } from '../ui/policy.js';
 import type { ChannelPolicy } from '../ui/channel-policy.js';
 import { DEFAULT_CHANNEL_POLICY } from '../ui/channel-policy.js';
-import { BridgeError, NetworkError, PlatformError } from './errors.js';
+import type { BridgeError } from './errors.js';
+import { classifyDefaultError } from './errors.js';
 
 export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = RenderedMessage> {
   abstract readonly channelType: ChannelType;
@@ -139,17 +140,7 @@ export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = Ren
    * Default implementation handles common network errors.
    */
   classifyError(err: unknown): BridgeError {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- classifyError inspects arbitrary error shapes
-    const e = err as Record<string, any>;
-    const message = e?.message ?? String(err);
-
-    // Common network errors (handled by all platforms)
-    if (e?.code === 'ETIMEOUT' || e?.code === 'ECONNREFUSED' || e?.code === 'ENOTFOUND') {
-      return new NetworkError(message);
-    }
-
-    // Fallback to generic PlatformError
-    return new PlatformError(message, e?.response?.statusCode ?? e?.status);
+    return classifyDefaultError(err);
   }
 
   // --- Broadcast preparation (OCP: platform-specific broadcast handling) ---
