@@ -1,5 +1,5 @@
-import type { CanonicalEvent } from '../messages/schema.js';
-import type { FileAttachment, PermissionRequestHandler, QueryControls } from '../messages/types.js';
+import type { CanonicalEvent } from '../canonical/schema.js';
+import type { FileAttachment, PermissionRequestHandler, QueryControls } from '../canonical/types.js';
 import type { ClaudeSettingSource } from '../config.js';
 import type { EffortLevel } from '../utils/types.js';
 

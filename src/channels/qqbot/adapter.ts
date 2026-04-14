@@ -4,7 +4,7 @@ import type { InboundMessage, SendResult, FileAttachment } from '../types.js';
 import { loadConfig } from '../../config.js';
 import { markdownToQQBot } from './markdown.js';
 import { chunkMarkdown } from '../../delivery/delivery.js';
-import { classifyError } from '../errors.js';
+import { BridgeError, RateLimitError, FormatError, AuthError, PlatformError } from '../errors.js';
 import { maskProxyUrl } from '../../proxy.js';
 import { QQBotFormatter } from './formatter.js';
 import { QQBOT_POLICY } from './policy.js';
@@ -813,6 +813,29 @@ export class QQBotAdapter extends BaseChannelAdapter<QQBotRenderedMessage> {
   isAuthorized(userId: string, _chatId: string): boolean {
     if (this.config.allowedUsers.length === 0) return true;
     return this.config.allowedUsers.includes(userId);
+  }
+
+  // --- Error classification (OCP: platform-specific error handling) ---
+
+  /** Classify QQ Bot API errors */
+  classifyError(err: unknown): BridgeError {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- classifyError inspects arbitrary error shapes
+    const e = err as Record<string, any>;
+    const message = e?.message ?? String(err);
+
+    // Handle common network errors first (via base class)
+    if (e?.code === 'ETIMEOUT' || e?.code === 'ECONNREFUSED' || e?.code === 'ENOTFOUND') {
+      return super.classifyError(err);
+    }
+
+    // QQ Bot uses HTTP status codes
+    const status = e?.response?.statusCode ?? e?.status;
+    if (status === 429) return new RateLimitError(message, 60000); // QQ Bot rate limit default 60s
+    if (status === 401 || status === 403) return new AuthError(message);
+    if (status === 400) return new FormatError(message);
+    if (status >= 500) return new PlatformError(message, status);
+
+    return super.classifyError(err);
   }
 }
 

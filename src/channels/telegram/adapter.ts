@@ -7,7 +7,7 @@ import type { InboundMessage, SendResult, FileAttachment } from '../types.js';
 import { loadConfig } from '../../config.js';
 import { createNodeAgent, maskProxyUrl } from '../../proxy.js';
 import { chunkMarkdown } from '../../delivery/delivery.js';
-import { classifyError } from '../errors.js';
+import { BridgeError, RateLimitError, FormatError, AuthError, PlatformError } from '../errors.js';
 import { TelegramFormatter } from './formatter.js';
 import type { TelegramRenderedMessage } from './types.js';
 
@@ -472,6 +472,34 @@ export class TelegramAdapter extends BaseChannelAdapter<TelegramRenderedMessage>
       result.push({ code, userId: req.userId, username: req.username });
     }
     return result;
+  }
+
+  // --- Error classification (OCP: platform-specific error handling) ---
+
+  /** Classify grammY/Telegram API errors */
+  classifyError(err: unknown): BridgeError {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- classifyError inspects arbitrary error shapes
+    const e = err as Record<string, any>;
+    const message = e?.message ?? String(err);
+
+    // Handle common network errors first (via base class)
+    if (e?.code === 'ETIMEOUT' || e?.code === 'ECONNREFUSED' || e?.code === 'ENOTFOUND') {
+      return super.classifyError(err);
+    }
+
+    // grammY uses error_code + parameters.retry_after at top level
+    const status = e?.error_code ?? e?.response?.statusCode;
+    if (status === 429) {
+      return new RateLimitError(
+        message,
+        (e?.parameters?.retry_after ?? e?.response?.body?.parameters?.retry_after ?? 0) * 1000,
+      );
+    }
+    if (status === 400) return new FormatError(message);
+    if (status === 401 || status === 403) return new AuthError(message);
+    if (status >= 500) return new PlatformError(message, status);
+
+    return super.classifyError(err);
   }
 }
 
