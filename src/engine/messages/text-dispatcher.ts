@@ -3,6 +3,7 @@ import type { InboundMessage } from '../../channels/types.js';
 import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { SDKEngine } from '../sdk/engine.js';
 import type { SessionStateManager } from '../state/session-state.js';
+import { t } from '../../i18n/index.js';
 
 interface TextDispatcherOptions {
   permissions: PermissionCoordinator;
@@ -111,9 +112,7 @@ export class TextDispatcher {
     }
 
     if (this.options.permissions.pendingPermissionCount() > 1 && !msg.replyToMessageId) {
-      const hint = adapter.getLocale() === 'zh'
-        ? '⚠️ 多个权限待审批，请引用回复具体的权限消息'
-        : '⚠️ Multiple permissions pending — reply to the specific permission message';
+      const hint = t(adapter.getLocale(), 'dispatcher.multiPermHint');
       await adapter.send({ chatId: msg.chatId, text: hint });
       return true;
     }

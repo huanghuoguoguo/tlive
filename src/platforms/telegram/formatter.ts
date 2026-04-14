@@ -62,8 +62,8 @@ export class TelegramFormatter extends MessageFormatter<TelegramRenderedMessage>
 
   override formatHome(chatId: string, data: HomeData): TelegramRenderedMessage {
     const taskStatus = data.hasActiveTask
-      ? (this.locale === 'zh' ? '有任务正在执行' : 'Task in progress')
-      : (this.locale === 'zh' ? '无执行中任务' : 'No active task');
+      ? this.t('home.taskActive')
+      : this.t('home.taskIdle');
 
     const lines = [
       `🏠 **TLive**`,
@@ -84,7 +84,7 @@ export class TelegramFormatter extends MessageFormatter<TelegramRenderedMessage>
       const marker = s.isCurrent ? ' ◀' : '';
       lines.push(`${s.index}. ${s.date} · ${s.cwd} · ${s.size} · ${s.preview}${marker}`);
     }
-    const footer = this.locale === 'zh' ? '\n使用 /session <n> 切换' : '\nUse /session <n> to switch';
+    const footer = this.t('sessions.footer');
     return { chatId, html: this.formatMarkdown(lines.join('\n') + footer) };
   }
 
