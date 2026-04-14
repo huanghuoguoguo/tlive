@@ -34,27 +34,19 @@ export class QQBotFormatter extends MessageFormatter<QQBotRenderedMessage> {
       return this.createMessage(chatId, data.renderedText);
     }
 
-    const phaseLabels = this.locale === 'zh'
-      ? {
-          starting: '⏳ 准备开始',
-          executing: '⏳ 执行中',
-          waiting_permission: '🔐 等待权限',
-          completed: '✅ 已完成',
-          failed: '⚠️ 已停止',
-        }
-      : {
-          starting: '⏳ Starting',
-          executing: '⏳ Running',
-          waiting_permission: '🔐 Waiting for permission',
-          completed: '✅ Completed',
-          failed: '⚠️ Failed',
-        };
+    const phaseLabels = {
+      starting: this.t('progress.starting'),
+      executing: this.t('progress.executing'),
+      waiting_permission: this.t('progress.waitingPermission'),
+      completed: this.t('progress.completed'),
+      failed: this.t('progress.failed'),
+    };
 
     const lines = [
       phaseLabels[data.phase],
       '',
-      `${this.locale === 'zh' ? '任务' : 'Task'}: ${truncate(data.taskSummary, 100)}`,
-      `${this.locale === 'zh' ? '耗时' : 'Time'}: ${data.elapsedSeconds}s`,
+      `${this.t('progress.taskLabel')}: ${truncate(data.taskSummary, 100)}`,
+      `${this.t('progress.timeLabel')}: ${data.elapsedSeconds}s`,
     ];
 
     return this.createMessage(chatId, lines.join('\n'));

@@ -33,12 +33,18 @@ import type {
 } from './message-types.js';
 import { truncate } from '../utils/string.js';
 import { AVERAGE_TURN_SECONDS } from '../utils/constants.js';
+import { t, type Locale, type TranslationKey } from '../i18n/index.js';
 
-/** Language preference for messages */
-export type MessageLocale = 'en' | 'zh';
+/** @deprecated Use `Locale` from `../i18n/index.js` instead */
+export type MessageLocale = Locale;
 
 export abstract class MessageFormatter<TRendered extends { chatId: string }> {
-  constructor(protected locale: MessageLocale = 'en') {}
+  constructor(protected locale: Locale = 'en') {}
+
+  /** Look up a translation for the current locale */
+  protected t(key: TranslationKey): string {
+    return t(this.locale, key);
+  }
 
   // --- Abstract methods that subclasses must implement ---
 
@@ -52,7 +58,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
   protected abstract createMessage(chatId: string, text: string, buttons?: Button[]): TRendered;
 
   /** Public accessor for locale */
-  getLocale(): MessageLocale {
+  getLocale(): Locale {
     return this.locale;
   }
 
@@ -203,8 +209,8 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
       : this.buildSingleSelectButtons(permId, options);
 
     const hint = multiSelect
-      ? (this.locale === 'zh' ? '\n\n💬 点击选项切换，然后按 Submit 确认' : '\n\n💬 Tap options to toggle, then Submit')
-      : (this.locale === 'zh' ? '\n\n💬 回复数字选择，或直接输入内容' : '\n\n💬 Reply with number to select, or type your answer');
+      ? `\n\n${this.t('question.multiSelectHint')}`
+      : `\n\n${this.t('question.singleSelectHint')}`;
 
     return this.createMessage(chatId, text + hint, buttons);
   }
@@ -212,23 +218,14 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
   formatDeferredToolInput(chatId: string, data: DeferredToolInputData): TRendered {
     const { toolName, prompt, permId } = data;
 
-    const text = this.locale === 'zh'
-      ? [
-          `⏳ **等待输入**`,
-          '',
-          `**工具:** ${toolName}`,
-          `**说明:** ${prompt}`,
-          '',
-          `💬 输入内容或回复 "跳过"`,
-        ].join('\n')
-      : [
-          `⏳ **Input Required**`,
-          '',
-          `**Tool:** ${toolName}`,
-          `**Description:** ${prompt}`,
-          '',
-          `💬 Type your input or reply "skip"`,
-        ].join('\n');
+    const text = [
+      this.t('deferred.title'),
+      '',
+      `**${this.t('deferred.toolLabel')}:** ${toolName}`,
+      `**${this.t('deferred.descLabel')}:** ${prompt}`,
+      '',
+      this.t('deferred.inputHint'),
+    ].join('\n');
 
     const buttons: Button[] = [
       { label: '✅ Submit', callbackData: `deferred:submit:${permId}`, style: 'primary', row: 0 },
@@ -252,8 +249,8 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
 
   formatHome(chatId: string, data: HomeData): TRendered {
     const taskStatus = data.hasActiveTask
-      ? (this.locale === 'zh' ? '有任务正在执行' : 'Task in progress')
-      : (this.locale === 'zh' ? '无执行中任务' : 'No active task');
+      ? this.t('home.taskActive')
+      : this.t('home.taskIdle');
 
     const lines = [
       `🏠 **TLive**`,
@@ -264,8 +261,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
 
     // Show workspace binding if different from current cwd
     if (data.workspaceBinding && data.workspaceBinding !== data.cwd) {
-      const label = this.locale === 'zh' ? '工作区绑定' : 'Workspace binding';
-      lines.push(`**${label}:** \`${data.workspaceBinding}\``);
+      lines.push(`**${this.t('home.workspaceBinding')}:** \`${data.workspaceBinding}\``);
     }
 
     lines.push(`**Permissions:** ${data.permissionMode}`);
@@ -273,52 +269,36 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
       lines.push(``, `**Recent:** ${truncate(data.recentSummary, 100)}`);
     }
     if (data.recentSessions?.length) {
-      lines.push('', this.locale === 'zh' ? '**最近会话**' : '**Recent sessions**');
+      lines.push('', this.t('home.recentSessions'));
       for (const session of data.recentSessions) {
         const marker = session.isCurrent ? ' ◀' : '';
         lines.push(`${session.index}. ${session.date} · ${truncate(session.preview, 50)}${marker}`);
       }
     }
 
-    const buttons: Button[] = this.locale === 'zh'
-      ? [
-          { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'primary', row: 0 },
-          { label: '🔐 权限设置', callbackData: 'cmd:perm', style: 'default', row: 0 },
-          { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default', row: 1 },
-          { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default', row: 1 },
-        ]
-      : [
-          { label: '🕘 Recent', callbackData: 'cmd:sessions --all', style: 'primary', row: 0 },
-          { label: '🔐 Permissions', callbackData: 'cmd:perm', style: 'default', row: 0 },
-          { label: '🆕 New', callbackData: 'cmd:new', style: 'default', row: 1 },
-          { label: '❓ Help', callbackData: 'cmd:help', style: 'default', row: 1 },
-        ];
+    const buttons: Button[] = [
+      { label: this.t('home.btnSessions'), callbackData: 'cmd:sessions --all', style: 'primary', row: 0 },
+      { label: this.t('home.btnPermissions'), callbackData: 'cmd:perm', style: 'default', row: 0 },
+      { label: this.t('home.btnNew'), callbackData: 'cmd:new', style: 'default', row: 1 },
+      { label: this.t('home.btnHelp'), callbackData: 'cmd:help', style: 'default', row: 1 },
+    ];
 
     return this.createMessage(chatId, lines.join('\n'), buttons);
   }
 
   formatPermissionStatus(chatId: string, data: PermissionStatusData): TRendered {
     const memoryCount = data.rememberedTools + data.rememberedBashPrefixes;
-    const lines = this.locale === 'zh'
-      ? [
-          '🔐 **权限状态**',
-          '',
-          `**当前模式:** ${data.mode}`,
-          `**本会话已记住:** ${memoryCount} 项`,
-        ]
-      : [
-          '🔐 **Permission Status**',
-          '',
-          `**Mode:** ${data.mode}`,
-          `**Remembered in this session:** ${memoryCount}`,
-        ];
+    const lines = [
+      this.t('perm.title'),
+      '',
+      `**${this.t('perm.mode')}:** ${data.mode}`,
+      `**${this.t('perm.remembered')}:** ${memoryCount}`,
+    ];
 
     if (data.pending) {
       lines.push(
         '',
-        this.locale === 'zh'
-          ? `**当前待审批:** ${data.pending.toolName}`
-          : `**Pending approval:** ${data.pending.toolName}`,
+        `**${this.t('perm.pendingApproval')}:** ${data.pending.toolName}`,
         '```',
         truncate(data.pending.input, 180),
         '```',
@@ -326,80 +306,47 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
     }
 
     if (data.lastDecision) {
-      const decisionLabel = this.locale === 'zh'
-        ? {
-            allow: '允许一次',
-            allow_always: '本会话始终允许',
-            deny: '拒绝',
-            cancelled: '已取消',
-          }[data.lastDecision.decision]
-        : {
-            allow: 'Allowed once',
-            allow_always: 'Always allow in session',
-            deny: 'Denied',
-            cancelled: 'Cancelled',
-          }[data.lastDecision.decision];
+      const decisionLabel = {
+        allow: this.t('perm.decisionAllow'),
+        allow_always: this.t('perm.decisionAlwaysAllow'),
+        deny: this.t('perm.decisionDeny'),
+        cancelled: this.t('perm.decisionCancelled'),
+      }[data.lastDecision.decision];
       lines.push(
         '',
-        this.locale === 'zh'
-          ? `**最近处理:** ${data.lastDecision.toolName} · ${decisionLabel}`
-          : `**Last decision:** ${data.lastDecision.toolName} · ${decisionLabel}`,
+        `**${this.t('perm.lastDecision')}:** ${data.lastDecision.toolName} · ${decisionLabel}`,
       );
     }
 
     const buttons: Button[] = data.mode === 'on'
-      ? this.locale === 'zh'
-        ? [
-            { label: '⚡ 关闭审批', callbackData: 'cmd:perm off', style: 'danger', row: 0 },
-            { label: '🏠 首页', callbackData: 'cmd:home', style: 'default', row: 0 },
-          ]
-        : [
-            { label: '⚡ Turn Off', callbackData: 'cmd:perm off', style: 'danger', row: 0 },
-            { label: '🏠 Home', callbackData: 'cmd:home', style: 'default', row: 0 },
-          ]
-      : this.locale === 'zh'
-        ? [
-            { label: '🔐 开启审批', callbackData: 'cmd:perm on', style: 'primary', row: 0 },
-            { label: '🏠 首页', callbackData: 'cmd:home', style: 'default', row: 0 },
-          ]
-        : [
-            { label: '🔐 Turn On', callbackData: 'cmd:perm on', style: 'primary', row: 0 },
-            { label: '🏠 Home', callbackData: 'cmd:home', style: 'default', row: 0 },
-          ];
+      ? [
+          { label: this.t('perm.btnTurnOff'), callbackData: 'cmd:perm off', style: 'danger', row: 0 },
+          { label: this.t('perm.btnHome'), callbackData: 'cmd:home', style: 'default', row: 0 },
+        ]
+      : [
+          { label: this.t('perm.btnTurnOn'), callbackData: 'cmd:perm on', style: 'primary', row: 0 },
+          { label: this.t('perm.btnHome'), callbackData: 'cmd:home', style: 'default', row: 0 },
+        ];
 
     return this.createMessage(chatId, lines.join('\n'), buttons);
   }
 
   formatTaskStart(chatId: string, data: TaskStartData): TRendered {
-    const lines = this.locale === 'zh'
-      ? [
-          data.isNewSession ? '🔄 **会话已重置，开始新任务**' : '🚀 **开始执行**',
-          '',
-          `**目录:** ${data.cwd}`,
-          `**权限模式:** ${data.permissionMode === 'on' ? '开启审批' : '关闭审批'}`,
-        ]
-      : [
-          data.isNewSession ? '🔄 **Session reset, starting new task**' : '🚀 **Starting task**',
-          '',
-          `**Directory:** ${data.cwd}`,
-          `**Permission mode:** ${data.permissionMode}`,
-        ];
+    const lines = [
+      data.isNewSession ? this.t('taskStart.resetTitle') : this.t('taskStart.title'),
+      '',
+      `**${this.t('taskStart.directory')}:** ${data.cwd}`,
+      `**${this.t('taskStart.permMode')}:** ${data.permissionMode === 'on' ? this.t('taskStart.permOn') : data.permissionMode}`,
+    ];
 
     if (data.previousSessionPreview) {
-      lines.push('', this.locale === 'zh'
-        ? `**上次会话:** ${truncate(data.previousSessionPreview, 80)}`
-        : `**Previous session:** ${truncate(data.previousSessionPreview, 80)}`);
+      lines.push('', `**${this.t('taskStart.previousSession')}:** ${truncate(data.previousSessionPreview, 80)}`);
     }
 
-    const buttons: Button[] = this.locale === 'zh'
-      ? [
-          { label: '⚡ 调整配置', callbackData: 'cmd:home', style: 'default', row: 0 },
-          { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default', row: 0 },
-        ]
-      : [
-          { label: '⚡ Settings', callbackData: 'cmd:home', style: 'default', row: 0 },
-          { label: '🆕 New', callbackData: 'cmd:new', style: 'default', row: 0 },
-        ];
+    const buttons: Button[] = [
+      { label: this.t('taskStart.btnSettings'), callbackData: 'cmd:home', style: 'default', row: 0 },
+      { label: this.t('taskStart.btnNew'), callbackData: 'cmd:new', style: 'default', row: 0 },
+    ];
 
     return this.createMessage(chatId, lines.join('\n'), buttons);
   }
@@ -409,7 +356,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
 
     // Show workspace binding if available
     if (data.workspaceBinding) {
-      const label = this.locale === 'zh' ? '工作区绑定' : 'Workspace binding';
+      const label = this.t('home.workspaceBinding');
       lines.push(`🏠 **${label}:** \`${data.workspaceBinding}\``, '');
     }
 
@@ -417,7 +364,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
       const marker = s.isCurrent ? ' ◀' : '';
       lines.push(`${s.index}. ${s.date} · ${s.cwd} · ${s.size} · ${s.preview}${marker}`);
     }
-    const footer = this.locale === 'zh' ? '\n使用 /session <n> 切换' : '\nUse /session <n> to switch';
+    const footer = this.t('sessions.footer');
     return this.createMessage(chatId, lines.join('\n') + footer);
   }
 
@@ -451,9 +398,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
 
   formatNewSession(chatId: string, data: NewSessionData): TRendered {
     const cwdLabel = data.cwd ? ` in \`${data.cwd}\`` : '';
-    const text = this.locale === 'zh'
-      ? `✅ **新会话**${cwdLabel}`
-      : `✅ **New Session**${cwdLabel}`;
+    const text = `${this.t('newSession.title')}${cwdLabel}`;
     return this.createMessage(chatId, text);
   }
 
@@ -484,40 +429,25 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
   }
 
   formatTaskSummary(chatId: string, data: TaskSummaryData): TRendered {
-    const lines = this.locale === 'zh'
-      ? [
-          `✅ **任务摘要**`,
-          '',
-          data.summary,
-          '',
-          `改动文件：${data.changedFiles}`,
-          `权限审批：${data.permissionRequests}`,
-          `状态：${data.hasError ? '有错误' : '已完成'}`,
-        ]
-      : [
-          `✅ **Task Summary**`,
-          '',
-          data.summary,
-          '',
-          `Changed files: ${data.changedFiles}`,
-          `Permission prompts: ${data.permissionRequests}`,
-          `Status: ${data.hasError ? 'Has errors' : 'Completed'}`,
-        ];
+    const lines = [
+      this.t('taskSummary.title'),
+      '',
+      data.summary,
+      '',
+      `${this.t('taskSummary.changedFiles')}: ${data.changedFiles}`,
+      `${this.t('taskSummary.permissionPrompts')}: ${data.permissionRequests}`,
+      `Status: ${data.hasError ? this.t('taskSummary.statusError') : this.t('taskSummary.statusDone')}`,
+    ];
 
     // Footer line with model, cwd, sessionId
     if (data.footerLine) {
       lines.push('', data.footerLine);
     }
 
-    const buttons = this.locale === 'zh'
-      ? [
-          { label: '🏠 首页', callbackData: 'cmd:home', style: 'primary' as const, row: 0 },
-          { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'default' as const, row: 0 },
-        ]
-      : [
-          { label: '🏠 Home', callbackData: 'cmd:home', style: 'primary' as const, row: 0 },
-          { label: '🕘 Recent', callbackData: 'cmd:sessions --all', style: 'default' as const, row: 0 },
-        ];
+    const buttons = [
+      { label: this.t('taskSummary.btnHome'), callbackData: 'cmd:home', style: 'primary' as const, row: 0 },
+      { label: this.t('taskSummary.btnRecent'), callbackData: 'cmd:sessions --all', style: 'default' as const, row: 0 },
+    ];
 
     return this.createMessage(chatId, lines.join('\n'), buttons);
   }
@@ -525,27 +455,16 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
   /** Generate default action buttons for a progress phase. */
   protected defaultProgressButtons(phase: ProgressData['phase']): Button[] {
     if (phase === 'completed' || phase === 'failed') {
-      return this.locale === 'zh'
-        ? [
-            { label: '🕘 最近会话', callbackData: 'cmd:sessions --all', style: 'primary', row: 0 },
-            { label: '🆕 新会话', callbackData: 'cmd:new', style: 'default', row: 0 },
-            { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default', row: 1 },
-          ]
-        : [
-            { label: '🕘 Recent', callbackData: 'cmd:sessions --all', style: 'primary', row: 0 },
-            { label: '🆕 New', callbackData: 'cmd:new', style: 'default', row: 0 },
-            { label: '❓ Help', callbackData: 'cmd:help', style: 'default', row: 1 },
-          ];
+      return [
+        { label: this.t('progress.btnSessions'), callbackData: 'cmd:sessions --all', style: 'primary', row: 0 },
+        { label: this.t('progress.btnNew'), callbackData: 'cmd:new', style: 'default', row: 0 },
+        { label: this.t('progress.btnHelp'), callbackData: 'cmd:help', style: 'default', row: 1 },
+      ];
     }
-    return this.locale === 'zh'
-      ? [
-          { label: '⏹ 停止执行', callbackData: 'cmd:stop', style: 'danger', row: 0 },
-          { label: '❓ 帮助', callbackData: 'cmd:help', style: 'default', row: 1 },
-        ]
-      : [
-          { label: '⏹ Stop', callbackData: 'cmd:stop', style: 'danger', row: 0 },
-          { label: '❓ Help', callbackData: 'cmd:help', style: 'default', row: 1 },
-        ];
+    return [
+      { label: this.t('progress.btnStop'), callbackData: 'cmd:stop', style: 'danger', row: 0 },
+      { label: this.t('progress.btnHelp'), callbackData: 'cmd:help', style: 'default', row: 1 },
+    ];
   }
 
   /** Format raw markdown content into a platform-appropriate message. */
@@ -561,9 +480,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
     const dateStr = data.publishedAt
       ? new Date(data.publishedAt).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
       : '';
-    const text = this.locale === 'zh'
-      ? `🔄 **发现新版本**\nv${data.current} → v${data.latest}${dateStr ? `\n发布时间：${dateStr}` : ''}`
-      : `🔄 **Update Available**\nv${data.current} → v${data.latest}${dateStr ? `\nReleased: ${dateStr}` : ''}`;
+    const text = `${this.t('version.title')}\nv${data.current} → v${data.latest}${dateStr ? `\n${this.t('version.released')}：${dateStr}` : ''}`;
     return this.createMessage(chatId, text);
   }
 
@@ -573,9 +490,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
       .map((opt, i) => `${data.selectedIndices.has(i) ? '☑' : '☐'} ${i + 1}. **${opt.label}**${opt.description ? ` — ${opt.description}` : ''}`)
       .join('\n');
     const text = `${headerLine}${data.question}\n\n${optionsList}`;
-    const hint = this.locale === 'zh'
-      ? '\n\n💬 点击选项切换，然后按 Submit 确认'
-      : '\n\n💬 Tap options to toggle, then Submit';
+    const hint = `\n\n${this.t('multiSelect.hint')}`;
 
     const buttons = this.buildMultiSelectButtons(data.permId, data.sessionId, data.options);
     // Update button labels to show selected state
