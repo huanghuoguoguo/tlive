@@ -7,6 +7,7 @@ import { truncate } from '../../utils/string.js';
 import { shortPath } from '../../utils/path.js';
 import type { TodoStatus } from '../../utils/types.js';
 import type { VerboseLevel } from '../state/session-state.js';
+import type { Button } from '../../ui/types.js';
 import { ProgressContentBuilder, type RenderInput } from './progress-builder.js';
 
 export interface MessageRendererOptions {
@@ -60,7 +61,7 @@ interface PermissionState {
   toolName: string;
   input: string;
   permId: string;
-  buttons: Array<{ label: string; callbackData: string; style: string }>;
+  buttons: Button[];
 }
 
 /** Current tool execution state for progress display */
@@ -419,7 +420,7 @@ export class MessageRenderer {
     toolName: string,
     input: string,
     permId: string,
-    buttons: Array<{ label: string; callbackData: string; style: string }>,
+    buttons: Button[],
   ): void {
     this.permissionRequests++;
     this.permissionQueue.push({ toolName, input, permId, buttons });

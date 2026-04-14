@@ -211,7 +211,7 @@ export class QueryOrchestrator {
             chatId: msg.chatId,
             data: {
               cwd: shortPath(currentBinding.cwd || this.options.defaultWorkdir),
-              permissionMode: this.options.state.getPermMode(msg.channelType, msg.chatId),
+              permissionMode: this.options.state.getPermMode(msg.channelType, msg.chatId, currentBinding.sessionId),
               isNewSession: true,
               reason: 'stale',
             },

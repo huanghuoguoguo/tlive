@@ -8,11 +8,13 @@ import type { InboundMessage } from '../../channels/types.js';
 import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { SessionStateManager } from '../state/session-state.js';
 import type { MessageRenderer } from '../messages/renderer.js';
+import type { Button } from '../../ui/types.js';
 import { getToolCommand } from '../utils/tool-registry.js';
 import type { ChannelRouter } from '../utils/router.js';
 import type { ChannelBinding } from '../../store/interface.js';
 import { generateId } from '../../utils/id.js';
 import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../../utils/constants.js';
+import { permissionButtons } from '../../ui/buttons.js';
 
 interface SDKPermissionHandlerContext {
   adapter: BaseChannelAdapter;
@@ -49,7 +51,7 @@ export class SDKPermissionHandler {
     const { msg, binding, permissions, state, renderer } = this.context;
 
     // Check perm mode dynamically (so /perm off mid-query takes effect)
-    const permMode = state.getPermMode(msg.channelType, msg.chatId);
+    const permMode = state.getPermMode(msg.channelType, msg.chatId, binding.sessionId);
     if (permMode === 'off') {
       return 'allow' as const;
     }
@@ -85,11 +87,7 @@ export class SDKPermissionHandler {
 
     const inputStr = getToolCommand(toolName, toolInput) || JSON.stringify(toolInput, null, 2);
     permissions.notePermissionPending(chatKey, permId, binding.sessionId, toolName, inputStr);
-    const buttons: Array<{ label: string; callbackData: string; style: string }> = [
-      { label: '✅ Allow', callbackData: `perm:allow:${permId}`, style: 'primary' },
-      { label: '📌 Always in Session', callbackData: `perm:allow_session:${permId}`, style: 'default' },
-      { label: '❌ Deny', callbackData: `perm:deny:${permId}`, style: 'danger' },
-    ];
+    const buttons: Button[] = permissionButtons(permId, 'en');
     renderer.onPermissionNeeded(toolName, inputStr, permId, buttons);
 
     const result = await permissions.getGateway().waitFor(permId, {
