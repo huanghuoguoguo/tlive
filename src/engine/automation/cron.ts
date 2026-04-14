@@ -15,7 +15,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { BridgeManager } from '../coordinators/bridge-manager.js';
+import type { AutomationBridge } from '../types/automation-bridge.js';
 import { loadProjectsConfig, type ClaudeSettingSource } from '../../config.js';
 import type { ProjectConfig } from '../../store/interface.js';
 import { generateId } from '../../utils/id.js';
@@ -60,8 +60,8 @@ export interface CronJob {
 export interface CronSchedulerOptions {
   /** Runtime directory for persistence */
   runtimeDir: string;
-  /** Bridge manager for message delivery */
-  bridge: BridgeManager;
+  /** Bridge for message delivery */
+  bridge: AutomationBridge;
   /** Enable cron scheduler (default: false) */
   enabled: boolean;
   /** Maximum number of jobs allowed to run concurrently (default: 3) */
@@ -238,7 +238,7 @@ function normalizeLoadedJob(rawJob: unknown): CronJob | null {
 export class CronScheduler {
   private jobs: Map<string, CronJob> = new Map();
   private persistPath: string;
-  private bridge: BridgeManager;
+  private bridge: AutomationBridge;
   private enabled: boolean;
   private maxConcurrency: number;
   private projects?: ProjectConfig[];
@@ -391,7 +391,7 @@ export class CronScheduler {
   }
 
   private resolveJobTarget(job: CronJob): {
-    adapter: NonNullable<ReturnType<BridgeManager['getAdapter']>>;
+    adapter: NonNullable<ReturnType<AutomationBridge['getAdapter']>>;
     channelType: string;
     chatId: string;
     workdir?: string;

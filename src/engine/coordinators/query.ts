@@ -13,7 +13,7 @@ import { shortPath } from '../../utils/path.js';
 import type { BridgeStore, ChannelBinding } from '../../store/interface.js';
 import type { ClaudeSettingSource } from '../../config.js';
 import { Logger, type LogContext } from '../../logger.js';
-import type { LiveSession, DeferredToolHandler } from '../../providers/base.js';
+import type { LiveSession } from '../../providers/base.js';
 import type { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
 import { QueryExecutionPresenter } from '../messages/query-presenter.js';
 import { SDKPermissionHandler } from '../sdk/permission-handler.js';
@@ -23,6 +23,7 @@ import { buildProgressData } from '../messages/progress-builder.js';
 import type { MessageRendererState } from '../messages/renderer.js';
 import { SessionStaleError, isStaleSessionError } from '../state/session-stale-error.js';
 import { invalidateSessionCache } from '../../providers/session-scanner.js';
+import { QueryContext } from './query-context.js';
 
 const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
 
@@ -154,7 +155,7 @@ export class QueryOrchestrator {
       const sdkDeferredToolHandler = deferredToolHandler.handle.bind(deferredToolHandler);
 
       try {
-        await this.executeQuery(
+        const queryCtx = new QueryContext(
           adapter,
           msg,
           currentBinding,
@@ -166,6 +167,7 @@ export class QueryOrchestrator {
           sdkDeferredToolHandler,
           ctx,
         );
+        await this.executeQuery(queryCtx);
 
         // Track progress bubble → session for multi-session steering
         if (renderer.messageId) {
@@ -331,18 +333,8 @@ export class QueryOrchestrator {
     return adapter.shouldSplitProgressMessage(outMsg);
   }
 
-  private async executeQuery(
-    adapter: BaseChannelAdapter,
-    msg: InboundMessage,
-    binding: ChannelBinding,
-    sessionKey: string,
-    renderer: MessageRenderer,
-    costTracker: CostTracker,
-    sdkPermissionHandler: (toolName: string, toolInput: Record<string, unknown>, promptSentence: string, signal?: AbortSignal) => Promise<'allow' | 'allow_always' | 'deny'>,
-    sdkAskQuestionHandler: (questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }>, signal?: AbortSignal) => Promise<Record<string, string>>,
-    sdkDeferredToolHandler: DeferredToolHandler,
-    ctx: LogContext,
-  ): Promise<void> {
+  private async executeQuery(qctx: QueryContext): Promise<void> {
+    const { adapter, msg, binding, sessionKey, renderer, costTracker, sdkPermissionHandler, sdkAskQuestionHandler, sdkDeferredToolHandler, ctx } = qctx;
     const workdir = binding.cwd || this.options.defaultWorkdir;
     const settingSources = binding.claudeSettingSources ?? this.options.defaultClaudeSettingSources;
     const chatKey = this.options.state.stateKey(msg.channelType, msg.chatId);

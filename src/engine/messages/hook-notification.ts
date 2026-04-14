@@ -1,6 +1,5 @@
 import { basename } from 'node:path';
 import type { BaseChannelAdapter } from '../../channels/base.js';
-import type { FeishuRenderedMessage } from '../../channels/feishu/types.js';
 import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { NotificationData } from '../../formatting/message-types.js';
 import { truncate } from '../../utils/string.js';
@@ -78,9 +77,9 @@ export class HookNotificationDispatcher {
     };
 
     const msg = adapter.format({ type: 'notification', chatId, data });
-    // Only Feishu supports receiveIdType
-    if (receiveIdType && adapter.channelType === 'feishu') {
-      (msg as FeishuRenderedMessage).receiveIdType = receiveIdType;
+    // Pass receiveIdType through message if provided (adapter handles platform-specific needs)
+    if (receiveIdType) {
+      (msg as unknown as Record<string, unknown>).receiveIdType = receiveIdType;
     }
     const result = await adapter.send(msg);
     this.options.permissions.trackHookMessage(result.messageId, hook.tlive_session_id || '');

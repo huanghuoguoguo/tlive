@@ -1,5 +1,3 @@
-import type { ChannelType } from './types.js';
-
 export class BridgeError extends Error {
   readonly retryable: boolean;
   constructor(message: string, retryable: boolean) {
@@ -37,37 +35,17 @@ export class PlatformError extends BridgeError {
   }
 }
 
-export function classifyError(channel: ChannelType | string, err: unknown): BridgeError {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- classifyError inspects arbitrary error shapes from multiple SDKs
-  const e = err as Record<string, any>;
-  const message = e?.message ?? String(err);
+/**
+ * Default error classification for base adapter.
+ * Subclasses override this for platform-specific error handling.
+ */
+export function classifyDefaultError(err: unknown): BridgeError {
+  const e = err as Record<string, unknown>;
+  const message = (e?.message as string) ?? String(err);
 
   if (e?.code === 'ETIMEOUT' || e?.code === 'ECONNREFUSED' || e?.code === 'ENOTFOUND') {
     return new NetworkError(message);
   }
 
-  if (channel === 'telegram') {
-    // grammY uses error_code + parameters.retry_after at top level
-    const status = e?.error_code ?? e?.response?.statusCode;
-    if (status === 429) return new RateLimitError(message, (e?.parameters?.retry_after ?? e?.response?.body?.parameters?.retry_after ?? 0) * 1000);
-    if (status === 400) return new FormatError(message);
-    if (status === 401 || status === 403) return new AuthError(message);
-    if (status >= 500) return new PlatformError(message, status);
-  }
-
-  if (channel === 'feishu') {
-    const code = e?.code;
-    if (code === 99991400) return new RateLimitError(message);
-    if (code === 99991401 || code === 99991403) return new AuthError(message);
-  }
-
-  if (channel === 'qqbot') {
-    const status = e?.response?.statusCode ?? e?.status;
-    if (status === 429) return new RateLimitError(message, 60000); // QQ Bot rate limit default 60s
-    if (status === 401 || status === 403) return new AuthError(message);
-    if (status === 400) return new FormatError(message);
-    if (status >= 500) return new PlatformError(message, status);
-  }
-
-  return new PlatformError(message, e?.response?.statusCode ?? e?.status);
+  return new PlatformError(message, (e?.response as { statusCode?: number })?.statusCode ?? (e?.status as number));
 }
