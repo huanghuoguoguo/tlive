@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { createAdapter, getRegisteredTypes } from '../../channels/index.js';
 
 // Import adapters to trigger self-registration
-import '../../platforms/telegram/adapter.js';
-import '../../platforms/feishu/adapter.js';
-import '../../platforms/qqbot/adapter.js';
+import '../../channels/telegram/adapter.js';
+import '../../channels/feishu/adapter.js';
+import '../../channels/qqbot/adapter.js';
 
 describe('Channel Adapter Registry', () => {
   beforeEach(() => {

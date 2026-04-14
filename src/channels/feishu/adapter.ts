@@ -1,8 +1,8 @@
 import { Client, WSClient, EventDispatcher } from '@larksuiteoapi/node-sdk';
-import { BaseChannelAdapter, registerAdapterFactory } from '../../channels/base.js';
-import type { InboundMessage, SendResult, FileAttachment } from '../../channels/types.js';
+import { BaseChannelAdapter, registerAdapterFactory } from '../base.js';
+import type { InboundMessage, SendResult, FileAttachment } from '../types.js';
 import { loadConfig } from '../../config.js';
-import { classifyError } from '../../channels/errors.js';
+import { BridgeError, RateLimitError, AuthError, PlatformError } from '../errors.js';
 import { markdownToFeishu, downgradeHeadings } from './markdown.js';
 import { buildFeishuCard, buildFeishuButtonElements } from './card-builder.js';
 import { FeishuStreamingSession } from './streaming.js';
@@ -431,7 +431,7 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
         }
       } catch (err) {
         // Fall through to text-only if media fails
-        if (!message.text && !message.html) throw classifyError('feishu', err);
+        if (!message.text && !message.html) throw this.classifyError(err);
       }
     }
 
@@ -477,7 +477,7 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
       const messageId = result?.data?.message_id ?? '';
       return { messageId: String(messageId), success: true };
     } catch (err) {
-      throw classifyError('feishu', err);
+      throw this.classifyError(err);
     }
   }
 
@@ -593,6 +593,35 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
     if (this.config.allowedUsers.length === 0) return true;
     // userId may be user_id or open_id — match against either format in allowedUsers
     return this.config.allowedUsers.includes(userId);
+  }
+
+  // --- Error classification (OCP: platform-specific error handling) ---
+
+  /** Classify Feishu/Lark SDK errors */
+  classifyError(err: unknown): BridgeError {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- classifyError inspects arbitrary error shapes
+    const e = err as Record<string, any>;
+    const message = e?.message ?? String(err);
+
+    // Handle common network errors first (via base class)
+    if (e?.code === 'ETIMEOUT' || e?.code === 'ECONNREFUSED' || e?.code === 'ENOTFOUND') {
+      return super.classifyError(err);
+    }
+
+    // Feishu uses numeric error codes
+    const code = e?.code;
+    if (code === 99991400) return new RateLimitError(message);
+    if (code === 99991401 || code === 99991403) return new AuthError(message);
+
+    return super.classifyError(err);
+  }
+
+  // --- Broadcast preparation (OCP: platform-specific broadcast handling) ---
+
+  /** Add receive_id_type for Feishu broadcast messages */
+  prepareBroadcast(msg: FeishuRenderedMessage): FeishuRenderedMessage {
+    // Feishu requires receive_id_type for group chat messages
+    return { ...msg, receiveIdType: undefined };
   }
 }
 

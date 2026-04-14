@@ -1,6 +1,6 @@
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage, RenderedMessage } from '../../channels/types.js';
-import type { FeishuRenderedMessage } from '../../platforms/feishu/types.js';
+import type { FeishuRenderedMessage } from '../../channels/feishu/types.js';
 import type { FormattableMessage } from '../../formatting/message-types.js';
 import { getBridgeContext } from '../../context.js';
 import { ChannelRouter } from '../utils/router.js';

@@ -11,7 +11,7 @@ import { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
 import { loadProjectsConfig, type ClaudeSettingSource } from '../../config.js';
 import type { SDKEngine } from '../../engine/sdk/engine.js';
 import type { PermissionCoordinator } from '../../engine/coordinators/permission.js';
-import * as sessionScanner from '../../session-scanner.js';
+import * as sessionScanner from '../../providers/session-scanner.js';
 
 /** Create a minimal PermissionCoordinator mock for tests */
 function createMockPermissions(): PermissionCoordinator {

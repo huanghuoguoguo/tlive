@@ -3,8 +3,8 @@
  */
 
 import type { CommandContext } from '../commands/types.js';
-import type { ScannedSession } from '../../session-scanner.js';
-import { scanClaudeSessions } from '../../session-scanner.js';
+import type { ScannedSession } from '../../providers/session-scanner.js';
+import { scanClaudeSessions } from '../../providers/session-scanner.js';
 import { FLAGS, hasFlag, getNonFlagArg } from '../../utils/constants.js';
 
 /** Format file size in human-readable form */
@@ -22,6 +22,21 @@ export function formatSessionDate(mtime: number): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+/** Format timestamp as relative time (e.g., "5分钟前", "2小时前") */
+export function formatRelativeTime(timestamp: number): string {
+  const now = Date.now();
+  const diffMs = now - timestamp;
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHour = Math.floor(diffMs / 3600000);
+  const diffDay = Math.floor(diffMs / 86400000);
+
+  if (diffMin < 1) return '刚刚';
+  if (diffMin < 60) return `${diffMin}分钟前`;
+  if (diffHour < 24) return `${diffHour}小时前`;
+  if (diffDay < 7) return `${diffDay}天前`;
+  return new Date(timestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 }
 
 /** Result of parsing session index from command args */

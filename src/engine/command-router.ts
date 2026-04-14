@@ -11,36 +11,18 @@ import type { BridgeStore, ChannelBinding } from '../store/interface.js';
 import type { HomeData } from '../formatting/message-types.js';
 import type { RouterHelpers, CommandServices } from './commands/types.js';
 import type { PermissionCoordinator } from './coordinators/permission.js';
-import type { ScannedSession } from '../session-scanner.js';
+import type { ScannedSession } from '../providers/session-scanner.js';
 import { commandRegistry, registerAllCommands } from './commands/index.js';
 import { DEFAULT_CLAUDE_SETTING_SOURCES } from '../config.js';
-import { scanClaudeSessions, readSessionTranscriptPreview } from '../session-scanner.js';
+import { scanClaudeSessions, readSessionTranscriptPreview } from '../providers/session-scanner.js';
 import { shortPath } from '../utils/path.js';
 import { findGitRoot } from '../utils/repo.js';
 import { generateSessionId } from '../utils/id.js';
 import { SESSION_STALE_THRESHOLD_MS } from '../utils/constants.js';
-import { formatSize } from './utils/session-format.js';
+import { formatSize, formatSessionDate, formatRelativeTime } from './utils/session-format.js';
 
 // Register all commands on module load
 registerAllCommands();
-
-function formatSessionDate(mtime: number): string {
-  return new Date(mtime).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
-function formatRelativeTime(timestamp: number): string {
-  const now = Date.now();
-  const diffMs = now - timestamp;
-  const diffMin = Math.floor(diffMs / 60000);
-  const diffHour = Math.floor(diffMs / 3600000);
-  const diffDay = Math.floor(diffMs / 86400000);
-
-  if (diffMin < 1) return '刚刚';
-  if (diffMin < 60) return `${diffMin}分钟前`;
-  if (diffHour < 24) return `${diffHour}小时前`;
-  if (diffDay < 7) return `${diffDay}天前`;
-  return new Date(timestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
-}
 
 type BoundInfo = { channelType: string; chatId: string; isActive: boolean };
 

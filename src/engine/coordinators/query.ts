@@ -22,7 +22,7 @@ import { SDKDeferredToolHandler } from '../sdk/deferred-tool-handler.js';
 import { buildProgressData } from '../messages/progress-builder.js';
 import type { MessageRendererState } from '../messages/renderer.js';
 import { SessionStaleError, isStaleSessionError } from '../state/session-stale-error.js';
-import { invalidateSessionCache } from '../../session-scanner.js';
+import { invalidateSessionCache } from '../../providers/session-scanner.js';
 
 const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
 

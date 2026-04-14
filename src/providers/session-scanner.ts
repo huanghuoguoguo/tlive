@@ -1,7 +1,7 @@
 import { readdirSync, statSync, openSync, readSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { truncate } from './utils/string.js';
+import { truncate } from '../utils/string.js';
 
 export interface ScannedSession {
   sdkSessionId: string;   // .jsonl filename (UUID)

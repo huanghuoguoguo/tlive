@@ -1,7 +1,7 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentSessionDetail, presentSessionUsage, presentSessionNotFound } from '../messages/presenter.js';
-import { readSessionTranscriptPreview } from '../../session-scanner.js';
+import { readSessionTranscriptPreview } from '../../providers/session-scanner.js';
 import { shortPath } from '../../utils/path.js';
 import { formatSize, formatSessionDate, parseSessionIndex } from '../utils/session-format.js';
 

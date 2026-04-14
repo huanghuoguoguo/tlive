@@ -11,6 +11,7 @@ import type { Button } from '../ui/types.js';
 import type { ProgressPhase, ProgressTraceStats, PermissionDecision } from '../ui/policy.js';
 import type { ChannelPolicy } from '../ui/channel-policy.js';
 import { DEFAULT_CHANNEL_POLICY } from '../ui/channel-policy.js';
+import { BridgeError, NetworkError, PlatformError } from './errors.js';
 
 export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = RenderedMessage> {
   abstract readonly channelType: ChannelType;
@@ -128,6 +129,38 @@ export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = Ren
   /** Format raw markdown content into a platform-appropriate message (HTML for Telegram, text for others). */
   formatContent(chatId: string, content: string, buttons?: Button[]): TRendered {
     return this.formatter.formatContent(chatId, content, buttons);
+  }
+
+  // --- Error classification (OCP: platform-specific error handling) ---
+
+  /**
+   * Classify a platform-specific error into a typed BridgeError.
+   * Override in subclass to handle platform-specific error formats.
+   * Default implementation handles common network errors.
+   */
+  classifyError(err: unknown): BridgeError {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- classifyError inspects arbitrary error shapes
+    const e = err as Record<string, any>;
+    const message = e?.message ?? String(err);
+
+    // Common network errors (handled by all platforms)
+    if (e?.code === 'ETIMEOUT' || e?.code === 'ECONNREFUSED' || e?.code === 'ENOTFOUND') {
+      return new NetworkError(message);
+    }
+
+    // Fallback to generic PlatformError
+    return new PlatformError(message, e?.response?.statusCode ?? e?.status);
+  }
+
+  // --- Broadcast preparation (OCP: platform-specific broadcast handling) ---
+
+  /**
+   * Prepare a message for broadcast on this platform.
+   * Override to add platform-specific fields (e.g., Feishu's receiveIdType).
+   * Default implementation returns the message unchanged.
+   */
+  prepareBroadcast(msg: TRendered): TRendered {
+    return msg;
   }
 }
 

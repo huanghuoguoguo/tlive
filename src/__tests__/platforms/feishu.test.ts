@@ -53,7 +53,7 @@ vi.mock('@larksuiteoapi/node-sdk', () => {
   };
 });
 
-import { FeishuAdapter } from '../../platforms/feishu/adapter.js';
+import { FeishuAdapter } from '../../channels/feishu/adapter.js';
 
 describe('FeishuAdapter', () => {
   let adapter: FeishuAdapter;

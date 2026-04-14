@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canonicalEventSchema, type CanonicalEvent } from '../../messages/schema.js';
+import { canonicalEventSchema, type CanonicalEvent } from '../../canonical/schema.js';
 
 describe('message-schema', () => {
   describe('text events', () => {

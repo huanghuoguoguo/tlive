@@ -14,8 +14,8 @@
 
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
-import { ClaudeAdapter } from '../messages/claude-adapter.js';
-import type { CanonicalEvent } from '../messages/schema.js';
+import { ClaudeAdapter } from '../canonical/claude-adapter.js';
+import type { CanonicalEvent } from '../canonical/schema.js';
 import type {
   LiveSession, StreamChatResult, QueryControls, TurnParams,
   PermissionRequestHandler, AskUserQuestionHandler, DeferredToolHandler, EffortLevel,

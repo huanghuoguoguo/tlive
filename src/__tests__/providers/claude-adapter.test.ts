@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ClaudeAdapter, type SDKMessage } from '../../messages/claude-adapter.js';
+import { ClaudeAdapter, type SDKMessage } from '../../canonical/claude-adapter.js';
 
 describe('ClaudeAdapter', () => {
   let adapter: ClaudeAdapter;

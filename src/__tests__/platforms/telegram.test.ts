@@ -48,7 +48,7 @@ vi.mock('@grammyjs/transformer-throttler', () => ({
   apiThrottler: vi.fn().mockReturnValue(vi.fn()),
 }));
 
-import { TelegramAdapter } from '../../platforms/telegram/adapter.js';
+import { TelegramAdapter } from '../../channels/telegram/adapter.js';
 
 describe('TelegramAdapter', () => {
   const defaultConfig = {

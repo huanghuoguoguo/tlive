@@ -2,7 +2,7 @@ import type { BridgeStore } from '../../store/interface.js';
 import type { ClaudeSettingSource } from '../../config.js';
 import type { FileAttachment, PermissionRequestHandler, QueryControls, StreamChatResult, EffortLevel } from '../../providers/base.js';
 import type { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
-import type { AskUserQuestionHandler } from '../../messages/types.js';
+import type { AskUserQuestionHandler } from '../../canonical/types.js';
 import type { TodoStatus } from '../../utils/types.js';
 
 const TEXT_MIME_PREFIXES = ['text/', 'application/json', 'application/xml', 'application/javascript', 'application/typescript', 'application/x-yaml', 'application/toml'];
