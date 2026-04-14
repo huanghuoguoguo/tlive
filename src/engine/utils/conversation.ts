@@ -1,6 +1,7 @@
 import type { BridgeStore } from '../../store/interface.js';
 import type { ClaudeSettingSource } from '../../config.js';
-import type { FileAttachment, LLMProvider, PermissionRequestHandler, QueryControls, StreamChatResult, EffortLevel } from '../../providers/base.js';
+import type { FileAttachment, PermissionRequestHandler, QueryControls, StreamChatResult, EffortLevel } from '../../providers/base.js';
+import type { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
 import type { AskUserQuestionHandler } from '../../messages/types.js';
 import type { TodoStatus } from '../../utils/types.js';
 
@@ -91,7 +92,7 @@ interface ProcessMessageResult {
 export class ConversationEngine {
   constructor(
     private store: BridgeStore,
-    private llm: LLMProvider,
+    private llm: ClaudeSDKProvider,
   ) {}
 
   async processMessage(params: ProcessMessageParams): Promise<ProcessMessageResult> {

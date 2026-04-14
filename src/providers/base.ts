@@ -87,36 +87,3 @@ export interface LiveSession {
   /** Whether a turn is currently in progress */
   readonly isTurnActive: boolean;
 }
-
-/** Declares which SDK features a provider supports. */
-export interface ProviderCapabilities {
-  /** Can handle /compact, /clear etc. as prompt */
-  slashCommands: boolean;
-  /** Supports AskUserQuestion tool via canUseTool */
-  askUserQuestion: boolean;
-  /** Supports long-lived sessions via createSession() */
-  liveSession: boolean;
-  /** Emits TodoWrite tool_use events */
-  todoTracking: boolean;
-  /** Reports cost_usd in query results */
-  costInUsd: boolean;
-  /** Supports settingSources, skills, MCP servers */
-  skills: boolean;
-  /** Supports session resume via session ID */
-  sessionResume: boolean;
-}
-
-export interface LLMProvider {
-  streamChat(params: StreamChatParams): StreamChatResult;
-  /** Declare provider capabilities */
-  capabilities(): ProviderCapabilities;
-  /** Create a long-lived session. Returns undefined if not supported. */
-  createSession?(params: {
-    workingDirectory: string;
-    sessionId?: string;
-    effort?: EffortLevel;
-    model?: string;
-    settingSources?: ClaudeSettingSource[];
-    appendSystemPrompt?: string;
-  }): LiveSession;
-}

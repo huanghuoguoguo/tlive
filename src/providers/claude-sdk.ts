@@ -11,7 +11,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { ClaudeAdapter } from '../messages/claude-adapter.js';
 import type { CanonicalEvent } from '../messages/schema.js';
-import type { LLMProvider, StreamChatParams, StreamChatResult, QueryControls, ProviderCapabilities, LiveSession, EffortLevel } from './base.js';
+import type { StreamChatParams, StreamChatResult, QueryControls, LiveSession, EffortLevel } from './base.js';
 import { DEFAULT_CLAUDE_SETTING_SOURCES, type ClaudeSettingSource } from '../config.js';
 import { ClaudeLiveSession } from './claude-live-session.js';
 import { buildSubprocessEnv, type PermissionTimeoutCallback } from './claude-shared.js';
@@ -111,7 +111,7 @@ interface StreamState {
   lastAssistantText: string;
 }
 
-export class ClaudeSDKProvider implements LLMProvider {
+export class ClaudeSDKProvider {
   private cliPath: string | undefined;
   private defaultSettingSources: ClaudeSettingSource[];
 
@@ -144,18 +144,6 @@ export class ClaudeSDKProvider implements LLMProvider {
 
   getDefaultSettingSources(): ClaudeSettingSource[] {
     return [...this.defaultSettingSources];
-  }
-
-  capabilities(): ProviderCapabilities {
-    return {
-      slashCommands: true,
-      askUserQuestion: true,
-      liveSession: true,
-      todoTracking: true,
-      costInUsd: true,
-      skills: true,
-      sessionResume: true,
-    };
   }
 
   createSession(params: {
