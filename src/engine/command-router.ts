@@ -3,7 +3,8 @@ import type { InboundMessage } from '../channels/types.js';
 import type { SessionStateManager } from './state/session-state.js';
 import type { WorkspaceStateManager } from './state/workspace-state.js';
 import type { ChannelRouter } from './utils/router.js';
-import type { LLMProvider, QueryControls } from '../providers/base.js';
+import type { QueryControls } from '../providers/base.js';
+import type { ClaudeSDKProvider } from '../providers/claude-sdk.js';
 import type { SDKEngine, SessionCleanupReason } from './sdk/engine.js';
 import type { ProjectsValidationResult, ClaudeSettingSource } from '../config.js';
 import type { BridgeStore, ChannelBinding } from '../store/interface.js';
@@ -82,7 +83,7 @@ export class CommandRouter {
     router: ChannelRouter,
     private store: BridgeStore,
     private defaultWorkdir: string,
-    llm: LLMProvider,
+    llm: ClaudeSDKProvider,
     private activeControls: Map<string, QueryControls>,
     private permissions: PermissionCoordinator,
     private defaultClaudeSettingSources: ClaudeSettingSource[] = DEFAULT_CLAUDE_SETTING_SOURCES,

@@ -25,7 +25,7 @@ import { QueryOrchestrator } from './query.js';
 import { ConversationEngine } from '../utils/conversation.js';
 import { HookNotificationDispatcher, type HookNotificationData } from '../messages/hook-notification.js';
 import type { BridgeStore } from '../../store/interface.js';
-import type { LLMProvider } from '../../providers/base.js';
+import type { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
 import { generateRequestId, Logger, type LogContext } from '../../logger.js';
 import { truncate } from '../../utils/string.js';
 import { areSettingSourcesEqual } from '../../utils/automation.js';
@@ -36,7 +36,7 @@ const QUICK_COMMANDS = new Set(['/new', '/home', '/status', '/hooks', '/sessions
 
 interface BridgeManagerDeps {
   store: BridgeStore;
-  llm: LLMProvider;
+  llm: ClaudeSDKProvider;
   defaultWorkdir: string;
   config?: Config;
 }

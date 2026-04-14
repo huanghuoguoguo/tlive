@@ -8,7 +8,8 @@
  * - Queue depth tracking: limit queued messages and provide user feedback
  */
 
-import type { QueryControls, LiveSession, LLMProvider, MessagePriority } from '../../providers/base.js';
+import type { QueryControls, LiveSession, MessagePriority } from '../../providers/base.js';
+import type { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
 import type { ClaudeSettingSource } from '../../config.js';
 import type { EffortLevel } from '../../utils/types.js';
 import type { ManagedSessionSnapshot } from '../../formatting/message-types.js';
@@ -359,7 +360,7 @@ export class SDKEngine {
    * Returns the session, or undefined if provider doesn't support LiveSession.
    */
   getOrCreateSession(
-    llm: LLMProvider,
+    llm: ClaudeSDKProvider,
     channelType: string,
     chatId: string,
     workdir: string,
@@ -373,7 +374,7 @@ export class SDKEngine {
     },
   ): LiveSession | undefined;
   getOrCreateSession(
-    llm: LLMProvider,
+    llm: ClaudeSDKProvider,
     channelType: string,
     chatId: string,
     bindingSessionId: string,
@@ -388,7 +389,7 @@ export class SDKEngine {
     },
   ): LiveSession | undefined;
   getOrCreateSession(
-    llm: LLMProvider,
+    llm: ClaudeSDKProvider,
     channelType: string,
     chatId: string,
     bindingSessionIdOrWorkdir: string,
@@ -409,8 +410,6 @@ export class SDKEngine {
       setAsCurrent?: boolean;
     },
   ): LiveSession | undefined {
-    if (!llm.createSession) return undefined;
-
     const actualBindingSessionId = typeof workdirOrOptions === 'string'
       ? bindingSessionIdOrWorkdir
       : bindingSessionIdOrWorkdir;

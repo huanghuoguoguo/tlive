@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { SDKEngine } from '../../engine/sdk/engine.js';
-import type { LiveSession, LLMProvider } from '../../providers/base.js';
+import type { LiveSession } from '../../providers/base.js';
+import type { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
 
 function createMockSession(isAlive = true, isTurnActive = false): LiveSession {
   let callbacks: { onTurnComplete?: () => void } | undefined;
@@ -19,15 +20,14 @@ function createMockSession(isAlive = true, isTurnActive = false): LiveSession {
   } as unknown as LiveSession;
 }
 
-function createMockProvider(sessions: Record<string, LiveSession> = {}): LLMProvider {
+function createMockProvider(sessions: Record<string, LiveSession> = {}): ClaudeSDKProvider {
   return {
     streamChat: vi.fn().mockReturnValue({ stream: new ReadableStream() }),
-    capabilities: vi.fn().mockReturnValue({ slashCommands: true, askUserQuestion: true, liveSession: true, todoTracking: true, costInUsd: true, skills: true, sessionResume: true }),
     createSession: vi.fn().mockImplementation((params) => {
       const key = `${params.workingDirectory}`;
       return sessions[key] ?? createMockSession();
     }),
-  } as unknown as LLMProvider;
+  } as unknown as ClaudeSDKProvider;
 }
 
 describe('SDKEngine', () => {
@@ -244,11 +244,10 @@ describe('SDKEngine', () => {
       const secondSession = createMockSession(true, false);
       const provider = {
         streamChat: vi.fn().mockReturnValue({ stream: new ReadableStream() }),
-        capabilities: vi.fn().mockReturnValue({ slashCommands: true, askUserQuestion: true, liveSession: true, todoTracking: true, costInUsd: true, skills: true, sessionResume: true }),
         createSession: vi.fn()
           .mockReturnValueOnce(firstSession)
           .mockReturnValueOnce(secondSession),
-      } as unknown as LLMProvider;
+      } as unknown as ClaudeSDKProvider;
 
       engine.getOrCreateSession(provider, 'telegram', 'chat-1', 'session-1', '/workdir');
       engine.setActiveMessageId('telegram:chat-1', 'bubble-1', 'telegram:chat-1:session-1');

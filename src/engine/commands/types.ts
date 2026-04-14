@@ -1,7 +1,8 @@
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage } from '../../channels/types.js';
 import type { BridgeStore, ChannelBinding } from '../../store/interface.js';
-import type { LLMProvider, QueryControls } from '../../providers/base.js';
+import type { QueryControls } from '../../providers/base.js';
+import type { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
 import type { SessionStateManager } from '../state/session-state.js';
 import type { WorkspaceStateManager } from '../state/workspace-state.js';
 import type { ChannelRouter } from '../utils/router.js';
@@ -44,7 +45,7 @@ export interface CommandServices {
   workspace: WorkspaceStateManager;
   permissions: PermissionCoordinator;
   sdkEngine?: SDKEngine;
-  llm: LLMProvider;
+  llm: ClaudeSDKProvider;
   activeControls: Map<string, QueryControls>;
   defaultWorkdir: string;
   defaultClaudeSettingSources: ClaudeSettingSource[];

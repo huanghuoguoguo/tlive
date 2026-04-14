@@ -1,12 +1,12 @@
-import type { LLMProvider } from './providers/base.js';
+import type { ClaudeSDKProvider } from './providers/claude-sdk.js';
 import type { BridgeStore } from './store/interface.js';
-import type { ProviderCapabilities, LiveSession } from './providers/base.js';
+import type { LiveSession } from './providers/base.js';
 
-export type { ProviderCapabilities, LiveSession };
+export type { LiveSession };
 
 export interface BridgeContext {
   store: BridgeStore;
-  llm: LLMProvider;
+  llm: ClaudeSDKProvider;
   defaultWorkdir: string;
 }
 

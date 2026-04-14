@@ -13,7 +13,8 @@ import { shortPath } from '../../utils/path.js';
 import type { BridgeStore, ChannelBinding } from '../../store/interface.js';
 import type { ClaudeSettingSource } from '../../config.js';
 import { Logger, type LogContext } from '../../logger.js';
-import type { LLMProvider, LiveSession, DeferredToolHandler } from '../../providers/base.js';
+import type { LiveSession, DeferredToolHandler } from '../../providers/base.js';
+import type { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
 import { QueryExecutionPresenter } from '../messages/query-presenter.js';
 import { SDKPermissionHandler } from '../sdk/permission-handler.js';
 import { SDKAskQuestionHandler } from '../sdk/ask-question-handler.js';
@@ -27,7 +28,7 @@ const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
 
 interface QueryOrchestratorOptions {
   engine: ConversationEngine;
-  llm: LLMProvider;
+  llm: ClaudeSDKProvider;
   router: ChannelRouter;
   state: SessionStateManager;
   permissions: PermissionCoordinator;
