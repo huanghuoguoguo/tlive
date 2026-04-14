@@ -1,0 +1,180 @@
+name: arch-review
+version: 1
+description: Architecture health review workflow - review → actions
+artifacts:
+  - id: review
+    generates: review.md
+    description: Architecture health review with scoring and findings
+    template: review.md
+    instruction: >
+      Conduct a systematic architecture review of the codebase.
+
+
+      **Review Dimensions (score each A/B/C/D/F):**
+
+
+      ## 1. Directory Structure Semantics
+
+      - Each directory has clear responsibility boundaries?
+      - Directory names intuitively express their function?
+      - No "catch-all" directories (misc, utils, common)?
+      - No deeply nested directories (>3 levels)?
+
+      Check with: `find src -type d | head -30`
+
+
+      ## 2. Module Coupling
+
+      - No circular dependencies?
+      - Modules don't depend on unrelated subsystems?
+      - No "god classes" (files >300 lines doing too much)?
+      - Data/events flow in one direction?
+
+      Check with:
+      - `wc -l src/**/*.ts | sort -rn | head -10`
+      - Cross-layer imports in each file
+
+
+      ## 3. Cohesion
+
+      - Files in same directory solve same domain problem?
+      - No orphan files (unrelated to neighbors)?
+      - Utils directory not mixing unrelated functions?
+      - Types defined near their usage?
+
+      Check: List files in each directory, assess thematic unity
+
+
+      ## 4. Naming Clarity
+
+      - File names reveal content immediately?
+      - No vague names (utils.ts, helpers.ts, common.ts)?
+      - Exported functions/classes semantically clear?
+      - No over-abstraction (BaseXXX with one implementation)?
+
+      Check: `ls -la src/**/*.ts`
+
+
+      ## 5. File Size
+
+      - No mega files (>500 lines)? List top 5
+      - Files that should be split but aren't?
+      - Micro files (<50 lines) that could merge?
+
+
+      ## 6. Test Organization
+
+      - Tests mirror source structure?
+      - Tests near the code they test?
+      - Tests cover critical paths, not just edge cases?
+
+      Check: `find src/__tests__ -type f`
+
+
+      ## 7. Extensibility
+
+      - Adding similar feature requires how many file changes?
+      - Hardcoded platform/channel conditionals?
+      - Config separated from code?
+
+
+      **Output Format:**
+
+      ```markdown
+      # Architecture Health Review
+
+      ## Summary Scores
+
+      | Dimension | Score | Key Issues |
+      |-----------|-------|------------|
+      | Directory Structure | A/B/C/D/F | ... |
+      | Coupling | A/B/C/D/F | ... |
+      | Cohesion | A/B/C/D/F | ... |
+      | Naming | A/B/C/D/F | ... |
+      | File Size | A/B/C/D/F | ... |
+      | Tests | A/B/C/D/F | ... |
+      | Extensibility | A/B/C/D/F | ... |
+
+      **Overall: X/7 dimensions healthy**
+
+
+      ## Entropy Risk Points
+
+      (Future rot hotspots - where complexity will grow unchecked)
+
+
+      ## Detailed Findings
+
+      ### Directory Structure
+      - Issue: ...
+      - Evidence: ...
+      - Suggestion: ...
+
+      (repeat for each dimension)
+
+
+      ## Refactor Priority
+
+      1. [High] ...
+      2. [Medium] ...
+      3. [Low] ...
+      ```
+
+      Be specific - cite actual files and line counts. Abstract criticism
+      without evidence is not actionable.
+    requires: []
+  - id: actions
+    generates: actions.md
+    description: Actionable improvement tasks from review findings
+    template: actions.md
+    instruction: >
+      Convert review findings into a prioritized action list.
+
+
+      **Format:**
+
+
+      ## Quick Wins (can do in 1 session)
+
+      - [ ] 1.1 [file] Action description
+      - [ ] 1.2 [file] Action description
+
+
+      ## Medium Effort (1-2 sessions)
+
+      - [ ] 2.1 [file] Action description
+      - [ ] 2.2 [file] Action description
+
+
+      ## Larger Refactors (plan separately)
+
+      - [ ] 3.1 [area] Action description - consider making a separate change
+
+
+      **Guidelines:**
+
+      - Each action references specific file(s)
+      - Actions are small enough to verify completion
+      - Order by impact × effort (high impact, low effort first)
+      - If action needs planning, mark "consider separate change"
+
+      Skip actions that are:
+      - Already being addressed in other changes
+      - Pure naming changes without semantic improvement
+      - Hypothetical issues without actual code evidence
+    requires:
+      - review
+apply:
+  requires:
+    - actions
+  tracks: actions.md
+  instruction: |
+    Work through pending actions from the architecture review.
+
+    For each action:
+    1. Read the referenced file(s)
+    2. Make minimal, focused changes
+    3. Verify with tests/lint/build
+    4. Mark complete
+
+    If action reveals deeper issue, pause and suggest creating a separate change.
