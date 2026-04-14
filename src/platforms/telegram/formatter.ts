@@ -63,7 +63,7 @@ export class TelegramFormatter extends MessageFormatter<TelegramRenderedMessage>
   override formatHome(chatId: string, data: HomeData): TelegramRenderedMessage {
 const taskStatus = data.task.active
       ? this.t('home.taskActive')
-      : this.t('home.taskIdle'); (refactor: improve architecture and reduce code duplication)
+      : this.t('home.taskIdle');
 
     const lines = [
       `🏠 **TLive**`,
