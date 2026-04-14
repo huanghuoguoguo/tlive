@@ -25,6 +25,14 @@ let cacheTime = 0;
 const CACHE_TTL = 5000;
 
 /**
+ * Invalidate session cache — call after query completes to refresh recent tasks.
+ */
+export function invalidateSessionCache(): void {
+  cachedSessions = null;
+  cacheTime = 0;
+}
+
+/**
  * Scan ~/.claude/projects/ for Claude Code session .jsonl files.
  * Returns sessions sorted by mtime descending (most recent first).
  * Results are cached for 5 seconds to avoid repeated file I/O.
