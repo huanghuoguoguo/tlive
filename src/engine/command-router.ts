@@ -79,10 +79,10 @@ export class CommandRouter {
     private state: SessionStateManager,
     private workspace: WorkspaceStateManager,
     private getAdapters: () => Map<string, BaseChannelAdapter>,
-    private router: ChannelRouter,
+    router: ChannelRouter,
     private store: BridgeStore,
     private defaultWorkdir: string,
-    private llm: LLMProvider,
+    llm: LLMProvider,
     private activeControls: Map<string, QueryControls>,
     private permissions: PermissionCoordinator,
     private defaultClaudeSettingSources: ClaudeSettingSource[] = DEFAULT_CLAUDE_SETTING_SOURCES,
@@ -208,7 +208,7 @@ export class CommandRouter {
 
     // Managed sessions in SDKEngine for this chat
     const rawManagedSessions = this.sdkEngine?.getSessionsForChat(channelType, chatId) ?? [];
-    let managedSessions = rawManagedSessions.map(s => ({ ...s, workdir: shortPath(s.workdir) }));
+    const managedSessions = rawManagedSessions.map(s => ({ ...s, workdir: shortPath(s.workdir) }));
 
     // Ensure current binding always appears in managedSessions (it may not be in registry yet if no query was sent)
     if (binding && !managedSessions.some(s => s.bindingSessionId === binding.sessionId)) {
@@ -243,16 +243,16 @@ export class CommandRouter {
             boundFilter: (bi) =>
               (bi && !bi.isActive && bi.channelType === channelType && bi.chatId === chatId)
                 ? undefined
-                : bi && bi.isActive ? bi : undefined,
+                : bi?.isActive ? bi : undefined,
           }),
         ),
         all: allSessions.map((session, index) =>
           mapScannedSession(session, index, {
             binding, activeSdkSessionBindings, channelType, chatId, now,
             boundFilter: (bi, sdkSessionId) =>
-              bi && bi.isActive
+              bi?.isActive
                 && !(bi.channelType === channelType && bi.chatId === chatId && binding?.sdkSessionId === sdkSessionId)
-                ? bi : undefined,
+              ? bi : undefined,
           }),
         ),
         stale: sessionStale,
