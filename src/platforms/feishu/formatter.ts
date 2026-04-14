@@ -722,7 +722,9 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     const lines: string[] = [];
     for (const s of data.sessions) {
       const marker = s.isCurrent ? ' ◀ 当前' : '';
-      lines.push(`${s.index}. ${s.date} · ${truncate(s.preview, 60)}${marker}`);
+      // Show cwd like base class, but truncate preview more for Feishu card layout
+      const cwdDisplay = s.cwd ? `\`${s.cwd.replace(/^\/home\/[^/]+\//, '~/')}\`` : '';
+      lines.push(`${s.index}. ${s.date} · ${cwdDisplay} · ${truncate(s.preview, 40)}${marker}`);
     }
 
     const elements: FeishuCardElement[] = [
