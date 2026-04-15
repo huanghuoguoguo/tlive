@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'echo \"$CLAUDE_BASH_COMMAND\" | grep -qE \"git (commit|push)\" && npm run check'"
+            "command": "bash -c 'if echo \"$CLAUDE_BASH_COMMAND\" | grep -qE \"git (commit|push)\"; then npm run check; fi'"
           }
         ]
       }
