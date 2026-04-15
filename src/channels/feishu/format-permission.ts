@@ -17,7 +17,6 @@ import {
   permStatusButtons,
 } from '../../ui/buttons.js';
 import { truncate } from '../../utils/string.js';
-import { downgradeHeadings } from './markdown.js';
 import { mdElement } from './format-home.js';
 
 export interface FormatPermissionParams {
@@ -27,7 +26,7 @@ export interface FormatPermissionParams {
 }
 
 export function buildPermissionElements(params: FormatPermissionParams): FeishuCardElement[] {
-  const { data, locale } = params;
+  const { data } = params;
   const input = truncate(data.toolInput, 300);
   const expires = data.expiresInMinutes ?? 5;
   const elements: FeishuCardElement[] = [
@@ -53,7 +52,7 @@ export interface FormatQuestionParams {
 
 export function buildQuestionElements(params: FormatQuestionParams): FeishuCardElement[] {
   const { data } = params;
-  const { question, options, multiSelect, permId, sessionId } = data;
+  const { question, options, multiSelect, permId } = data;
 
   const cardElements: FeishuCardElement[] = [
     mdElement(`**问题**\n${question}`),

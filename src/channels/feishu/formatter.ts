@@ -9,7 +9,7 @@
  */
 
 import { MessageFormatter, type MessageLocale } from '../../formatting/message-formatter.js';
-import { downgradeHeadings, splitLargeTables } from './markdown.js';
+import { downgradeHeadings } from './markdown.js';
 import { buildFeishuButtonElements, type FeishuCardElement } from './card-builder.js';
 import type { FeishuRenderedMessage } from './types.js';
 import type {
@@ -33,7 +33,6 @@ import type {
 } from '../../formatting/message-types.js';
 import type { Button } from '../../ui/types.js';
 import {
-  permStatusButtons,
   taskStartButtons,
   taskSummaryButtons,
   helpButtons,

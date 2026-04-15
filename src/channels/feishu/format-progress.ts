@@ -5,8 +5,8 @@
 import type { FeishuCardElement } from './card-builder.js';
 import type { ProgressData } from '../../formatting/message-types.js';
 import { truncate } from '../../utils/string.js';
-import { downgradeHeadings, splitLargeTables } from './markdown.js';
-import { mdElement, mdPanel } from './format-home.js';
+import { downgradeHeadings } from './markdown.js';
+import { mdPanel } from './format-home.js';
 
 type TimelineToolDisplay = {
   toolName: string;
@@ -191,7 +191,7 @@ export interface FormatProgressParams {
 }
 
 export function buildProgressTimelineElements(params: FormatProgressParams): FeishuCardElement[] {
-  const { data, md } = params;
+  const { data } = params;
   const elements: FeishuCardElement[] = [];
   const isDone = data.phase === 'completed' || data.phase === 'failed';
   const operations = collectTimelineOperations(data);
