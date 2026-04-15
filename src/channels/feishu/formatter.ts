@@ -9,6 +9,7 @@
  */
 
 import { MessageFormatter, type MessageLocale } from '../../formatting/message-formatter.js';
+import { t } from '../../i18n/index.js';
 import { downgradeHeadings } from './markdown.js';
 import { buildFeishuButtonElements, type FeishuCardElement } from './card-builder.js';
 import type { FeishuRenderedMessage } from './types.js';
@@ -109,7 +110,9 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
   // --- Override all formatting methods for Feishu Card format ---
 
   override formatStatus(chatId: string, data: StatusData): FeishuRenderedMessage {
-    const status = data.healthy ? '🟢 运行中' : '🔴 已断开';
+    const status = data.healthy
+      ? `🟢 ${t(this.locale, 'format.statusRunning')}`
+      : `🔴 ${t(this.locale, 'format.statusDisconnected')}`;
     const channelDetails = data.channelInfo?.map(ch => {
       if (ch.name) return `${ch.type} (@${ch.name})`;
       if (ch.id) return `${ch.type} (${ch.id})`;
@@ -117,66 +120,66 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     }) || data.channels;
 
     const elements: FeishuCardElement[] = [
-      this.md(`**状态**\n${status}`),
-      this.md(`**通道**\n${channelDetails.join('\n') || '无'}`),
+      this.md(`**${t(this.locale, 'format.labelStatus')}**\n${status}`),
+      this.md(`**${t(this.locale, 'format.labelChannel')}**\n${channelDetails.join('\n') || t(this.locale, 'home.labelNone')}`),
     ];
 
     if (data.activeSessions !== undefined) {
       const total = (data.activeSessions || 0) + (data.idleSessions || 0);
-      const sessionHeader = `${data.activeSessions} 活跃` +
-        (data.idleSessions ? ` / ${data.idleSessions} 空闲` : '') +
-        ` (共 ${total})`;
+      const sessionHeader = `${data.activeSessions} ${t(this.locale, 'format.statusActive')}` +
+        (data.idleSessions ? ` / ${data.idleSessions} ${t(this.locale, 'format.statusIdle')}` : '') +
+        ` (${t(this.locale, 'format.statusTotal')} ${total})`;
 
       if (data.sessionSnapshots?.length) {
         const now = Date.now();
         const lines = data.sessionSnapshots.map(s => {
-          const { icon: stateIcon, text: stateText } = sessionStatusLabel(s.isTurnActive, s.isAlive);
+          const { icon: stateIcon, text: stateText } = sessionStatusLabel(this.locale, s.isTurnActive, s.isAlive);
           const ago = this.formatElapsed(now - s.lastActiveAt);
           const dir = s.workdir.replace(/^\/home\/[^/]+\//, '~/');
           const sid = s.sessionKey.length > 12 ? `…${s.sessionKey.slice(-8)}` : s.sessionKey;
-          return `${stateIcon} **${stateText}** \`${sid}\`\n📁 \`${dir}\` · ${ago}前活跃`;
+          return `${stateIcon} **${stateText}** \`${sid}\`\n📁 \`${dir}\` · ${ago}${t(this.locale, 'format.activeAgo')}`;
         });
         elements.push({
           tag: 'collapsible_panel',
           expanded: false,
-          header: { title: { tag: 'plain_text', content: `📡 会话 ${sessionHeader}` } },
+          header: { title: { tag: 'plain_text', content: `📡 ${t(this.locale, 'format.labelSession')} ${sessionHeader}` } },
           elements: [mdPanel(lines.join('\n\n'))],
         } as FeishuCardElement);
       } else {
-        elements.push(this.md(`**会话**\n${sessionHeader}`));
+        elements.push(this.md(`**${t(this.locale, 'format.labelSession')}**\n${sessionHeader}`));
       }
     }
 
     if (data.memoryUsage) {
-      elements.push(this.md(`**内存**\n${data.memoryUsage}`));
+      elements.push(this.md(`**${t(this.locale, 'format.labelMemory')}**\n${data.memoryUsage}`));
     }
     if (data.uptimeSeconds !== undefined) {
-      elements.push(this.md(`**运行时长**\n${this.formatUptime(data.uptimeSeconds)}`));
+      elements.push(this.md(`**${t(this.locale, 'format.labelUptime')}**\n${this.formatUptime(data.uptimeSeconds)}`));
     }
     if (data.version) {
-      elements.push(this.md(`**版本**\n\`v${data.version}\``));
+      elements.push(this.md(`**${t(this.locale, 'format.labelVersion')}**\n\`v${data.version}\``));
     }
     if (data.cwd) {
-      elements.push(this.md(`**目录**\n\`${data.cwd}\``));
+      elements.push(this.md(`**${t(this.locale, 'format.labelDirectory')}**\n\`${data.cwd}\``));
     }
 
     return this.createCardMessage(chatId,
-      { template: 'blue', title: '📊 TLive 状态' },
+      { template: 'blue', title: t(this.locale, 'format.titleStatus') },
       elements
     );
   }
 
   protected override formatUptime(seconds: number): string {
-    if (seconds < 60) return `${seconds}秒`;
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}分钟`;
+    if (seconds < 60) return `${seconds}${t(this.locale, 'format.seconds')}`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}${t(this.locale, 'format.minutes')}`;
     if (seconds < 86400) {
       const hours = Math.floor(seconds / 3600);
       const mins = Math.floor((seconds % 3600) / 60);
-      return `${hours}小时${mins}分钟`;
+      return `${hours}${t(this.locale, 'format.hours')}${mins}${t(this.locale, 'format.minutes')}`;
     }
     const days = Math.floor(seconds / 86400);
     const hours = Math.floor((seconds % 86400) / 3600);
-    return `${days}天${hours}小时`;
+    return `${days}${t(this.locale, 'format.days')}${hours}${t(this.locale, 'format.hours')}`;
   }
 
   private formatElapsed(ms: number): string {
@@ -187,25 +190,25 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     const elements = buildPermissionElements({ chatId, data, locale: this.locale });
     const buttons = permissionFormatButtons(data, this.locale);
     return this.createCardMessage(chatId,
-      { template: 'orange', title: '🔐 待审批动作' },
+      { template: 'orange', title: t(this.locale, 'format.titlePermission') },
       elements,
       buttons
     );
   }
 
   override formatQuestion(chatId: string, data: QuestionData): FeishuRenderedMessage {
-    const elements = buildQuestionElements({ chatId, data });
+    const elements = buildQuestionElements({ chatId, data, locale: this.locale });
     return this.createCardMessage(chatId,
-      { template: 'blue', title: '❓ 等待回答' },
+      { template: 'blue', title: t(this.locale, 'format.titleQuestion') },
       elements,
       undefined
     );
   }
 
   override formatDeferredToolInput(chatId: string, data: DeferredToolInputData): FeishuRenderedMessage {
-    const elements = buildDeferredToolElements({ chatId, data });
+    const elements = buildDeferredToolElements({ chatId, data, locale: this.locale });
     return this.createCardMessage(chatId,
-      { template: 'purple', title: '⏳ 等待输入' },
+      { template: 'purple', title: t(this.locale, 'format.titleDeferredInput') },
       elements,
       undefined
     );
@@ -242,7 +245,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     });
     const buttons = homeButtons(this.locale);
     return this.createCardMessage(chatId,
-      { template: 'blue', title: '🏠 工作台' },
+      { template: 'blue', title: t(this.locale, 'format.titleHome') },
       elements,
       buttons
     );
@@ -252,21 +255,23 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     const elements = buildPermStatusElements({ chatId, data, locale: this.locale });
     const buttons = permStatusButtonsForMode(data.mode, this.locale);
     return this.createCardMessage(chatId,
-      { template: data.mode === 'on' ? 'orange' : 'grey', title: '🔐 权限状态' },
+      { template: data.mode === 'on' ? 'orange' : 'grey', title: t(this.locale, 'format.titlePermissionStatus') },
       elements,
       buttons
     );
   }
 
   override formatTaskStart(chatId: string, data: TaskStartData): FeishuRenderedMessage {
-    const title = data.isNewSession ? '🔄 会话已重置' : '🚀 开始执行';
+    const title = data.isNewSession
+      ? t(this.locale, 'format.titleTaskReset')
+      : t(this.locale, 'format.titleTaskStart');
     const elements: FeishuCardElement[] = [
-      this.md(`**当前配置**\n目录：${data.cwd}\n权限：${data.permissionMode === 'on' ? '开启审批' : '关闭审批'}`),
+      this.md(`**${t(this.locale, 'format.labelCurrentConfig')}**\n${t(this.locale, 'format.labelDirectory')}：${data.cwd}\n${t(this.locale, 'home.labelPermission')}：${data.permissionMode === 'on' ? t(this.locale, 'perm.labelModeOn') : t(this.locale, 'perm.labelModeOff')}`),
     ];
     if (data.previousSessionPreview) {
-      elements.push(this.md(`**上次会话**\n${truncate(data.previousSessionPreview, 100)}`));
+      elements.push(this.md(`**${t(this.locale, 'format.labelPreviousSession')}**\n${truncate(data.previousSessionPreview, 100)}`));
     }
-    elements.push(this.md('💡 任务已开始执行。如需调整配置，点击下方按钮。'));
+    elements.push(this.md(t(this.locale, 'format.taskStartHint')));
     return this.createCardMessage(chatId,
       { template: 'blue', title },
       elements,
@@ -276,14 +281,14 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
 
   override formatTaskSummary(chatId: string, data: TaskSummaryData): FeishuRenderedMessage {
     const elements: FeishuCardElement[] = [
-      this.md(`**结果摘要**\n${data.summary}`),
-      this.md(`**执行结果**\n改动文件：${data.changedFiles}\n权限审批：${data.permissionRequests}\n状态：${data.hasError ? '有错误' : '已完成'}`),
+      this.md(`**${t(this.locale, 'format.labelResultSummary')}**\n${data.summary}`),
+      this.md(`**${t(this.locale, 'taskSummary.labelResult')}**\n${t(this.locale, 'format.labelChangedFiles')}：${data.changedFiles}\n${t(this.locale, 'format.labelPermissionRequests')}：${data.permissionRequests}\n${t(this.locale, 'home.labelStatus')}：${data.hasError ? t(this.locale, 'taskSummary.statusError') : t(this.locale, 'taskSummary.statusDone')}`),
     ];
     if (data.footerLine) {
       elements.push(this.md(`<font color='grey'>${data.footerLine}</font>`));
     }
     return this.createCardMessage(chatId,
-      { template: data.hasError ? 'red' : 'green', title: data.hasError ? '⚠️ 任务结束' : '✅ 任务摘要' },
+      { template: data.hasError ? 'red' : 'green', title: data.hasError ? t(this.locale, 'format.titleTaskEnd') : t(this.locale, 'format.titleTaskSummary') },
       elements,
       taskSummaryButtons(this.locale)
     );
@@ -291,26 +296,26 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
 
   override formatSessions(chatId: string, data: SessionsData): FeishuRenderedMessage {
     const showAll = data.showAll ?? false;
-    const title = showAll ? '📋 所有会话' : '📋 最近会话';
-    const subtitle = showAll ? '(全局)' : '(当前工作区)';
+    const title = showAll ? t(this.locale, 'sessions.btnAll') : t(this.locale, 'sessions.btnRecent');
+    const subtitle = showAll ? t(this.locale, 'sessions.subtitleAll') : t(this.locale, 'sessions.subtitleRecent');
     const elements: FeishuCardElement[] = [
       this.md(`**${title}** ${subtitle}`),
     ];
 
     const toggleButton: Button = showAll
-      ? { label: '📋 最近会话', callbackData: 'cmd:sessions', style: 'primary', row: 0 }
-      : { label: '📋 所有会话', callbackData: 'cmd:sessions --all', style: 'default', row: 0 };
+      ? { label: t(this.locale, 'sessions.btnRecent'), callbackData: 'cmd:sessions', style: 'primary', row: 0 }
+      : { label: t(this.locale, 'sessions.btnAll'), callbackData: 'cmd:sessions --all', style: 'default', row: 0 };
     elements.push(...buildFeishuButtonElements([toggleButton]));
 
     for (const s of data.sessions) {
-      const marker = s.isCurrent ? ' ◀ 当前' : '';
-      const cwdDisplay = showAll ? `**目录**\n\`${s.cwd}\`\n` : '';
+      const marker = s.isCurrent ? t(this.locale, 'sessions.currentMarker') : '';
+      const cwdDisplay = showAll ? `**${t(this.locale, 'sessions.labelDirectory')}**\n\`${s.cwd}\`\n` : '';
       const headerText = `${s.index}. ${s.date} · ${truncate(s.preview, 35)}${marker}`;
       const panelContent: FeishuCardElement[] = [
-        this.md(`${cwdDisplay}**时间**\n${s.date}\n**大小**\n${s.size}\n**预览**\n${truncate(s.preview, 200)}`),
+        this.md(`${cwdDisplay}**${t(this.locale, 'sessions.labelTime')}**\n${s.date}\n**${t(this.locale, 'sessions.labelSize')}**\n${s.size}\n**${t(this.locale, 'sessions.labelPreview')}**\n${truncate(s.preview, 200)}`),
       ];
       const switchBtn: Button = {
-        label: `▶️ 切换到 #${s.index}`,
+        label: `${t(this.locale, 'sessions.switchTo')} #${s.index}`,
         callbackData: `cmd:session ${s.index}`,
         style: s.isCurrent ? 'primary' : 'default',
         row: 0,
@@ -328,12 +333,12 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       {
         tag: 'input',
         name: '_session_idx',
-        placeholder: { tag: 'plain_text', content: '输入编号切换其他会话' },
+        placeholder: { tag: 'plain_text', content: t(this.locale, 'sessions.inputPlaceholder') },
         required: false,
       } as FeishuCardElement,
     ];
     const formButtons: Button[] = [
-      { label: '✅ 切换', callbackData: 'form:session_select', style: 'primary', row: 0 },
+      { label: t(this.locale, 'sessions.btnConfirmSwitch'), callbackData: 'form:session_select', style: 'primary', row: 0 },
     ];
     const formContainer: FeishuCardElement = {
       tag: 'form',
@@ -354,20 +359,20 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
 
   override formatSessionDetail(chatId: string, data: SessionDetailData): FeishuRenderedMessage {
     const elements: FeishuCardElement[] = [
-      this.md(`**目录**\n\`${data.cwd}\``),
-      this.md(`**时间**\n${data.date}`),
-      this.md(`**大小**\n${data.size}`),
-      this.md(`**预览**\n${data.preview}`),
+      this.md(`**${t(this.locale, 'sessions.labelDirectory')}**\n\`${data.cwd}\``),
+      this.md(`**${t(this.locale, 'sessions.labelTime')}**\n${data.date}`),
+      this.md(`**${t(this.locale, 'sessions.labelSize')}**\n${data.size}`),
+      this.md(`**${t(this.locale, 'sessions.labelPreview')}**\n${data.preview}`),
     ];
     if (data.transcript.length > 0) {
       const transcriptLines = data.transcript.slice(0, 4).map(t => {
         const role = t.role === 'user' ? '👤' : '🤖';
         return `${role} ${truncate(t.text, 100)}`;
       });
-      elements.push(this.md(`**最近消息**\n${transcriptLines.join('\n')}`));
+      elements.push(this.md(`**${t(this.locale, 'home.labelRecentChat')}**\n${transcriptLines.join('\n')}`));
     }
     return this.createCardMessage(chatId,
-      { template: 'blue', title: `📋 会话 #${data.index}` },
+      { template: 'blue', title: `📋 ${t(this.locale, 'sessions.btnList')} #${data.index}` },
       elements
     );
   }
@@ -375,10 +380,10 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
   override formatHelp(chatId: string, data: HelpData): FeishuRenderedMessage {
     const lines = data.commands.map(cmd => `/${cmd.cmd} — ${cmd.desc}`);
     const elements: FeishuCardElement[] = [
-      this.md(`**命令列表**\n${lines.join('\n')}`),
+      this.md(`**${t(this.locale, 'home.btnHelp')}**\n${lines.join('\n')}`),
     ];
     return this.createCardMessage(chatId,
-      { template: 'blue', title: '❓ 常用帮助' },
+      { template: 'blue', title: `❓ ${t(this.locale, 'home.btnHelp')}` },
       elements,
       helpButtons(this.locale)
     );
@@ -387,20 +392,20 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
   override formatNewSession(chatId: string, data: NewSessionData): FeishuRenderedMessage {
     const cwdLabel = data.cwd ? ` in \`${data.cwd}\`` : '';
     return this.createCardMessage(chatId,
-      { template: 'green', title: '✅ 新会话' },
-      [this.md(`已创建新会话${cwdLabel}`)]
+      { template: 'green', title: t(this.locale, 'newSession.title') },
+      [this.md(`${t(this.locale, 'newSession.title')}${cwdLabel}`)]
     );
   }
 
   override formatProgress(chatId: string, data: ProgressData): FeishuRenderedMessage {
-    const headerConfig = progressHeaderConfig(data);
+    const headerConfig = progressHeaderConfig(this.locale, data);
     const elements: FeishuCardElement[] = [];
 
     // Timeline elements
-    elements.push(...buildProgressTimelineElements({ chatId, data, md: this.md.bind(this) }));
+    elements.push(...buildProgressTimelineElements({ chatId, data, md: this.md.bind(this), locale: this.locale }));
 
     // Content elements (after timeline)
-    elements.push(...buildProgressContentElements({ chatId, data, md: this.md.bind(this) }));
+    elements.push(...buildProgressContentElements({ chatId, data, md: this.md.bind(this), locale: this.locale }));
 
     const buttons = data.actionButtons?.length ? data.actionButtons : this.defaultProgressButtons(data.phase);
     return this.createCardMessage(chatId, headerConfig, elements, buttons);
@@ -424,35 +429,35 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
 
   override formatVersionUpdate(chatId: string, data: VersionUpdateData): FeishuRenderedMessage {
     const dateStr = data.publishedAt
-      ? new Date(data.publishedAt).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+      ? new Date(data.publishedAt).toLocaleDateString(this.locale === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' })
       : '';
     const elements: FeishuCardElement[] = [
-      this.md(`**当前版本**\nv${data.current}`),
-      this.md(`**最新版本**\nv${data.latest}`),
+      this.md(`**${t(this.locale, 'version.title').replace('🔄 **', '').replace('**', '')}**\nv${data.current}`),
+      this.md(`**${t(this.locale, 'version.released')}**\nv${data.latest}`),
     ];
     if (dateStr) {
-      elements.push(this.md(`**发布时间**\n${dateStr}`));
+      elements.push(this.md(`**${t(this.locale, 'version.released')}**\n${dateStr}`));
     }
     const buttons: Button[] = [
-      { label: '⬆️ 立即升级', callbackData: `cmd:upgrade confirm:${data.latest}`, style: 'primary' },
+      { label: `⬆️ ${t(this.locale, 'home.labelSwitch')}`, callbackData: `cmd:upgrade confirm:${data.latest}`, style: 'primary' },
     ];
     return this.createCardMessage(chatId,
-      { template: 'blue', title: '🔄 发现新版本' },
+      { template: 'blue', title: t(this.locale, 'version.title') },
       elements,
       buttons
     );
   }
 
   override formatMultiSelectToggle(chatId: string, data: MultiSelectToggleData): FeishuRenderedMessage {
-    const elements = buildMultiSelectElements({ chatId, data });
-    const buttons = buildMultiSelectButtons(data.permId, data.sessionId, data.options);
+    const elements = buildMultiSelectElements({ chatId, data, locale: this.locale });
+    const buttons = buildMultiSelectButtons(data.permId, data.sessionId, data.options, this.locale);
     buttons.forEach((btn, idx) => {
       if (idx < data.options.length) {
         btn.label = `${data.selectedIndices.has(idx) ? '☑' : '☐'} ${data.options[idx].label}`;
       }
     });
     return this.createCardMessage(chatId,
-      { template: 'blue', title: '❓ 等待回答' },
+      { template: 'blue', title: t(this.locale, 'format.titleQuestion') },
       elements,
       buttons
     );

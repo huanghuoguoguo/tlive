@@ -8,7 +8,7 @@ export class HomeCommand extends BaseCommand {
   readonly description = 'Show home screen';
 
   async execute(ctx: CommandContext): Promise<boolean> {
-    await this.send(ctx, presentHome(ctx.msg.chatId, await ctx.helpers.buildHomePayload(ctx.msg.channelType, ctx.msg.chatId)));
+    await this.send(ctx, presentHome(ctx.msg.chatId, await ctx.helpers.buildHomePayload(ctx.msg.channelType, ctx.msg.chatId, ctx.locale)));
     return true;
   }
 }

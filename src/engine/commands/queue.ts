@@ -1,6 +1,7 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentQueueStatus } from '../messages/presenter.js';
+import { t } from '../../i18n/index.js';
 
 export class QueueCommand extends BaseCommand {
   readonly name = '/queue';
@@ -15,7 +16,7 @@ export class QueueCommand extends BaseCommand {
       : ctx.services.sdkEngine?.getActiveSessionKey(ctx.msg.channelType, ctx.msg.chatId);
 
     if (!activeSessionKey) {
-      await this.send(ctx, { chatId: ctx.msg.chatId, text: '⚠️ 无活跃会话，队列不可用' });
+      await this.send(ctx, { chatId: ctx.msg.chatId, text: t(ctx.locale, 'queue.noActiveSession') });
       return true;
     }
 
@@ -23,9 +24,9 @@ export class QueueCommand extends BaseCommand {
     if (sub === 'clear') {
       const cleared = ctx.services.sdkEngine?.clearQueue(activeSessionKey) ?? 0;
       if (cleared > 0) {
-        await this.send(ctx, { chatId: ctx.msg.chatId, text: `✅ 已清空队列 (${cleared} 条消息)` });
+        await this.send(ctx, { chatId: ctx.msg.chatId, text: `${t(ctx.locale, 'queue.cleared')} (${cleared})` });
       } else {
-        await this.send(ctx, { chatId: ctx.msg.chatId, text: '队列已为空' });
+        await this.send(ctx, { chatId: ctx.msg.chatId, text: t(ctx.locale, 'queue.emptyMessage') });
       }
       return true;
     }
@@ -34,11 +35,11 @@ export class QueueCommand extends BaseCommand {
     if (sub === 'depth') {
       const depth = parseInt(ctx.parts[2], 10);
       if (Number.isNaN(depth) || depth < 1 || depth > 10) {
-        await this.send(ctx, { chatId: ctx.msg.chatId, text: '⚠️ 队列深度需为 1-10 的整数' });
+        await this.send(ctx, { chatId: ctx.msg.chatId, text: t(ctx.locale, 'queue.depthInvalid') });
         return true;
       }
       ctx.services.sdkEngine?.setMaxQueueDepth(depth);
-      await this.send(ctx, { chatId: ctx.msg.chatId, text: `✅ 已设置队列深度为 ${depth}` });
+      await this.send(ctx, { chatId: ctx.msg.chatId, text: `${t(ctx.locale, 'queue.depthSet')} ${depth}` });
       return true;
     }
 

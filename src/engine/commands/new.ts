@@ -2,6 +2,7 @@ import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentNewSession, presentHome } from '../messages/presenter.js';
 import { generateSessionId } from '../../utils/id.js';
+import { t } from '../../i18n/index.js';
 
 export class NewCommand extends BaseCommand {
   readonly name = '/new';
@@ -26,12 +27,12 @@ export class NewCommand extends BaseCommand {
     ctx.services.state.clearThread(ctx.msg.channelType, ctx.msg.chatId);
 
     const feedbackText = hadActiveSession
-      ? `🆕 已保留旧会话，开启新会话`
+      ? t(ctx.locale, 'newSession.feedbackText')
       : undefined;
     await this.send(ctx, presentNewSession(ctx.msg.chatId, { cwd: previousBinding?.cwd, feedbackText }));
 
     // Send home screen after session reset
-    const homeData = await ctx.helpers.buildHomePayload(ctx.msg.channelType, ctx.msg.chatId);
+    const homeData = await ctx.helpers.buildHomePayload(ctx.msg.channelType, ctx.msg.chatId, ctx.locale);
     homeData.task.active = false;
     await this.send(ctx, presentHome(ctx.msg.chatId, homeData));
     return true;

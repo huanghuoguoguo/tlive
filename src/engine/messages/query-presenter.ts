@@ -5,6 +5,7 @@ import type { MessageRendererState } from './renderer.js';
 import { truncate } from '../../utils/string.js';
 import { buildProgressData } from './progress-builder.js';
 import type { Button } from '../../ui/types.js';
+import { t } from '../../i18n/index.js';
 
 /** Pass buttons through unchanged */
 function castButtons(buttons?: Button[]): Button[] | undefined {
@@ -46,7 +47,8 @@ export class QueryExecutionPresenter {
 
     let outMsg: RenderedMessage;
     if (state) {
-      const progressData = buildProgressData(state, this.inbound.text || '继续当前任务', castButtons(buttons), content);
+      const locale = this.adapter.getLocale();
+      const progressData = buildProgressData(state, this.inbound.text || t(locale, 'format.continueTask'), castButtons(buttons), content);
 
       if (state.phase === 'completed' && this.shouldSplitCompletedTrace(state)) {
         const traceMsg = this.adapter.format({
@@ -115,7 +117,8 @@ export class QueryExecutionPresenter {
   }): import('../../formatting/message-types.js').TaskSummaryData {
     const summarySource = (state.responseText || state.renderedText || '').trim();
     // Allow full summary for task completion (up to 5000 chars)
-    const summary = truncate(summarySource || '任务已完成', 5000);
+    const locale = this.adapter.getLocale();
+    const summary = truncate(summarySource || t(locale, 'format.taskCompleted'), 5000);
     const changedFileKeys = new Set(
       state.toolLogs
         .filter(log => ['Edit', 'Write', 'MultiEdit'].includes(log.name) && log.input.trim())

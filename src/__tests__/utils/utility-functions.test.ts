@@ -22,30 +22,54 @@ describe('formatSize', () => {
 });
 
 describe('formatRelativeTime', () => {
-  it('returns "刚刚" for less than 1 minute', () => {
+  it('returns "刚刚" for less than 1 minute (zh locale)', () => {
     const now = Date.now();
-    expect(formatRelativeTime(now)).toBe('刚刚');
-    expect(formatRelativeTime(now - 30000)).toBe('刚刚');
+    expect(formatRelativeTime(now, 'zh')).toBe('刚刚');
+    expect(formatRelativeTime(now - 30000, 'zh')).toBe('刚刚');
   });
 
-  it('returns minutes for less than 1 hour', () => {
+  it('returns minutes for less than 1 hour (zh locale)', () => {
     const now = Date.now();
-    expect(formatRelativeTime(now - 60000)).toBe('1分钟前');
-    expect(formatRelativeTime(now - 5 * 60000)).toBe('5分钟前');
-    expect(formatRelativeTime(now - 59 * 60000)).toBe('59分钟前');
+    expect(formatRelativeTime(now - 60000, 'zh')).toBe('1分钟前');
+    expect(formatRelativeTime(now - 5 * 60000, 'zh')).toBe('5分钟前');
+    expect(formatRelativeTime(now - 59 * 60000, 'zh')).toBe('59分钟前');
   });
 
-  it('returns hours for less than 24 hours', () => {
+  it('returns hours for less than 24 hours (zh locale)', () => {
     const now = Date.now();
-    expect(formatRelativeTime(now - 3600000)).toBe('1小时前');
-    expect(formatRelativeTime(now - 12 * 3600000)).toBe('12小时前');
+    expect(formatRelativeTime(now - 3600000, 'zh')).toBe('1小时前');
+    expect(formatRelativeTime(now - 12 * 3600000, 'zh')).toBe('12小时前');
   });
 
-  it('returns days for less than 7 days', () => {
+  it('returns days for less than 7 days (zh locale)', () => {
     const now = Date.now();
-    expect(formatRelativeTime(now - 86400000)).toBe('1天前');
-    expect(formatRelativeTime(now - 3 * 86400000)).toBe('3天前');
-    expect(formatRelativeTime(now - 6 * 86400000)).toBe('6天前');
+    expect(formatRelativeTime(now - 86400000, 'zh')).toBe('1天前');
+    expect(formatRelativeTime(now - 3 * 86400000, 'zh')).toBe('3天前');
+    expect(formatRelativeTime(now - 6 * 86400000, 'zh')).toBe('6天前');
+  });
+
+  it('returns "just now" for less than 1 minute (en locale)', () => {
+    const now = Date.now();
+    expect(formatRelativeTime(now, 'en')).toBe('just now');
+    expect(formatRelativeTime(now - 30000, 'en')).toBe('just now');
+  });
+
+  it('returns minutes for less than 1 hour (en locale)', () => {
+    const now = Date.now();
+    expect(formatRelativeTime(now - 60000, 'en')).toBe('1 min ago');
+    expect(formatRelativeTime(now - 5 * 60000, 'en')).toBe('5 min ago');
+  });
+
+  it('returns hours for less than 24 hours (en locale)', () => {
+    const now = Date.now();
+    expect(formatRelativeTime(now - 3600000, 'en')).toBe('1h ago');
+    expect(formatRelativeTime(now - 12 * 3600000, 'en')).toBe('12h ago');
+  });
+
+  it('returns days for less than 7 days (en locale)', () => {
+    const now = Date.now();
+    expect(formatRelativeTime(now - 86400000, 'en')).toBe('1d ago');
+    expect(formatRelativeTime(now - 3 * 86400000, 'en')).toBe('3d ago');
   });
 });
 

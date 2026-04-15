@@ -12,6 +12,7 @@ import { FEISHU_POLICY } from './policy.js';
 import type { Readable } from 'node:stream';
 import type { FeishuRenderedMessage } from './types.js';
 import type { FeishuCardElement } from './card-builder.js';
+import { t } from '../../i18n/index.js';
 
 /**
  * Read a Feishu SDK response into a Buffer.
@@ -263,7 +264,7 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
           return {
             toast: {
               type: 'success',
-              content: '已提交',
+              content: t('zh', 'adapter.submitted'),
             },
           };
         }
@@ -288,7 +289,7 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
         return {
           toast: {
             type: 'success',
-            content: '处理中...',
+            content: t('zh', 'adapter.processing'),
           },
         };
       },

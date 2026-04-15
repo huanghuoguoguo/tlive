@@ -6,6 +6,7 @@ import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { HomeData } from '../../formatting/message-types.js';
 import type { ScannedSession } from '../../providers/session-scanner.js';
 import type { QueryControls } from '../../providers/base.js';
+import type { Locale } from '../../i18n/index.js';
 import { scanClaudeSessions, readSessionTranscriptPreview } from '../../providers/session-scanner.js';
 import { shortPath } from '../../utils/path.js';
 import { formatSize, formatSessionDate, formatRelativeTime } from '../../utils/session-format.js';
@@ -23,6 +24,7 @@ function mapScannedSession(
     channelType: string;
     chatId: string;
     now: number;
+    locale: Locale;
     boundFilter: (boundInfo: BoundInfo | undefined, sdkSessionId: string) => BoundInfo | undefined;
   },
 ) {
@@ -30,7 +32,7 @@ function mapScannedSession(
   const boundToActiveSession = opts.boundFilter(boundInfo, session.sdkSessionId);
   return {
     index: index + 1,
-    date: formatSessionDate(session.mtime),
+    date: formatSessionDate(session.mtime, opts.locale),
     cwd: shortPath(session.cwd),
     size: formatSize(session.size),
     preview: session.preview,
@@ -61,7 +63,7 @@ import type { BaseChannelAdapter } from '../../channels/base.js';
 export class HomePayloadBuilder {
   constructor(private deps: HomePayloadBuilderDeps) {}
 
-  async build(channelType: string, chatId: string): Promise<HomeData> {
+  async build(channelType: string, chatId: string, locale: Locale = 'zh'): Promise<HomeData> {
     const { store, state, workspace, sdkEngine, permissions, activeControls, getAdapters, defaultWorkdir } = this.deps;
     const binding = await store.getBinding(channelType, chatId);
     const currentCwd = binding?.cwd || defaultWorkdir;
@@ -107,7 +109,7 @@ export class HomePayloadBuilder {
       cwd: shortPath(binding.cwd || currentCwd),
       isActive: activeControls.has(chatKey),
       queueDepth: queueInfo?.depth,
-      lastActiveAt: lastActiveTime ? formatRelativeTime(lastActiveTime) : undefined,
+      lastActiveAt: lastActiveTime ? formatRelativeTime(lastActiveTime, locale) : undefined,
     } : undefined;
 
     // Managed sessions in SDKEngine for this chat
@@ -143,7 +145,7 @@ export class HomePayloadBuilder {
         managed: managedSessions.length > 0 ? managedSessions : undefined,
         recent: recentSessions.map((session, index) =>
           mapScannedSession(session, index, {
-            binding, activeSdkSessionBindings, channelType, chatId, now,
+            binding, activeSdkSessionBindings, channelType, chatId, now, locale,
             boundFilter: (bi) =>
               (bi && !bi.isActive && bi.channelType === channelType && bi.chatId === chatId)
                 ? undefined
@@ -152,7 +154,7 @@ export class HomePayloadBuilder {
         ),
         all: allSessions.map((session, index) =>
           mapScannedSession(session, index, {
-            binding, activeSdkSessionBindings, channelType, chatId, now,
+            binding, activeSdkSessionBindings, channelType, chatId, now, locale,
             boundFilter: (bi, sdkSessionId) =>
               bi?.isActive
                 && !(bi.channelType === channelType && bi.chatId === chatId && binding?.sdkSessionId === sdkSessionId)
@@ -160,7 +162,7 @@ export class HomePayloadBuilder {
           }),
         ),
         stale: sessionStale,
-        lastActiveAt: lastActiveTime ? formatRelativeTime(lastActiveTime) : undefined,
+        lastActiveAt: lastActiveTime ? formatRelativeTime(lastActiveTime, locale) : undefined,
       },
       permission: {
         mode: state.getPermMode(channelType, chatId, binding?.sessionId),
