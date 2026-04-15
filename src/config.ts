@@ -119,6 +119,13 @@ export interface Config {
     /** HTTP/SOCKS proxy URL — overrides global TL_PROXY */
     proxy: string;
   };
+  /** Push configuration for /tlive:push command */
+  push: {
+    /** Default channel for push notifications (e.g., 'telegram', 'feishu') */
+    defaultChannel: string;
+    /** Default chat ID for push notifications */
+    defaultChat: string;
+  };
 }
 
 /** Validate a single project config */
@@ -331,6 +338,10 @@ export function loadConfig(): Config {
       allowedUsers: parseList(get('TL_QQ_ALLOWED_USERS')),
       proxy: get('TL_QQ_PROXY') || globalProxy,
     },
+    push: {
+      defaultChannel: get('TL_PUSH_DEFAULT_CHANNEL'),
+      defaultChat: get('TL_PUSH_DEFAULT_CHAT'),
+    },
   };
 
   // Validate required fields
@@ -362,6 +373,14 @@ export function loadConfig(): Config {
         }
         break;
     }
+  }
+
+  // Validate push config
+  if (config.push.defaultChannel && !config.enabledChannels.includes(config.push.defaultChannel)) {
+    throw new Error(`Config error: TL_PUSH_DEFAULT_CHANNEL '${config.push.defaultChannel}' is not in enabled channels (${config.enabledChannels.join(', ') || 'none'})`);
+  }
+  if (config.push.defaultChannel && !config.push.defaultChat) {
+    throw new Error('Config error: TL_PUSH_DEFAULT_CHAT is required when TL_PUSH_DEFAULT_CHANNEL is set');
   }
 
   return config;

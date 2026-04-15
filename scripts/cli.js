@@ -723,7 +723,8 @@ switch (command) {
         console.log(`Removed legacy TLive hook entries from: ${settingsPath}`);
       }
     } else {
-      console.log('Usage: tlive install skills [--codex]');
+      console.log('Usage:');
+      console.log('  tlive install skills [--codex]  Install /tlive skill');
     }
     break;
   }

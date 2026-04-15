@@ -238,4 +238,13 @@ export const en: Translations = {
   'input.hookAlwaysAllowed': '📌 Always allowed',
   'input.hookAllowed': '✅ Allowed',
   'input.hookFailed': '❌ Failed:',
+
+  // --- push notification ---
+  'push.title': '📱 Session Sync',
+  'push.workdir': 'Working directory',
+  'push.project': 'Project',
+  'push.session': 'Session',
+  'push.preview': 'Recent conversation',
+  'push.continueHint': 'Continue on your phone ↓',
+  'push.fallbackHint': '(auto-selected last active chat)',
 };

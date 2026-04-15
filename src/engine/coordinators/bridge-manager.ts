@@ -24,6 +24,7 @@ import type { ChannelRouter } from '../../utils/router.js';
 import type { SDKEngine } from '../sdk/engine.js';
 import type { IngressCoordinator } from './ingress.js';
 import type { SessionStateManager } from '../state/session-state.js';
+import { t, type Locale } from '../../i18n/index.js';
 
 interface BridgeManagerDeps {
   store: BridgeStore;
@@ -113,6 +114,7 @@ export class BridgeManager implements AutomationBridge {
         defaultProject: this.components.projectsConfig?.defaultProject,
         defaultWorkdir,
         cronScheduler: this.cronScheduler,
+        pushConfig: config.push,
       });
     }
   }
@@ -239,6 +241,67 @@ export class BridgeManager implements AutomationBridge {
   /** Get target chatId for broadcast messages */
   private getBroadcastTarget(channelType: string): string {
     return this.getLastChatId(channelType);
+  }
+
+  /** Push session context to mobile IM for continuing on phone */
+  async pushToMobile(options: {
+    channelType: string;
+    chatId: string;
+    workdir: string;
+    projectName?: string;
+    message?: string;
+    preview?: string;
+  }): Promise<{ success: boolean; sessionId?: string; error?: string }> {
+    const adapter = this.getAdapter(options.channelType);
+    if (!adapter) {
+      return { success: false, error: `Channel '${options.channelType}' not available` };
+    }
+
+    // Get binding to retrieve session info
+    const binding = await this.components.store.getBinding(options.channelType, options.chatId);
+    const locale: Locale = 'zh'; // Default to zh for push notifications
+    const sessionIdShort = binding?.sdkSessionId?.slice(-8) ?? binding?.sessionId?.slice(-8) ?? 'unknown';
+
+    // Format push notification message
+    const lines = [
+      t(locale, 'push.title'),
+      '',
+      `${t(locale, 'push.workdir')}: ${options.workdir}`,
+    ];
+    if (options.projectName) {
+      lines.push(`${t(locale, 'push.project')}: ${options.projectName}`);
+    }
+    lines.push(`${t(locale, 'push.session')}: ${sessionIdShort}`);
+
+    // Add preview if provided
+    if (options.preview) {
+      lines.push('');
+      lines.push(`💬 ${t(locale, 'push.preview')}:`);
+      lines.push(options.preview);
+    }
+
+    lines.push('');
+    lines.push(t(locale, 'push.continueHint'));
+
+    const pushText = lines.join('\n');
+
+    try {
+      await adapter.send({
+        chatId: options.chatId,
+        text: pushText,
+      });
+
+      // Return session ID from binding for resuming on mobile
+      return {
+        success: true,
+        sessionId: binding?.sdkSessionId ?? binding?.sessionId,
+      };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
 
   /** Delegate: track a hook message for reply routing */

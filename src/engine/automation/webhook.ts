@@ -18,6 +18,7 @@ import type { ProjectConfig } from '../../store/interface.js';
 import { generateRequestId, Logger } from '../../logger.js';
 import { isCronApiRequest, handleCronApiRequest } from './cron-api.js';
 import { handleFileSendRequest } from './file-send-api.js';
+import { handlePushRequest } from './push-handler.js';
 
 /** Webhook request body */
 export interface WebhookRequest {
@@ -106,6 +107,8 @@ export interface WebhookServerOptions {
   defaultWorkdir?: string;
   /** Cron scheduler for API requests (optional) */
   cronScheduler?: CronScheduler | null;
+  /** Push configuration for /api/push endpoint */
+  pushConfig?: { defaultChannel: string; defaultChat: string };
 }
 
 /**
@@ -253,6 +256,15 @@ export class WebhookServer {
       await handleFileSendRequest(req, res, {
         bridge: this.options.bridge,
         defaultWorkdir: this.getDefaultWorkdir(),
+      });
+      return;
+    }
+
+    // Route: /api/push
+    if (url === '/api/push') {
+      await handlePushRequest(req, res, {
+        bridge: this.options.bridge,
+        pushConfig: this.options.pushConfig || { defaultChannel: '', defaultChat: '' },
       });
       return;
     }

@@ -238,4 +238,13 @@ export const zh: Translations = {
   'input.hookAlwaysAllowed': '📌 已设置始终允许',
   'input.hookAllowed': '✅ 已允许',
   'input.hookFailed': '❌ 处理失败:',
+
+  // --- push notification ---
+  'push.title': '📱 会话同步',
+  'push.workdir': '工作目录',
+  'push.project': '项目',
+  'push.session': '会话',
+  'push.preview': '最近对话',
+  'push.continueHint': '在手机上继续对话 ↓',
+  'push.fallbackHint': '(自动选择最近活跃对话)',
 };
