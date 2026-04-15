@@ -58,6 +58,10 @@ describe('BridgeManager', () => {
   beforeEach(() => {
     // Set required env vars for loadConfig validation
     process.env.TL_TOKEN = 'test-token';
+    // Use port 0 (random available port) to avoid conflicts in parallel tests
+    process.env.TL_WEBHOOK_ENABLED = 'true';
+    process.env.TL_WEBHOOK_TOKEN = 'test-webhook-token';
+    process.env.TL_WEBHOOK_PORT = '0';
     initBridgeContext({
       defaultWorkdir: '/tmp',
       store: {
