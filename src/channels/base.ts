@@ -9,7 +9,7 @@ import type { CardResolutionData, FormattableMessage } from '../formatting/messa
 import type { MessageFormatter } from '../formatting/message-formatter.js';
 import type { Button } from '../ui/types.js';
 import type { ProgressPhase, ProgressTraceStats, PermissionDecision } from '../ui/policy.js';
-import type { ChannelPolicy, FormatPolicy } from '../ui/channel-policy.js';
+import type { ChannelPolicy } from '../ui/channel-policy.js';
 import { DEFAULT_CHANNEL_POLICY } from '../ui/channel-policy.js';
 import type { BridgeError } from './errors.js';
 import { classifyDefaultError } from './errors.js';

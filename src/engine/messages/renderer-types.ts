@@ -2,7 +2,6 @@
  * Shared types for message rendering — extracted to avoid circular dependency.
  */
 
-import type { Button } from '../../ui/types.js';
 import type { TodoStatus } from '../../utils/types.js';
 
 /** Tool call log entry for detailed display */
