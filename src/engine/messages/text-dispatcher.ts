@@ -3,7 +3,7 @@ import type { InboundMessage } from '../../channels/types.js';
 import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { SDKEngine } from '../sdk/engine.js';
 import type { SessionStateManager } from '../state/session-state.js';
-import { t } from '../../i18n/index.js';
+import { t, matchesLocalizedInput } from '../../i18n/index.js';
 
 interface TextDispatcherOptions {
   permissions: PermissionCoordinator;
@@ -83,18 +83,19 @@ export class TextDispatcher {
       return false;
     }
 
+    const locale = adapter.getLocale();
     const trimmed = msg.text.trim();
-    if (trimmed.toLowerCase() === 'skip' || trimmed.toLowerCase() === '跳过') {
+    if (matchesLocalizedInput(trimmed, 'input.skip')) {
       this.options.permissions.getGateway().resolve(pendingDeferred.permId, 'deny', 'Skipped');
       this.options.sdkEngine.getInteractionState().cleanupDeferredTool(pendingDeferred.permId);
-      await adapter.send({ chatId: msg.chatId, text: '⏭ 已跳过' });
+      await adapter.send({ chatId: msg.chatId, text: t(locale, 'input.skipped') });
       return true;
     }
 
     // Store user input and resolve permission
     this.options.sdkEngine.getInteractionState().setDeferredToolInput(pendingDeferred.permId, trimmed);
     this.options.permissions.getGateway().resolve(pendingDeferred.permId, 'allow');
-    await adapter.send({ chatId: msg.chatId, text: `✅ 已提交输入: ${trimmed.slice(0, 50)}${trimmed.length > 50 ? '...' : ''}` });
+    await adapter.send({ chatId: msg.chatId, text: `${t(locale, 'input.submitted')} ${trimmed.slice(0, 50)}${trimmed.length > 50 ? '...' : ''}` });
     return true;
   }
 
@@ -125,10 +126,14 @@ export class TextDispatcher {
     // Hook permission resolution simplified (Go Core removed)
     try {
       await this.options.permissions.resolveHookPermission(permEntry.permissionId, decision, adapter.channelType);
-      const label = decision === 'deny' ? '❌ Denied' : decision === 'allow_always' ? '📌 Always allowed' : '✅ Allowed';
+      const label = decision === 'deny'
+        ? t(adapter.getLocale(), 'input.hookDenied')
+        : decision === 'allow_always'
+          ? t(adapter.getLocale(), 'input.hookAlwaysAllowed')
+          : t(adapter.getLocale(), 'input.hookAllowed');
       await adapter.send({ chatId: msg.chatId, text: label });
     } catch (err) {
-      await adapter.send({ chatId: msg.chatId, text: `❌ Failed to resolve: ${err}` });
+      await adapter.send({ chatId: msg.chatId, text: `${t(adapter.getLocale(), 'input.hookFailed')} ${err}` });
     }
     return true;
   }

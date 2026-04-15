@@ -17,9 +17,11 @@ function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
     : channelType === 'qqbot'
       ? qqbotFormatter
       : telegramFormatter;
+  const locale = channelType === 'feishu' ? 'zh' : 'en';
   let sendCount = 0;
   return {
     channelType,
+    getLocale: () => locale,
     send: vi.fn().mockImplementation(async () => {
       sendCount += 1;
       return { messageId: `out-${sendCount}`, success: true };

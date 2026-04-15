@@ -31,7 +31,7 @@ export class SessionsCommand extends BaseCommand {
     const now = Date.now();
     const sessionData = sessions.map((s, i) => ({
       index: i + 1,
-      date: formatSessionDate(s.mtime),
+      date: formatSessionDate(s.mtime, ctx.locale),
       cwd: shortPath(s.cwd),
       size: formatSize(s.size),
       preview: s.preview,

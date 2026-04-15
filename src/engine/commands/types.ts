@@ -10,6 +10,7 @@ import type { SDKEngine, SessionCleanupReason } from '../sdk/engine.js';
 import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { ClaudeSettingSource, ProjectsValidationResult } from '../../config.js';
 import type { HomeData } from '../../formatting/message-types.js';
+import type { Locale } from '../../i18n/index.js';
 
 /** Router helpers - encapsulates complex internal operations */
 export interface RouterHelpers {
@@ -26,7 +27,7 @@ export interface RouterHelpers {
     },
   ): Promise<{ hadActiveSession: boolean; binding: ChannelBinding | null }>;
   /** Build home screen payload */
-  buildHomePayload(channelType: string, chatId: string): Promise<HomeData>;
+  buildHomePayload(channelType: string, chatId: string, locale?: Locale): Promise<HomeData>;
   /** Update workspace binding from path (find git root) */
   updateWorkspaceBindingFromPath(channelType: string, chatId: string, cwd: string): void;
   /** Get settings preset name from sources */
@@ -60,6 +61,8 @@ export interface CommandContext {
   services: CommandServices;
   /** Router helpers for complex operations */
   helpers: RouterHelpers;
+  /** Locale for i18n (derived from adapter or default 'zh') */
+  locale: Locale;
 }
 
 /** Command handler interface - implements open-closed principle */

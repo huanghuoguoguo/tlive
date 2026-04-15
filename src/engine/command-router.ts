@@ -11,6 +11,7 @@ import type { BridgeStore, ChannelBinding } from '../store/interface.js';
 import type { HomeData } from '../formatting/message-types.js';
 import type { RouterHelpers, CommandServices } from './commands/types.js';
 import type { PermissionCoordinator } from './coordinators/permission.js';
+import type { Locale } from '../i18n/index.js';
 import { commandRegistry, registerAllCommands } from './commands/index.js';
 import { DEFAULT_CLAUDE_SETTING_SOURCES } from '../config.js';
 import { findGitRoot } from '../utils/repo.js';
@@ -118,8 +119,8 @@ export class CommandRouter {
     return { hadActiveSession, binding };
   }
 
-  private async buildHomePayload(channelType: string, chatId: string): Promise<HomeData> {
-    const data = await this.homePayloadBuilder.build(channelType, chatId);
+  private async buildHomePayload(channelType: string, chatId: string, locale: Locale = 'zh'): Promise<HomeData> {
+    const data = await this.homePayloadBuilder.build(channelType, chatId, locale);
     // Add help entries from registry
     return {
       ...data,
@@ -138,12 +139,14 @@ export class CommandRouter {
     // Try registry dispatch
     const handler = commandRegistry.get(cmd);
     if (handler) {
+      const locale = typeof adapter.getLocale === 'function' ? adapter.getLocale() : 'zh';
       const ctx = {
         adapter,
         msg,
         parts,
         services: this.services,
         helpers: this.buildHelpers(),
+        locale,
       };
       return handler.execute(ctx);
     }

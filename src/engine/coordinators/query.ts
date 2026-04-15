@@ -24,6 +24,7 @@ import type { MessageRendererState } from '../messages/renderer.js';
 import { SessionStaleError, isStaleSessionError } from '../state/session-stale-error.js';
 import { invalidateSessionCache } from '../../providers/session-scanner.js';
 import { QueryContext } from './query-context.js';
+import { t } from '../../i18n/index.js';
 
 const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
 
@@ -306,13 +307,18 @@ export class QueryOrchestrator {
       onFlushError: (error, context) => {
         // Notify user when flush fails (e.g., platform limit exceeded)
         const errorMsg = error.message || String(error);
-        const phaseText = context.phase === 'completed' ? '完成时' : context.phase === 'failed' ? '失败时' : '执行中';
+        const locale = typeof adapter.getLocale === 'function' ? adapter.getLocale() : 'zh';
+        const phaseText = context.phase === 'completed'
+          ? t(locale, 'progress.phaseCompleted')
+          : context.phase === 'failed'
+            ? t(locale, 'progress.phaseFailed')
+            : t(locale, 'progress.phaseRunning');
         const notifyMsg = adapter.format({
           type: 'error',
           chatId: msg.chatId,
           data: {
-            title: `消息发送失败 (${phaseText})`,
-            message: `${errorMsg.slice(0, 150)}\n\n可能原因：内容超出平台限制（如表格行数、消息长度）。`,
+            title: `${t(locale, 'format.flushErrorTitle')} (${phaseText})`,
+            message: `${errorMsg.slice(0, 150)}\n\n${t(locale, 'format.flushErrorHint')}`,
           },
         });
         adapter.send(notifyMsg).catch(() => {});
@@ -328,7 +334,8 @@ export class QueryOrchestrator {
     inbound: InboundMessage,
     state: MessageRendererState,
   ): boolean {
-    const progressData = buildProgressData(state, inbound.text || '继续当前任务');
+    const locale = typeof adapter.getLocale === 'function' ? adapter.getLocale() : 'zh';
+    const progressData = buildProgressData(state, inbound.text || t(locale, 'format.continueTask'));
     const outMsg = adapter.format({ type: 'progress', chatId: inbound.chatId, data: progressData });
     return adapter.shouldSplitProgressMessage(outMsg);
   }

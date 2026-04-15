@@ -1,6 +1,7 @@
 import type { PendingPermissions } from '../../permissions/gateway.js';
 import type { PermissionDecision as TextPermissionDecision } from '../../ui/policy.js';
 import { truncate } from '../../utils/string.js';
+import { getLocalizedVariants } from '../../i18n/index.js';
 
 type PermissionDecision = TextPermissionDecision | 'cancelled';
 
@@ -138,10 +139,20 @@ export class SdkPermTracker {
 
   /** Parse text as a permission decision */
   parsePermissionText(text: string): TextPermissionDecision | null {
-    const t = text.trim().toLowerCase();
-    if (['allow', 'a', 'yes', 'y', '允许', '通过'].includes(t)) return 'allow';
-    if (['deny', 'd', 'no', 'n', '拒绝', '否'].includes(t)) return 'deny';
-    if (['always', '始终允许'].includes(t)) return 'allow_always';
+    const normalized = text.trim().toLowerCase();
+    // Check against localized variants
+    const allowVariants = getLocalizedVariants('input.allow');
+    const denyVariants = getLocalizedVariants('input.deny');
+    const alwaysVariants = getLocalizedVariants('input.allowAlways');
+
+    // Include common English abbreviations
+    const allAllow = [...allowVariants, 'a', 'yes', 'y', '通过'];
+    const allDeny = [...denyVariants, 'd', 'no', 'n', '否'];
+    const allAlways = [...alwaysVariants];
+
+    if (allAllow.some(v => v.toLowerCase() === normalized)) return 'allow';
+    if (allDeny.some(v => v.toLowerCase() === normalized)) return 'deny';
+    if (allAlways.some(v => v.toLowerCase() === normalized)) return 'allow_always';
     return null;
   }
 

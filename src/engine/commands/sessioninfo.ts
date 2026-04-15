@@ -31,7 +31,7 @@ export class SessioninfoCommand extends BaseCommand {
       index: result.idx,
       cwd: shortPath(target.cwd),
       preview: target.preview,
-      date: formatSessionDate(target.mtime),
+      date: formatSessionDate(target.mtime, ctx.locale),
       size: formatSize(target.size),
       transcript,
     }));

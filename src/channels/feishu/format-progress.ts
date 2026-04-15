@@ -2,6 +2,8 @@
  * Feishu progress/timeline formatting - extracted from main formatter.
  */
 
+import type { Locale } from '../../i18n/index.js';
+import { t } from '../../i18n/index.js';
 import type { FeishuCardElement } from './card-builder.js';
 import type { ProgressData } from '../../formatting/message-types.js';
 import { truncate } from '../../utils/string.js';
@@ -108,7 +110,7 @@ export function collectTimelineOperations(data: ProgressData): TimelineOperation
   return operations;
 }
 
-export function buildOperationHeader(operation: TimelineOperationDisplay, isExpanded: boolean): string {
+export function buildOperationHeader(locale: Locale, operation: TimelineOperationDisplay, isExpanded: boolean): string {
   const summarySource = operation.thinkingContent.trim()
     || operation.textEntries.find(text => text.trim())
     || '';
@@ -117,7 +119,7 @@ export function buildOperationHeader(operation: TimelineOperationDisplay, isExpa
   const toolSuffix = toolNames.length > 0
     ? toolNames.length === 1
       ? `${toolNames[0]}×${operation.toolEntries.length}`
-      : `${toolNames.slice(0, 2).join('/')} 等`
+      : `${toolNames.slice(0, 2).join('/')} ${t(locale, 'progress.andMore')}`
     : '';
   const title = summary
     ? toolSuffix
@@ -125,7 +127,7 @@ export function buildOperationHeader(operation: TimelineOperationDisplay, isExpa
       : summary
     : toolNames.length > 0
       ? toolNames.slice(0, 3).join(' · ')
-      : '思考';
+      : t(locale, 'progress.phaseThinking');
   const hasPendingTool = operation.toolEntries.some(tool => tool.toolResult === undefined && !tool.isError);
   const hasError = operation.toolEntries.some(tool => tool.isError);
   const icon = hasError ? '❌' : hasPendingTool ? '⏳' : isExpanded ? '🔄' : '✅';
@@ -188,10 +190,11 @@ export interface FormatProgressParams {
   chatId: string;
   data: ProgressData;
   md: (content: string) => FeishuCardElement;
+  locale: Locale;
 }
 
 export function buildProgressTimelineElements(params: FormatProgressParams): FeishuCardElement[] {
-  const { data } = params;
+  const { data, locale } = params;
   const elements: FeishuCardElement[] = [];
   const isDone = data.phase === 'completed' || data.phase === 'failed';
   const operations = collectTimelineOperations(data);
@@ -225,7 +228,7 @@ export function buildProgressTimelineElements(params: FormatProgressParams): Fei
       elements.push({
         tag: 'collapsible_panel',
         expanded: isExpanded,
-        header: { title: { tag: 'plain_text', content: buildOperationHeader(operation, isExpanded) } },
+        header: { title: { tag: 'plain_text', content: buildOperationHeader(locale, operation, isExpanded) } },
         elements: [mdPanel(content)],
       });
     }
@@ -235,7 +238,7 @@ export function buildProgressTimelineElements(params: FormatProgressParams): Fei
       elements.push({
         tag: 'collapsible_panel',
         expanded: false,
-        header: { title: { tag: 'plain_text', content: '💭 思考过程' } },
+        header: { title: { tag: 'plain_text', content: t(locale, 'progress.labelThinkingProcess') } },
         elements: [mdPanel(truncate(data.thinkingText.trim(), 1500))],
       });
     }
@@ -249,7 +252,7 @@ export function buildProgressTimelineElements(params: FormatProgressParams): Fei
       elements.push({
         tag: 'collapsible_panel',
         expanded: !isDone,
-        header: { title: { tag: 'plain_text', content: `🔧 工具调用 (${data.toolLogs.length})` } },
+        header: { title: { tag: 'plain_text', content: `${t(locale, 'progress.labelToolCalls')} (${data.toolLogs.length})` } },
         elements: [mdPanel(truncate(logLines.join('\n'), 2000))],
       });
     }
@@ -259,7 +262,7 @@ export function buildProgressTimelineElements(params: FormatProgressParams): Fei
 }
 
 export function buildProgressContentElements(params: FormatProgressParams): FeishuCardElement[] {
-  const { data, md } = params;
+  const { data, md, locale } = params;
   const elements: FeishuCardElement[] = [];
   const isDone = data.phase === 'completed' || data.phase === 'failed';
   const operations = collectTimelineOperations(data);
@@ -275,17 +278,17 @@ export function buildProgressContentElements(params: FormatProgressParams): Feis
       }
     }
   } else if (data.phase === 'waiting_permission' && data.permission) {
-    const extraQueue = data.permission.queueLength > 1 ? `\n待处理审批：${data.permission.queueLength} 个` : '';
+    const extraQueue = data.permission.queueLength > 1 ? `\n${t(locale, 'progress.labelPendingApprovals')}: ${data.permission.queueLength}` : '';
     elements.push(md(
-      `**当前等待**\n${data.permission.toolName}\n\`\`\`\n${truncate(data.permission.input, 260)}\n\`\`\`${extraQueue}`
+      `**${t(locale, 'progress.labelCurrentWait')}**\n${data.permission.toolName}\n\`\`\`\n${truncate(data.permission.input, 260)}\n\`\`\`${extraQueue}`
     ));
-    elements.push(md(`**运行时长** ${data.elapsedSeconds}s`));
+    elements.push(md(`**${t(locale, 'progress.labelElapsedTime')}** ${data.elapsedSeconds}s`));
   } else if (!operations.length) {
     if (data.currentTool?.input) {
       const currentElapsed = data.currentTool.elapsed > 0 ? ` · ${data.currentTool.elapsed}s` : '';
-      elements.push(md(`**最近动作**\n${data.currentTool.name}: ${truncate(data.currentTool.input, 140)}${currentElapsed}`));
+      elements.push(md(`**${t(locale, 'progress.labelRecentAction')}**\n${data.currentTool.name}: ${truncate(data.currentTool.input, 140)}${currentElapsed}`));
     }
-    elements.push(md(`**运行时长** ${data.elapsedSeconds}s`));
+    elements.push(md(`**${t(locale, 'progress.labelElapsedTime')}** ${data.elapsedSeconds}s`));
   }
 
   // Status line for in-progress cards with timeline
@@ -298,12 +301,12 @@ export function buildProgressContentElements(params: FormatProgressParams): Feis
 
   // API retry indicator
   if (data.apiRetry) {
-    elements.push(md(`🔄 API 重试中 (${data.apiRetry.attempt}/${data.apiRetry.maxRetries})${data.apiRetry.error ? ` — ${data.apiRetry.error}` : ''}`));
+    elements.push(md(`${t(locale, 'progress.apiRetry')} (${data.apiRetry.attempt}/${data.apiRetry.maxRetries})${data.apiRetry.error ? ` — ${data.apiRetry.error}` : ''}`));
   }
 
   // Context compaction indicator
   if (data.compacting) {
-    elements.push(md('📦 正在压缩上下文...'));
+    elements.push(md(t(locale, 'progress.compacting')));
   }
 
   // Tool use summary
@@ -311,7 +314,7 @@ export function buildProgressContentElements(params: FormatProgressParams): Feis
     elements.push({
       tag: 'collapsible_panel',
       expanded: false,
-      header: { title: { tag: 'plain_text', content: '📝 工具调用摘要' } },
+      header: { title: { tag: 'plain_text', content: t(locale, 'progress.labelToolSummary') } },
       elements: [mdPanel(truncate(data.toolUseSummaryText, 1000))],
     });
   }
@@ -323,20 +326,20 @@ export function buildProgressContentElements(params: FormatProgressParams): Feis
       const icon = item.status === 'completed' ? '✅' : item.status === 'in_progress' ? '🔧' : '⬜';
       return `${icon} ${item.content}`;
     });
-    elements.push(md(`**工作进度** (${done}/${data.todoItems.length})\n${todoLines.join('\n')}`));
+    elements.push(md(`**${t(locale, 'progress.labelWorkProgress')}** (${done}/${data.todoItems.length})\n${todoLines.join('\n')}`));
   }
 
   return elements;
 }
 
-export function progressHeaderConfig(data: ProgressData): { template: string; title: string } {
+export function progressHeaderConfig(locale: Locale, data: ProgressData): { template: string; title: string } {
   return data.phase === 'completed'
-    ? { template: 'green' as const, title: '✅ 已完成' }
+    ? { template: 'green' as const, title: t(locale, 'progress.titleCompleted') }
     : data.phase === 'failed'
-      ? { template: 'red' as const, title: '⚠️ 已停止' }
+      ? { template: 'red' as const, title: t(locale, 'progress.titleStopped') }
       : data.phase === 'waiting_permission'
-        ? { template: 'orange' as const, title: '🔐 等待权限' }
+        ? { template: 'orange' as const, title: t(locale, 'progress.titleWaitingPerm') }
         : data.isContinuation
-          ? { template: 'blue' as const, title: `🔄 继续执行 (${data.totalTools} 步已完成)` }
-          : { template: 'blue' as const, title: data.phase === 'starting' ? '⏳ 准备开始' : '⏳ 执行中' };
+          ? { template: 'blue' as const, title: `${t(locale, 'progress.titleContinue')} (${data.totalTools} ${t(locale, 'progress.labelStepsCompleted')})` }
+          : { template: 'blue' as const, title: data.phase === 'starting' ? t(locale, 'progress.titleStarting') : t(locale, 'progress.titleRunning') };
 }
