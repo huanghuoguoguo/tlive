@@ -112,8 +112,10 @@ export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = Ren
   async sendCodeOutput(chatId: string, text: string): Promise<SendResult> {
     const formatted = this.formatCodeOutput(text);
     // Use 'html' for Telegram (native HTML), 'text' for others
-    const useHtml = this.channelType === 'telegram';
-    return this.send(useHtml ? { chatId, html: formatted } : { chatId, text: formatted } as TRendered);
+    if (this.channelType === 'telegram') {
+      return this.send({ chatId, html: formatted } as TRendered);
+    }
+    return this.send({ chatId, text: formatted } as TRendered);
   }
 
   // --- Formatting support ---

@@ -27,7 +27,7 @@ describe('ChatRateLimiter', () => {
     const limiter = new ChatRateLimiter(1, 50); // 50ms window
     expect(limiter.tryConsume('chat1')).toBe(true);
     expect(limiter.tryConsume('chat1')).toBe(false);
-    await new Promise(r => setTimeout(r, 60));
+    await new Promise(r => setTimeout(r, 100)); // Wait longer to ensure window reset
     expect(limiter.tryConsume('chat1')).toBe(true);
   });
 });

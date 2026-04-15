@@ -244,8 +244,7 @@ export class WebhookServer {
 
     // Route cron API requests
     if (isCronApiRequest(url)) {
-      const scheduler = this.options.cronScheduler;
-      await handleCronApiRequest(req, res, scheduler);
+      await handleCronApiRequest(req, res, this.options.cronScheduler ?? null);
       return;
     }
 
