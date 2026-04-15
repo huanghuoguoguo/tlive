@@ -218,7 +218,7 @@ export function buildPermStatusElements(params: FormatPermStatusParams): FeishuC
   return elements;
 }
 
-export function permStatusButtonsForMode(mode: string, locale: 'en' | 'zh'): Button[] {
+export function permStatusButtonsForMode(mode: 'on' | 'off', locale: 'en' | 'zh'): Button[] {
   return permStatusButtons(mode, locale);
 }
 

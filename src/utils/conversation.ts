@@ -1,8 +1,8 @@
-import type { BridgeStore } from '../../store/interface.js';
-import type { ClaudeSettingSource } from '../../config.js';
-import type { FileAttachment, PermissionRequestHandler, QueryControls, StreamChatResult, EffortLevel } from '../../providers/base.js';
-import type { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
-import type { AskUserQuestionHandler } from '../../canonical/types.js';
+import type { BridgeStore } from '../store/interface.js';
+import type { ClaudeSettingSource } from '../config.js';
+import type { FileAttachment, PermissionRequestHandler, QueryControls, StreamChatResult, EffortLevel } from '../providers/base.js';
+import type { ClaudeSDKProvider } from '../providers/claude-sdk.js';
+import type { AskUserQuestionHandler } from '../canonical/types.js';
 import type { TodoStatus } from './types.js';
 
 const TEXT_MIME_PREFIXES = ['text/', 'application/json', 'application/xml', 'application/javascript', 'application/typescript', 'application/x-yaml', 'application/toml'];
@@ -74,7 +74,7 @@ interface ProcessMessageParams {
   /** SDK-level AskUserQuestion handler — forwarded to streamChat */
   sdkAskQuestionHandler?: AskUserQuestionHandler;
   /** SDK-level deferred tool handler — forwarded to streamChat */
-  sdkDeferredToolHandler?: import('../../providers/base.js').DeferredToolHandler;
+  sdkDeferredToolHandler?: import('../providers/base.js').DeferredToolHandler;
   effort?: EffortLevel;
   /** Override model for this query */
   model?: string;
