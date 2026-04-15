@@ -103,6 +103,19 @@ export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = Ren
     return this.policy.reactions.getPermissionDecision(decision);
   }
 
+  /** Format code output for this platform using the policy. */
+  formatCodeOutput(text: string): string {
+    return this.policy.format.formatCodeOutput(text);
+  }
+
+  /** Send code output (bash command result, etc.) using platform-appropriate formatting. */
+  async sendCodeOutput(chatId: string, text: string): Promise<SendResult> {
+    const formatted = this.formatCodeOutput(text);
+    // Use 'html' for Telegram (native HTML), 'text' for others
+    const useHtml = this.channelType === 'telegram';
+    return this.send(useHtml ? { chatId, html: formatted } : { chatId, text: formatted } as TRendered);
+  }
+
   // --- Formatting support ---
 
   /** Platform-specific message formatter. Override in subclass. */

@@ -1,5 +1,5 @@
 import type { ProgressPhase, ProgressTraceStats, PermissionDecision } from '../../ui/policy.js';
-import type { ChannelPolicy, ProgressPolicy, ReactionPolicy } from '../../ui/channel-policy.js';
+import type { ChannelPolicy, ProgressPolicy, ReactionPolicy, FormatPolicy } from '../../ui/channel-policy.js';
 
 // --- QQBot Progress Policy ---
 // QQBot suppresses progress updates during execution phase.
@@ -31,9 +31,17 @@ const QQBOT_REACTIONS: ReactionPolicy = {
   },
 };
 
+// --- QQBot Format Policy ---
+// QQBot uses plain text for code output
+
+const QQBOT_FORMAT: FormatPolicy = {
+  formatCodeOutput: (text: string) => text,
+};
+
 /** QQBot platform policy. */
 export const QQBOT_POLICY: ChannelPolicy = {
   locale: 'zh',
   progress: QQBOT_PROGRESS,
   reactions: QQBOT_REACTIONS,
+  format: QQBOT_FORMAT,
 };

@@ -1,5 +1,5 @@
 import type { ProgressPhase, ProgressTraceStats, PermissionDecision } from '../../ui/policy.js';
-import type { ChannelPolicy, ProgressPolicy, ReactionPolicy } from '../../ui/channel-policy.js';
+import type { ChannelPolicy, ProgressPolicy, ReactionPolicy, FormatPolicy } from '../../ui/channel-policy.js';
 
 // --- Feishu Progress Policy ---
 
@@ -55,9 +55,16 @@ const FEISHU_REACTIONS: ReactionPolicy = {
   },
 };
 
+// --- Feishu Format Policy ---
+
+const FEISHU_FORMAT: FormatPolicy = {
+  formatCodeOutput: (text: string) => `\`\`\`\n${text}\n\`\`\`\n`,
+};
+
 /** Feishu platform policy. */
 export const FEISHU_POLICY: ChannelPolicy = {
   locale: 'zh',
   progress: FEISHU_PROGRESS,
   reactions: FEISHU_REACTIONS,
+  format: FEISHU_FORMAT,
 };

@@ -10,5 +10,5 @@ export interface TelegramRenderedMessage {
   /** Reply to a specific message */
   replyToMessageId?: string;
   /** Media attachment */
-  media?: import('../../channels/types.js').MediaAttachment;
+  media?: import('../media-types.js').MediaAttachment;
 }
