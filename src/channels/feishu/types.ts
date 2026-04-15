@@ -21,5 +21,5 @@ export interface FeishuRenderedMessage {
   /** Reply to a specific message (root_id in Feishu) */
   replyToMessageId?: string;
   /** Media attachment */
-  media?: import('../../channels/types.js').MediaAttachment;
+  media?: import('../media-types.js').MediaAttachment;
 }

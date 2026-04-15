@@ -12,7 +12,8 @@
  */
 
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
-import type { BridgeManager } from '../coordinators/bridge-manager.js';
+import type { AutomationBridge } from '../types/automation-bridge.js';
+import type { CronScheduler } from './cron.js';
 import type { ProjectConfig } from '../../store/interface.js';
 import { generateRequestId, Logger } from '../../logger.js';
 import { isCronApiRequest, handleCronApiRequest } from './cron-api.js';
@@ -89,8 +90,8 @@ export interface WebhookServerOptions {
   port: number;
   /** URL path for webhook endpoint */
   path: string;
-  /** Bridge manager for message delivery */
-  bridge: BridgeManager;
+  /** Bridge for message delivery */
+  bridge: AutomationBridge;
   /** Session routing strategy: 'reject' (return error) or 'create' (auto-create session) */
   sessionStrategy: 'reject' | 'create';
   /** Optional callback URL for result notifications */
@@ -103,6 +104,8 @@ export interface WebhookServerOptions {
   defaultProject?: string;
   /** Default working directory for file path resolution */
   defaultWorkdir?: string;
+  /** Cron scheduler for API requests (optional) */
+  cronScheduler?: CronScheduler | null;
 }
 
 /**
@@ -241,7 +244,7 @@ export class WebhookServer {
 
     // Route cron API requests
     if (isCronApiRequest(url)) {
-      const scheduler = this.options.bridge.getCronScheduler();
+      const scheduler = this.options.cronScheduler;
       await handleCronApiRequest(req, res, scheduler);
       return;
     }

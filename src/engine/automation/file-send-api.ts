@@ -9,8 +9,8 @@ import { readFile, stat } from 'node:fs/promises';
 import type { Stats } from 'node:fs';
 import { basename, extname, resolve } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { BridgeManager } from '../coordinators/bridge-manager.js';
-import type { MediaAttachment } from '../../channels/types.js';
+import type { AutomationBridge } from '../types/automation-bridge.js';
+import type { MediaAttachment } from '../../channels/media-types.js';
 
 /** MIME type lookup by extension */
 const MIME_MAP: Record<string, string> = {
@@ -56,7 +56,7 @@ export interface FileSendResponse {
 }
 
 export interface FileSendApiOptions {
-  bridge: BridgeManager;
+  bridge: AutomationBridge;
   /** Default working directory for resolving relative paths */
   defaultWorkdir: string;
 }
@@ -71,7 +71,7 @@ export async function sendFileToChat(
   channelType: string,
   chatId: string,
   cwd: string,
-  bridge: BridgeManager,
+  bridge: AutomationBridge,
 ): Promise<FileSendResponse> {
   const resolvedPath = resolve(cwd, filePath);
 

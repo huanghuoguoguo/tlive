@@ -8,5 +8,5 @@ export interface QQBotRenderedMessage {
   /** Keyboard buttons (QQBot supports buttons via keyboard) */
   buttons?: import('../../ui/types.js').Button[];
   /** Media attachment */
-  media?: import('../../channels/types.js').MediaAttachment;
+  media?: import('../media-types.js').MediaAttachment;
 }

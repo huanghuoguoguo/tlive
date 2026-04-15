@@ -1,3 +1,4 @@
+import { escapeHtml } from '../formatting/escape.js';
 import type { ProgressPhase, ProgressTraceStats, PermissionDecision } from './policy.js';
 
 /**
@@ -25,6 +26,11 @@ export interface ReactionPolicy {
   getPermissionDecision(decision: PermissionDecision): string;
 }
 
+export interface FormatPolicy {
+  /** Format code output for this platform (e.g., HTML <pre> for Telegram, ``` for Feishu). */
+  formatCodeOutput(text: string): string;
+}
+
 export interface ChannelPolicy {
   /** Language preference for messages. */
   locale: 'en' | 'zh';
@@ -34,6 +40,9 @@ export interface ChannelPolicy {
 
   /** Reaction emoji policy. */
   reactions: ReactionPolicy;
+
+  /** Code output formatting policy. */
+  format: FormatPolicy;
 }
 
 // --- Default implementations (for Telegram) ---
@@ -58,9 +67,14 @@ const DEFAULT_REACTIONS: ReactionPolicy = {
   },
 };
 
+const DEFAULT_FORMAT: FormatPolicy = {
+  formatCodeOutput: (text: string) => `<pre>${escapeHtml(text)}</pre>`,
+};
+
 /** Default policy for Telegram (baseline behavior). */
 export const DEFAULT_CHANNEL_POLICY: ChannelPolicy = {
   locale: 'en',
   progress: DEFAULT_PROGRESS,
   reactions: DEFAULT_REACTIONS,
+  format: DEFAULT_FORMAT,
 };

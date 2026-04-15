@@ -88,7 +88,18 @@ export class BridgeManager implements AutomationBridge {
       appendSystemPrompt: this.buildAppendSystemPrompt(config),
     });
 
-    // Initialize webhook server if enabled
+    // Initialize cron scheduler if enabled
+    if (config.cron.enabled) {
+      this.cronScheduler = new CronScheduler({
+        runtimeDir: getTliveRuntimeDir(),
+        bridge: this,
+        enabled: config.cron.enabled,
+        maxConcurrency: config.cron.maxConcurrency,
+        projects: this.components.projectsConfig?.valid,
+      });
+    }
+
+    // Initialize webhook server if enabled (after cron scheduler so we can pass it)
     if (config.webhook.enabled && config.webhook.token) {
       this.webhookServer = new WebhookServer({
         token: config.webhook.token,
@@ -101,17 +112,7 @@ export class BridgeManager implements AutomationBridge {
         projects: this.components.projectsConfig?.valid,
         defaultProject: this.components.projectsConfig?.defaultProject,
         defaultWorkdir,
-      });
-    }
-
-    // Initialize cron scheduler if enabled
-    if (config.cron.enabled) {
-      this.cronScheduler = new CronScheduler({
-        runtimeDir: getTliveRuntimeDir(),
-        bridge: this,
-        enabled: config.cron.enabled,
-        maxConcurrency: config.cron.maxConcurrency,
-        projects: this.components.projectsConfig?.valid,
+        cronScheduler: this.cronScheduler,
       });
     }
   }

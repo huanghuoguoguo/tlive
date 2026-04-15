@@ -9,7 +9,7 @@ import type { CardResolutionData, FormattableMessage } from '../formatting/messa
 import type { MessageFormatter } from '../formatting/message-formatter.js';
 import type { Button } from '../ui/types.js';
 import type { ProgressPhase, ProgressTraceStats, PermissionDecision } from '../ui/policy.js';
-import type { ChannelPolicy } from '../ui/channel-policy.js';
+import type { ChannelPolicy, FormatPolicy } from '../ui/channel-policy.js';
 import { DEFAULT_CHANNEL_POLICY } from '../ui/channel-policy.js';
 import type { BridgeError } from './errors.js';
 import { classifyDefaultError } from './errors.js';
@@ -101,6 +101,19 @@ export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = Ren
   /** Platform reaction for a text-based permission decision. */
   getPermissionDecisionReaction(decision: PermissionDecision): string {
     return this.policy.reactions.getPermissionDecision(decision);
+  }
+
+  /** Format code output for this platform using the policy. */
+  formatCodeOutput(text: string): string {
+    return this.policy.format.formatCodeOutput(text);
+  }
+
+  /** Send code output (bash command result, etc.) using platform-appropriate formatting. */
+  async sendCodeOutput(chatId: string, text: string): Promise<SendResult> {
+    const formatted = this.formatCodeOutput(text);
+    // Use 'html' for Telegram (native HTML), 'text' for others
+    const useHtml = this.channelType === 'telegram';
+    return this.send(useHtml ? { chatId, html: formatted } : { chatId, text: formatted } as TRendered);
   }
 
   // --- Formatting support ---
