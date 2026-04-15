@@ -6,7 +6,7 @@ import { ClaudeSDKProvider } from './providers/claude-sdk.js';
 import { BridgeManager } from './engine/coordinators/bridge-manager.js';
 import { createAdapter, loadAdapters } from './channels/index.js';
 import type { ChannelType } from './channels/types.js';
-import { checkForUpdates, getCurrentVersion, isVersionNotified, markVersionNotified } from './engine/utils/version-checker.js';
+import { checkForUpdates, getCurrentVersion, isVersionNotified, markVersionNotified } from './utils/version-checker.js';
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync, readFileSync, unlinkSync, existsSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';

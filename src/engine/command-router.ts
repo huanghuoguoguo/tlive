@@ -2,7 +2,7 @@ import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';
 import type { SessionStateManager } from './state/session-state.js';
 import type { WorkspaceStateManager } from './state/workspace-state.js';
-import type { ChannelRouter } from './utils/router.js';
+import type { ChannelRouter } from '../utils/router.js';
 import type { QueryControls } from '../providers/base.js';
 import type { ClaudeSDKProvider } from '../providers/claude-sdk.js';
 import type { SDKEngine, SessionCleanupReason } from './sdk/engine.js';

@@ -20,7 +20,7 @@ import { createBridgeComponents, type BridgeComponents, type BridgeFactoryDeps }
 import { CommandRouter } from '../command-router.js';
 import { QueryOrchestrator } from './query.js';
 import type { PermissionCoordinator } from './permission.js';
-import type { ChannelRouter } from '../utils/router.js';
+import type { ChannelRouter } from '../../utils/router.js';
 import type { SDKEngine } from '../sdk/engine.js';
 import type { IngressCoordinator } from './ingress.js';
 import type { SessionStateManager } from '../state/session-state.js';
@@ -418,10 +418,10 @@ export class BridgeManager implements AutomationBridge {
       }
     }
 
-    // Auth check — with pairing mode for Telegram
+    // Auth check — with pairing mode for platforms that support it
     if (!adapter.isAuthorized(msg.userId, msg.chatId)) {
-      // Telegram pairing mode: generate code for unknown user (DM only)
-      if (adapter.channelType === 'telegram' && 'requestPairing' in adapter && msg.text) {
+      // Pairing mode: generate code for unknown user (DM only)
+      if (adapter.supportsPairing() && 'requestPairing' in adapter && msg.text) {
         const tgAdapter = adapter as any;
         const username = msg.userId;
         const code = tgAdapter.requestPairing(msg.userId, msg.chatId, username);

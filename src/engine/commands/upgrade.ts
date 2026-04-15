@@ -1,7 +1,7 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentVersionCheck, presentUpgradeResult, presentUpgradeCommand } from '../messages/presenter.js';
-import { checkForUpdates } from '../utils/version-checker.js';
+import { checkForUpdates } from '../../utils/version-checker.js';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { getTliveHome } from '../../utils/path.js';

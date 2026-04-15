@@ -25,6 +25,8 @@ function mockAdapter(channelType = 'telegram'): BaseChannelAdapter {
     sendTyping: vi.fn().mockResolvedValue(undefined),
     addReaction: vi.fn().mockResolvedValue(undefined),
     removeReaction: vi.fn().mockResolvedValue(undefined),
+    supportsPairing: vi.fn().mockReturnValue(channelType === 'telegram'),
+    supportsStreaming: vi.fn().mockReturnValue(false),
     getLifecycleReactions: vi.fn().mockImplementation(() => channelType === 'feishu'
       ? { processing: 'Typing', done: 'OK', error: 'FACEPALM', stalled: 'OneSecond', permission: 'Pin' }
       : { processing: '🤔', done: '👍', error: '😱', stalled: '⏳', permission: '🔐' }),

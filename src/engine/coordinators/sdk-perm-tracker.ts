@@ -1,6 +1,6 @@
-import type { PendingPermissions } from '../../../permissions/gateway.js';
-import type { PermissionDecision as TextPermissionDecision } from '../../../ui/policy.js';
-import { truncate } from '../../../utils/string.js';
+import type { PendingPermissions } from '../../permissions/gateway.js';
+import type { PermissionDecision as TextPermissionDecision } from '../../ui/policy.js';
+import { truncate } from '../../utils/string.js';
 
 type PermissionDecision = TextPermissionDecision | 'cancelled';
 

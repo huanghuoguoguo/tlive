@@ -1,4 +1,4 @@
-import type { BaseChannelAdapter } from '../../../channels/base.js';
+import type { BaseChannelAdapter } from '../../channels/base.js';
 
 /**
  * Handles hook deduplication, callback resolution, and card updates.

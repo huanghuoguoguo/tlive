@@ -8,7 +8,7 @@ import type { ScannedSession } from '../../providers/session-scanner.js';
 import type { QueryControls } from '../../providers/base.js';
 import { scanClaudeSessions, readSessionTranscriptPreview } from '../../providers/session-scanner.js';
 import { shortPath } from '../../utils/path.js';
-import { formatSize, formatSessionDate, formatRelativeTime } from '../utils/session-format.js';
+import { formatSize, formatSessionDate, formatRelativeTime } from '../../utils/session-format.js';
 import { SESSION_STALE_THRESHOLD_MS } from '../../utils/constants.js';
 
 type BoundInfo = { channelType: string; chatId: string; isActive: boolean };

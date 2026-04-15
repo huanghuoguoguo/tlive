@@ -4,7 +4,7 @@ import { presentSessionSwitched, presentSessionUsage, presentSessionNotFound } f
 import { shortPath } from '../../utils/path.js';
 import { generateSessionId } from '../../utils/id.js';
 import { isSameRepoRoot } from '../../utils/repo.js';
-import { parseSessionIndex } from '../utils/session-format.js';
+import { parseSessionIndex } from '../../utils/session-format.js';
 import { chatKey } from '../../utils/key.js';
 
 export class SessionCommand extends BaseCommand {

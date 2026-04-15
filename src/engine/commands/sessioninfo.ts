@@ -3,7 +3,7 @@ import type { CommandContext } from './types.js';
 import { presentSessionDetail, presentSessionUsage, presentSessionNotFound } from '../messages/presenter.js';
 import { readSessionTranscriptPreview } from '../../providers/session-scanner.js';
 import { shortPath } from '../../utils/path.js';
-import { formatSize, formatSessionDate, parseSessionIndex } from '../utils/session-format.js';
+import { formatSize, formatSessionDate, parseSessionIndex } from '../../utils/session-format.js';
 
 export class SessioninfoCommand extends BaseCommand {
   readonly name = '/sessioninfo';

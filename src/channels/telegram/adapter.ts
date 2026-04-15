@@ -52,6 +52,10 @@ export class TelegramAdapter extends BaseChannelAdapter<TelegramRenderedMessage>
     this.formatter = new TelegramFormatter('en');
   }
 
+  override supportsPairing(): boolean {
+    return true;
+  }
+
   /** Build Telegram file download URL from file path */
   private fileUrl(filePath: string): string {
     return `https://api.telegram.org/file/bot${this.config.botToken}/${filePath}`;

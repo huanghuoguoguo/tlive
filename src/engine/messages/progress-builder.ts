@@ -3,8 +3,8 @@
  * Separated from MessageRenderer for cleaner architecture.
  */
 
-import { redactSensitiveContent } from '../utils/content-filter.js';
-import { getToolIcon } from '../utils/tool-registry.js';
+import { redactSensitiveContent } from '../../utils/content-filter.js';
+import { getToolIcon } from '../../utils/tool-registry.js';
 import { shortPath } from '../../utils/path.js';
 import type { TodoStatus } from '../../utils/types.js';
 import type { MessageRendererState, TimelineEntry, ToolLogEntry } from './renderer.js';

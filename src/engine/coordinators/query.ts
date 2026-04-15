@@ -1,9 +1,9 @@
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage } from '../../channels/types.js';
 import { MessageRenderer } from '../messages/renderer.js';
-import { CostTracker } from '../utils/cost-tracker.js';
-import type { ConversationEngine } from '../utils/conversation.js';
-import type { ChannelRouter } from '../utils/router.js';
+import { CostTracker } from '../../utils/cost-tracker.js';
+import type { ConversationEngine } from '../../utils/conversation.js';
+import type { ChannelRouter } from '../../utils/router.js';
 import type { SessionStateManager } from '../state/session-state.js';
 import type { PermissionCoordinator } from './permission.js';
 import type { SDKEngine } from '../sdk/engine.js';

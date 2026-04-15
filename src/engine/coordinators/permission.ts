@@ -2,10 +2,10 @@ import type { PendingPermissions } from '../../permissions/gateway.js';
 import type { PermissionBroker } from '../../permissions/broker.js';
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { PermissionDecision as TextPermissionDecision } from '../../ui/policy.js';
-import { SdkPermTracker } from './permission/sdk-perm-tracker.js';
-import { HookResolver } from './permission/hook-resolver.js';
-import { QuestionResolver } from './permission/question-resolver.js';
-import { SessionWhitelist } from './permission/session-whitelist.js';
+import { SdkPermTracker } from './sdk-perm-tracker.js';
+import { HookResolver } from './hook-resolver.js';
+import { QuestionResolver } from './question-resolver.js';
+import { SessionWhitelist } from './session-whitelist.js';
 
 type PermissionDecision = TextPermissionDecision | 'cancelled';
 

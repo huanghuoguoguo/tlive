@@ -5,7 +5,7 @@ import { scanClaudeSessions } from '../../providers/session-scanner.js';
 import { shortPath } from '../../utils/path.js';
 import { FLAGS, hasFlag } from '../../utils/constants.js';
 import { SESSION_STALE_THRESHOLD_MS } from '../../utils/constants.js';
-import { formatSize, formatSessionDate } from '../utils/session-format.js';
+import { formatSize, formatSessionDate } from '../../utils/session-format.js';
 
 export class SessionsCommand extends BaseCommand {
   readonly name = '/sessions';

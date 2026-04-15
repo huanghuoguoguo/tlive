@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { CommandRouter } from '../../engine/command-router.js';
 import { SessionStateManager } from '../../engine/state/session-state.js';
 import { WorkspaceStateManager } from '../../engine/state/workspace-state.js';
-import { ChannelRouter } from '../../engine/utils/router.js';
+import { ChannelRouter } from '../../utils/router.js';
 import { JsonFileStore } from '../../store/json-file.js';
 import { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
 import { loadProjectsConfig, type ClaudeSettingSource } from '../../config.js';
