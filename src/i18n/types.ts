@@ -240,6 +240,13 @@ export interface Translations {
   'input.hookAlwaysAllowed': string;
   'input.hookAllowed': string;
   'input.hookFailed': string;
+
+  // --- push notification ---
+  'push.title': string;
+  'push.workdir': string;
+  'push.project': string;
+  'push.continueHint': string;
+  'push.fallbackHint': string;
 }
 
 export type TranslationKey = keyof Translations;

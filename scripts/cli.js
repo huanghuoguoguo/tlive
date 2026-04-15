@@ -440,6 +440,7 @@ Usage:
 Setup (one-time):
   tlive setup                Configure IM platforms (Telegram/Feishu/QQ Bot)
   tlive install skills       Install /tlive skill to Claude Code
+  tlive install commands     Install /tlive-push command to Claude Code
 
 Service Management:
   tlive start [--runtime R]  Start IM Bridge (R: claude|codex, default: claude)
@@ -722,8 +723,28 @@ switch (command) {
         writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
         console.log(`Removed legacy TLive hook entries from: ${settingsPath}`);
       }
+    } else if (sub === 'commands') {
+      // Install Claude Code commands
+      const commandsDir = join(PACKAGE_ROOT, 'commands');
+      if (!existsSync(commandsDir)) {
+        console.error('Commands directory not found. Reinstall from GitHub Release or rebuild.');
+        process.exit(1);
+      }
+
+      const destDir = join(homedir(), '.claude', 'commands');
+      mkdirSync(destDir, { recursive: true });
+
+      // Copy push.md as tlive-push.md to avoid conflicts
+      const src = join(commandsDir, 'push.md');
+      if (existsSync(src)) {
+        copyFileSync(src, join(destDir, 'tlive-push.md'));
+        console.log(`Command installed: ${join(destDir, 'tlive-push.md')}`);
+      }
+      console.log('\nCommands available: /tlive-push');
     } else {
-      console.log('Usage: tlive install skills [--codex]');
+      console.log('Usage:');
+      console.log('  tlive install skills [--codex]  Install /tlive skill');
+      console.log('  tlive install commands           Install /tlive-push command');
     }
     break;
   }

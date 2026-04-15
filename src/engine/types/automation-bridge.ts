@@ -38,4 +38,13 @@ export interface AutomationBridge {
 
   /** Get binding by session ID */
   getBindingBySessionId(sessionId: string): Promise<ChannelBinding | null>;
+
+  /** Push session context to mobile IM */
+  pushToMobile(options: {
+    channelType: string;
+    chatId: string;
+    workdir: string;
+    projectName?: string;
+    message?: string;
+  }): Promise<{ success: boolean; sessionId?: string; error?: string }>;
 }

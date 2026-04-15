@@ -13,6 +13,7 @@
     "scripts/preuninstall.js",
     "scripts/doctor.sh",
     "dist/",
+    "commands/",
     "SKILL.md",
     "references/",
     "config.env.example"
