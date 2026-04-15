@@ -39,6 +39,7 @@ User data: `~/.tlive/`
 | `logs`, `logs 200`, `查看日志` | logs |
 | `reconfigure`, `修改配置`, `换个 bot`, `改 token` | reconfigure |
 | `doctor`, `diagnose`, `诊断`, `挂了`, `没反应了` | doctor |
+| `push`, `推送`, `推送到手机`, `切换到手机` | push |
 | `help`, `帮助`, `怎么用` | help |
 
 **Disambiguation: `status` vs `doctor`** — Use `status` when the user just wants to check if the bridge is running. Use `doctor` when the user reports a problem or suspects something is broken. When in doubt and the user describes a symptom (e.g., "没反应了", "挂了"), prefer `doctor`.
@@ -134,6 +135,23 @@ Extract optional line count N from arguments (default 50).
 tlive logs [N]
 ```
 
+### `push`
+
+Push current session to mobile IM for continuing on phone.
+
+```
+1. Get current workdir: basename $(git rev-parse --show-toplevel 2>/dev/null || pwd)
+2. Get project name from git repo or directory name
+3. Read TL_WEBHOOK_TOKEN from ~/.tlive/config.env
+4. Call API: curl -s -X POST http://localhost:8081/api/push \
+   -H "Authorization: Bearer <TL_WEBHOOK_TOKEN>" \
+   -H "Content-Type: application/json" \
+   -d '{"workdir":"<cwd>","projectName":"<project>"}'
+5. Report result:
+   - Success: "Session pushed! Check your phone to continue."
+   - Connection error: "Bridge not running. Run: tlive start"
+```
+
 ### `doctor`
 
 Run diagnostics and suggest fixes. For complex issues, read `references/troubleshooting.md`.
@@ -154,6 +172,7 @@ TLive — Control Claude Code from your phone
 In Claude Code (/tlive):
   /tlive               Start IM Bridge (chat from phone)
   /tlive setup         Configure IM platforms (AI-guided)
+  /tlive push          Push session to mobile (continue on phone)
   /tlive reconfigure   Modify specific config fields
   /tlive stop          Stop Bridge
   /tlive status        Show Bridge status
