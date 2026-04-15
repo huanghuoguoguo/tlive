@@ -16,6 +16,8 @@ export interface PushRequest {
   projectName?: string;
   /** Custom message (optional) */
   message?: string;
+  /** Conversation preview for context (optional, e.g., last 2-3 exchanges) */
+  preview?: string;
 }
 
 export interface PushResponse {
@@ -148,6 +150,7 @@ export async function handlePushRequest(
       workdir: request.workdir,
       projectName: request.projectName,
       message: request.message,
+      preview: request.preview,
     });
 
     if (result.success) {

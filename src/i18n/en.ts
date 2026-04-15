@@ -243,6 +243,8 @@ export const en: Translations = {
   'push.title': '📱 Session Sync',
   'push.workdir': 'Working directory',
   'push.project': 'Project',
+  'push.session': 'Session',
+  'push.preview': 'Recent conversation',
   'push.continueHint': 'Continue on your phone ↓',
   'push.fallbackHint': '(auto-selected last active chat)',
 };

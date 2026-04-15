@@ -245,6 +245,8 @@ export interface Translations {
   'push.title': string;
   'push.workdir': string;
   'push.project': string;
+  'push.session': string;
+  'push.preview': string;
   'push.continueHint': string;
   'push.fallbackHint': string;
 }

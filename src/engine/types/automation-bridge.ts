@@ -46,5 +46,6 @@ export interface AutomationBridge {
     workdir: string;
     projectName?: string;
     message?: string;
+    preview?: string;
   }): Promise<{ success: boolean; sessionId?: string; error?: string }>;
 }

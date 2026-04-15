@@ -250,15 +250,17 @@ export class BridgeManager implements AutomationBridge {
     workdir: string;
     projectName?: string;
     message?: string;
+    preview?: string;
   }): Promise<{ success: boolean; sessionId?: string; error?: string }> {
     const adapter = this.getAdapter(options.channelType);
     if (!adapter) {
       return { success: false, error: `Channel '${options.channelType}' not available` };
     }
 
-    // Get binding to retrieve locale
+    // Get binding to retrieve session info
     const binding = await this.components.store.getBinding(options.channelType, options.chatId);
     const locale: Locale = 'zh'; // Default to zh for push notifications
+    const sessionIdShort = binding?.sdkSessionId?.slice(-8) ?? binding?.sessionId?.slice(-8) ?? 'unknown';
 
     // Format push notification message
     const lines = [
@@ -269,6 +271,15 @@ export class BridgeManager implements AutomationBridge {
     if (options.projectName) {
       lines.push(`${t(locale, 'push.project')}: ${options.projectName}`);
     }
+    lines.push(`${t(locale, 'push.session')}: ${sessionIdShort}`);
+
+    // Add preview if provided
+    if (options.preview) {
+      lines.push('');
+      lines.push(`💬 ${t(locale, 'push.preview')}:`);
+      lines.push(options.preview);
+    }
+
     lines.push('');
     lines.push(t(locale, 'push.continueHint'));
 

@@ -142,12 +142,13 @@ Push current session to mobile IM for continuing on phone.
 ```
 1. Get current workdir: basename $(git rev-parse --show-toplevel 2>/dev/null || pwd)
 2. Get project name from git repo or directory name
-3. Read TL_WEBHOOK_TOKEN from ~/.tlive/config.env
-4. Call API: curl -s -X POST http://localhost:8081/api/push \
+3. Generate preview: summarize last 2-3 exchanges in 1-2 sentences (what you're working on)
+4. Read TL_WEBHOOK_TOKEN from ~/.tlive/config.env
+5. Call API: curl -s -X POST http://localhost:8081/api/push \
    -H "Authorization: Bearer <TL_WEBHOOK_TOKEN>" \
    -H "Content-Type: application/json" \
-   -d '{"workdir":"<cwd>","projectName":"<project>"}'
-5. Report result:
+   -d '{"workdir":"<cwd>","projectName":"<project>","preview":"<summary>"}'
+6. Report result:
    - Success: "Session pushed! Check your phone to continue."
    - Connection error: "Bridge not running. Run: tlive start"
 ```
