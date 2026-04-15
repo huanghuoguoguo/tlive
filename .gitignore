@@ -9,3 +9,4 @@ docs/plans/
 .claude/*.json
 .claude/worktrees/
 coverage/
+openspec/changes/
