@@ -66,7 +66,7 @@ describe('TelegramFormatter', () => {
       };
       const result = formatter.formatNotification('chat123', data);
 
-      expect(result.html.length).toBeLessThan(5000);
+      expect(result.html!.length).toBeLessThan(5000);
     });
   });
 
@@ -75,11 +75,14 @@ describe('TelegramFormatter', () => {
       const data: HomeData = {
         workspace: { cwd: '/home/user/project' },
         task: { active: false },
+        session: {},
+        permission: { mode: 'on' },
+        bridge: {},
       };
       const result = formatter.formatHome('chat123', data);
 
       expect(result.chatId).toBe('chat123');
-      expect(result.html).toContain('/home/user/project');
+      expect(result.html!).toContain('/home/user/project');
     });
   });
 

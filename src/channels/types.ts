@@ -1,5 +1,8 @@
 export type ChannelType = 'telegram' | 'feishu' | 'qqbot';
 
+// Import FileAttachment for use in InboundMessage
+import type { FileAttachment } from './media-types.js';
+
 export interface InboundMessage {
   channelType: ChannelType;
   chatId: string;
