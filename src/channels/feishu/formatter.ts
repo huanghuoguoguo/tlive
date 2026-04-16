@@ -429,7 +429,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     }
 
     return this.createCardMessage(chatId,
-      { template: 'blue', title: `❓ ${t(this.locale, 'home.btnHelp')}` },
+      { template: 'blue', title: t(this.locale, 'home.btnHelp') },
       elements,
       helpButtons(this.locale)
     );
