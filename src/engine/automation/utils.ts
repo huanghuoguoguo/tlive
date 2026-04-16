@@ -1,4 +1,4 @@
-import type { ClaudeSettingSource } from '../config.js';
+import type { ClaudeSettingSource } from '../../config.js';
 
 /** Compare two ClaudeSettingSource arrays for equality */
 export function areSettingSourcesEqual(
