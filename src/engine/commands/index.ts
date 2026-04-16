@@ -5,9 +5,7 @@ import { HomeCommand } from './home.js';
 import { PermCommand } from './perm.js';
 import { StopCommand } from './stop.js';
 import { HooksCommand } from './hooks.js';
-import { SessionsCommand } from './sessions.js';
 import { SessionCommand } from './session.js';
-import { SessioninfoCommand } from './sessioninfo.js';
 import { CdCommand } from './cd.js';
 import { PwdCommand } from './pwd.js';
 import { BashCommand } from './bash.js';
@@ -19,7 +17,6 @@ import { UpgradeCommand } from './upgrade.js';
 import { RestartCommand } from './restart.js';
 import { QueueCommand } from './queue.js';
 import { DiagnoseCommand } from './diagnose.js';
-import { ProjectCommand } from './project.js';
 import { RebindCommand } from './rebind.js';
 
 /** Register all built-in commands */
@@ -30,9 +27,7 @@ export function registerAllCommands(): void {
   commandRegistry.register(new PermCommand());
   commandRegistry.register(new StopCommand());
   commandRegistry.register(new HooksCommand());
-  commandRegistry.register(new SessionsCommand());
   commandRegistry.register(new SessionCommand());
-  commandRegistry.register(new SessioninfoCommand());
   commandRegistry.register(new CdCommand());
   commandRegistry.register(new PwdCommand());
   commandRegistry.register(new BashCommand());
@@ -44,7 +39,6 @@ export function registerAllCommands(): void {
   commandRegistry.register(new RestartCommand());
   commandRegistry.register(new QueueCommand());
   commandRegistry.register(new DiagnoseCommand());
-  commandRegistry.register(new ProjectCommand());
   commandRegistry.register(new RebindCommand());
 }
 

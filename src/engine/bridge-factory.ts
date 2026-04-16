@@ -21,9 +21,12 @@ import { HookNotificationDispatcher } from './messages/hook-notification.js';
 import { getTliveRuntimeDir } from '../core/path.js';
 import { loadProjectsConfig } from '../config.js';
 import { networkInterfaces } from 'node:os';
+import { commandRegistry } from './commands/index.js';
 
-/** Bridge commands handled synchronously (don't block adapter loop) */
-const QUICK_COMMANDS = new Set(['/new', '/home', '/status', '/hooks', '/sessions', '/session', '/sessioninfo', '/help', '/help-cli', '/perm', '/stop', '/approve', '/pairings', '/settings', '/cd', '/pwd', '/bash', '/upgrade', '/restart']);
+/** Get quick commands from registry */
+function getQuickCommands(): Set<string> {
+  return commandRegistry.getQuickCommands();
+}
 
 function isPrivateIPv4(ip: string): boolean {
   const parts = ip.split('.').map(Number);
@@ -117,7 +120,7 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
     state,
     sdkEngine,
     permissions,
-    quickCommands: QUICK_COMMANDS,
+    quickCommands: getQuickCommands(),
     hasPendingSdkQuestion: (channelType: string, chatId: string) => text.hasPendingSdkQuestion(channelType, chatId),
     resolveProcessingKey: async (msg: InboundMessage) => {
       const binding = await router.resolve(msg.channelType, msg.chatId);

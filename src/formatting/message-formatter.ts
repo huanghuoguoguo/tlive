@@ -40,7 +40,6 @@ import type {
   DiagnoseData,
   ProjectListData,
   ProjectInfoData,
-  RecentProjectsData,
   FormattableMessage,
 } from './message-types.js';
 import { truncate } from '../core/string.js';
@@ -124,8 +123,6 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
         return this.formatProjectList(chatId, msg.data);
       case 'projectInfo':
         return this.formatProjectInfo(chatId, msg.data);
-      case 'recentProjects':
-        return this.formatRecentProjects(chatId, msg.data);
       default:
         throw new Error(`Unknown message type: ${(msg as any).type}`);
     }
@@ -633,31 +630,6 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
     }
 
     return this.createMessage(chatId, lines.join('\n'));
-  }
-
-  formatRecentProjects(chatId: string, data: RecentProjectsData): TRendered {
-    const lines = ['📂 **Recent Projects**', '', `**Current:** \`${data.currentCwd}\``, ''];
-
-    for (const project of data.projects) {
-      const marker = project.isCurrent ? ' ◀' : '';
-      const timeAgo = this.formatTimeAgo(project.lastUsedAt);
-      const useInfo = project.useCount > 1 ? ` · ${project.useCount}x` : '';
-      lines.push(`- **${project.name}** — \`${project.workdir}\` (${timeAgo}${useInfo})${marker}`);
-    }
-
-    lines.push('', this.t('recentProjects.hint'));
-
-    // Add buttons for quick switch
-    const buttons: Button[] = data.projects
-      .filter(p => !p.isCurrent) // Don't show button for current directory
-      .slice(0, 5) // Max 5 buttons
-      .map(project => ({
-        label: `📂 ${project.name}`,
-        callbackData: `cmd:/cd ${project.fullWorkdir}`,
-        style: 'primary' as const,
-      }));
-
-    return this.createMessage(chatId, lines.join('\n'), buttons);
   }
 
   protected formatTimeAgo(timestamp: string): string {

@@ -367,20 +367,6 @@ export interface ProjectListData {
   hasMultipleProjects?: boolean;
 }
 
-/** Recent projects for /project command (when no explicit projects configured) */
-export interface RecentProjectsData {
-  projects: Array<{
-    name: string;
-    workdir: string;
-    /** Full workdir path for button callback (not shortened) */
-    fullWorkdir: string;
-    lastUsedAt: string;
-    useCount: number;
-    isCurrent: boolean;
-  }>;
-  currentCwd: string;
-}
-
 /** Project info for /project info command */
 export interface ProjectInfoData {
   projectName: string;
@@ -437,5 +423,4 @@ export type FormattableMessage =
   | { type: 'diagnose'; chatId: string; data: DiagnoseData }
   | { type: 'projectList'; chatId: string; data: ProjectListData }
   | { type: 'projectInfo'; chatId: string; data: ProjectInfoData }
-  | { type: 'recentProjects'; chatId: string; data: RecentProjectsData }
   | { type: 'deferredToolInput'; chatId: string; data: DeferredToolInputData };
