@@ -4,6 +4,7 @@ import type { InboundMessage, SendResult, FileAttachment } from '../types.js';
 import { loadConfig } from '../../config.js';
 import type { BridgeError } from '../errors.js';
 import { RateLimitError, AuthError } from '../errors.js';
+import { checkNetworkError } from '../shared/index.js';
 import { markdownToFeishu, downgradeHeadings } from './markdown.js';
 import { buildFeishuCard, buildFeishuButtonElements } from './card-builder.js';
 import { FeishuStreamingSession } from './streaming.js';
@@ -601,14 +602,12 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
 
   /** Classify Feishu/Lark SDK errors */
   classifyError(err: unknown): BridgeError {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- classifyError inspects arbitrary error shapes
     const e = err as Record<string, any>;
     const message = e?.message ?? String(err);
 
-    // Handle common network errors first (via base class)
-    if (e?.code === 'ETIMEOUT' || e?.code === 'ECONNREFUSED' || e?.code === 'ENOTFOUND') {
-      return super.classifyError(err);
-    }
+    // Handle common network errors
+    const netErr = checkNetworkError(e);
+    if (netErr) return netErr;
 
     // Feishu uses numeric error codes
     const code = e?.code;

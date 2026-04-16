@@ -1,7 +1,7 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { ProjectConfig, ClaudeSettingSource } from './store/interface.js';
-import { expandTilde, getTliveHome } from './utils/path.js';
+import { expandTilde, getTliveHome } from './core/path.js';
 
 export type { ClaudeSettingSource } from './store/interface.js';
 
@@ -159,6 +159,35 @@ function validateProjectConfig(project: ProjectConfig, index: number): { valid: 
   }
 
   return { valid: true, name: project.name };
+}
+
+/** Validate required fields for enabled channels */
+function validateEnabledChannels(config: Config): void {
+  for (const channel of config.enabledChannels) {
+    switch (channel) {
+      case 'telegram':
+        if (!config.telegram.botToken) {
+          throw new Error('Config error: TL_TG_BOT_TOKEN is required (telegram is in enabled channels)');
+        }
+        break;
+      case 'feishu':
+        if (!config.feishu.appId) {
+          throw new Error('Config error: TL_FS_APP_ID is required (feishu is in enabled channels)');
+        }
+        if (!config.feishu.appSecret) {
+          throw new Error('Config error: TL_FS_APP_SECRET is required (feishu is in enabled channels)');
+        }
+        break;
+      case 'qqbot':
+        if (!config.qqbot.appId) {
+          throw new Error('Config error: TL_QQ_APP_ID is required (qqbot is in enabled channels)');
+        }
+        if (!config.qqbot.clientSecret) {
+          throw new Error('Config error: TL_QQ_CLIENT_SECRET is required (qqbot is in enabled channels)');
+        }
+        break;
+    }
+  }
 }
 
 /** Load and validate projects configuration from projects.json (optional) */
@@ -349,31 +378,7 @@ export function loadConfig(): Config {
     throw new Error('Config error: TL_TOKEN is required');
   }
 
-  for (const channel of config.enabledChannels) {
-    switch (channel) {
-      case 'telegram':
-        if (!config.telegram.botToken) {
-          throw new Error('Config error: TL_TG_BOT_TOKEN is required (telegram is in enabled channels)');
-        }
-        break;
-      case 'feishu':
-        if (!config.feishu.appId) {
-          throw new Error('Config error: TL_FS_APP_ID is required (feishu is in enabled channels)');
-        }
-        if (!config.feishu.appSecret) {
-          throw new Error('Config error: TL_FS_APP_SECRET is required (feishu is in enabled channels)');
-        }
-        break;
-      case 'qqbot':
-        if (!config.qqbot.appId) {
-          throw new Error('Config error: TL_QQ_APP_ID is required (qqbot is in enabled channels)');
-        }
-        if (!config.qqbot.clientSecret) {
-          throw new Error('Config error: TL_QQ_CLIENT_SECRET is required (qqbot is in enabled channels)');
-        }
-        break;
-    }
-  }
+  validateEnabledChannels(config);
 
   // Validate push config
   if (config.push.defaultChannel && !config.enabledChannels.includes(config.push.defaultChannel)) {

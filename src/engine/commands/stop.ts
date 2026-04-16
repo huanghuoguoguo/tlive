@@ -1,7 +1,7 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentStopResult } from '../messages/presenter.js';
-import { chatKey } from '../../utils/key.js';
+import { chatKey } from '../../core/key.js';
 
 export class StopCommand extends BaseCommand {
   readonly name = '/stop';

@@ -5,8 +5,13 @@ import {
   presentNoProjects,
   presentRecentProjects,
 } from '../messages/presenter.js';
-import { shortPath } from '../../utils/path.js';
+import { shortPath } from '../../core/path.js';
+import { generateSessionId } from '../../core/id.js';
 import { basename } from 'node:path';
+import { getProjectByName } from '../../config.js';
+import { isSameRepoRoot } from '../../utils/repo.js';
+import { areSettingSourcesEqual } from '../../engine/automation/utils.js';
+import type { ProjectListData } from '../../formatting/message-types.js';
 
 export class ProjectCommand extends BaseCommand {
   readonly name = '/project';

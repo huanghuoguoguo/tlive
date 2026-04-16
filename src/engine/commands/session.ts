@@ -1,11 +1,11 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentSessionSwitched, presentSessionUsage, presentSessionNotFound } from '../messages/presenter.js';
-import { shortPath } from '../../utils/path.js';
-import { generateSessionId } from '../../utils/id.js';
+import { shortPath } from '../../core/path.js';
+import { generateSessionId } from '../../core/id.js';
 import { isSameRepoRoot } from '../../utils/repo.js';
-import { parseSessionIndex } from '../../utils/session-format.js';
-import { chatKey } from '../../utils/key.js';
+import { parseSessionIndex } from '../../formatting/session-format.js';
+import { chatKey } from '../../core/key.js';
 
 export class SessionCommand extends BaseCommand {
   readonly name = '/session';

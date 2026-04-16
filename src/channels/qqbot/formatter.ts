@@ -7,7 +7,7 @@ import { MessageFormatter, type MessageLocale } from '../../formatting/message-f
 import { markdownToQQBot } from './markdown.js';
 import type { QQBotRenderedMessage } from './types.js';
 import type { ProgressData } from '../../formatting/message-types.js';
-import { truncate } from '../../utils/string.js';
+import { truncate } from '../../core/string.js';
 
 export class QQBotFormatter extends MessageFormatter<QQBotRenderedMessage> {
   constructor(locale: MessageLocale = 'zh') {

@@ -10,7 +10,7 @@ import { checkForUpdates, getCurrentVersion, isVersionNotified, markVersionNotif
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync, readFileSync, unlinkSync, existsSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { getTliveHome, getTliveRuntimeDir } from './utils/index.js';
+import { getTliveHome, getTliveRuntimeDir } from './core/path.js';
 
 // Cached config (loaded once at startup)
 let cachedConfig: ReturnType<typeof loadConfig> | null = null;

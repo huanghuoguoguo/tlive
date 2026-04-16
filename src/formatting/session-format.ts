@@ -7,7 +7,7 @@ import { t } from '../i18n/index.js';
 import type { CommandContext } from '../engine/commands/types.js';
 import type { ScannedSession } from '../providers/session-scanner.js';
 import { scanClaudeSessions } from '../providers/session-scanner.js';
-import { FLAGS, hasFlag, getNonFlagArg } from './constants.js';
+import { FLAGS, hasFlag, getNonFlagArg } from '../engine/constants.js';
 
 /** Format file size in human-readable form */
 export function formatSize(bytes: number): string {

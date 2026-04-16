@@ -1,7 +1,7 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentHooksChanged, presentHooksStatus } from '../messages/presenter.js';
-import { areHooksPaused, pauseHooks, resumeHooks } from '../../utils/hooks-state.js';
+import { areHooksPaused, pauseHooks, resumeHooks } from '../../engine/state/hooks-state.js';
 
 export class HooksCommand extends BaseCommand {
   readonly name = '/hooks';

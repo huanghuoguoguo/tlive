@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BridgeStore, ChannelBinding } from './interface.js';
-import { chatKey as buildChatKey } from '../utils/key.js';
+import { chatKey as buildChatKey } from '../core/key.js';
 
 /** Max entries to keep in processed IDs (prevents unbounded growth) */
 const MAX_PROCESSED_IDS = 10000;

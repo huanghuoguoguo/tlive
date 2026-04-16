@@ -43,8 +43,8 @@ import type {
   RecentProjectsData,
   FormattableMessage,
 } from './message-types.js';
-import { truncate } from '../utils/string.js';
-import { AVERAGE_TURN_SECONDS } from '../utils/constants.js';
+import { truncate } from '../core/string.js';
+import { AVERAGE_TURN_SECONDS } from '../engine/constants.js';
 import { t, type Locale, type TranslationKey } from '../i18n/index.js';
 
 /** @deprecated Use `Locale` from `../i18n/index.js` instead */

@@ -18,7 +18,7 @@ import { TextDispatcher } from './messages/text-dispatcher.js';
 import { QueryOrchestrator } from './coordinators/query.js';
 import { ConversationEngine } from '../utils/conversation.js';
 import { HookNotificationDispatcher } from './messages/hook-notification.js';
-import { getTliveRuntimeDir } from '../utils/path.js';
+import { getTliveRuntimeDir } from '../core/path.js';
 import { loadProjectsConfig } from '../config.js';
 import { networkInterfaces } from 'node:os';
 

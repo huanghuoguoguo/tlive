@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatSize, formatRelativeTime } from '../../utils/session-format.js';
+import { formatSize, formatRelativeTime } from '../../formatting/session-format.js';
 import { redactSensitiveContent } from '../../utils/content-filter.js';
 
 describe('formatSize', () => {

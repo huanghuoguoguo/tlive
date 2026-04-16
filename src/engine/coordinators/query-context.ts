@@ -2,7 +2,7 @@ import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage } from '../../channels/types.js';
 import type { ChannelBinding } from '../../store/interface.js';
 import type { MessageRenderer } from '../messages/renderer.js';
-import type { CostTracker } from '../../utils/cost-tracker.js';
+import type { CostTracker } from '../cost-tracker.js';
 import type { DeferredToolHandler } from '../../providers/base.js';
 import type { LogContext } from '../../logger.js';
 

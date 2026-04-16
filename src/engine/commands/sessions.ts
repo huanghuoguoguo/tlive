@@ -2,10 +2,10 @@ import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentSessions, presentNoSessions } from '../messages/presenter.js';
 import { scanClaudeSessions } from '../../providers/session-scanner.js';
-import { shortPath } from '../../utils/path.js';
-import { FLAGS, hasFlag } from '../../utils/constants.js';
-import { SESSION_STALE_THRESHOLD_MS } from '../../utils/constants.js';
-import { formatSize, formatSessionDate } from '../../utils/session-format.js';
+import { shortPath } from '../../core/path.js';
+import { FLAGS, hasFlag } from '../../engine/constants.js';
+import { SESSION_STALE_THRESHOLD_MS } from '../../engine/constants.js';
+import { formatSize, formatSessionDate } from '../../formatting/session-format.js';
 
 export class SessionsCommand extends BaseCommand {
   readonly name = '/sessions';

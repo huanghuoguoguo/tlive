@@ -8,7 +8,7 @@ import type { FeishuCardElement } from './card-builder.js';
 import type { HomeData } from '../../formatting/message-types.js';
 import type { Button } from '../../ui/types.js';
 import { navNew } from '../../ui/buttons.js';
-import { truncate } from '../../utils/string.js';
+import { truncate } from '../../core/string.js';
 import { downgradeHeadings, splitLargeTables } from './markdown.js';
 
 /** Unified session status label for consistent display across /status and /home */

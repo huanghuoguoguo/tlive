@@ -1,7 +1,7 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentSessionSwitched } from '../messages/presenter.js';
-import { shortPath } from '../../utils/path.js';
+import { shortPath } from '../../core/path.js';
 
 /**
  * /rebind <bindingSessionId> — switch to an existing in-memory managed session.

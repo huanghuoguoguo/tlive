@@ -3,7 +3,7 @@
  * Rendering logic delegated to ProgressContentBuilder.
  */
 
-import { truncate } from '../../utils/string.js';
+import { truncate } from '../../core/string.js';
 import type { TodoStatus } from '../../utils/types.js';
 import type { VerboseLevel } from '../state/session-state.js';
 import type { Button } from '../../ui/types.js';

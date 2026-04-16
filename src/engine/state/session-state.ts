@@ -1,7 +1,7 @@
 import type { SessionMode } from '../../canonical/types.js';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { chatKey } from '../../utils/key.js';
+import { chatKey } from '../../core/key.js';
 
 export type VerboseLevel = 0 | 1;
 
