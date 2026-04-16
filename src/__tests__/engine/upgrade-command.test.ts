@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -9,6 +9,10 @@ vi.mock('node:child_process', () => ({
   spawn: spawnMock,
 }));
 
+vi.mock('../../utils/version-checker.js', () => ({
+  checkForUpdates: vi.fn(),
+}));
+
 describe('UpgradeCommand', () => {
   let tmpDir: string;
   let cliPath: string;
@@ -16,8 +20,9 @@ describe('UpgradeCommand', () => {
   let originalCliPath: string | undefined;
   let originalPackageRoot: string | undefined;
   let exitSpy: ReturnType<typeof vi.spyOn>;
+  let checkForUpdatesMock: ReturnType<typeof vi.fn>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetModules();
     tmpDir = mkdtempSync(join(tmpdir(), 'tlive-upgrade-command-'));
     packageRoot = join(tmpDir, 'app');
@@ -34,6 +39,9 @@ describe('UpgradeCommand', () => {
     spawnMock.mockReturnValue({ unref: vi.fn() });
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => code as never));
     vi.useFakeTimers();
+
+    const mod = await import('../../utils/version-checker.js');
+    checkForUpdatesMock = mod.checkForUpdates as ReturnType<typeof vi.fn>;
   });
 
   afterEach(() => {
@@ -44,23 +52,57 @@ describe('UpgradeCommand', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('parses confirm callback versions and spawns the CLI upgrader', async () => {
-    const { UpgradeCommand, parseRequestedUpgradeVersion } = await import('../../engine/commands/upgrade.js');
+  it('shows update notes link for /upgrade notes', async () => {
+    const { UpgradeCommand } = await import('../../engine/commands/upgrade.js');
     const send = vi.fn().mockResolvedValue(undefined);
     const command = new UpgradeCommand();
 
-    expect(parseRequestedUpgradeVersion(['/upgrade', 'confirm:v0.13.2'])).toBe('0.13.2');
-    expect(parseRequestedUpgradeVersion(['/upgrade', 'confirm', 'v0.13.3'])).toBe('0.13.3');
+    await command.execute({
+      adapter: { send },
+      msg: { chatId: 'chat-1' },
+      parts: ['/upgrade', 'notes'],
+    } as any);
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('github.com') }),
+    );
+  });
+
+  it('shows already latest when no update available', async () => {
+    checkForUpdatesMock.mockResolvedValue({ hasUpdate: false, current: '0.13.4', latest: '0.13.4' });
+
+    const { UpgradeCommand } = await import('../../engine/commands/upgrade.js');
+    const send = vi.fn().mockResolvedValue(undefined);
+    const command = new UpgradeCommand();
 
     await command.execute({
-      adapter: { send, sendFormatted: vi.fn() },
+      adapter: { send },
       msg: { chatId: 'chat-1' },
-      parts: ['/upgrade', 'confirm:v0.13.2'],
+      parts: ['/upgrade'],
+    } as any);
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('已是最新版本') }),
+    );
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it('spawns upgrade process directly when update available', async () => {
+    checkForUpdatesMock.mockResolvedValue({ hasUpdate: true, current: '0.13.3', latest: '0.13.4' });
+
+    const { UpgradeCommand } = await import('../../engine/commands/upgrade.js');
+    const send = vi.fn().mockResolvedValue(undefined);
+    const command = new UpgradeCommand();
+
+    await command.execute({
+      adapter: { send },
+      msg: { chatId: 'chat-1' },
+      parts: ['/upgrade'],
     } as any);
 
     expect(spawnMock).toHaveBeenCalledWith(
       process.execPath,
-      [cliPath, 'upgrade', '0.13.2'],
+      [cliPath, 'upgrade'],
       expect.objectContaining({
         detached: true,
         stdio: 'ignore',
@@ -70,33 +112,51 @@ describe('UpgradeCommand', () => {
       }),
     );
     expect(send).toHaveBeenCalledWith(
-      expect.objectContaining({ text: expect.stringContaining('v0.13.2') }),
+      expect.objectContaining({ text: expect.stringContaining('0.13.3') }),
     );
 
     vi.runAllTimers();
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 
-  it('refuses in-place auto-upgrade when running from a git checkout', async () => {
+  it('refuses upgrade when running from git checkout', async () => {
+    checkForUpdatesMock.mockResolvedValue({ hasUpdate: true, current: '0.13.3', latest: '0.13.4' });
+
     const { UpgradeCommand } = await import('../../engine/commands/upgrade.js');
-    const sendFormatted = vi.fn().mockResolvedValue(undefined);
+    const send = vi.fn().mockResolvedValue(undefined);
     const command = new UpgradeCommand();
 
+    // Create .git directory to simulate git checkout
     mkdirSync(join(packageRoot, '.git'));
 
     await command.execute({
-      adapter: { send: vi.fn(), sendFormatted },
+      adapter: { send },
       msg: { chatId: 'chat-1' },
-      parts: ['/upgrade', 'confirm'],
+      parts: ['/upgrade'],
     } as any);
 
     expect(spawnMock).not.toHaveBeenCalled();
-    expect(sendFormatted).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          title: '❌ Upgrade Failed',
-        }),
-      }),
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('git') }),
+    );
+  });
+
+  it('handles check failure gracefully', async () => {
+    checkForUpdatesMock.mockResolvedValue(null);
+
+    const { UpgradeCommand } = await import('../../engine/commands/upgrade.js');
+    const send = vi.fn().mockResolvedValue(undefined);
+    const command = new UpgradeCommand();
+
+    await command.execute({
+      adapter: { send },
+      msg: { chatId: 'chat-1' },
+      parts: ['/upgrade'],
+    } as any);
+
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('无法检查更新') }),
     );
   });
 });
