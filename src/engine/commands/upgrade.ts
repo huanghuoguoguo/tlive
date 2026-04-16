@@ -4,7 +4,7 @@ import { presentVersionCheck, presentUpgradeResult, presentUpgradeCommand } from
 import { checkForUpdates } from '../../utils/version-checker.js';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { getTliveHome } from '../../utils/path.js';
+import { getTliveHome } from '../../core/path.js';
 
 function normalizeRequestedVersion(raw?: string): string | null {
   const trimmed = raw?.trim();

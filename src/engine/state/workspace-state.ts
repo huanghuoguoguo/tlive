@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { chatKey as buildChatKey } from '../../utils/key.js';
+import { chatKey as buildChatKey } from '../../core/key.js';
 
 /**
  * Per-chat workspace history and binding state.

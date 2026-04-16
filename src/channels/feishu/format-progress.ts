@@ -6,7 +6,7 @@ import type { Locale } from '../../i18n/index.js';
 import { t } from '../../i18n/index.js';
 import type { FeishuCardElement } from './card-builder.js';
 import type { ProgressData } from '../../formatting/message-types.js';
-import { truncate } from '../../utils/string.js';
+import { truncate } from '../../core/string.js';
 import { downgradeHeadings } from './markdown.js';
 import { mdPanel } from './format-home.js';
 

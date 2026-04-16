@@ -15,7 +15,7 @@ import type { Locale } from '../i18n/index.js';
 import { commandRegistry, registerAllCommands } from './commands/index.js';
 import { DEFAULT_CLAUDE_SETTING_SOURCES } from '../config.js';
 import { findGitRoot } from '../utils/repo.js';
-import { generateSessionId } from '../utils/id.js';
+import { generateSessionId } from '../core/id.js';
 import { HomePayloadBuilder } from './presenters/home-payload-builder.js';
 
 // Register all commands on module load

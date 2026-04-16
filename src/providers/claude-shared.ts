@@ -5,7 +5,7 @@
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import type { FileAttachment } from './base.js';
-import { getTliveHome } from '../utils/path.js';
+import { getTliveHome } from '../core/path.js';
 
 // ── Environment isolation ──
 

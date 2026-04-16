@@ -1,7 +1,7 @@
 import type { ClaudeSettingSource } from '../config.js';
 import type { BridgeStore } from '../store/interface.js';
 import type { ChannelBinding } from '../store/interface.js';
-import { generateSessionId } from './id.js';
+import { generateSessionId } from '../core/id.js';
 
 export class ChannelRouter {
   constructor(private store: BridgeStore) {}

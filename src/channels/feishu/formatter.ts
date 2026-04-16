@@ -38,7 +38,7 @@ import {
   taskSummaryButtons,
   helpButtons,
 } from '../../ui/buttons.js';
-import { truncate } from '../../utils/string.js';
+import { truncate } from '../../core/string.js';
 
 // Import specialized formatters
 import {

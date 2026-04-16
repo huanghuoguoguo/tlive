@@ -2,7 +2,7 @@ import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
-import { truncate } from '../../utils/string.js';
+import { truncate } from '../../core/string.js';
 
 const execAsync = promisify(exec);
 

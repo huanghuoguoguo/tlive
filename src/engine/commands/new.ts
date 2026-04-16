@@ -1,7 +1,7 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentNewSession, presentHome } from '../messages/presenter.js';
-import { generateSessionId } from '../../utils/id.js';
+import { generateSessionId } from '../../core/id.js';
 import { t } from '../../i18n/index.js';
 
 export class NewCommand extends BaseCommand {

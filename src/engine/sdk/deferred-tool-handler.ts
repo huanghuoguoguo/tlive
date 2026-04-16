@@ -7,9 +7,9 @@ import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage } from '../../channels/types.js';
 import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { InteractionState } from '../state/interaction-state.js';
-import { truncate } from '../../utils/string.js';
-import { generateId } from '../../utils/id.js';
-import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../../utils/constants.js';
+import { truncate } from '../../core/string.js';
+import { generateId } from '../../core/id.js';
+import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../../engine/constants.js';
 
 /** Known deferred tools that need interactive input */
 export const DEFERRED_TOOLS = ['EnterPlanMode', 'EnterWorktree'] as const;

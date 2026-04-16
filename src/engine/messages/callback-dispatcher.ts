@@ -2,10 +2,10 @@ import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage } from '../../channels/types.js';
 import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { SDKEngine } from '../sdk/engine.js';
-import { truncate } from '../../utils/string.js';
+import { truncate } from '../../core/string.js';
 import {
   CALLBACK_PREFIXES,
-} from '../../utils/constants.js';
+} from '../../engine/constants.js';
 import {
   parseAskqCallback,
   parseAskqSubmitCallback,
@@ -17,7 +17,7 @@ import {
   parseFormCallback,
   parseDeferredSubmitCallback,
   parseDeferredSkipCallback,
-} from '../../utils/callback.js';
+} from '../../engine/messages/callback-utils.js';
 
 interface CallbackDispatcherDeps {
   permissions: PermissionCoordinator;

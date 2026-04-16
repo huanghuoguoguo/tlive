@@ -6,7 +6,7 @@
 import type { Button } from './types.js';
 import type { Locale } from '../i18n/index.js';
 import { t } from '../i18n/index.js';
-import { CALLBACK_PREFIXES } from '../utils/constants.js';
+import { CALLBACK_PREFIXES } from '../engine/constants.js';
 
 // ---------------------------------------------------------------------------
 // Internal navigation button helpers

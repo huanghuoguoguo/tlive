@@ -1,4 +1,4 @@
-import { CALLBACK_PREFIXES } from './constants.js';
+import { CALLBACK_PREFIXES } from '../constants.js';
 
 /** Parse callback data into parts */
 export function parseCallback(callbackData: string): string[] {

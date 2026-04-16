@@ -3,8 +3,8 @@
  * Extracted from MessageRenderer for cleaner architecture.
  */
 
-import { truncate } from '../../utils/string.js';
-import { shortPath } from '../../utils/path.js';
+import { truncate } from '../../core/string.js';
+import { shortPath } from '../../core/path.js';
 
 /** Format tool input for brief progress display */
 export function formatToolInput(name: string, input?: Record<string, unknown>): string {
