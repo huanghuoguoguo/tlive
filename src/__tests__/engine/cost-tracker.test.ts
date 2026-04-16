@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { CostTracker } from '../../utils/cost-tracker.js';
+import { CostTracker } from '../../engine/cost-tracker.js';
 
 describe('CostTracker', () => {
   let tracker: CostTracker;
