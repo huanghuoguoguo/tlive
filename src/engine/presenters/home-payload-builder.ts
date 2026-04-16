@@ -7,11 +7,11 @@ import type { HomeData } from '../../formatting/message-types.js';
 import type { ScannedSession } from '../../providers/session-scanner.js';
 import type { QueryControls } from '../../providers/base.js';
 import type { Locale } from '../../i18n/index.js';
-import type { RecentProjectsManager } from '../state/recent-projects.js';
 import { scanClaudeSessions, readSessionTranscriptPreview } from '../../providers/session-scanner.js';
 import { shortPath } from '../../core/path.js';
 import { formatSize, formatSessionDate, formatRelativeTime } from '../../formatting/session-format.js';
 import { SESSION_STALE_THRESHOLD_MS } from '../../engine/constants.js';
+import { basename } from 'node:path';
 
 type BoundInfo = { channelType: string; chatId: string; isActive: boolean };
 
@@ -53,7 +53,6 @@ export interface HomePayloadBuilderDeps {
   activeControls: Map<string, QueryControls>;
   getAdapters: () => Map<string, BaseChannelAdapter>;
   defaultWorkdir: string;
-  recentProjects?: RecentProjectsManager;
 }
 
 import type { BaseChannelAdapter } from '../../channels/base.js';
@@ -66,7 +65,7 @@ export class HomePayloadBuilder {
   constructor(private deps: HomePayloadBuilderDeps) {}
 
   async build(channelType: string, chatId: string, locale: Locale = 'zh'): Promise<HomeData> {
-    const { store, state, workspace, sdkEngine, permissions, activeControls, getAdapters, defaultWorkdir, recentProjects } = this.deps;
+    const { store, state, workspace, sdkEngine, permissions, activeControls, getAdapters, defaultWorkdir } = this.deps;
     const binding = await store.getBinding(channelType, chatId);
     const currentCwd = binding?.cwd || defaultWorkdir;
     const chatKey = state.stateKey(channelType, chatId);
@@ -133,6 +132,31 @@ export class HomePayloadBuilder {
       });
     }
 
+    // Recent projects from scanned sessions (unique workdirs)
+    const allSessionsGlobal = scanClaudeSessions(50, undefined);
+    const uniqueWorkdirs: Map<string, { count: number; lastMtime: number }> = new Map();
+    for (const session of allSessionsGlobal) {
+      const existing = uniqueWorkdirs.get(session.cwd);
+      if (existing) {
+        existing.count++;
+        existing.lastMtime = Math.max(existing.lastMtime, session.mtime);
+      } else {
+        uniqueWorkdirs.set(session.cwd, { count: 1, lastMtime: session.mtime });
+      }
+    }
+
+    // Sort by last activity time, take top 5
+    const sortedWorkdirs = Array.from(uniqueWorkdirs.entries())
+      .sort((a, b) => b[1].lastMtime - a[1].lastMtime)
+      .slice(0, 5);
+
+    const recentProjects = sortedWorkdirs.map(([workdir]) => ({
+      name: basename(workdir),
+      workdir: shortPath(workdir),
+      fullWorkdir: workdir,
+      isCurrent: workdir === currentCwd,
+    }));
+
     return {
       workspace: {
         cwd: shortPath(currentCwd),
@@ -181,12 +205,7 @@ export class HomePayloadBuilder {
         entries: [],  // Will be populated by CommandRouter if needed
         recentSummary: recentSessions[0]?.preview,
       },
-      recentProjects: (recentProjects?.list() ?? []).slice(0, 5).map(p => ({
-        name: p.name,
-        workdir: shortPath(p.workdir),
-        fullWorkdir: p.workdir,
-        isCurrent: p.workdir === currentCwd,
-      })),
+      recentProjects,
     };
   }
 }

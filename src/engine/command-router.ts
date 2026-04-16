@@ -56,7 +56,6 @@ export class CommandRouter {
       activeControls,
       getAdapters,
       defaultWorkdir,
-      recentProjects,
     });
   }
 
