@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import { truncate } from '../../utils/string.js';
+import { truncate } from '../../core/string.js';
 
 const TOOL_ICONS: Record<string, string> = {
   Read: '📖', Edit: '✏️', Write: '📝',

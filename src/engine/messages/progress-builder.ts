@@ -5,7 +5,7 @@
 
 import { redactSensitiveContent } from '../../utils/content-filter.js';
 import { getToolIcon } from '../sdk/tool-registry.js';
-import { shortPath } from '../../utils/path.js';
+import { shortPath } from '../../core/path.js';
 import type { TodoStatus } from '../../utils/types.js';
 import type { ToolLogEntry, TimelineEntry, MessageRendererState } from './renderer-types.js';
 import type { Button } from '../../ui/types.js';

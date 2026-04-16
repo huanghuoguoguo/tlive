@@ -18,7 +18,7 @@ import {
   permissionButtons,
   permStatusButtons,
 } from '../../ui/buttons.js';
-import { truncate } from '../../utils/string.js';
+import { truncate } from '../../core/string.js';
 import { mdElement } from './format-home.js';
 
 export interface FormatPermissionParams {

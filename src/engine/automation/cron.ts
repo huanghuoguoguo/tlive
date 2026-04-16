@@ -18,7 +18,7 @@ import { dirname, join } from 'node:path';
 import type { AutomationBridge } from '../types/automation-bridge.js';
 import { loadProjectsConfig, type ClaudeSettingSource } from '../../config.js';
 import type { ProjectConfig } from '../../store/interface.js';
-import { generateId } from '../../utils/id.js';
+import { generateId } from '../../core/id.js';
 
 /** Cron job definition */
 export interface CronJob {

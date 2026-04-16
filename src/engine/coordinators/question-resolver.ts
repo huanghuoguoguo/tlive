@@ -1,5 +1,5 @@
 import type { BaseChannelAdapter } from '../../channels/base.js';
-import { truncate } from '../../utils/string.js';
+import { truncate } from '../../core/string.js';
 
 interface QuestionData {
   questions: Array<{

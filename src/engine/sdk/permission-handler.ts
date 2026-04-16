@@ -12,8 +12,8 @@ import type { Button } from '../../ui/types.js';
 import { getToolCommand } from './tool-registry.js';
 import type { ChannelRouter } from '../../utils/router.js';
 import type { ChannelBinding } from '../../store/interface.js';
-import { generateId } from '../../utils/id.js';
-import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../../utils/constants.js';
+import { generateId } from '../../core/id.js';
+import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../../engine/constants.js';
 import { permissionButtons } from '../../ui/buttons.js';
 
 interface SDKPermissionHandlerContext {

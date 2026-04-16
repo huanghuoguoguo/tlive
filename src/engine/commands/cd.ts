@@ -1,8 +1,8 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentDirectory, presentDirectoryHistory, presentDirectoryNotFound } from '../messages/presenter.js';
-import { shortPath, expandTilde } from '../../utils/path.js';
-import { generateSessionId } from '../../utils/id.js';
+import { shortPath, expandTilde } from '../../core/path.js';
+import { generateSessionId } from '../../core/id.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { isSameRepoRoot } from '../../utils/repo.js';

@@ -1,7 +1,7 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { ProjectConfig, ClaudeSettingSource } from './store/interface.js';
-import { expandTilde, getTliveHome } from './utils/path.js';
+import { expandTilde, getTliveHome } from './core/path.js';
 
 export type { ClaudeSettingSource } from './store/interface.js';
 

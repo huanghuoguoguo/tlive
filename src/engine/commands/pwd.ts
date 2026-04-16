@@ -1,7 +1,7 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentDirectory, presentDirectoryHistory } from '../messages/presenter.js';
-import { shortPath } from '../../utils/path.js';
+import { shortPath } from '../../core/path.js';
 
 export class PwdCommand extends BaseCommand {
   readonly name = '/pwd';
