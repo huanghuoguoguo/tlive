@@ -139,10 +139,12 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
     } as FeishuCardElement);
   }
 
-  // Recent projects buttons
-  if (data.recentProjects?.length) {
-    const projectButtons: Button[] = data.recentProjects
-      .filter(p => !p.isCurrent)
+  // Recent projects / workspace panel (always show)
+  const allProjects = data.recentProjects ?? [];
+  const nonCurrentProjects = allProjects.filter(p => !p.isCurrent);
+  const elements_content: FeishuCardElement[] = [];
+  if (nonCurrentProjects.length > 0) {
+    const projectButtons: Button[] = nonCurrentProjects
       .slice(0, 3)
       .map(p => ({
         label: `📁 ${p.name}`,
@@ -150,15 +152,17 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
         style: 'default',
         row: 0,
       }));
-    if (projectButtons.length > 0) {
-      elements.push({
-        tag: 'collapsible_panel',
-        expanded: true,
-        header: { title: { tag: 'plain_text', content: `🏠 ${t(locale, 'home.workspaceBinding')}` } },
-        elements: buildButtons(projectButtons),
-      } as FeishuCardElement);
-    }
+    elements_content.push(...buildButtons(projectButtons));
+  } else {
+    // No other workspaces yet - show current + hint
+    elements_content.push(md(`当前: **${data.workspace.cwd}**\n在其他目录启动会话后可快速切换。`));
   }
+  elements.push({
+    tag: 'collapsible_panel',
+    expanded: true,
+    header: { title: { tag: 'plain_text', content: `🏠 工作台` } },
+    elements: elements_content,
+  } as FeishuCardElement);
 
   return elements;
 }

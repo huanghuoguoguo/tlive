@@ -181,7 +181,7 @@ export class HomePayloadBuilder {
         entries: [],  // Will be populated by CommandRouter if needed
         recentSummary: recentSessions[0]?.preview,
       },
-      recentProjects: recentProjects?.list().slice(0, 5).map(p => ({
+      recentProjects: (recentProjects?.list() ?? []).slice(0, 5).map(p => ({
         name: p.name,
         workdir: shortPath(p.workdir),
         fullWorkdir: p.workdir,
