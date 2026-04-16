@@ -28,6 +28,11 @@ vi.mock('../../utils/string.js', () => ({
   truncate: vi.fn((s: string, n: number) => s.slice(0, n)),
 }));
 
+// Helper to cast mock implementation to bypass strict fs type signatures
+const mockReaddir = vi.mocked(fs.readdirSync);
+const mockStat = vi.mocked(fs.statSync);
+const mockRead = vi.mocked(fs.readSync);
+
 describe('session-scanner', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -40,16 +45,16 @@ describe('session-scanner', () => {
 
   describe('scanClaudeSessions', () => {
     it('returns empty array when projects directory does not exist', () => {
-      vi.mocked(fs.readdirSync).mockImplementation(() => {
+      mockReaddir.mockImplementation((() => {
         throw new Error('ENOENT');
-      });
+      }) as unknown as typeof fs.readdirSync);
 
       const sessions = scanClaudeSessions();
       expect(sessions).toEqual([]);
     });
 
     it('returns empty array when no project directories found', () => {
-      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      mockReaddir.mockReturnValue([] as unknown as ReturnType<typeof fs.readdirSync>);
 
       const sessions = scanClaudeSessions();
       expect(sessions).toEqual([]);
@@ -57,30 +62,32 @@ describe('session-scanner', () => {
 
     it('scans project directories for .jsonl files', () => {
       // Mock project directory listing - need to return Dirent objects for first call
-      vi.mocked(fs.readdirSync).mockImplementation((path: string, opts?: any) => {
-        if (typeof path === 'string' && path.includes('projects')) {
+      mockReaddir.mockImplementation(((path: fs.PathLike, opts?: { withFileTypes?: boolean }) => {
+        const pathStr = String(path);
+        if (pathStr.includes('projects')) {
           // First call: list project directories with Dirent-like objects
           if (opts?.withFileTypes) {
             return [{ name: '-home-user-project', isDirectory: () => true } as fs.Dirent];
           }
-          return ['session-uuid-123.jsonl', 'session-uuid-456.jsonl'] as string[];
+          return ['session-uuid-123.jsonl', 'session-uuid-456.jsonl'];
         }
         // Second call: list .jsonl files in project directory
-        return ['session-uuid-123.jsonl', 'session-uuid-456.jsonl'] as string[];
-      });
+        return ['session-uuid-123.jsonl', 'session-uuid-456.jsonl'];
+      }) as unknown as typeof fs.readdirSync);
 
-      vi.mocked(fs.statSync).mockReturnValue({
+      mockStat.mockReturnValue({
         mtimeMs: 1000000,
         size: 5000,
       } as fs.Stats);
 
       vi.mocked(fs.openSync).mockReturnValue(1);
-      vi.mocked(fs.readSync).mockImplementation((fd: number, buf: Buffer, offset: number, length: number, position: number) => {
+      mockRead.mockImplementation(((_fd: number, buffer: ArrayBufferView) => {
         // Write test data to buffer
         const testLine = '{"type":"user","message":{"content":"test prompt"},"cwd":"/home/user/project"}\n';
+        const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer as Uint8Array);
         buf.write(testLine, 0);
         return testLine.length;
-      });
+      }) as unknown as typeof fs.readSync);
 
       const sessions = scanClaudeSessions();
 
@@ -92,14 +99,15 @@ describe('session-scanner', () => {
     });
 
     it('skips agent-* sessions (subagent sessions)', () => {
-      vi.mocked(fs.readdirSync).mockImplementation((path: string) => {
-        if (typeof path === 'string' && path.includes('projects')) {
+      mockReaddir.mockImplementation(((path: fs.PathLike) => {
+        const pathStr = String(path);
+        if (pathStr.includes('projects')) {
           return [{ name: 'test-project', isDirectory: () => true } as fs.Dirent];
         }
-        return ['agent-subagent-1.jsonl', 'main-session.jsonl'] as string[];
-      });
+        return ['agent-subagent-1.jsonl', 'main-session.jsonl'];
+      }) as unknown as typeof fs.readdirSync);
 
-      vi.mocked(fs.statSync).mockReturnValue({
+      mockStat.mockReturnValue({
         mtimeMs: 1000000,
         size: 5000,
       } as fs.Stats);
@@ -111,19 +119,21 @@ describe('session-scanner', () => {
     });
 
     it('sorts sessions by mtime descending (most recent first)', () => {
-      vi.mocked(fs.readdirSync).mockImplementation((path: string) => {
-        if (typeof path === 'string' && path.includes('projects')) {
+      mockReaddir.mockImplementation(((path: fs.PathLike) => {
+        const pathStr = String(path);
+        if (pathStr.includes('projects')) {
           return [{ name: 'project', isDirectory: () => true } as fs.Dirent];
         }
-        return ['old.jsonl', 'new.jsonl'] as string[];
-      });
+        return ['old.jsonl', 'new.jsonl'];
+      }) as unknown as typeof fs.readdirSync);
 
-      vi.mocked(fs.statSync).mockImplementation((path: string) => {
-        if (typeof path === 'string' && path.includes('old.jsonl')) {
+      mockStat.mockImplementation(((path: fs.PathLike) => {
+        const pathStr = String(path);
+        if (pathStr.includes('old.jsonl')) {
           return { mtimeMs: 1000, size: 100 } as fs.Stats;
         }
         return { mtimeMs: 5000, size: 100 } as fs.Stats;
-      });
+      }) as unknown as typeof fs.statSync);
 
       const sessions = scanClaudeSessions();
 
@@ -133,14 +143,15 @@ describe('session-scanner', () => {
     });
 
     it('respects limit parameter', () => {
-      vi.mocked(fs.readdirSync).mockImplementation((path: string) => {
-        if (typeof path === 'string' && path.includes('projects')) {
+      mockReaddir.mockImplementation(((path: fs.PathLike) => {
+        const pathStr = String(path);
+        if (pathStr.includes('projects')) {
           return [{ name: 'project', isDirectory: () => true } as fs.Dirent];
         }
-        return ['s1.jsonl', 's2.jsonl', 's3.jsonl', 's4.jsonl', 's5.jsonl'] as string[];
-      });
+        return ['s1.jsonl', 's2.jsonl', 's3.jsonl', 's4.jsonl', 's5.jsonl'];
+      }) as unknown as typeof fs.readdirSync);
 
-      vi.mocked(fs.statSync).mockReturnValue({
+      mockStat.mockReturnValue({
         mtimeMs: Date.now(),
         size: 100,
       } as fs.Stats);
@@ -150,23 +161,25 @@ describe('session-scanner', () => {
     });
 
     it('filters by cwd when filterByCwd provided', () => {
-      vi.mocked(fs.readdirSync).mockImplementation((path: string) => {
-        if (typeof path === 'string' && path.includes('projects')) {
+      mockReaddir.mockImplementation(((path: fs.PathLike) => {
+        const pathStr = String(path);
+        if (pathStr.includes('projects')) {
           return [{ name: 'project', isDirectory: () => true } as fs.Dirent];
         }
-        return ['s1.jsonl'] as string[];
-      });
+        return ['s1.jsonl'];
+      }) as unknown as typeof fs.readdirSync);
 
-      vi.mocked(fs.statSync).mockReturnValue({
+      mockStat.mockReturnValue({
         mtimeMs: Date.now(),
         size: 100,
       } as fs.Stats);
 
       vi.mocked(fs.openSync).mockReturnValue(1);
-      vi.mocked(fs.readSync).mockImplementation((fd, buf, offset, length, pos) => {
+      mockRead.mockImplementation(((_fd: number, buffer: ArrayBufferView) => {
+        const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer as Uint8Array);
         buf.write('{"cwd":"/home/user/specific-project"}', 0);
         return 50;
-      });
+      }) as unknown as typeof fs.readSync);
 
       const sessions = scanClaudeSessions(10, '/home/user/specific-project');
 
@@ -177,22 +190,22 @@ describe('session-scanner', () => {
     });
 
     it('uses cache for subsequent calls', () => {
-      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      mockReaddir.mockReturnValue([] as unknown as ReturnType<typeof fs.readdirSync>);
 
       // First call
       scanClaudeSessions();
-      const firstCallCount = vi.mocked(fs.readdirSync).mock.calls.length;
+      const firstCallCount = mockReaddir.mock.calls.length;
 
       // Second call (should use cache)
       scanClaudeSessions();
-      const secondCallCount = vi.mocked(fs.readdirSync).mock.calls.length;
+      const secondCallCount = mockReaddir.mock.calls.length;
 
       // readdirSync should not be called again (cache used)
       expect(secondCallCount).toBe(firstCallCount);
     });
 
     it('cache expires after TTL', () => {
-      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      mockReaddir.mockReturnValue([] as unknown as ReturnType<typeof fs.readdirSync>);
 
       // First call
       scanClaudeSessions();
@@ -204,28 +217,28 @@ describe('session-scanner', () => {
       scanClaudeSessions();
 
       // readdirSync should be called twice (cache invalidated)
-      expect(vi.mocked(fs.readdirSync).mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(mockReaddir.mock.calls.length).toBeGreaterThanOrEqual(2);
     });
   });
 
   describe('invalidateSessionCache', () => {
     it('clears the cache', () => {
-      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      mockReaddir.mockReturnValue([] as unknown as ReturnType<typeof fs.readdirSync>);
 
       scanClaudeSessions();
       invalidateSessionCache();
       scanClaudeSessions();
 
       // Should have two calls (cache cleared)
-      expect(vi.mocked(fs.readdirSync).mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(mockReaddir.mock.calls.length).toBeGreaterThanOrEqual(2);
     });
   });
 
   describe('readSessionTranscriptPreview', () => {
     it('returns empty array on file read error', () => {
-      vi.mocked(fs.statSync).mockImplementation(() => {
+      mockStat.mockImplementation((() => {
         throw new Error('ENOENT');
-      });
+      }) as unknown as typeof fs.statSync);
 
       const session: ScannedSession = {
         sdkSessionId: 'test',
@@ -242,20 +255,21 @@ describe('session-scanner', () => {
     });
 
     it('returns transcript messages from file', () => {
-      vi.mocked(fs.statSync).mockReturnValue({
+      mockStat.mockReturnValue({
         size: 1000,
         mtimeMs: Date.now(),
       } as fs.Stats);
 
       vi.mocked(fs.openSync).mockReturnValue(1);
-      vi.mocked(fs.readSync).mockImplementation((fd, buf, offset, length, pos) => {
+      mockRead.mockImplementation(((_fd: number, buffer: ArrayBufferView) => {
         const lines = [
           '{"type":"user","message":{"content":"user message"},"timestamp":"2026-01-01"}',
           '{"type":"assistant","message":{"content":[{"type":"text","text":"assistant response"}]}}',
         ];
+        const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer as Uint8Array);
         buf.write(lines.join('\n'), 0);
         return Buffer.byteLength(lines.join('\n'));
-      });
+      }) as unknown as typeof fs.readSync);
 
       const session: ScannedSession = {
         sdkSessionId: 'test',
@@ -274,16 +288,17 @@ describe('session-scanner', () => {
     });
 
     it('respects maxMessages parameter', () => {
-      vi.mocked(fs.statSync).mockReturnValue({ size: 2000, mtimeMs: Date.now() } as fs.Stats);
+      mockStat.mockReturnValue({ size: 2000, mtimeMs: Date.now() } as fs.Stats);
       vi.mocked(fs.openSync).mockReturnValue(1);
-      vi.mocked(fs.readSync).mockImplementation((fd, buf) => {
+      mockRead.mockImplementation(((_fd: number, buffer: ArrayBufferView) => {
         const lines = [];
         for (let i = 0; i < 10; i++) {
           lines.push(`{"type":"user","message":{"content":"msg${i}"}}`);
         }
+        const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer as Uint8Array);
         buf.write(lines.join('\n'), 0);
         return Buffer.byteLength(lines.join('\n'));
-      });
+      }) as unknown as typeof fs.readSync);
 
       const session: ScannedSession = {
         sdkSessionId: 'test',

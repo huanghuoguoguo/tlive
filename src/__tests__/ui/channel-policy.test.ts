@@ -46,7 +46,7 @@ describe('ui/channel-policy', () => {
 
     it('shouldSplitCompletedTrace returns false by default', () => {
       const policy = DEFAULT_CHANNEL_POLICY.progress;
-      expect(policy.shouldSplitCompletedTrace({ toolCount: 10, durationMs: 60000 })).toBe(false);
+      expect(policy.shouldSplitCompletedTrace({ thinkingTextLength: 100, timelineLength: 10, thinkingEntries: 5, toolEntries: 10, responseTextLength: 200 })).toBe(false);
     });
   });
 

@@ -14,6 +14,17 @@ export interface MockSdkMessage {
   message?: unknown;
   content?: unknown;
   num_turns?: number;
+  // Additional properties for stream_event types
+  event?: MockSdkStreamEvent;
+  content_block?: { type: string; text?: string; name?: string; id?: string; tool_use_id?: string };
+  delta?: { type: string; text?: string; thinking?: string; partial_json?: string };
+  // Additional properties for result types
+  result?: string;
+  total_cost_usd?: number;
+  duration_ms?: number;
+  duration_api_ms?: number;
+  is_error?: boolean;
+  error_message?: string;
 }
 
 export interface MockSdkResult {
@@ -138,7 +149,7 @@ export function createCanonicalEvents(kind: 'text' | 'thinking' | 'error' | 'res
       events.push({ kind: 'error', message: content });
       break;
     case 'result':
-      events.push({ kind: 'query_result', text: content, ...(meta ?? {}) });
+      events.push({ kind: 'query_result', text: content, sessionId: 'mock-session', isError: false, usage: { inputTokens: 100, outputTokens: 50 }, ...(meta ?? {}) });
       break;
   }
 
@@ -176,7 +187,7 @@ export function mockProviderModule(): void {
         stream: new ReadableStream<CanonicalEvent>({
           start(controller) {
             controller.enqueue({ kind: 'text_delta', text: 'mock response' });
-            controller.enqueue({ kind: 'query_result', text: 'done' });
+            controller.enqueue({ kind: 'query_result', text: 'done', sessionId: 'mock-session', isError: false, usage: { inputTokens: 100, outputTokens: 50 } });
             controller.close();
           },
         }),
@@ -210,7 +221,7 @@ export function createMockLiveSession(): MockLiveSession {
       stream: new ReadableStream<CanonicalEvent>({
         start(controller) {
           controller.enqueue({ kind: 'text_delta', text: 'response to: ' + prompt });
-          controller.enqueue({ kind: 'query_result', text: 'done' });
+          controller.enqueue({ kind: 'query_result', text: 'done', sessionId: 'mock-session', isError: false, usage: { inputTokens: 100, outputTokens: 50 } });
           controller.close();
         },
       }),

@@ -40,8 +40,8 @@ describe('TelegramFormatter', () => {
 
   describe('formatNotification', () => {
     it('formats generic notification with title and summary', () => {
-      const data: NotificationData = {
-        type: 'generic',
+      const data = {
+        type: 'generic' as const,
         title: 'Test Title',
         summary: 'Test summary content',
       };
@@ -53,8 +53,8 @@ describe('TelegramFormatter', () => {
     });
 
     it('formats stop notification with emoji', () => {
-      const data: NotificationData = {
-        type: 'stop',
+      const data = {
+        type: 'stop' as const,
         title: 'Task Complete',
       };
       const result = formatter.formatNotification('chat123', data);
@@ -64,8 +64,8 @@ describe('TelegramFormatter', () => {
     });
 
     it('formats idle_prompt notification', () => {
-      const data: NotificationData = {
-        type: 'idle_prompt',
+      const data = {
+        type: 'idle_prompt' as const,
         title: 'Waiting for input',
       };
       const result = formatter.formatNotification('chat123', data);
@@ -75,8 +75,8 @@ describe('TelegramFormatter', () => {
 
     it('truncates long summary', () => {
       const longSummary = 'x'.repeat(5000);
-      const data: NotificationData = {
-        type: 'generic',
+      const data = {
+        type: 'generic' as const,
         title: 'Test',
         summary: longSummary,
       };
@@ -86,8 +86,8 @@ describe('TelegramFormatter', () => {
     });
 
     it('uses URL button for public terminal URL', () => {
-      const data: NotificationData = {
-        type: 'generic',
+      const data = {
+        type: 'generic' as const,
         title: 'Test',
         terminalUrl: 'https://example.com/terminal',
       };
@@ -98,8 +98,8 @@ describe('TelegramFormatter', () => {
     });
 
     it('uses inline link for localhost terminal URL', () => {
-      const data: NotificationData = {
-        type: 'generic',
+      const data = {
+        type: 'generic' as const,
         title: 'Test',
         terminalUrl: 'http://localhost:8080/terminal',
       };
@@ -111,11 +111,11 @@ describe('TelegramFormatter', () => {
 
   describe('formatHome', () => {
     it('formats home with workspace info', () => {
-      const data: HomeData = {
+      const data = {
         workspace: { cwd: '/home/user/project' },
         task: { active: false },
         session: {},
-        permission: { mode: 'on' },
+        permission: { mode: 'on' as const },
         bridge: {},
       };
       const result = formatter.formatHome('chat123', data);
@@ -125,11 +125,11 @@ describe('TelegramFormatter', () => {
     });
 
     it('shows task status label', () => {
-      const data: HomeData = {
+      const data = {
         workspace: { cwd: '/tmp' },
         task: { active: true },
         session: {},
-        permission: { mode: 'off' },
+        permission: { mode: 'off' as const },
         bridge: {},
       };
       const result = formatter.formatHome('chat123', data);
@@ -138,11 +138,11 @@ describe('TelegramFormatter', () => {
     });
 
     it('shows recent summary when provided', () => {
-      const data: HomeData = {
+      const data = {
         workspace: { cwd: '/tmp' },
         task: { active: false },
         session: {},
-        permission: { mode: 'on' },
+        permission: { mode: 'on' as const },
         bridge: {},
         help: { recentSummary: 'Previous task completed' },
       };
@@ -154,7 +154,7 @@ describe('TelegramFormatter', () => {
 
   describe('formatError', () => {
     it('formats error with title and message', () => {
-      const data: ErrorData = {
+      const data = {
         title: 'Connection Failed',
         message: 'Unable to reach server',
       };
@@ -168,7 +168,7 @@ describe('TelegramFormatter', () => {
 
   describe('formatStatus', () => {
     it('formats healthy status', () => {
-      const data: StatusData = {
+      const data = {
         healthy: true,
         channels: ['telegram'],
       };
@@ -179,7 +179,7 @@ describe('TelegramFormatter', () => {
     });
 
     it('formats disconnected status', () => {
-      const data: StatusData = {
+      const data = {
         healthy: false,
         channels: [],
       };
@@ -189,7 +189,7 @@ describe('TelegramFormatter', () => {
     });
 
     it('shows channel info with bot name', () => {
-      const data: StatusData = {
+      const data = {
         healthy: true,
         channels: [],
         channelInfo: [{ type: 'telegram', name: 'testbot' }],
@@ -200,7 +200,7 @@ describe('TelegramFormatter', () => {
     });
 
     it('shows memory and uptime', () => {
-      const data: StatusData = {
+      const data = {
         healthy: true,
         channels: [],
         memoryUsage: '50MB',
@@ -213,7 +213,7 @@ describe('TelegramFormatter', () => {
     });
 
     it('shows version and cwd', () => {
-      const data: StatusData = {
+      const data = {
         healthy: true,
         channels: [],
         version: '1.0.0',
@@ -228,7 +228,7 @@ describe('TelegramFormatter', () => {
 
   describe('formatPermission', () => {
     it('formats permission request with tool name', () => {
-      const data: PermissionData = {
+      const data = {
         toolName: 'Bash',
         toolInput: 'ls -la',
         permissionId: 'perm-123',
@@ -241,7 +241,7 @@ describe('TelegramFormatter', () => {
     });
 
     it('includes terminal URL when provided', () => {
-      const data: PermissionData = {
+      const data = {
         toolName: 'Read',
         toolInput: 'file.txt',
         permissionId: 'perm-456',
@@ -255,7 +255,7 @@ describe('TelegramFormatter', () => {
 
   describe('formatQuestion', () => {
     it('formats single select question', () => {
-      const data: QuestionData = {
+      const data = {
         question: 'Choose an option',
         header: 'Options',
         options: [
@@ -264,6 +264,7 @@ describe('TelegramFormatter', () => {
         ],
         multiSelect: false,
         permId: 'q-123',
+        sessionId: 'sess-1',
       };
       const result = formatter.formatQuestion('chat123', data);
 
@@ -273,7 +274,7 @@ describe('TelegramFormatter', () => {
     });
 
     it('formats multi select question', () => {
-      const data: QuestionData = {
+      const data = {
         question: 'Select multiple',
         options: [{ label: 'A' }, { label: 'B' }],
         multiSelect: true,
@@ -289,9 +290,9 @@ describe('TelegramFormatter', () => {
 
   describe('formatTaskStart', () => {
     it('formats new session task start', () => {
-      const data: TaskStartData = {
+      const data = {
         cwd: '/home/user/project',
-        permissionMode: 'on',
+        permissionMode: 'on' as const,
         isNewSession: true,
       };
       const result = formatter.formatTaskStart('chat123', data);
@@ -300,9 +301,10 @@ describe('TelegramFormatter', () => {
     });
 
     it('shows previous session preview', () => {
-      const data: TaskStartData = {
+      const data = {
         cwd: '/tmp',
-        permissionMode: 'off',
+        permissionMode: 'off' as const,
+        isNewSession: false,
         previousSessionPreview: 'Previous task summary',
       };
       const result = formatter.formatTaskStart('chat123', data);
@@ -313,9 +315,9 @@ describe('TelegramFormatter', () => {
 
   describe('formatSessions', () => {
     it('formats session list', () => {
-      const data: SessionsData = {
+      const data = {
         sessions: [
-          { index: 1, date: '2026-04-01', cwd: '/tmp', size: '5KB', preview: 'test' },
+          { index: 1, date: '2026-04-01', cwd: '/tmp', size: '5KB', preview: 'test', isCurrent: false },
         ],
         filterHint: '',
       };
@@ -326,7 +328,7 @@ describe('TelegramFormatter', () => {
     });
 
     it('marks current session', () => {
-      const data: SessionsData = {
+      const data = {
         sessions: [
           { index: 1, date: '2026-04-01', cwd: '/tmp', size: '5KB', preview: 'test', isCurrent: true },
         ],
@@ -340,7 +342,7 @@ describe('TelegramFormatter', () => {
 
   describe('formatSessionDetail', () => {
     it('formats session detail with transcript', () => {
-      const data: SessionDetailData = {
+      const data = {
         index: 1,
         cwd: '/tmp',
         date: '2026-04-01',
@@ -360,7 +362,7 @@ describe('TelegramFormatter', () => {
 
   describe('formatHelp', () => {
     it('formats help commands list', () => {
-      const data: HelpData = {
+      const data = {
         commands: [
           { cmd: 'home', desc: 'Show home screen' },
           { cmd: 'new', desc: 'Start new session' },
@@ -375,10 +377,13 @@ describe('TelegramFormatter', () => {
 
   describe('formatProgress', () => {
     it('formats starting phase', () => {
-      const data: ProgressData = {
-        phase: 'starting',
+      const data = {
+        phase: 'starting' as const,
         taskSummary: 'Running task',
         elapsedSeconds: 0,
+        renderedText: '',
+        todoItems: [],
+        totalTools: 0,
       };
       const result = formatter.formatProgress('chat123', data);
 
@@ -387,10 +392,13 @@ describe('TelegramFormatter', () => {
     });
 
     it('formats executing phase', () => {
-      const data: ProgressData = {
-        phase: 'executing',
+      const data = {
+        phase: 'executing' as const,
         taskSummary: 'Processing',
         elapsedSeconds: 10,
+        renderedText: '',
+        todoItems: [],
+        totalTools: 0,
       };
       const result = formatter.formatProgress('chat123', data);
 
@@ -399,10 +407,13 @@ describe('TelegramFormatter', () => {
     });
 
     it('formats completed phase', () => {
-      const data: ProgressData = {
-        phase: 'completed',
+      const data = {
+        phase: 'completed' as const,
         taskSummary: 'Done',
         elapsedSeconds: 30,
+        renderedText: '',
+        todoItems: [],
+        totalTools: 0,
       };
       const result = formatter.formatProgress('chat123', data);
 
@@ -410,10 +421,13 @@ describe('TelegramFormatter', () => {
     });
 
     it('formats failed phase', () => {
-      const data: ProgressData = {
-        phase: 'failed',
+      const data = {
+        phase: 'failed' as const,
         taskSummary: 'Error occurred',
         elapsedSeconds: 5,
+        renderedText: '',
+        todoItems: [],
+        totalTools: 0,
       };
       const result = formatter.formatProgress('chat123', data);
 
@@ -421,10 +435,13 @@ describe('TelegramFormatter', () => {
     });
 
     it('formats waiting_permission phase', () => {
-      const data: ProgressData = {
-        phase: 'waiting_permission',
+      const data = {
+        phase: 'waiting_permission' as const,
         taskSummary: 'Waiting',
         elapsedSeconds: 2,
+        renderedText: '',
+        todoItems: [],
+        totalTools: 0,
       };
       const result = formatter.formatProgress('chat123', data);
 
@@ -432,11 +449,13 @@ describe('TelegramFormatter', () => {
     });
 
     it('uses renderedText when provided', () => {
-      const data: ProgressData = {
-        phase: 'executing',
+      const data = {
+        phase: 'executing' as const,
         taskSummary: 'Processing',
         elapsedSeconds: 10,
         renderedText: 'Custom rendered content here',
+        todoItems: [],
+        totalTools: 0,
       };
       const result = formatter.formatProgress('chat123', data);
 
@@ -444,12 +463,14 @@ describe('TelegramFormatter', () => {
     });
 
     it('shows API retry indicator', () => {
-      const data: ProgressData = {
-        phase: 'executing',
+      const data = {
+        phase: 'executing' as const,
         taskSummary: 'Processing',
         elapsedSeconds: 10,
         renderedText: 'Content',
-        apiRetry: { attempt: 2, maxRetries: 3, error: 'timeout' },
+        todoItems: [],
+        totalTools: 0,
+        apiRetry: { attempt: 2, maxRetries: 3, retryDelayMs: 1000, error: 'timeout' },
       };
       const result = formatter.formatProgress('chat123', data);
 
@@ -457,11 +478,13 @@ describe('TelegramFormatter', () => {
     });
 
     it('shows compacting indicator', () => {
-      const data: ProgressData = {
-        phase: 'executing',
+      const data = {
+        phase: 'executing' as const,
         taskSummary: 'Processing',
         elapsedSeconds: 10,
         renderedText: 'Content',
+        todoItems: [],
+        totalTools: 0,
         compacting: true,
       };
       const result = formatter.formatProgress('chat123', data);
@@ -472,7 +495,7 @@ describe('TelegramFormatter', () => {
 
   describe('formatTaskSummary', () => {
     it('formats task summary with success', () => {
-      const data: TaskSummaryData = {
+      const data = {
         summary: 'Task completed successfully',
         changedFiles: 3,
         permissionRequests: 2,
@@ -485,7 +508,7 @@ describe('TelegramFormatter', () => {
     });
 
     it('formats task summary with error status', () => {
-      const data: TaskSummaryData = {
+      const data = {
         summary: 'Task failed',
         changedFiles: 0,
         permissionRequests: 1,
@@ -493,12 +516,11 @@ describe('TelegramFormatter', () => {
       };
       const result = formatter.formatTaskSummary('chat123', data);
 
-      // Status line shows error state
       expect(result.html).toContain('Task failed');
     });
 
     it('includes footer line when provided', () => {
-      const data: TaskSummaryData = {
+      const data = {
         summary: 'Done',
         changedFiles: 1,
         permissionRequests: 0,
@@ -513,7 +535,7 @@ describe('TelegramFormatter', () => {
 
   describe('formatQueueStatus', () => {
     it('formats idle queue', () => {
-      const data: QueueStatusData = {
+      const data = {
         sessionKey: 'session-1',
         depth: 0,
         maxDepth: 5,
@@ -524,7 +546,7 @@ describe('TelegramFormatter', () => {
     });
 
     it('formats saturated queue', () => {
-      const data: QueueStatusData = {
+      const data = {
         sessionKey: 'session-2',
         depth: 5,
         maxDepth: 5,
@@ -535,7 +557,7 @@ describe('TelegramFormatter', () => {
     });
 
     it('shows queued messages', () => {
-      const data: QueueStatusData = {
+      const data = {
         sessionKey: 'session-3',
         depth: 2,
         maxDepth: 10,
@@ -551,7 +573,7 @@ describe('TelegramFormatter', () => {
 
   describe('formatDiagnose', () => {
     it('formats diagnose output', () => {
-      const data: DiagnoseData = {
+      const data = {
         activeSessions: 2,
         idleSessions: 1,
         totalQueuedMessages: 5,
@@ -568,7 +590,7 @@ describe('TelegramFormatter', () => {
     });
 
     it('shows memory usage', () => {
-      const data: DiagnoseData = {
+      const data = {
         activeSessions: 1,
         idleSessions: 0,
         totalQueuedMessages: 0,
@@ -585,10 +607,10 @@ describe('TelegramFormatter', () => {
 
   describe('formatProjectList', () => {
     it('formats project list', () => {
-      const data: ProjectListData = {
+      const data = {
         projects: [
-          { name: 'project-a', workdir: '/home/a' },
-          { name: 'project-b', workdir: '/home/b', isCurrent: true },
+          { name: 'project-a', workdir: '/home/a', isDefault: false, isCurrent: false },
+          { name: 'project-b', workdir: '/home/b', isDefault: false, isCurrent: true },
         ],
       };
       const result = formatter.formatProjectList('chat123', data);
@@ -598,9 +620,9 @@ describe('TelegramFormatter', () => {
     });
 
     it('shows default flag', () => {
-      const data: ProjectListData = {
+      const data = {
         projects: [
-          { name: 'main', workdir: '/home/main', isDefault: true },
+          { name: 'main', workdir: '/home/main', isDefault: true, isCurrent: false },
         ],
       };
       const result = formatter.formatProjectList('chat123', data);
@@ -611,7 +633,7 @@ describe('TelegramFormatter', () => {
 
   describe('formatProjectInfo', () => {
     it('formats project info', () => {
-      const data: ProjectInfoData = {
+      const data = {
         projectName: 'test-project',
         workdir: '/home/test',
       };
@@ -622,7 +644,7 @@ describe('TelegramFormatter', () => {
     });
 
     it('shows channels and settings', () => {
-      const data: ProjectInfoData = {
+      const data = {
         projectName: 'test',
         workdir: '/tmp',
         channels: ['telegram', 'feishu'],
