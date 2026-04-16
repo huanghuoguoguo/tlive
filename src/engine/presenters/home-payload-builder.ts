@@ -93,7 +93,12 @@ export class HomePayloadBuilder {
     }
 
     const permStatus = permissions.getPermissionStatus(chatKey, binding?.sessionId);
-    const activeChannels = Array.from(getAdapters().keys());
+    const adapters = getAdapters();
+    const activeChannels = Array.from(adapters.keys());
+    const channelInfo = Array.from(adapters.values()).map(adapter => ({
+      type: adapter.channelType,
+      ...adapter.getBotInfo(),
+    }));
     const workspaceBinding = workspace.getBinding(channelType, chatId);
     const projectName = binding?.projectName;
     const lastActiveTime = state.getLastActiveTime(channelType, chatId);
@@ -199,6 +204,7 @@ export class HomePayloadBuilder {
       bridge: {
         healthy: activeChannels.length > 0,
         channels: activeChannels,
+        channelInfo,
         queueInfo,
       },
       help: {

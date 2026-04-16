@@ -49,6 +49,7 @@ function mockAdapter(channelType = 'telegram'): BaseChannelAdapter {
       return editMessage(chatId, messageId, outMsg);
     },
     formatContent: (chatId: string, content: string, buttons?: any[]) => formatter.formatContent(chatId, content, buttons),
+    getBotInfo: vi.fn().mockReturnValue({ appId: 'test_app_id' }),
   } as any;
 }
 

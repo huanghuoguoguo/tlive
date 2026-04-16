@@ -834,6 +834,11 @@ export class QQBotAdapter extends BaseChannelAdapter<QQBotRenderedMessage> {
 
     return super.classifyError(err);
   }
+
+  /** Get QQ Bot info for display */
+  getBotInfo(): { appId?: string; name?: string } {
+    return { appId: this.config.appId };
+  }
 }
 
 // Self-register

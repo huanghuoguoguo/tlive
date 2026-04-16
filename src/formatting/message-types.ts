@@ -139,6 +139,8 @@ export interface HomeData {
     healthy?: boolean;
     /** Active channels */
     channels?: string[];
+    /** Channel info (appId, name) for each active channel */
+    channelInfo?: Array<{ type: string; appId?: string; name?: string }>;
     /** Queue info for active session */
     queueInfo?: { depth: number; max: number };
   };
