@@ -249,6 +249,9 @@ export interface Translations {
   'push.preview': string;
   'push.continueHint': string;
   'push.fallbackHint': string;
+
+  // --- recent projects ---
+  'recentProjects.hint': string;
 }
 
 export type TranslationKey = keyof Translations;

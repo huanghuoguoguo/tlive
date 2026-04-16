@@ -12,6 +12,7 @@ import type {
   HelpData,
   NewSessionData,
   ProjectListData,
+  RecentProjectsData,
   QueueStatusData,
   DiagnoseData,
   FormattableMessage,
@@ -47,6 +48,10 @@ export function presentHelp(chatId: string, data: HelpData): FormattableMessage 
 
 export function presentProjectList(chatId: string, data: ProjectListData): FormattableMessage {
   return { type: 'projectList', chatId, data };
+}
+
+export function presentRecentProjects(chatId: string, data: RecentProjectsData): FormattableMessage {
+  return { type: 'recentProjects', chatId, data };
 }
 
 // --- Simple text messages (no platform-specific formatting needed) ---

@@ -247,4 +247,7 @@ export const en: Translations = {
   'push.preview': 'Recent conversation',
   'push.continueHint': 'Continue on your phone ↓',
   'push.fallbackHint': '(auto-selected last active chat)',
+
+  // --- recent projects ---
+  'recentProjects.hint': '💡 Use /cd <path> to switch directory',
 };

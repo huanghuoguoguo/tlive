@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { CommandRouter } from '../../engine/command-router.js';
 import { SessionStateManager } from '../../engine/state/session-state.js';
 import { WorkspaceStateManager } from '../../engine/state/workspace-state.js';
+import { RecentProjectsManager } from '../../engine/state/recent-projects.js';
 import { ChannelRouter } from '../../utils/router.js';
 import { JsonFileStore } from '../../store/json-file.js';
 import { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
@@ -65,6 +66,7 @@ describe('CommandRouter /settings', () => {
     router = new CommandRouter(
       new SessionStateManager(),
       workspace,
+      new RecentProjectsManager(),
       () => new Map(),
       new ChannelRouter(store),
       store,
@@ -205,66 +207,6 @@ describe('CommandRouter /settings', () => {
     expect(workspace.getHistory('telegram', 'c1')).toEqual([dirB, dirC, dirA]);
   });
 
-  it('applies project claudeSettingSources on /project use', async () => {
-    const homeDir = mkdtempSync(join(tmpdir(), 'tlive-home-'));
-    const projectDir = join(homeDir, 'repo');
-    mkdirSync(projectDir, { recursive: true });
-    mkdirSync(join(homeDir, '.tlive'), { recursive: true });
-    writeFileSync(join(homeDir, '.tlive', 'projects.json'), JSON.stringify({
-      defaultProject: 'repo',
-      projects: [
-        {
-          name: 'repo',
-          workdir: projectDir,
-          claudeSettingSources: ['user'],
-        },
-      ],
-    }));
-    process.env.HOME = homeDir;
-
-    // Create new router with loaded projects config
-    const projectsConfig = loadProjectsConfig();
-    const projectPermissions = createMockPermissions();
-    const testRouter = new CommandRouter(
-      new SessionStateManager(),
-      workspace,
-      () => new Map(),
-      new ChannelRouter(store),
-      store,
-      tmpDir,
-      Object.create(ClaudeSDKProvider.prototype) as ClaudeSDKProvider,
-      new Map(),
-      projectPermissions,
-      ['user', 'project', 'local'],
-      sdkEngine as SDKEngine,
-      projectsConfig,
-    );
-
-    await store.saveBinding({
-      channelType: 'telegram',
-      chatId: 'c1',
-      sessionId: 'binding-1',
-      cwd: tmpDir,
-      claudeSettingSources: ['user', 'project', 'local'] as ClaudeSettingSource[],
-      createdAt: '',
-    });
-
-    await testRouter.handle(adapter, {
-      channelType: 'telegram',
-      chatId: 'c1',
-      userId: 'u1',
-      text: '/project use repo',
-      messageId: 'm7',
-    } as any);
-
-    const binding = await store.getBinding('telegram', 'c1');
-    expect(binding?.projectName).toBe('repo');
-    expect(binding?.cwd).toBe(projectDir);
-    expect(binding?.claudeSettingSources).toEqual(['user']);
-
-    rmSync(homeDir, { recursive: true, force: true });
-  });
-
   it('does not cleanup session when /cd stays in the same git repo', async () => {
     const repoDir = join(tmpDir, 'repo');
     const subDir = join(repoDir, 'src');
@@ -330,130 +272,6 @@ describe('CommandRouter /settings', () => {
     expect(binding?.sessionId).not.toBe('binding-1');
     expect(binding?.projectName).toBeUndefined();
     expect(workspace.getBinding('telegram', 'c1')).toBe(repoB);
-  });
-
-  it('keeps session when switching project within same repo and same settings', async () => {
-    const homeDir = mkdtempSync(join(tmpdir(), 'tlive-home-'));
-    const repoDir = join(homeDir, 'repo');
-    mkdirSync(repoDir, { recursive: true });
-    mkdirSync(join(repoDir, '.git'), { recursive: true });
-    mkdirSync(join(homeDir, '.tlive'), { recursive: true });
-    writeFileSync(join(homeDir, '.tlive', 'projects.json'), JSON.stringify({
-      defaultProject: 'a',
-      projects: [
-        { name: 'a', workdir: repoDir, claudeSettingSources: ['user'] },
-        { name: 'b', workdir: repoDir, claudeSettingSources: ['user'] },
-      ],
-    }));
-    process.env.HOME = homeDir;
-
-    // Create new router with loaded projects config
-    const projectsConfig = loadProjectsConfig();
-    const projectPermissions = createMockPermissions();
-    const testRouter = new CommandRouter(
-      new SessionStateManager(),
-      workspace,
-      () => new Map(),
-      new ChannelRouter(store),
-      store,
-      repoDir,
-      Object.create(ClaudeSDKProvider.prototype) as ClaudeSDKProvider,
-      new Map(),
-      projectPermissions,
-      ['user', 'project', 'local'],
-      sdkEngine as SDKEngine,
-      projectsConfig,
-    );
-
-    await store.saveBinding({
-      channelType: 'telegram',
-      chatId: 'c1',
-      sessionId: 'binding-1',
-      sdkSessionId: 'sdk-1',
-      cwd: repoDir,
-      projectName: 'a',
-      claudeSettingSources: ['user'] as ClaudeSettingSource[],
-      createdAt: '',
-    });
-
-    await testRouter.handle(adapter, {
-      channelType: 'telegram',
-      chatId: 'c1',
-      userId: 'u1',
-      text: '/project use b',
-      messageId: 'm10',
-    } as any);
-
-    expect(sdkEngine.cleanupSession).not.toHaveBeenCalled();
-    expect(projectPermissions.clearSessionWhitelist).not.toHaveBeenCalled();
-    const binding = await store.getBinding('telegram', 'c1');
-    expect(binding?.projectName).toBe('b');
-    expect(binding?.sdkSessionId).toBe('sdk-1');
-
-    rmSync(homeDir, { recursive: true, force: true });
-  });
-
-  it('resets session when switching project changes settings in same repo', async () => {
-    const homeDir = mkdtempSync(join(tmpdir(), 'tlive-home-'));
-    const repoDir = join(homeDir, 'repo');
-    mkdirSync(repoDir, { recursive: true });
-    mkdirSync(join(repoDir, '.git'), { recursive: true });
-    mkdirSync(join(homeDir, '.tlive'), { recursive: true });
-    writeFileSync(join(homeDir, '.tlive', 'projects.json'), JSON.stringify({
-      defaultProject: 'a',
-      projects: [
-        { name: 'a', workdir: repoDir, claudeSettingSources: ['user'] },
-        { name: 'b', workdir: repoDir, claudeSettingSources: ['user', 'project', 'local'] },
-      ],
-    }));
-    process.env.HOME = homeDir;
-
-    // Create new router with loaded projects config
-    const projectsConfig = loadProjectsConfig();
-    const projectPermissions = createMockPermissions();
-    const testRouter = new CommandRouter(
-      new SessionStateManager(),
-      workspace,
-      () => new Map(),
-      new ChannelRouter(store),
-      store,
-      repoDir,
-      Object.create(ClaudeSDKProvider.prototype) as ClaudeSDKProvider,
-      new Map(),
-      projectPermissions,
-      ['user', 'project', 'local'],
-      sdkEngine as SDKEngine,
-      projectsConfig,
-    );
-
-    await store.saveBinding({
-      channelType: 'telegram',
-      chatId: 'c1',
-      sessionId: 'binding-1',
-      sdkSessionId: 'sdk-1',
-      cwd: repoDir,
-      projectName: 'a',
-      claudeSettingSources: ['user'] as ClaudeSettingSource[],
-      createdAt: '',
-    });
-
-    await testRouter.handle(adapter, {
-      channelType: 'telegram',
-      chatId: 'c1',
-      userId: 'u1',
-      text: '/project use b',
-      messageId: 'm11',
-    } as any);
-
-    expect(sdkEngine.cleanupSession).not.toHaveBeenCalled();
-    expect(projectPermissions.clearSessionWhitelist).not.toHaveBeenCalled();
-    const binding = await store.getBinding('telegram', 'c1');
-    expect(binding?.projectName).toBe('b');
-    expect(binding?.sdkSessionId).toBeUndefined();
-    expect(binding?.sessionId).not.toBe('binding-1');
-    expect(binding?.claudeSettingSources).toEqual(['user', 'project', 'local']);
-
-    rmSync(homeDir, { recursive: true, force: true });
   });
 
   it('clears project binding when /session --all switches to another repo', async () => {

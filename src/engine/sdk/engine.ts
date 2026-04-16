@@ -69,8 +69,7 @@ export interface ResolvedSessionTarget {
   source: 'reply' | 'current';
 }
 
-/**
- * Handles shared SDK session state for live turns and follow-up steering.
+/** Handles shared SDK session state for live turns and follow-up steering.
  *
  * Provider-agnostic — works with both Claude SDK (LiveSession) and fallback streamChat.
  */
@@ -105,6 +104,8 @@ export class SDKEngine {
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
   /** Optional callback after an idle live session is pruned */
   onSessionPruned?: (sessionKey: string) => void;
+  /** Optional callback when a new LiveSession is created (for tracking recent projects) */
+  onSessionCreated?: (sessionKey: string, workdir: string) => void;
 
   /** Start periodic cleanup of idle LiveSessions */
   startSessionPruning(): void {
@@ -465,6 +466,10 @@ export class SDKEngine {
     managed.workdir = actualWorkdir;
     managed.sdkSessionId = actualOptions.sessionId ?? managed.sdkSessionId;
     managed.lastActiveAt = Date.now();
+
+    // Notify callback for recent projects tracking
+    this.onSessionCreated?.(key, actualWorkdir);
+
     session.setLifecycleCallbacks?.({
       onTurnComplete: () => {
         const current = this.registry.get(key);

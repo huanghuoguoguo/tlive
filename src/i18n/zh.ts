@@ -247,4 +247,7 @@ export const zh: Translations = {
   'push.preview': '最近对话',
   'push.continueHint': '在手机上继续对话 ↓',
   'push.fallbackHint': '(自动选择最近活跃对话)',
+
+  // --- recent projects ---
+  'recentProjects.hint': '💡 使用 /cd <路径> 切换目录',
 };

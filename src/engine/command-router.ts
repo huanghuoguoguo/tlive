@@ -2,6 +2,7 @@ import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';
 import type { SessionStateManager } from './state/session-state.js';
 import type { WorkspaceStateManager } from './state/workspace-state.js';
+import type { RecentProjectsManager } from './state/recent-projects.js';
 import type { ChannelRouter } from '../utils/router.js';
 import type { QueryControls } from '../providers/base.js';
 import type { ClaudeSDKProvider } from '../providers/claude-sdk.js';
@@ -29,6 +30,7 @@ export class CommandRouter {
   constructor(
     private state: SessionStateManager,
     private workspace: WorkspaceStateManager,
+    recentProjects: RecentProjectsManager,
     getAdapters: () => Map<string, BaseChannelAdapter>,
     router: ChannelRouter,
     private store: BridgeStore,
@@ -42,7 +44,7 @@ export class CommandRouter {
   ) {
     this.projectsConfig = projectsConfig;
     this.services = {
-      store, router, state, workspace, permissions, sdkEngine, llm,
+      store, router, state, workspace, recentProjects, permissions, sdkEngine, llm,
       activeControls, defaultWorkdir, defaultClaudeSettingSources, getAdapters,
     };
     this.homePayloadBuilder = new HomePayloadBuilder({
