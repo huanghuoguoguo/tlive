@@ -7,6 +7,7 @@ import type { HomeData } from '../../formatting/message-types.js';
 import type { ScannedSession } from '../../providers/session-scanner.js';
 import type { QueryControls } from '../../providers/base.js';
 import type { Locale } from '../../i18n/index.js';
+import type { RecentProjectsManager } from '../state/recent-projects.js';
 import { scanClaudeSessions, readSessionTranscriptPreview } from '../../providers/session-scanner.js';
 import { shortPath } from '../../core/path.js';
 import { formatSize, formatSessionDate, formatRelativeTime } from '../../formatting/session-format.js';
@@ -52,6 +53,7 @@ export interface HomePayloadBuilderDeps {
   activeControls: Map<string, QueryControls>;
   getAdapters: () => Map<string, BaseChannelAdapter>;
   defaultWorkdir: string;
+  recentProjects?: RecentProjectsManager;
 }
 
 import type { BaseChannelAdapter } from '../../channels/base.js';
@@ -64,7 +66,7 @@ export class HomePayloadBuilder {
   constructor(private deps: HomePayloadBuilderDeps) {}
 
   async build(channelType: string, chatId: string, locale: Locale = 'zh'): Promise<HomeData> {
-    const { store, state, workspace, sdkEngine, permissions, activeControls, getAdapters, defaultWorkdir } = this.deps;
+    const { store, state, workspace, sdkEngine, permissions, activeControls, getAdapters, defaultWorkdir, recentProjects } = this.deps;
     const binding = await store.getBinding(channelType, chatId);
     const currentCwd = binding?.cwd || defaultWorkdir;
     const chatKey = state.stateKey(channelType, chatId);
@@ -179,6 +181,11 @@ export class HomePayloadBuilder {
         entries: [],  // Will be populated by CommandRouter if needed
         recentSummary: recentSessions[0]?.preview,
       },
+      recentProjects: recentProjects?.list().slice(0, 5).map(p => ({
+        name: p.name,
+        workdir: shortPath(p.workdir),
+        isCurrent: p.workdir === currentCwd,
+      })),
     };
   }
 }

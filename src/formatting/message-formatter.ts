@@ -294,7 +294,22 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
       }
     }
 
+    // Build buttons: base buttons + recent project buttons
     const buttons: Button[] = homeButtons(this.locale);
+
+    // Add recent project quick-switch buttons (up to 3)
+    if (data.recentProjects?.length) {
+      const projectButtons: Button[] = data.recentProjects
+        .filter(p => !p.isCurrent)
+        .slice(0, 3)
+        .map(p => ({
+          label: `📁 ${p.name}`,
+          callbackData: `cd:${p.workdir}`,
+          style: 'default' as const,
+          row: 2,
+        }));
+      buttons.push(...projectButtons);
+    }
 
     return this.createMessage(chatId, lines.join('\n'), buttons);
   }

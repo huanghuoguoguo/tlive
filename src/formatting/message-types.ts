@@ -148,6 +148,12 @@ export interface HomeData {
     /** Recent summary text */
     recentSummary?: string;
   };
+  /** Recent projects for quick switch buttons */
+  recentProjects?: Array<{
+    name: string;
+    workdir: string;
+    isCurrent: boolean;
+  }>;
 }
 
 /** Permission status card for /perm command */
