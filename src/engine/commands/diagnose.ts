@@ -6,7 +6,9 @@ import { formatSize } from '../../formatting/session-format.js';
 export class DiagnoseCommand extends BaseCommand {
   readonly name = '/diagnose';
   readonly quick = true;
-  readonly description = 'Run diagnostics';
+  readonly description = '诊断信息';
+  readonly helpDesc = '运行系统诊断，显示会话统计、队列深度、内存使用等详细信息。用于排查问题。';
+  readonly helpExample = '/diagnose';
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const activeSessions = ctx.services.sdkEngine?.getActiveSessionCount() ?? 0;

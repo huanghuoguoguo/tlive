@@ -46,7 +46,9 @@ function resolveCliPath(): string {
 export class UpgradeCommand extends BaseCommand {
   readonly name = '/upgrade';
   readonly quick = true;
-  readonly description = 'Check for updates';
+  readonly description = '检查更新';
+  readonly helpDesc = '检查是否有新版本可用。发现新版本时可执行升级。notes 查看更新日志，confirm 确认升级。';
+  readonly helpExample = '/upgrade 或 /upgrade confirm';
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const rawSubCmd = ctx.parts[1];

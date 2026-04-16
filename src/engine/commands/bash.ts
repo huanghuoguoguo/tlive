@@ -9,7 +9,9 @@ const execAsync = promisify(exec);
 export class BashCommand extends BaseCommand {
   readonly name = '/bash';
   readonly quick = true;
-  readonly description = 'Execute shell command';
+  readonly description = '执行命令';
+  readonly helpDesc = '在当前工作目录执行 shell 命令。超时30秒，输出超过4MB会被截断。用于快速查看文件、运行脚本等。';
+  readonly helpExample = '/bash ls -la';
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const cmdText = ctx.msg.text.slice('/bash '.length).trim();

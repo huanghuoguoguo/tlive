@@ -6,7 +6,9 @@ import { shortPath } from '../../core/path.js';
 export class PwdCommand extends BaseCommand {
   readonly name = '/pwd';
   readonly quick = true;
-  readonly description = 'Show current directory';
+  readonly description = '当前目录';
+  readonly helpDesc = '显示当前工作目录。如果有历史目录或工作区绑定，也会一并显示。';
+  readonly helpExample = '/pwd';
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);

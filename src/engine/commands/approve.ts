@@ -5,7 +5,9 @@ import { presentApproveSuccess, presentApproveFailure, presentApproveUsage, pres
 export class ApproveCommand extends BaseCommand {
   readonly name = '/approve';
   readonly quick = true;
-  readonly description = 'Approve pairing code';
+  readonly description = '批准配对';
+  readonly helpDesc = '批准 Telegram Bot 的配对码。用于将新用户添加到授权列表。';
+  readonly helpExample = '/approve ABC123';
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const code = ctx.parts[1];

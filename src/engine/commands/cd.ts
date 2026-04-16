@@ -10,7 +10,9 @@ import { isSameRepoRoot } from '../../utils/repo.js';
 export class CdCommand extends BaseCommand {
   readonly name = '/cd';
   readonly quick = true;
-  readonly description = 'Change directory';
+  readonly description = '切换目录';
+  readonly helpDesc = '切换当前 IM session 的工作目录，影响后续 bash 执行的目录。不影响 Claude Code 配置。若要在新工作区开始工作，请先 /cd 切换目录，再执行 /new。';
+  readonly helpExample = '/cd ~/workspace/project · /cd - · /cd';
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const path = ctx.parts.slice(1).join(' ').trim();

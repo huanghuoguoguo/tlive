@@ -6,7 +6,9 @@ import { t } from '../../i18n/index.js';
 export class QueueCommand extends BaseCommand {
   readonly name = '/queue';
   readonly quick = true;
-  readonly description = 'Show queue status';
+  readonly description = '队列状态';
+  readonly helpDesc = '查看消息队列状态。支持 clear 清空队列、depth 设置最大队列深度。';
+  readonly helpExample = '/queue 或 /queue clear';
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const sub = ctx.parts[1]?.toLowerCase();

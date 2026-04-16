@@ -7,7 +7,9 @@ import { t } from '../../i18n/index.js';
 export class NewCommand extends BaseCommand {
   readonly name = '/new';
   readonly quick = true;
-  readonly description = 'New conversation';
+  readonly description = '新建会话';
+  readonly helpDesc = '开启新的 bridge session，相当于新建一个连接。之前的连接仍可继续使用。\n如果只想重置当前 CC 窗口，请在 Claude Code 终端中输入 /clear。';
+  readonly helpExample = '/new';
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const previousBinding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
