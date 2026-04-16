@@ -3,7 +3,7 @@
 import { execSync, spawn, spawnSync } from 'node:child_process';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, writeFileSync, readFileSync, unlinkSync, mkdirSync, chmodSync, openSync, closeSync, copyFileSync, statSync, readSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, writeFileSync, readFileSync, unlinkSync, mkdirSync, chmodSync, openSync, closeSync, copyFileSync, statSync, readSync, mkdtempSync, renameSync, rmSync, symlinkSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -685,25 +685,49 @@ switch (command) {
   case 'install': {
     const sub = args[0];
     if (sub === 'skills') {
-      const target = args.includes('--codex') ? 'codex' : 'claude';
-      const skillSrc = join(PACKAGE_ROOT, 'SKILL.md');
+      const skillSrc = join(PACKAGE_ROOT, '.claude', 'skills', 'tlive', 'SKILL.md');
 
       if (!existsSync(skillSrc)) {
-        console.error('SKILL.md not found. Reinstall from GitHub Release or rebuild this fork from source.');
+        console.error('tlive SKILL.md not found. Reinstall from GitHub Release or rebuild this fork from source.');
         process.exit(1);
       }
 
-      // Install SKILL.md
-      const skillDir = target === 'codex'
-        ? join(homedir(), '.codex', 'skills', 'tlive')
-        : join(homedir(), '.claude', 'commands');
-      mkdirSync(skillDir, { recursive: true });
-
-      const skillDest = target === 'codex'
-        ? join(skillDir, 'SKILL.md')
-        : join(skillDir, 'tlive.md');
+      // Install tlive skill (copy SKILL.md to commands/tlive.md for Claude Code)
+      const commandsDir = join(homedir(), '.claude', 'commands');
+      mkdirSync(commandsDir, { recursive: true });
+      const skillDest = join(commandsDir, 'tlive.md');
       copyFileSync(skillSrc, skillDest);
       console.log(`Skill installed: ${skillDest}`);
+
+      // Install all tlive-* skills via symlink
+      const bundledSkillsDir = join(PACKAGE_ROOT, '.claude', 'skills');
+      const globalSkillsDir = join(homedir(), '.claude', 'skills');
+      mkdirSync(globalSkillsDir, { recursive: true });
+
+      try {
+        const entries = readdirSync(bundledSkillsDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isDirectory() || !entry.name.startsWith('tlive-')) continue;
+          const skillFolderSrc = join(bundledSkillsDir, entry.name);
+          const skillFolderDest = join(globalSkillsDir, entry.name);
+          // Remove existing symlink or folder before creating new one
+          try { rmSync(skillFolderDest, { recursive: true, force: true }); } catch {}
+          try {
+            symlinkSync(skillFolderSrc, skillFolderDest);
+            console.log(`Skill installed (symlink): ${skillFolderDest}`);
+          } catch {
+            // Fallback: copy if symlink fails (e.g., on Windows without admin)
+            const skillFile = join(skillFolderSrc, 'SKILL.md');
+            if (existsSync(skillFile)) {
+              mkdirSync(skillFolderDest, { recursive: true });
+              copyFileSync(skillFile, join(skillFolderDest, 'SKILL.md'));
+              console.log(`Skill installed (copy): ${skillFolderDest}`);
+            }
+          }
+        }
+      } catch {
+        // bundledSkillsDir doesn't exist or unreadable - skip
+      }
 
       // Sync reference docs to ~/.tlive/docs/
       const docsDir = join(TLIVE_HOME, 'docs');
@@ -719,7 +743,6 @@ switch (command) {
       console.log(`Reference docs synced: ${docsDir}`);
 
       // Remove legacy TLive hook entries from ~/.claude/settings.json
-      if (target === 'claude') {
         const settingsPath = join(homedir(), '.claude', 'settings.json');
         let settings = {};
         if (existsSync(settingsPath)) {
@@ -746,7 +769,6 @@ switch (command) {
 
         writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
         console.log(`Removed legacy TLive hook entries from: ${settingsPath}`);
-      }
     } else {
       console.log('Usage:');
       console.log('  tlive install skills [--codex]  Install /tlive skill');

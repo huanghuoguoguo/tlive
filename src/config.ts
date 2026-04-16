@@ -330,7 +330,7 @@ export function loadConfig(): Config {
       rateLimitPerMinute: Math.max(0, Number.parseInt(get('TL_WEBHOOK_RATE_LIMIT_PER_MINUTE', '30'), 10) || 0),
     },
     cron: {
-      enabled: get('TL_CRON_ENABLED', 'false') === 'true',
+      enabled: get('TL_CRON_ENABLED', 'true') === 'true',
       timezone: get('TL_CRON_TIMEZONE') || undefined,
       maxConcurrency: parsePositiveInt(get('TL_CRON_MAX_CONCURRENCY', '3'), 3),
     },
