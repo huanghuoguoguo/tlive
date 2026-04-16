@@ -180,6 +180,16 @@ export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = Ren
   prepareBroadcast(msg: TRendered): TRendered {
     return msg;
   }
+
+  // --- Bot info (for status display) ---
+
+  /**
+   * Get bot information for display.
+   * Override in subclass to return platform-specific bot info.
+   */
+  getBotInfo(): { appId?: string; name?: string } {
+    return {};
+  }
 }
 
 // Use globalThis to share the registry across module instances (for dynamic imports)

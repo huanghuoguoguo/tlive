@@ -40,12 +40,32 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
   const { data, locale, md, buildButtons } = params;
   const elements: FeishuCardElement[] = [];
 
-  // Global status - minimal
+  // Global status as collapsible panel with bot info
   const bridgeStatus = data.bridge.healthy ? '🟢' : '🔴';
   const channels = data.bridge.channels?.join(', ') || t(locale, 'home.labelNone');
   const taskStatus = data.task.active ? '⏳' : '✅';
+  const headerText = `${bridgeStatus} ${channels} · ${taskStatus}`;
 
-  elements.push(md(`${bridgeStatus} ${channels} · ${taskStatus}`));
+  // Build panel content with bot info
+  const panelLines: string[] = [];
+  if (data.bridge.channelInfo) {
+    for (const ch of data.bridge.channelInfo) {
+      const appIdShort = ch.appId ? ch.appId.slice(0, 12) + '...' : '-';
+      panelLines.push(`**${ch.type}** AppID: \`${appIdShort}\``);
+    }
+  }
+  panelLines.push(`**状态** ${bridgeStatus} ${data.bridge.healthy ? '正常' : '异常'}`);
+  panelLines.push(`**任务** ${taskStatus} ${data.task.active ? '执行中' : '空闲'}`);
+  if (data.bridge.queueInfo) {
+    panelLines.push(`**${t(locale, 'home.labelQueue')}** ${data.bridge.queueInfo.depth}/${data.bridge.queueInfo.max}`);
+  }
+
+  elements.push({
+    tag: 'collapsible_panel',
+    expanded: false,
+    header: { title: { tag: 'plain_text', content: headerText } },
+    elements: [mdPanel(panelLines.join('\n'))],
+  } as FeishuCardElement);
 
   // Current bridge session info (always show)
   if (data.session.current) {
@@ -134,10 +154,35 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
     elements.push({
       tag: 'collapsible_panel',
       expanded: false,
-      header: { title: { tag: 'plain_text', content: `❓ ${t(locale, 'home.btnHelp')}` } },
+      header: { title: { tag: 'plain_text', content: t(locale, 'home.btnHelp') } },
       elements: [mdPanel(helpText)],
     } as FeishuCardElement);
   }
+
+  // Recent projects / workspace panel (always show)
+  const allProjects = data.recentProjects ?? [];
+  const nonCurrentProjects = allProjects.filter(p => !p.isCurrent);
+  const elements_content: FeishuCardElement[] = [];
+  if (nonCurrentProjects.length > 0) {
+    const projectButtons: Button[] = nonCurrentProjects
+      .slice(0, 3)
+      .map(p => ({
+        label: `📁 ${p.name}`,
+        callbackData: `cd:${p.fullWorkdir}`,
+        style: 'default',
+        row: 0,
+      }));
+    elements_content.push(...buildButtons(projectButtons));
+  } else {
+    // No other workspaces yet - show current + hint
+    elements_content.push(md(`当前: **${data.workspace.cwd}**\n在其他目录启动会话后可快速切换。`));
+  }
+  elements.push({
+    tag: 'collapsible_panel',
+    expanded: false,
+    header: { title: { tag: 'plain_text', content: `🏠 工作台` } },
+    elements: elements_content,
+  } as FeishuCardElement);
 
   return elements;
 }

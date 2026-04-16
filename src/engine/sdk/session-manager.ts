@@ -61,6 +61,8 @@ export class SessionManager {
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
   /** Optional callback after an idle live session is pruned */
   onSessionPruned?: (sessionKey: string) => void;
+  /** Optional callback after a new live session is created */
+  onSessionCreated?: (sessionKey: string, workdir: string) => void;
 
   // ── Key Building ──
 
@@ -443,6 +445,10 @@ export class SessionManager {
     managed.workdir = actualWorkdir;
     managed.sdkSessionId = actualOptions.sessionId ?? managed.sdkSessionId;
     managed.lastActiveAt = Date.now();
+
+    // Notify callback for recent projects tracking
+    this.onSessionCreated?.(key, actualWorkdir);
+
     session.setLifecycleCallbacks?.({
       onTurnComplete: () => {
         const current = this.registry.get(key);

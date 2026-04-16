@@ -624,6 +624,11 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
     // Feishu requires receive_id_type for group chat messages
     return { ...msg, receiveIdType: undefined };
   }
+
+  /** Get Feishu bot info for display */
+  getBotInfo(): { appId?: string; name?: string } {
+    return { appId: this.config.appId };
+  }
 }
 
 // Self-register

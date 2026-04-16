@@ -11,6 +11,7 @@ import { scanClaudeSessions, readSessionTranscriptPreview } from '../../provider
 import { shortPath } from '../../core/path.js';
 import { formatSize, formatSessionDate, formatRelativeTime } from '../../formatting/session-format.js';
 import { SESSION_STALE_THRESHOLD_MS } from '../../engine/constants.js';
+import { basename } from 'node:path';
 
 type BoundInfo = { channelType: string; chatId: string; isActive: boolean };
 
@@ -92,7 +93,12 @@ export class HomePayloadBuilder {
     }
 
     const permStatus = permissions.getPermissionStatus(chatKey, binding?.sessionId);
-    const activeChannels = Array.from(getAdapters().keys());
+    const adapters = getAdapters();
+    const activeChannels = Array.from(adapters.keys());
+    const channelInfo = Array.from(adapters.values()).map(adapter => ({
+      type: adapter.channelType,
+      ...adapter.getBotInfo(),
+    }));
     const workspaceBinding = workspace.getBinding(channelType, chatId);
     const projectName = binding?.projectName;
     const lastActiveTime = state.getLastActiveTime(channelType, chatId);
@@ -130,6 +136,31 @@ export class HomePayloadBuilder {
         queueDepth: 0,
       });
     }
+
+    // Recent projects from scanned sessions (unique workdirs)
+    const allSessionsGlobal = scanClaudeSessions(50, undefined);
+    const uniqueWorkdirs: Map<string, { count: number; lastMtime: number }> = new Map();
+    for (const session of allSessionsGlobal) {
+      const existing = uniqueWorkdirs.get(session.cwd);
+      if (existing) {
+        existing.count++;
+        existing.lastMtime = Math.max(existing.lastMtime, session.mtime);
+      } else {
+        uniqueWorkdirs.set(session.cwd, { count: 1, lastMtime: session.mtime });
+      }
+    }
+
+    // Sort by last activity time, take top 5
+    const sortedWorkdirs = Array.from(uniqueWorkdirs.entries())
+      .sort((a, b) => b[1].lastMtime - a[1].lastMtime)
+      .slice(0, 5);
+
+    const recentProjects = sortedWorkdirs.map(([workdir]) => ({
+      name: basename(workdir),
+      workdir: shortPath(workdir),
+      fullWorkdir: workdir,
+      isCurrent: workdir === currentCwd,
+    }));
 
     return {
       workspace: {
@@ -173,12 +204,14 @@ export class HomePayloadBuilder {
       bridge: {
         healthy: activeChannels.length > 0,
         channels: activeChannels,
+        channelInfo,
         queueInfo,
       },
       help: {
         entries: [],  // Will be populated by CommandRouter if needed
         recentSummary: recentSessions[0]?.preview,
       },
+      recentProjects,
     };
   }
 }

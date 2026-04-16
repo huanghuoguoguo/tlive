@@ -8,6 +8,7 @@ import { PermissionBroker } from '../permissions/broker.js';
 import { PendingPermissions } from '../permissions/gateway.js';
 import { SessionStateManager } from './state/session-state.js';
 import { WorkspaceStateManager } from './state/workspace-state.js';
+import { RecentProjectsManager } from './state/recent-projects.js';
 import { PermissionCoordinator } from './coordinators/permission.js';
 import { CommandRouter } from './command-router.js';
 import { SDKEngine } from './sdk/engine.js';
@@ -56,6 +57,7 @@ export interface BridgeComponents {
   router: ChannelRouter;
   state: SessionStateManager;
   workspace: WorkspaceStateManager;
+  recentProjects: RecentProjectsManager;
   permissions: PermissionCoordinator;
   sdkEngine: SDKEngine;
   ingress: IngressCoordinator;
@@ -96,6 +98,7 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
   const router = new ChannelRouter(store);
   const state = new SessionStateManager(runtimeDir);
   const workspace = new WorkspaceStateManager(runtimeDir);
+  const recentProjects = new RecentProjectsManager(runtimeDir);
   const permissions = new PermissionCoordinator(gateway, broker);
   const engine = new ConversationEngine(store, llm);
   const sdkEngine = new SDKEngine();
@@ -143,6 +146,7 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
   const commands = new CommandRouter(
     state,
     workspace,
+    recentProjects,
     () => new Map<string, BaseChannelAdapter>(), // Will be replaced by BridgeManager
     router,
     store,
@@ -165,6 +169,7 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
     router,
     state,
     workspace,
+    recentProjects,
     permissions,
     sdkEngine,
     ingress,

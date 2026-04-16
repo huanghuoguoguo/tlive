@@ -40,6 +40,7 @@ import type {
   DiagnoseData,
   ProjectListData,
   ProjectInfoData,
+  RecentProjectsData,
   FormattableMessage,
 } from './message-types.js';
 import { truncate } from '../core/string.js';
@@ -123,6 +124,8 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
         return this.formatProjectList(chatId, msg.data);
       case 'projectInfo':
         return this.formatProjectInfo(chatId, msg.data);
+      case 'recentProjects':
+        return this.formatRecentProjects(chatId, msg.data);
       default:
         throw new Error(`Unknown message type: ${(msg as any).type}`);
     }
@@ -291,7 +294,22 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
       }
     }
 
+    // Build buttons: base buttons + recent project buttons
     const buttons: Button[] = homeButtons(this.locale);
+
+    // Add recent project quick-switch buttons (up to 3)
+    if (data.recentProjects?.length) {
+      const projectButtons: Button[] = data.recentProjects
+        .filter(p => !p.isCurrent)
+        .slice(0, 3)
+        .map(p => ({
+          label: `📁 ${p.name}`,
+          callbackData: `cd:${p.fullWorkdir}`,
+          style: 'default' as const,
+          row: 2,
+        }));
+      buttons.push(...projectButtons);
+    }
 
     return this.createMessage(chatId, lines.join('\n'), buttons);
   }
@@ -615,6 +633,46 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
     }
 
     return this.createMessage(chatId, lines.join('\n'));
+  }
+
+  formatRecentProjects(chatId: string, data: RecentProjectsData): TRendered {
+    const lines = ['📂 **Recent Projects**', '', `**Current:** \`${data.currentCwd}\``, ''];
+
+    for (const project of data.projects) {
+      const marker = project.isCurrent ? ' ◀' : '';
+      const timeAgo = this.formatTimeAgo(project.lastUsedAt);
+      const useInfo = project.useCount > 1 ? ` · ${project.useCount}x` : '';
+      lines.push(`- **${project.name}** — \`${project.workdir}\` (${timeAgo}${useInfo})${marker}`);
+    }
+
+    lines.push('', this.t('recentProjects.hint'));
+
+    // Add buttons for quick switch
+    const buttons: Button[] = data.projects
+      .filter(p => !p.isCurrent) // Don't show button for current directory
+      .slice(0, 5) // Max 5 buttons
+      .map(project => ({
+        label: `📂 ${project.name}`,
+        callbackData: `cmd:/cd ${project.fullWorkdir}`,
+        style: 'primary' as const,
+      }));
+
+    return this.createMessage(chatId, lines.join('\n'), buttons);
+  }
+
+  protected formatTimeAgo(timestamp: string): string {
+    const now = Date.now();
+    const then = new Date(timestamp).getTime();
+    const diffMs = now - then;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return new Date(timestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
   }
 
   // --- Helper methods --

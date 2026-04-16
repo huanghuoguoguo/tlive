@@ -139,6 +139,8 @@ export interface HomeData {
     healthy?: boolean;
     /** Active channels */
     channels?: string[];
+    /** Channel info (appId, name) for each active channel */
+    channelInfo?: Array<{ type: string; appId?: string; name?: string }>;
     /** Queue info for active session */
     queueInfo?: { depth: number; max: number };
   };
@@ -148,6 +150,14 @@ export interface HomeData {
     /** Recent summary text */
     recentSummary?: string;
   };
+  /** Recent projects for quick switch buttons */
+  recentProjects?: Array<{
+    name: string;
+    workdir: string;
+    /** Full workdir path for button callback (not shortened) */
+    fullWorkdir: string;
+    isCurrent: boolean;
+  }>;
 }
 
 /** Permission status card for /perm command */
@@ -357,6 +367,20 @@ export interface ProjectListData {
   hasMultipleProjects?: boolean;
 }
 
+/** Recent projects for /project command (when no explicit projects configured) */
+export interface RecentProjectsData {
+  projects: Array<{
+    name: string;
+    workdir: string;
+    /** Full workdir path for button callback (not shortened) */
+    fullWorkdir: string;
+    lastUsedAt: string;
+    useCount: number;
+    isCurrent: boolean;
+  }>;
+  currentCwd: string;
+}
+
 /** Project info for /project info command */
 export interface ProjectInfoData {
   projectName: string;
@@ -413,4 +437,5 @@ export type FormattableMessage =
   | { type: 'diagnose'; chatId: string; data: DiagnoseData }
   | { type: 'projectList'; chatId: string; data: ProjectListData }
   | { type: 'projectInfo'; chatId: string; data: ProjectInfoData }
+  | { type: 'recentProjects'; chatId: string; data: RecentProjectsData }
   | { type: 'deferredToolInput'; chatId: string; data: DeferredToolInputData };

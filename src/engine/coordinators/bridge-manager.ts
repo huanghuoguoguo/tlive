@@ -62,6 +62,7 @@ export class BridgeManager implements AutomationBridge {
     this.components.commands = new CommandRouter(
       this.components.state,
       this.components.workspace,
+      this.components.recentProjects,
       () => this.adapters,
       this.components.router,
       store,
@@ -73,6 +74,11 @@ export class BridgeManager implements AutomationBridge {
       this.components.sdkEngine,
       this.components.projectsConfig,
     );
+
+    // Wire SDKEngine session creation → recent projects tracking
+    this.components.sdkEngine.onSessionCreated = (_sessionKey: string, workdir: string) => {
+      this.components.recentProjects.recordSession(workdir);
+    };
 
     // Update query with appendSystemPrompt
     this.components.query = new QueryOrchestrator({
