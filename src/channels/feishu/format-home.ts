@@ -134,9 +134,30 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
     elements.push({
       tag: 'collapsible_panel',
       expanded: false,
-      header: { title: { tag: 'plain_text', content: `❓ ${t(locale, 'home.btnHelp')}` } },
+      header: { title: { tag: 'plain_text', content: t(locale, 'home.btnHelp') } },
       elements: [mdPanel(helpText)],
     } as FeishuCardElement);
+  }
+
+  // Recent projects buttons
+  if (data.recentProjects?.length) {
+    const projectButtons: Button[] = data.recentProjects
+      .filter(p => !p.isCurrent)
+      .slice(0, 3)
+      .map(p => ({
+        label: `📁 ${p.name}`,
+        callbackData: `cd:${p.fullWorkdir}`,
+        style: 'default',
+        row: 0,
+      }));
+    if (projectButtons.length > 0) {
+      elements.push({
+        tag: 'collapsible_panel',
+        expanded: true,
+        header: { title: { tag: 'plain_text', content: `🏠 ${t(locale, 'home.workspaceBinding')}` } },
+        elements: buildButtons(projectButtons),
+      } as FeishuCardElement);
+    }
   }
 
   return elements;

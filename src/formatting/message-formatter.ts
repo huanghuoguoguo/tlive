@@ -304,7 +304,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
         .slice(0, 3)
         .map(p => ({
           label: `📁 ${p.name}`,
-          callbackData: `cd:${p.workdir}`,
+          callbackData: `cd:${p.fullWorkdir}`,
           style: 'default' as const,
           row: 2,
         }));

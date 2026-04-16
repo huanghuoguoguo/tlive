@@ -152,6 +152,8 @@ export interface HomeData {
   recentProjects?: Array<{
     name: string;
     workdir: string;
+    /** Full workdir path for button callback (not shortened) */
+    fullWorkdir: string;
     isCurrent: boolean;
   }>;
 }

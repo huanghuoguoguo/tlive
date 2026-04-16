@@ -273,6 +273,20 @@ export async function handleCallbackMessage(
     return true;
   }
 
+  // Quick cd from recent projects buttons
+  if (msg.callbackData.startsWith('cd:')) {
+    const path = msg.callbackData.slice(3);
+    const cmdMsg: InboundMessage = {
+      channelType: msg.channelType,
+      chatId: msg.chatId,
+      text: `/cd ${path}`,
+      userId: msg.userId,
+      messageId: msg.messageId,
+    };
+    await deps.replayMessage(adapter, cmdMsg);
+    return true;
+  }
+
   const hookParsed = parseHookCallback(msg.callbackData);
   if (hookParsed) {
     await deps.permissions.resolveHookCallback(

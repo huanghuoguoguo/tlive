@@ -184,6 +184,7 @@ export class HomePayloadBuilder {
       recentProjects: recentProjects?.list().slice(0, 5).map(p => ({
         name: p.name,
         workdir: shortPath(p.workdir),
+        fullWorkdir: p.workdir,
         isCurrent: p.workdir === currentCwd,
       })),
     };
