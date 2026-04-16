@@ -14,9 +14,23 @@ context: |
   Architecture:
     - src/channels/ - IM platform adapters (Telegram, Feishu, QQ Bot)
     - src/providers/ - AI provider integrations (Claude SDK, live session)
-    - src/engine/ - Core engine (commands, coordinators, automation)
-    - src/messages/ - Message processing and formatting
+    - src/engine/ - Core engine with submodules:
+      - commands/ - Command registry and handlers (status, new, cd, project, etc.)
+      - coordinators/ - Orchestrators (bridge-manager, query, permission, ingress)
+      - state/ - State managers (session, workspace, recent-projects)
+      - presenters/ - UI builders (home-payload-builder)
+      - messages/ - Message processing (presenter, renderer, callback-dispatcher)
+      - automation/ - Webhook server and cron scheduler
+      - sdk/ - SDK engine wrapper
+      - types/ - Shared type definitions
+    - src/formatting/ - Message formatting and types
     - src/permissions/ - Permission gateway and broker
+    - src/canonical/ - Claude adapter and canonical event schema
+    - src/delivery/ - Message delivery coordination
+    - src/i18n/ - Internationalization (en, zh)
+    - src/markdown/ - Markdown processing
+    - src/ui/ - UI components and helpers
+    - src/store/ - Persistence layer
     - src/utils/ - Utility functions
     - src/__tests__/ - Unit/integration tests
 
@@ -31,6 +45,9 @@ context: |
     - Constants go in src/utils/constants.ts
     - New features must have unit tests in src/__tests__/
     - Use Biome for linting, knip for dead code detection
+    - Commands use registry pattern (src/engine/commands/registry.ts)
+    - i18n strings go in src/i18n/{locale}.ts with type safety
+    - State management via dedicated managers (session, workspace, recent-projects)
 
   Git workflow:
     - main branch is protected, no direct pushes
@@ -45,6 +62,9 @@ context: |
     - Do NOT add error handling for scenarios that can't happen
     - Trust internal code and framework guarantees
     - Only validate at system boundaries (user input, external APIs)
+    - Skills (like /commit, /review) are transparently passed to Claude Code
+    - Commands starting with / are first checked against tlive's command registry
+    - If not found in registry, the message is forwarded to Claude Code SDK
 
 # Per-artifact rules (optional)
 rules:
