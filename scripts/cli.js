@@ -18,11 +18,27 @@ const LOG_DIR = join(TLIVE_HOME, 'logs');
 const BRIDGE_PID = join(RUNTIME_DIR, 'bridge.pid');
 const BRIDGE_ENTRY = join(PACKAGE_ROOT, 'dist', 'main.mjs');
 const CONFIG_FILE = join(TLIVE_HOME, 'config.env');
+const UPGRADE_RESULT_FILE = join(RUNTIME_DIR, 'upgrade-result.json');
 
 function getVersion() {
   try {
     return JSON.parse(readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf-8')).version;
   } catch { return 'unknown'; }
+}
+
+/** Write upgrade result for bridge to notify user after restart */
+function writeUpgradeResult(result) {
+  try {
+    mkdirSync(RUNTIME_DIR, { recursive: true });
+    writeFileSync(UPGRADE_RESULT_FILE, JSON.stringify({
+      ...result,
+      chatId: process.env.TLIVE_UPGRADE_CHAT_ID,
+      channelType: process.env.TLIVE_UPGRADE_CHANNEL_TYPE,
+      timestamp: new Date().toISOString(),
+    }, null, 2));
+  } catch {
+    // Non-fatal — don't block upgrade
+  }
 }
 
 function normalizeRequestedVersion(version) {
@@ -582,6 +598,7 @@ switch (command) {
   case 'update':
   case 'upgrade': {
     const current = getVersion();
+    const fromVersion = process.env.TLIVE_UPGRADE_FROM_VERSION || current;
     const requestedVersion = normalizeRequestedVersion(args[0]);
     const bridgeWasRunning = Boolean(getBridgePid()) || Boolean(process.env.TLIVE_UPGRADE_PARENT_PID);
     console.log(`Current version: ${current}`);
@@ -603,7 +620,9 @@ switch (command) {
           throw new Error('Latest version not found in release metadata');
         }
       } catch (e) {
-        console.error('Failed to check latest version. Are you online?');
+        const errorMsg = 'Failed to check latest version. Are you online?';
+        console.error(errorMsg);
+        writeUpgradeResult({ success: false, version: current, previousVersion: fromVersion, error: errorMsg });
         process.exit(1);
       }
     }
@@ -622,10 +641,11 @@ switch (command) {
 
     try {
       if (isGitInstall) {
-        console.error('\nThis tlive command is running from a git checkout.');
-        console.error('Auto-upgrade now uses GitHub Release packages and will not overwrite a working tree.');
+        const errorMsg = 'This tlive command is running from a git checkout. Auto-upgrade uses GitHub Release packages and will not overwrite a working tree.';
+        console.error('\n' + errorMsg);
         console.error(`Update this checkout manually with git, or install the packaged build with:`);
         console.error(`  ${getManualInstallCommand()}`);
+        writeUpgradeResult({ success: false, version: current, previousVersion: fromVersion, error: errorMsg });
         process.exit(1);
       } else {
         const parentPid = Number.parseInt(process.env.TLIVE_UPGRADE_PARENT_PID || '', 10);
@@ -642,6 +662,9 @@ switch (command) {
       console.log(`\n✅ Upgraded to ${latest}.`);
       console.log('\nChangelog: https://github.com/huanghuoguoguo/tlive/releases');
 
+      // Write success result for bridge to notify user
+      writeUpgradeResult({ success: true, version: latest, previousVersion: fromVersion });
+
       if (bridgeWasRunning) {
         console.log('\nRestarting bridge...');
         if (getBridgePid()) {
@@ -651,7 +674,9 @@ switch (command) {
         daemonStart();
       }
     } catch (err) {
-      console.error(`Upgrade failed: ${err.message || err}`);
+      const errorMsg = err.message || err;
+      console.error(`Upgrade failed: ${errorMsg}`);
+      writeUpgradeResult({ success: false, version: current, previousVersion: fromVersion, error: errorMsg });
       process.exit(1);
     }
     break;
