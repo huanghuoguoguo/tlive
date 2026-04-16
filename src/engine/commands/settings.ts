@@ -19,7 +19,9 @@ const LABELS: Record<string, string> = {
 export class SettingsCommand extends BaseCommand {
   readonly name = '/settings';
   readonly quick = true;
-  readonly description = 'Claude settings';
+  readonly description = 'Claude 设置';
+  readonly helpDesc = '查看或切换 Claude 设置加载模式。user 仅加载全局设置，full 加载项目规则/MCP/技能，isolated 完全隔离。';
+  readonly helpExample = '/settings full';
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const arg = ctx.parts[1]?.toLowerCase();

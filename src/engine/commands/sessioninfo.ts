@@ -8,7 +8,9 @@ import { formatSize, formatSessionDate, parseSessionIndex } from '../../formatti
 export class SessioninfoCommand extends BaseCommand {
   readonly name = '/sessioninfo';
   readonly quick = true;
-  readonly description = 'Show session info';
+  readonly description = '会话详情';
+  readonly helpDesc = '显示指定会话的详细信息，包括目录、大小、预览和对话片段。';
+  readonly helpExample = '/sessioninfo 3';
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const result = await parseSessionIndex(ctx);

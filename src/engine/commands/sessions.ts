@@ -10,7 +10,9 @@ import { formatSize, formatSessionDate } from '../../formatting/session-format.j
 export class SessionsCommand extends BaseCommand {
   readonly name = '/sessions';
   readonly quick = true;
-  readonly description = 'List sessions';
+  readonly description = '会话列表';
+  readonly helpDesc = '列出历史会话。默认显示当前工作区的会话，使用 --all 显示所有项目的会话。可通过编号配合 /session 切换。';
+  readonly helpExample = '/sessions 或 /sessions --all';
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);

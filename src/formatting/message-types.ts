@@ -216,7 +216,7 @@ export interface SessionDetailData {
 
 /** Help menu for /help command */
 export interface HelpData {
-  commands: Array<{ cmd: string; desc: string }>;
+  commands: Array<{ cmd: string; desc: string; detail?: string; example?: string }>;
 }
 
 /** New session confirmation */

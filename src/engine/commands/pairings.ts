@@ -5,7 +5,9 @@ import { presentPairings, presentNoPairings, presentPairingUnavailable } from '.
 export class PairingsCommand extends BaseCommand {
   readonly name = '/pairings';
   readonly quick = true;
-  readonly description = 'List pending pairings';
+  readonly description = '待配对列表';
+  readonly helpDesc = '列出待处理的 Telegram Bot 配对请求。仅 Telegram 通道可用。';
+  readonly helpExample = '/pairings';
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const tgAdapter = ctx.services.getAdapters().get('telegram');

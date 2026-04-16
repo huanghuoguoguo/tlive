@@ -378,10 +378,56 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
   }
 
   override formatHelp(chatId: string, data: HelpData): FeishuRenderedMessage {
-    const lines = data.commands.map(cmd => `/${cmd.cmd} — ${cmd.desc}`);
-    const elements: FeishuCardElement[] = [
-      this.md(`**${t(this.locale, 'home.btnHelp')}**\n${lines.join('\n')}`),
-    ];
+    const elements: FeishuCardElement[] = [];
+
+    // Group commands by category
+    const categories: Record<string, Array<{ cmd: string; desc: string; detail?: string; example?: string }>> = {
+      会话管理: [],
+      状态查看: [],
+      系统控制: [],
+      其他: [],
+    };
+
+    // Categorize commands
+    for (const cmd of data.commands) {
+      if (['new', 'session', 'sessions', 'sessioninfo', 'cd', 'pwd', 'bash'].includes(cmd.cmd)) {
+        categories.会话管理.push(cmd);
+      } else if (['status', 'home', 'queue', 'hooks', 'perm', 'project'].includes(cmd.cmd)) {
+        categories.状态查看.push(cmd);
+      } else if (['stop', 'restart', 'upgrade', 'diagnose', 'approve', 'pairings'].includes(cmd.cmd)) {
+        categories.系统控制.push(cmd);
+      } else {
+        categories.其他.push(cmd);
+      }
+    }
+
+    // Build panels for each category
+    for (const [category, commands] of Object.entries(categories)) {
+      if (commands.length === 0) continue;
+
+      const panelElements: FeishuCardElement[] = [];
+      for (const cmd of commands) {
+        let text = `**/${cmd.cmd}** — ${cmd.desc}`;
+        if (cmd.detail) {
+          text += `\n${cmd.detail}`;
+        }
+        if (cmd.example) {
+          text += `\n📌 示例: \`${cmd.example}\``;
+        }
+        panelElements.push(this.md(text));
+        panelElements.push(this.md('---'));
+      }
+      // Remove last separator
+      panelElements.pop();
+
+      elements.push({
+        tag: 'collapsible_panel',
+        expanded: category === '会话管理', // Expand session management by default
+        header: { title: { tag: 'plain_text', content: `📁 ${category}` } },
+        elements: panelElements,
+      } as FeishuCardElement);
+    }
+
     return this.createCardMessage(chatId,
       { template: 'blue', title: `❓ ${t(this.locale, 'home.btnHelp')}` },
       elements,

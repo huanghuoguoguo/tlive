@@ -73,8 +73,12 @@ export interface CommandHandler {
   readonly name: string;
   /** Whether this is a quick command (doesn't block message loop) */
   readonly quick: boolean;
-  /** Description for /help output */
+  /** Short description for /home summary */
   readonly description?: string;
+  /** Detailed description for /help (Chinese) */
+  readonly helpDesc?: string;
+  /** Example usage */
+  readonly helpExample?: string;
   /** Execute the command */
   execute(ctx: CommandContext): Promise<boolean>;
 }
@@ -83,4 +87,8 @@ export interface CommandHandler {
 export interface HelpEntry {
   cmd: string;
   desc: string;
+  /** Detailed description (Chinese) */
+  detail?: string;
+  /** Example usage */
+  example?: string;
 }

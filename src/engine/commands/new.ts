@@ -7,7 +7,9 @@ import { t } from '../../i18n/index.js';
 export class NewCommand extends BaseCommand {
   readonly name = '/new';
   readonly quick = true;
-  readonly description = 'New conversation';
+  readonly description = '新建会话';
+  readonly helpDesc = '重置当前会话，清空对话历史，开始全新的对话。保留当前工作目录和项目设置。';
+  readonly helpExample = '/new';
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const previousBinding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);

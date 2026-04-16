@@ -11,7 +11,9 @@ import { basename } from 'node:path';
 export class ProjectCommand extends BaseCommand {
   readonly name = '/project';
   readonly quick = true;
-  readonly description = 'Recent projects';
+  readonly description = '最近项目';
+  readonly helpDesc = '显示最近使用的项目列表。status 显示当前项目信息。';
+  readonly helpExample = '/project 或 /project status';
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const sub = ctx.parts[1]?.toLowerCase();

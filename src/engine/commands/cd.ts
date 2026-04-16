@@ -10,7 +10,9 @@ import { isSameRepoRoot } from '../../utils/repo.js';
 export class CdCommand extends BaseCommand {
   readonly name = '/cd';
   readonly quick = true;
-  readonly description = 'Change directory';
+  readonly description = '切换目录';
+  readonly helpDesc = '切换工作目录。支持绝对路径、相对路径、~ 家目录缩写。不带参数显示当前目录和历史。使用 `-` 返回上一目录。';
+  readonly helpExample = '/cd ~/workspace/project';
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const path = ctx.parts.slice(1).join(' ').trim();

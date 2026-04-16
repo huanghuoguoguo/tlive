@@ -37,7 +37,12 @@ class CommandRegistry {
   getHelpEntries(): HelpEntry[] {
     return [...this.handlers.values()]
       .filter(h => h.description)
-      .map(h => ({ cmd: h.name.slice(1), desc: h.description! }));
+      .map(h => ({
+        cmd: h.name.slice(1),
+        desc: h.description!,
+        detail: h.helpDesc,
+        example: h.helpExample,
+      }));
   }
 }
 

@@ -10,7 +10,9 @@ import { chatKey } from '../../core/key.js';
 export class SessionCommand extends BaseCommand {
   readonly name = '/session';
   readonly quick = true;
-  readonly description = 'Switch session';
+  readonly description = '切换会话';
+  readonly helpDesc = '切换到指定的历史会话。会恢复该会话的上下文和工作目录。可通过 /home 或 /sessions 查看可用会话编号。';
+  readonly helpExample = '/session 3';
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const result = await parseSessionIndex(ctx);
