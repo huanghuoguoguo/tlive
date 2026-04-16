@@ -25,6 +25,31 @@ export function writeStatusFile(data: Record<string, unknown>): void {
   }
 }
 
+/** Check upgrade result file and notify user if present */
+interface UpgradeResult {
+  success: boolean;
+  version: string;
+  previousVersion: string;
+  error?: string;
+  chatId?: string;
+  channelType?: string;
+  timestamp: string;
+}
+
+function readUpgradeResult(): UpgradeResult | null {
+  const runtimeDir = getTliveRuntimeDir();
+  const resultFile = join(runtimeDir, 'upgrade-result.json');
+  if (!existsSync(resultFile)) return null;
+  try {
+    const data = JSON.parse(readFileSync(resultFile, 'utf-8')) as UpgradeResult;
+    // Clean up after reading
+    unlinkSync(resultFile);
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Ensure only one bridge instance runs at a time.
  * Uses a PID file lock — kills stale processes if needed.
@@ -138,6 +163,31 @@ export async function main() {
 
   await manager.start();
   logger.info('Bridge started');
+
+  // Check for upgrade result from previous session and notify user
+  const upgradeResult = readUpgradeResult();
+  if (upgradeResult) {
+    const { success, version, previousVersion, error, chatId, channelType } = upgradeResult;
+    const text = success
+      ? `✅ 升级成功\n版本: v${previousVersion} → v${version}\n查看更新: https://github.com/huanghuoguoguo/tlive/releases`
+      : `❌ 升级失败\n错误: ${error || 'Unknown error'}\n版本: v${previousVersion}`;
+
+    // Send to specific chat if we have the info, otherwise broadcast
+    if (chatId && channelType) {
+      const adapter = manager.getAdapter(channelType);
+      if (adapter) {
+        adapter.send({ chatId, text }).catch((err) => {
+          logger.warn(`Failed to send upgrade result to ${channelType}: ${err}`);
+        });
+      } else {
+        // Fallback to broadcast if adapter not available
+        manager.broadcastText(text).catch(() => {});
+      }
+    } else {
+      manager.broadcastText(text).catch(() => {});
+    }
+    logger.info(`Upgrade result: ${success ? 'success' : 'failed'} (${previousVersion} → ${version})`);
+  }
 
   // Wire permission timeout → IM notification
   if (llm instanceof ClaudeSDKProvider) {

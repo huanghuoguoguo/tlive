@@ -85,6 +85,9 @@ export class UpgradeCommand extends BaseCommand {
         env: {
           ...process.env,
           TLIVE_UPGRADE_PARENT_PID: String(process.pid),
+          TLIVE_UPGRADE_CHAT_ID: ctx.msg.chatId,
+          TLIVE_UPGRADE_CHANNEL_TYPE: ctx.adapter.channelType,
+          TLIVE_UPGRADE_FROM_VERSION: info.current,
         },
       });
       child.unref();
