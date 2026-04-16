@@ -382,7 +382,7 @@ export class SessionManager {
       appendSystemPrompt?: string;
       setAsCurrent?: boolean;
     },
-    onTurnComplete?: (sessionKey: string) => void,
+    _onTurnComplete?: (sessionKey: string) => void,
     getQueueDepth?: (sessionKey: string) => number,
     decrementQueueDepth?: (sessionKey: string) => void,
     cleanupQueue?: (sessionKey: string) => void,

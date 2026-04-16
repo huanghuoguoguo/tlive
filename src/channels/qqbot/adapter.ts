@@ -5,7 +5,6 @@ import { loadConfig } from '../../config.js';
 import { markdownToQQBot } from './markdown.js';
 import { chunkMarkdown } from '../../delivery/delivery.js';
 import type { BridgeError } from '../errors.js';
-import { RateLimitError, FormatError, AuthError, PlatformError } from '../errors.js';
 import { classifyHttpStatus, checkNetworkError } from '../shared/index.js';
 import { maskProxyUrl } from '../../proxy.js';
 import { QQBotFormatter } from './formatter.js';

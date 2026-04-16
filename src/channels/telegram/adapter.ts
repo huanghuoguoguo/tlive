@@ -8,7 +8,6 @@ import { loadConfig } from '../../config.js';
 import { createNodeAgent, maskProxyUrl } from '../../proxy.js';
 import { chunkMarkdown } from '../../delivery/delivery.js';
 import type { BridgeError } from '../errors.js';
-import { RateLimitError, FormatError, AuthError, PlatformError } from '../errors.js';
 import { classifyHttpStatus, checkNetworkError, extractRetryAfter } from '../shared/index.js';
 import { TelegramFormatter } from './formatter.js';
 import type { TelegramRenderedMessage } from './types.js';
