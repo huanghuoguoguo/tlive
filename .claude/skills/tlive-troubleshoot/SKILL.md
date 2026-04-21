@@ -1,23 +1,41 @@
 ---
 name: tlive-troubleshoot
-description: Troubleshoot tlive IM bridge issues using logs. TRIGGER when: user reports message not received, bot not responding, permission stuck, connection issues, or asks to diagnose tlive problems. Also use when user says "check logs", "what happened", "why didn't it work" in context of tlive/IM bot.
+description: Troubleshoot tlive IM bridge issues using logs. TRIGGER when: user reports message not received, bot not responding, permission stuck, connection issues, or asks to diagnose tlive problems. Also use when user says "check logs", "what happened", "why didn't it work" in context of tlive/IM bot. When user says "出了问题" or "帮我提 issue", collect diagnostics to generate issue report.
 ---
 
 # TLive Troubleshoot
 
 Help diagnose tlive IM bridge issues by reading and analyzing logs.
 
-## Quick Start
+## Quick Commands
 
-**Read today's logs**:
-```bash
-tail -100 ~/.tlive/logs/bridge-$(date +%Y-%m-%d).log
+**System diagnostics**:
+```
+/doctor      # OS, Node version, tlive version, config status, channel health
 ```
 
-**Read error logs**:
-```bash
-cat ~/.tlive/logs/bridge-*-error.log
+## Issue Report Generation
+
+When user says "出了问题" or "帮我提 issue" or "想报告bug":
+
+1. **Collect diagnostics**: Run `/doctor` and read recent logs from `~/.tlive/logs/bridge-{date}.log`
+2. **Generate report**: Create markdown content following GitHub issue template:
+
+```markdown
+**Describe the bug**
+<User's description>
+
+**Environment**
+- OS: <from /doctor>
+- Node.js version: <from /doctor>
+- tlive version: <from /doctor>
+- IM Platform: <Telegram/Feishu/QQ>
+
+**Logs**
+<last 50 lines from log file>
 ```
+
+3. **Output to user**: Send formatted report in code block for easy copying
 
 ## Log Format
 
@@ -86,6 +104,7 @@ grep -E "(WebSocket|connected|closed|error)" ~/.tlive/logs/bridge-*.log | tail -
 | `[perm]` | Permission request/response |
 | `[gateway]` | Permission wait queue |
 | `[sdk]` | Claude SDK/LiveSession |
+| `[global]` | Unhandled exception/rejection |
 
 ## Typical Log Flow
 
@@ -107,6 +126,7 @@ Error flow:
 ```
 [query] a1b2c3d4 ERROR <error message>
 [query] a1b2c3d4 FATAL <stack trace>
+[global] Unhandled rejection: <error>
 ```
 
 ## Tips
@@ -114,4 +134,4 @@ Error flow:
 1. **Always start with requestId** — if user mentions "my message at 3pm", find the RECV line first
 2. **Error logs are separate** — `*-error.log` only has WARN/ERROR, easier to scan
 3. **Live tail during testing** — `tail -f ~/.tlive/logs/bridge-$(date +%Y-%m-%d).log`
-4. **Check status first** — `tlive status` shows running channels and PID
+4. **Check status first** — `/status` shows running channels and PID

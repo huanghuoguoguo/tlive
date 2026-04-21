@@ -250,4 +250,23 @@ export const zh: Translations = {
 
   // --- recent projects ---
   'recentProjects.hint': '💡 使用 /cd <路径> 切换目录',
+
+  // --- error notification ---
+  'error.title': '❌ 处理失败',
+  'error.requestId': '请求ID',
+
+  // --- doctor command ---
+  'doctor.title': '系统诊断',
+  'doctor.os': '操作系统',
+  'doctor.node': 'Node.js',
+  'doctor.tlive': 'TLive',
+  'doctor.uptime': '运行时间',
+  'doctor.config': '配置文件',
+  'doctor.configFound': '已配置',
+  'doctor.configMissing': '未找到',
+  'doctor.claudeCli': 'Claude CLI',
+  'doctor.notFound': '未安装',
+  'doctor.channels': '通道状态',
+  'doctor.connected': '已连接',
+  'doctor.disconnected': '未连接',
 };

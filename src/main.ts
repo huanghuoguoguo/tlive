@@ -278,6 +278,29 @@ export async function main() {
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 
+  // Global error boundary - prevent process crash from unhandled async exceptions
+  const FATAL_ERROR_CODES = new Set(['EMFILE', 'ENOMEM', 'EADDRINUSE']);
+
+  process.on('unhandledRejection', (reason) => {
+    const msg = reason instanceof Error ? reason.message : String(reason);
+    console.error(`[global] Unhandled rejection: ${msg}`);
+    if (reason instanceof Error && reason.stack) {
+      console.error(reason.stack.split('\n').slice(0, 5).join('\n'));
+    }
+  });
+
+  process.on('uncaughtException', (err) => {
+    const code = (err as NodeJS.ErrnoException).code;
+    console.error(`[global] Uncaught exception: ${err.message}`);
+    if (err.stack) {
+      console.error(err.stack.split('\n').slice(0, 5).join('\n'));
+    }
+    if (code && FATAL_ERROR_CODES.has(code)) {
+      console.error(`[global] Fatal system error (${code}), initiating shutdown`);
+      shutdown(`uncaughtException:${code}`).catch(() => process.exit(1));
+    }
+  });
+
   // Keep process alive
   const keepAliveInterval = setInterval(() => {}, 60_000);
 }
