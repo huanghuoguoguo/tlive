@@ -10,7 +10,7 @@ import { checkForUpdates, getCurrentVersion, isVersionNotified, markVersionNotif
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync, readFileSync, unlinkSync, existsSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { getTliveHome, getTliveRuntimeDir } from './core/path.js';
+import { getTliveHome, getTliveRuntimeDir, readRestartRequest, deleteRestartRequest } from './core/path.js';
 
 // Cached config (loaded once at startup)
 let cachedConfig: ReturnType<typeof loadConfig> | null = null;
@@ -53,40 +53,68 @@ function readUpgradeResult(): UpgradeResult | null {
 /**
  * Ensure only one bridge instance runs at a time.
  * Uses a PID file lock — kills stale processes if needed.
+ * Supports restart handoff via restart-request.json marker.
  */
 export function acquireSingletonLock(): void {
   const runtimeDir = getTliveRuntimeDir();
   mkdirSync(runtimeDir, { recursive: true });
   const pidFile = join(runtimeDir, 'bridge.pid');
 
+  // Check for restart handoff marker
+  const restartRequest = readRestartRequest();
+  if (restartRequest && restartRequest.oldPid !== process.pid) {
+    console.log(`[singleton] Restart handoff detected (old PID ${restartRequest.oldPid})`);
+    // Wait for old process to exit (up to 5s)
+    const start = Date.now();
+    const maxWait = 5000;
+    while (Date.now() - start < maxWait) {
+      try {
+        process.kill(restartRequest.oldPid, 0);
+        // Old process still alive, wait 100ms
+        const end = Date.now() + 100;
+        while (Date.now() < end) { /* spin */ }
+      } catch {
+        // Old process exited
+        break;
+      }
+    }
+    // Clean up restart marker
+    deleteRestartRequest();
+    console.log('[singleton] Restart handoff complete');
+  }
+
   if (existsSync(pidFile)) {
     try {
       const oldPid = parseInt(readFileSync(pidFile, 'utf-8').trim(), 10);
       if (oldPid && oldPid !== process.pid) {
-        // Check if process is still alive
-        try {
-          process.kill(oldPid, 0);
-          // Process is alive — kill it
-          console.warn(`[singleton] Killing existing bridge process (PID ${oldPid})`);
-          process.kill(oldPid, 'SIGTERM');
-          // Brief wait for graceful shutdown
-          const start = Date.now();
-          while (Date.now() - start < 2000) {
-            try { process.kill(oldPid, 0); } catch { break; }
-            // busy-wait ~50ms
-            const end = Date.now() + 50;
-            while (Date.now() < end) { /* spin */ }
-          }
-          // Force kill if still alive
+        // Skip killing if this is a restart handoff (oldPid matches restart request)
+        const wasRestartHandoff = restartRequest && restartRequest.oldPid === oldPid;
+        if (!wasRestartHandoff) {
+          // Check if process is still alive
           try {
             process.kill(oldPid, 0);
-            process.kill(oldPid, 'SIGKILL');
-            console.warn(`[singleton] Force-killed PID ${oldPid}`);
+            // Process is alive — kill it
+            console.warn(`[singleton] Killing existing bridge process (PID ${oldPid})`);
+            process.kill(oldPid, 'SIGTERM');
+            // Brief wait for graceful shutdown
+            const start = Date.now();
+            while (Date.now() - start < 2000) {
+              try { process.kill(oldPid, 0); } catch { break; }
+              // busy-wait ~50ms
+              const end = Date.now() + 50;
+              while (Date.now() < end) { /* spin */ }
+            }
+            // Force kill if still alive
+            try {
+              process.kill(oldPid, 0);
+              process.kill(oldPid, 'SIGKILL');
+              console.warn(`[singleton] Force-killed PID ${oldPid}`);
+            } catch {
+              // Already dead — good
+            }
           } catch {
-            // Already dead — good
+            // Process not alive — stale PID file, safe to proceed
           }
-        } catch {
-          // Process not alive — stale PID file, safe to proceed
         }
       }
     } catch {
@@ -235,6 +263,8 @@ export async function main() {
     logger.info('Shutting down...');
     clearInterval(versionCheckInterval);
     clearInterval(keepAliveInterval);
+    // Clean up restart marker if not a restart handoff
+    deleteRestartRequest();
     writeStatusFile({
       pid: process.pid,
       exitedAt: new Date().toISOString(),
