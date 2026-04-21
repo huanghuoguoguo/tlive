@@ -195,6 +195,46 @@ describe('BridgeManager', () => {
     );
   });
 
+  describe('error notification', () => {
+    it('sendErrorNotification is called when quick message throws', async () => {
+      const adapter = mockAdapter();
+      manager.registerAdapter(adapter);
+      await manager.start();
+
+      // Simulate error notification being sent
+      const testErr = new Error('Test error');
+      (manager as any).sendErrorNotification(adapter, 'c1', testErr, 'req-123');
+
+      expect(adapter.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chatId: 'c1',
+          text: expect.stringContaining('req-123'),
+        })
+      );
+    });
+
+    it('error notification includes truncated error message', async () => {
+      const adapter = mockAdapter();
+      manager.registerAdapter(adapter);
+
+      const longError = new Error('A'.repeat(300));
+      (manager as any).sendErrorNotification(adapter, 'c1', longError, 'req-456');
+
+      const sentMsg = (adapter.send as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(sentMsg.text.length).toBeLessThan(300); // Should be truncated
+    });
+
+    it('error notification is not sent when chatId is undefined', async () => {
+      const adapter = mockAdapter();
+      manager.registerAdapter(adapter);
+
+      const testErr = new Error('Test error');
+      (manager as any).sendErrorNotification(adapter, undefined, testErr, 'req-789');
+
+      expect(adapter.send).not.toHaveBeenCalled();
+    });
+  });
+
   it('rotates the default session when automation changes workdir', async () => {
     const adapter = mockAdapter();
     manager.registerAdapter(adapter);

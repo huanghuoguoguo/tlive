@@ -250,4 +250,23 @@ export const en: Translations = {
 
   // --- recent projects ---
   'recentProjects.hint': '💡 Use /cd <path> to switch directory',
+
+  // --- error notification ---
+  'error.title': '❌ Processing failed',
+  'error.requestId': 'Request ID',
+
+  // --- doctor command ---
+  'doctor.title': 'System Diagnostics',
+  'doctor.os': 'OS',
+  'doctor.node': 'Node.js',
+  'doctor.tlive': 'TLive',
+  'doctor.uptime': 'Uptime',
+  'doctor.config': 'Config',
+  'doctor.configFound': 'Configured',
+  'doctor.configMissing': 'Not found',
+  'doctor.claudeCli': 'Claude CLI',
+  'doctor.notFound': 'Not installed',
+  'doctor.channels': 'Channels',
+  'doctor.connected': 'Connected',
+  'doctor.disconnected': 'Disconnected',
 };

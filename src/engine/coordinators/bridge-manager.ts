@@ -439,12 +439,13 @@ export class BridgeManager implements AutomationBridge {
       const requestId = generateRequestId();
       const ctx: LogContext = { requestId, chatId: msg.chatId };
       const textPreview = msg.text ? truncate(msg.text, 50) : '(callback)';
-      console.log(`[${adapter.channelType}] ${ctx.requestId} RECV user=${msg.userId} chat=${msg.chatId?.slice(-8) || '?'}: ${textPreview}`);
+      console.log(`[${adapter.channelType}] ${ctx.requestId} RECV user=${msg.userId} chat=${msg.chatId.slice(-8)}: ${textPreview}`);
       if (this.components.loop.isQuickMessage(adapter, msg)) {
         try {
           await this.handleInboundMessage(adapter, msg, requestId);
         } catch (err) {
           console.error(`[${adapter.channelType}] ${ctx.requestId} ERROR: ${Logger.formatError(err)}`);
+          this.sendErrorNotification(adapter, msg.chatId, err, requestId);
         }
       } else {
         await this.components.loop.dispatchSlowMessage({
@@ -455,10 +456,24 @@ export class BridgeManager implements AutomationBridge {
           handleMessage: (dispatchAdapter, dispatchMsg, rid) => this.handleInboundMessage(dispatchAdapter, dispatchMsg, rid),
           onError: (err, rid) => {
             console.error(`[${adapter.channelType}] ${rid} ERROR: ${Logger.formatError(err)}`);
+            this.sendErrorNotification(adapter, msg.chatId, err, rid);
           },
         });
       }
     }
+  }
+
+  /** Send error notification to user's chat */
+  private sendErrorNotification(adapter: BaseChannelAdapter, chatId: string | undefined, err: unknown, requestId?: string): void {
+    if (!chatId) return; // No chatId, can't send notification
+    const locale: Locale = 'zh';
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    const truncated = truncate(errorMsg, 200);
+    const ridText = requestId ? requestId : 'unknown';
+    adapter.send({
+      chatId,
+      text: `${t(locale, 'error.title')}\n${t(locale, 'error.requestId')}: ${ridText}\n${truncated}`,
+    }).catch(() => {}); // Ignore send failure
   }
 
   async handleInboundMessage(adapter: BaseChannelAdapter, msg: InboundMessage, requestId?: string): Promise<boolean> {
