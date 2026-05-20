@@ -6,16 +6,18 @@ import { t } from '../../i18n/index.js';
 export class QueueCommand extends BaseCommand {
   readonly name = '/queue';
   readonly quick = true;
+  readonly helpCategory = 'status' as const;
   readonly description = '队列状态';
   readonly helpDesc = '查看消息队列状态。支持 clear 清空队列、depth 设置最大队列深度。';
   readonly helpExample = '/queue 或 /queue clear';
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const sub = ctx.parts[1]?.toLowerCase();
-    const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+    const scopeId = ctx.scopeId;
+    const binding = await ctx.services.store.getBinding(ctx.msg.channelType, scopeId);
     const activeSessionKey = binding?.sessionId
-      ? ctx.services.sdkEngine?.getSessionKeyForBinding?.(ctx.msg.channelType, ctx.msg.chatId, binding.sessionId)
-      : ctx.services.sdkEngine?.getActiveSessionKey(ctx.msg.channelType, ctx.msg.chatId);
+      ? ctx.services.sdkEngine?.getSessionKeyForBinding?.(ctx.msg.channelType, scopeId, binding.sessionId)
+      : ctx.services.sdkEngine?.getActiveSessionKey(ctx.msg.channelType, scopeId);
 
     if (!activeSessionKey) {
       await this.send(ctx, { chatId: ctx.msg.chatId, text: t(ctx.locale, 'queue.noActiveSession') });

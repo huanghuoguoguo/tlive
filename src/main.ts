@@ -188,7 +188,10 @@ export async function main() {
 
   // Start Bridge Manager with enabled IM adapters
   const manager = new BridgeManager({ store, llm, defaultWorkdir: config.defaultWorkdir, config });
-  manager.registerAdapter(new FeishuAdapter(config.feishu));
+  manager.registerAdapter(new FeishuAdapter(config.feishu, {
+    doneButtons: config.ui.doneButtons,
+    autoPinTopics: config.feishu.autoPinTopics,
+  }));
   logger.info('Registered feishu adapter');
 
   await manager.start();

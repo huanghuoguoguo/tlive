@@ -27,6 +27,7 @@ function resolveCliPath(): string {
 export class UpgradeCommand extends BaseCommand {
   readonly name = '/upgrade';
   readonly quick = true;
+  readonly helpCategory = 'system' as const;
   readonly description = '升级版本';
   readonly helpDesc = '检查并升级到最新版本。服务会自动重启。notes 查看更新日志。';
   readonly helpExample = '/upgrade 或 /upgrade notes';
@@ -35,7 +36,7 @@ export class UpgradeCommand extends BaseCommand {
     const subCmd = ctx.parts[1]?.toLowerCase();
 
     if (subCmd === 'notes') {
-      await ctx.adapter.send({
+      await this.send(ctx, {
         chatId: ctx.msg.chatId,
         text: '📋 查看更新内容：\nhttps://github.com/huanghuoguoguo/tlive/releases',
       });
@@ -46,7 +47,7 @@ export class UpgradeCommand extends BaseCommand {
     const info = await checkForUpdates();
 
     if (!info) {
-      await ctx.adapter.send({
+      await this.send(ctx, {
         chatId: ctx.msg.chatId,
         text: '⚠️ 无法检查更新，请稍后重试',
       });
@@ -54,7 +55,7 @@ export class UpgradeCommand extends BaseCommand {
     }
 
     if (!info.hasUpdate) {
-      await ctx.adapter.send({
+      await this.send(ctx, {
         chatId: ctx.msg.chatId,
         text: `✅ 已是最新版本 v${info.current}`,
       });
@@ -67,7 +68,7 @@ export class UpgradeCommand extends BaseCommand {
 
     try {
       if (existsSync(join(packageRoot, '.git'))) {
-        await ctx.adapter.send({
+        await this.send(ctx, {
           chatId: ctx.msg.chatId,
           text: '⚠️ 当前运行自 git checkout，请手动用 git 更新，或改用 release 安装版。',
         });
@@ -79,7 +80,7 @@ export class UpgradeCommand extends BaseCommand {
         throw new Error(`CLI not found: ${cliPath}`);
       }
 
-      await ctx.adapter.send({
+      await this.send(ctx, {
         chatId: ctx.msg.chatId,
         text: `🔄 开始升级：v${info.current} → v${info.latest}\n服务将自动重启...`,
       });
@@ -99,7 +100,7 @@ export class UpgradeCommand extends BaseCommand {
 
       setTimeout(() => process.exit(0), 250);
     } catch (err: any) {
-      await ctx.adapter.send({
+      await this.send(ctx, {
         chatId: ctx.msg.chatId,
         text: `❌ 升级失败：${err?.message || 'Unknown error'}`,
       });

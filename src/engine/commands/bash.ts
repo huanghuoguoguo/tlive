@@ -9,6 +9,7 @@ const execAsync = promisify(exec);
 export class BashCommand extends BaseCommand {
   readonly name = '/bash';
   readonly quick = true;
+  readonly helpCategory = 'session' as const;
   readonly description = '执行命令';
   readonly helpDesc = '在当前工作目录执行 shell 命令。超时30秒，输出超过4MB会被截断。用于快速查看文件、运行脚本等。';
   readonly helpExample = '/bash ls -la';
@@ -16,11 +17,11 @@ export class BashCommand extends BaseCommand {
   async execute(ctx: CommandContext): Promise<boolean> {
     const cmdText = ctx.msg.text.slice('/bash '.length).trim();
     if (!cmdText) {
-      await ctx.adapter.send({ chatId: ctx.msg.chatId, text: 'Usage: /bash <command>' });
+      await this.send(ctx, { chatId: ctx.msg.chatId, text: 'Usage: /bash <command>' });
       return true;
     }
 
-    const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+    const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.scopeId);
     const cwd = binding?.cwd || ctx.services.defaultWorkdir;
 
     try {
@@ -33,11 +34,14 @@ export class BashCommand extends BaseCommand {
       const output = (stdout + (stderr ? '\n⚠️ stderr:\n' + stderr : '')).trim();
       const truncatedOutput = truncate(output, 4000);
 
-      await ctx.adapter.sendCodeOutput(ctx.msg.chatId, truncatedOutput || '(no output)');
+      await this.send(ctx, {
+        chatId: ctx.msg.chatId,
+        text: ctx.adapter.formatCodeOutput(truncatedOutput || '(no output)'),
+      });
     } catch (err: any) {
       const errMsg = err.stderr || err.message || String(err);
       const truncatedErr = truncate(errMsg, 1000);
-      await ctx.adapter.send({ chatId: ctx.msg.chatId, text: `❌ ${truncatedErr}` });
+      await this.send(ctx, { chatId: ctx.msg.chatId, text: `❌ ${truncatedErr}` });
     }
     return true;
   }

@@ -148,4 +148,21 @@ export class QueueManager {
     this.queueDepthBySession.delete(sessionKey);
     this.queuePreviewBySession.delete(sessionKey);
   }
+
+  /** Move queue state when a logical session is re-keyed to another chat scope. */
+  moveSessionKey(oldSessionKey: string, newSessionKey: string): void {
+    if (oldSessionKey === newSessionKey) return;
+
+    const depth = this.queueDepthBySession.get(oldSessionKey);
+    if (depth !== undefined) {
+      this.queueDepthBySession.set(newSessionKey, depth);
+      this.queueDepthBySession.delete(oldSessionKey);
+    }
+
+    const previews = this.queuePreviewBySession.get(oldSessionKey);
+    if (previews) {
+      this.queuePreviewBySession.set(newSessionKey, previews);
+      this.queuePreviewBySession.delete(oldSessionKey);
+    }
+  }
 }

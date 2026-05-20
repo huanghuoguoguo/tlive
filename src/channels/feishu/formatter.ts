@@ -8,7 +8,11 @@
  * - format-progress.ts: Progress/timeline formatting
  */
 
-import { MessageFormatter, type MessageLocale } from '../../formatting/message-formatter.js';
+import {
+  MessageFormatter,
+  type MessageFormatterOptions,
+  type MessageLocale,
+} from '../../formatting/message-formatter.js';
 import { t } from '../../i18n/index.js';
 import { downgradeHeadings } from './markdown.js';
 import { buildFeishuButtonElements, type FeishuCardElement } from './card-builder.js';
@@ -39,6 +43,7 @@ import {
   helpButtons,
 } from '../../ui/buttons.js';
 import { truncate } from '../../core/string.js';
+import { groupHelpCommands } from '../../formatting/help-format.js';
 
 // Import specialized formatters
 import {
@@ -65,8 +70,8 @@ import {
 } from './format-progress.js';
 
 export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
-  constructor(locale: MessageLocale = 'zh') {
-    super(locale);
+  constructor(locale: MessageLocale = 'zh', options: MessageFormatterOptions = {}) {
+    super(locale, options);
   }
 
   protected formatMarkdown(_text: string): string {
@@ -101,6 +106,23 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       feishuHeader: header,
       feishuElements: allElements,
     };
+  }
+
+  private footerActionPanel(footerLine: string, buttons: Button[]): FeishuCardElement {
+    const panelElements = buttons.length
+      ? buildFeishuButtonElements(buttons)
+      : [this.md(`<font color='grey'>${footerLine}</font>`)];
+
+    return {
+      tag: 'collapsible_panel',
+      expanded: false,
+      header: { title: { tag: 'plain_text', content: footerLine } },
+      elements: panelElements,
+    } as FeishuCardElement;
+  }
+
+  private shouldNestDoneButtons(phase: ProgressData['phase'], footerLine?: string): footerLine is string {
+    return Boolean(footerLine) && (phase === 'completed' || phase === 'failed');
   }
 
   private md(content: string): FeishuCardElement {
@@ -284,13 +306,18 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       this.md(`**${t(this.locale, 'format.labelResultSummary')}**\n${data.summary}`),
       this.md(`**${t(this.locale, 'taskSummary.labelResult')}**\n${t(this.locale, 'format.labelChangedFiles')}：${data.changedFiles}\n${t(this.locale, 'format.labelPermissionRequests')}：${data.permissionRequests}\n${t(this.locale, 'home.labelStatus')}：${data.hasError ? t(this.locale, 'taskSummary.statusError') : t(this.locale, 'taskSummary.statusDone')}`),
     ];
+    const buttons = taskSummaryButtons(this.locale, this.getDoneButtons());
     if (data.footerLine) {
-      elements.push(this.md(`<font color='grey'>${data.footerLine}</font>`));
+      elements.push(this.footerActionPanel(data.footerLine, buttons));
+      return this.createCardMessage(chatId,
+        { template: data.hasError ? 'red' : 'green', title: data.hasError ? t(this.locale, 'format.titleTaskEnd') : t(this.locale, 'format.titleTaskSummary') },
+        elements
+      );
     }
     return this.createCardMessage(chatId,
       { template: data.hasError ? 'red' : 'green', title: data.hasError ? t(this.locale, 'format.titleTaskEnd') : t(this.locale, 'format.titleTaskSummary') },
       elements,
-      taskSummaryButtons(this.locale)
+      buttons
     );
   }
 
@@ -380,33 +407,9 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
   override formatHelp(chatId: string, data: HelpData): FeishuRenderedMessage {
     const elements: FeishuCardElement[] = [];
 
-    // Group commands by category
-    const categories: Record<string, Array<{ cmd: string; desc: string; detail?: string; example?: string }>> = {
-      会话管理: [],
-      状态查看: [],
-      系统控制: [],
-      其他: [],
-    };
-
-    // Categorize commands
-    for (const cmd of data.commands) {
-      if (['new', 'session', 'sessions', 'sessioninfo', 'cd', 'pwd', 'bash'].includes(cmd.cmd)) {
-        categories.会话管理.push(cmd);
-      } else if (['status', 'home', 'queue', 'hooks', 'perm', 'project'].includes(cmd.cmd)) {
-        categories.状态查看.push(cmd);
-      } else if (['stop', 'restart', 'upgrade', 'diagnose', 'approve', 'pairings'].includes(cmd.cmd)) {
-        categories.系统控制.push(cmd);
-      } else {
-        categories.其他.push(cmd);
-      }
-    }
-
-    // Build panels for each category
-    for (const [category, commands] of Object.entries(categories)) {
-      if (commands.length === 0) continue;
-
+    for (const group of groupHelpCommands(data.commands)) {
       const panelElements: FeishuCardElement[] = [];
-      for (const cmd of commands) {
+      for (const cmd of group.commands) {
         let text = `**/${cmd.cmd}** — ${cmd.desc}`;
         if (cmd.detail) {
           text += `\n${cmd.detail}`;
@@ -422,8 +425,8 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
 
       elements.push({
         tag: 'collapsible_panel',
-        expanded: category === '会话管理', // Expand session management by default
-        header: { title: { tag: 'plain_text', content: `📁 ${category}` } },
+        expanded: group.category.expandedByDefault ?? false,
+        header: { title: { tag: 'plain_text', content: `${group.category.icon} ${group.category.title}` } },
         elements: panelElements,
       } as FeishuCardElement);
     }
@@ -454,6 +457,10 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     elements.push(...buildProgressContentElements({ chatId, data, md: this.md.bind(this), locale: this.locale }));
 
     const buttons = data.actionButtons?.length ? data.actionButtons : this.defaultProgressButtons(data.phase);
+    if (this.shouldNestDoneButtons(data.phase, data.footerLine)) {
+      elements.push(this.footerActionPanel(data.footerLine, buttons));
+      return this.createCardMessage(chatId, headerConfig, elements);
+    }
     return this.createCardMessage(chatId, headerConfig, elements, buttons);
   }
 

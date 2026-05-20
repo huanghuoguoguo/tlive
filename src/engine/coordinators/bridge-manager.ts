@@ -73,6 +73,7 @@ export class BridgeManager implements AutomationBridge {
       config.claudeSettingSources,
       this.components.sdkEngine,
       this.components.projectsConfig,
+      this.components.topicSessions,
     );
 
     // Wire SDKEngine session creation → recent projects tracking
@@ -90,6 +91,7 @@ export class BridgeManager implements AutomationBridge {
       sdkEngine: this.components.sdkEngine,
       store,
       defaultWorkdir,
+      topicSessions: this.components.topicSessions,
       defaultClaudeSettingSources: config.claudeSettingSources,
       port: this.components.port,
       appendSystemPrompt: this.buildAppendSystemPrompt(config),

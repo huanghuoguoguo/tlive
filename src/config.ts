@@ -2,6 +2,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { ProjectConfig, ClaudeSettingSource } from './store/interface.js';
 import { expandTilde, getTliveHome } from './core/path.js';
+import { normalizeQuickButtonNames, type QuickButtonName } from './ui/button-registry.js';
 
 export type { ClaudeSettingSource } from './store/interface.js';
 
@@ -91,6 +92,8 @@ export interface Config {
     encryptKey: string;
     webhookPort: number;
     allowedUsers: string[];
+    /** Pin newly-created topic entry messages to the chat Pin list. */
+    autoPinTopics: boolean;
   };
   /** Push configuration for /tlive:push command */
   push: {
@@ -98,6 +101,11 @@ export interface Config {
     defaultChannel: string;
     /** Default chat ID for push notifications */
     defaultChat: string;
+  };
+  /** UI configuration for generated cards */
+  ui: {
+    /** Buttons shown on completed/failed task cards and task summary cards. */
+    doneButtons: QuickButtonName[];
   };
 }
 
@@ -295,10 +303,14 @@ export function loadConfig(): Config {
       encryptKey: get('TL_FS_ENCRYPT_KEY'),
       webhookPort: parseInt(get('TL_FS_WEBHOOK_PORT', '9100'), 10),
       allowedUsers: parseList(get('TL_FS_ALLOWED_USERS')),
+      autoPinTopics: get('TL_FS_AUTO_PIN_TOPIC', 'true') !== 'false',
     },
     push: {
       defaultChannel: get('TL_PUSH_DEFAULT_CHANNEL', 'feishu'),
       defaultChat: get('TL_PUSH_DEFAULT_CHAT'),
+    },
+    ui: {
+      doneButtons: normalizeQuickButtonNames(get('TL_DONE_BUTTONS', 'home')),
     },
   };
 

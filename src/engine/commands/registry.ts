@@ -1,4 +1,5 @@
 import type { CommandHandler, HelpEntry } from './types.js';
+import { getHelpCategoryInfo } from './help-categories.js';
 
 /** Registry for command handlers - implements open-closed principle */
 class CommandRegistry {
@@ -40,6 +41,7 @@ class CommandRegistry {
       .map(h => ({
         cmd: h.name.slice(1),
         desc: h.description!,
+        category: getHelpCategoryInfo(h.helpCategory),
         detail: h.helpDesc,
         example: h.helpExample,
       }));

@@ -9,6 +9,7 @@ export interface FeishuStreamingOptions {
   chatId: string;
   receiveIdType?: string;
   replyToMessageId?: string;
+  replyInThread?: boolean;
   header?: { template: string; title: string };
 }
 
@@ -17,6 +18,7 @@ export class FeishuStreamingSession {
   private chatId: string;
   private receiveIdType: string;
   private replyToMessageId?: string;
+  private replyInThread?: boolean;
   private header?: { template: string; title: string };
   private cardId?: string;
   private messageId?: string;
@@ -31,6 +33,7 @@ export class FeishuStreamingSession {
     this.chatId = options.chatId;
     this.receiveIdType = options.receiveIdType || 'chat_id';
     this.replyToMessageId = options.replyToMessageId;
+    this.replyInThread = options.replyInThread;
     this.header = options.header;
   }
 
@@ -76,11 +79,24 @@ export class FeishuStreamingSession {
     let result: any;
 
     if (this.replyToMessageId) {
-      result = await this.client.im.message.reply({
-        path: { message_id: this.replyToMessageId },
-        data: { msg_type: 'interactive', content },
-      });
-    } else {
+      try {
+        result = await this.client.im.message.reply({
+          path: { message_id: this.replyToMessageId },
+          data: {
+            msg_type: 'interactive',
+            content,
+            reply_in_thread: this.replyInThread || undefined,
+          },
+        });
+      } catch (err) {
+        const code = (err as any)?.code;
+        if (code !== 230071 && code !== 230011 && code !== 231003) {
+          throw err;
+        }
+      }
+    }
+
+    if (!result) {
       result = await this.client.im.message.create({
         params: { receive_id_type: this.receiveIdType },
         data: {

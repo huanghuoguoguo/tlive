@@ -57,16 +57,23 @@ describe('ui/buttons', () => {
   });
 
   describe('progressDoneButtons', () => {
-    it('creates buttons for completed progress', () => {
+    it('defaults completed progress to workbench only', () => {
       const buttons = progressDoneButtons('en');
 
-      expect(buttons.length).toBeGreaterThan(0);
+      expect(buttons).toHaveLength(1);
+      expect(buttons[0].callbackData).toContain('home');
     });
 
-    it('includes help button', () => {
-      const buttons = progressDoneButtons('en');
+    it('uses configured completed progress buttons', () => {
+      const buttons = progressDoneButtons('en', ['home', 'sessions', 'new', 'help']);
 
+      const hasHome = buttons.some(b => b.callbackData.includes('home'));
+      const hasSessions = buttons.some(b => b.callbackData.includes('sessions'));
+      const hasNew = buttons.some(b => b.callbackData.includes('new'));
       const hasHelp = buttons.some(b => b.callbackData.includes('help'));
+      expect(hasHome).toBe(true);
+      expect(hasSessions).toBe(true);
+      expect(hasNew).toBe(true);
       expect(hasHelp).toBe(true);
     });
   });
@@ -102,10 +109,10 @@ describe('ui/buttons', () => {
   });
 
   describe('taskSummaryButtons', () => {
-    it('creates two summary buttons', () => {
+    it('defaults summary buttons to workbench only', () => {
       const buttons = taskSummaryButtons('en');
 
-      expect(buttons.length).toBeGreaterThan(0);
+      expect(buttons).toHaveLength(1);
     });
 
     it('includes home button', () => {

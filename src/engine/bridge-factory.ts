@@ -9,6 +9,7 @@ import { PendingPermissions } from '../permissions/gateway.js';
 import { SessionStateManager } from './state/session-state.js';
 import { WorkspaceStateManager } from './state/workspace-state.js';
 import { RecentProjectsManager } from './state/recent-projects.js';
+import { TopicSessionManager } from './state/topic-sessions.js';
 import { PermissionCoordinator } from './coordinators/permission.js';
 import { CommandRouter } from './command-router.js';
 import { SDKEngine } from './sdk/engine.js';
@@ -22,6 +23,7 @@ import { getTliveRuntimeDir } from '../core/path.js';
 import { loadProjectsConfig } from '../config.js';
 import { networkInterfaces } from 'node:os';
 import { commandRegistry } from './commands/index.js';
+import { messageScopeId } from '../core/key.js';
 
 /** Get quick commands from registry */
 function getQuickCommands(): Set<string> {
@@ -61,6 +63,7 @@ export interface BridgeComponents {
   state: SessionStateManager;
   workspace: WorkspaceStateManager;
   recentProjects: RecentProjectsManager;
+  topicSessions: TopicSessionManager;
   permissions: PermissionCoordinator;
   sdkEngine: SDKEngine;
   ingress: IngressCoordinator;
@@ -102,6 +105,7 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
   const state = new SessionStateManager(runtimeDir);
   const workspace = new WorkspaceStateManager(runtimeDir);
   const recentProjects = new RecentProjectsManager(runtimeDir);
+  const topicSessions = new TopicSessionManager(runtimeDir);
   const permissions = new PermissionCoordinator(gateway, broker);
   const engine = new ConversationEngine(store, llm);
   const sdkEngine = new SDKEngine();
@@ -121,14 +125,15 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
     sdkEngine,
     permissions,
     quickCommands: getQuickCommands(),
-    hasPendingSdkQuestion: (channelType: string, chatId: string) => text.hasPendingSdkQuestion(channelType, chatId),
+    hasPendingSdkQuestion: (msg: InboundMessage) => text.hasPendingSdkQuestion(msg),
     resolveProcessingKey: async (msg: InboundMessage) => {
-      const binding = await router.resolve(msg.channelType, msg.chatId);
+      const scopeId = messageScopeId(msg);
+      const binding = await router.resolve(msg.channelType, scopeId);
       if (msg.replyToMessageId) {
         return sdkEngine.getSessionForBubble(msg.replyToMessageId)
-          ?? sdkEngine.getSessionKeyForBinding(msg.channelType, msg.chatId, binding.sessionId);
+          ?? sdkEngine.getSessionKeyForBinding(msg.channelType, scopeId, binding.sessionId);
       }
-      return sdkEngine.getSessionKeyForBinding(msg.channelType, msg.chatId, binding.sessionId);
+      return sdkEngine.getSessionKeyForBinding(msg.channelType, scopeId, binding.sessionId);
     },
   });
 
@@ -141,6 +146,7 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
     sdkEngine,
     store,
     defaultWorkdir,
+    topicSessions,
     defaultClaudeSettingSources: config.claudeSettingSources,
     port,
     appendSystemPrompt: undefined, // Will be set by BridgeManager
@@ -160,6 +166,7 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
     config.claudeSettingSources,
     sdkEngine,
     projectsConfig,
+    topicSessions,
   );
 
   const notifications = new HookNotificationDispatcher({
@@ -173,6 +180,7 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
     state,
     workspace,
     recentProjects,
+    topicSessions,
     permissions,
     sdkEngine,
     ingress,

@@ -10,6 +10,7 @@ import { getTliveHome } from '../../core/path.js';
 export class DoctorCommand extends BaseCommand {
   readonly name = '/doctor';
   readonly quick = true;
+  readonly helpCategory = 'system' as const;
   readonly description = '系统诊断';
   readonly helpDesc = '收集系统诊断信息，包括操作系统、Node.js版本、tlive版本、配置状态等。';
   readonly helpExample = '/doctor';

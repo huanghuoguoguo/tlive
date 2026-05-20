@@ -16,6 +16,8 @@ import {
   taskStartButtons,
   taskSummaryButtons,
   permStatusButtons,
+  DEFAULT_DONE_BUTTONS,
+  type QuickButtonName,
 } from '../ui/buttons.js';
 import type {
   StatusData,
@@ -43,14 +45,21 @@ import type {
   FormattableMessage,
 } from './message-types.js';
 import { truncate } from '../core/string.js';
-import { AVERAGE_TURN_SECONDS } from '../engine/constants.js';
+import { AVERAGE_TURN_SECONDS } from '../core/timing.js';
 import { t, type Locale, type TranslationKey } from '../i18n/index.js';
 
 /** @deprecated Use `Locale` from `../i18n/index.js` instead */
 export type MessageLocale = Locale;
 
+export interface MessageFormatterOptions {
+  doneButtons?: readonly QuickButtonName[];
+}
+
 export abstract class MessageFormatter<TRendered extends { chatId: string }> {
-  constructor(protected locale: Locale = 'en') {}
+  constructor(
+    protected locale: Locale = 'en',
+    protected options: MessageFormatterOptions = {},
+  ) {}
 
   /** Look up a translation for the current locale */
   protected t(key: TranslationKey): string {
@@ -458,7 +467,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
       lines.push('', data.footerLine);
     }
 
-    const buttons = taskSummaryButtons(this.locale);
+    const buttons = taskSummaryButtons(this.locale, this.getDoneButtons());
 
     return this.createMessage(chatId, lines.join('\n'), buttons);
   }
@@ -466,9 +475,13 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
   /** Generate default action buttons for a progress phase. */
   protected defaultProgressButtons(phase: ProgressData['phase']): Button[] {
     if (phase === 'completed' || phase === 'failed') {
-      return progressDoneButtons(this.locale);
+      return progressDoneButtons(this.locale, this.getDoneButtons());
     }
     return progressRunningButtons(this.locale);
+  }
+
+  protected getDoneButtons(): readonly QuickButtonName[] {
+    return this.options.doneButtons ?? DEFAULT_DONE_BUTTONS;
   }
 
   /** Format raw markdown content into a platform-appropriate message. */

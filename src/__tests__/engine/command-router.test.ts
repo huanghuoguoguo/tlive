@@ -6,6 +6,7 @@ import { CommandRouter } from '../../engine/command-router.js';
 import { SessionStateManager } from '../../engine/state/session-state.js';
 import { WorkspaceStateManager } from '../../engine/state/workspace-state.js';
 import { RecentProjectsManager } from '../../engine/state/recent-projects.js';
+import { TopicSessionManager } from '../../engine/state/topic-sessions.js';
 import { ChannelRouter } from '../../utils/router.js';
 import { JsonFileStore } from '../../store/json-file.js';
 import { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
@@ -13,6 +14,7 @@ import { loadProjectsConfig, type ClaudeSettingSource } from '../../config.js';
 import type { SDKEngine } from '../../engine/sdk/engine.js';
 import type { PermissionCoordinator } from '../../engine/coordinators/permission.js';
 import * as sessionScanner from '../../providers/session-scanner.js';
+import { chatScopeId } from '../../core/key.js';
 
 /** Create a minimal PermissionCoordinator mock for tests */
 function createMockPermissions(): PermissionCoordinator {
@@ -318,6 +320,74 @@ describe('CommandRouter /settings', () => {
     expect(binding?.projectName).toBeUndefined();
     expect(workspace.getBinding('feishu', 'c1')).toBe(repoB);
 
+    scanSpy.mockRestore();
+  });
+
+  it('opens a fresh Feishu topic from a Claude history title when continuing by sdk id', async () => {
+    const repoDir = join(tmpDir, 'repo-topic');
+    mkdirSync(repoDir, { recursive: true });
+    const topicSessions = new TopicSessionManager();
+    const topicRouter = new CommandRouter(
+      new SessionStateManager(),
+      workspace,
+      new RecentProjectsManager(),
+      () => new Map(),
+      new ChannelRouter(store),
+      store,
+      '/tmp/project',
+      Object.create(ClaudeSDKProvider.prototype) as ClaudeSDKProvider,
+      new Map(),
+      permissions,
+      ['user', 'project', 'local'],
+      sdkEngine as SDKEngine,
+      undefined,
+      topicSessions,
+    );
+    const scanSpy = vi.spyOn(sessionScanner, 'scanClaudeSessions').mockReturnValue([
+      {
+        sdkSessionId: '5049209e-session',
+        projectDir: 'repo-topic',
+        filePath: join(repoDir, '5049209e-session.jsonl'),
+        cwd: repoDir,
+        preview: '提一个issue，在本项目内整理相关信息',
+        mtime: Date.now(),
+        size: 1024,
+      },
+    ]);
+    const adapterWithTopic = {
+      ...adapter,
+      startThreadWithTitle: vi.fn().mockResolvedValue({
+        threadId: 'thread-history',
+        rootMessageId: 'msg-title',
+        messageId: 'msg-topic-start',
+      }),
+    };
+
+    await topicRouter.handle(adapterWithTopic, {
+      channelType: 'feishu',
+      chatId: 'c1',
+      userId: 'u1',
+      text: '/continue 5049209e-session',
+      messageId: 'workbench-card',
+    } as any);
+
+    expect(adapterWithTopic.startThreadWithTitle).toHaveBeenCalledWith(
+      'c1',
+      '提一个issue，在本项目内整理相关信息',
+      expect.stringContaining('5049209e'),
+    );
+    const scopeId = chatScopeId('c1', 'thread-history');
+    const binding = await store.getBinding('feishu', scopeId);
+    expect(binding).toMatchObject({
+      sdkSessionId: '5049209e-session',
+      cwd: repoDir,
+    });
+    expect(topicSessions.findBySdkSessionId('5049209e-session')).toMatchObject({
+      scopeId,
+      rootMessageId: 'msg-title',
+      lastMessageId: 'msg-topic-start',
+      title: '提一个issue，在本项目内整理相关信息',
+    });
     scanSpy.mockRestore();
   });
 });

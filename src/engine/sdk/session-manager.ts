@@ -11,7 +11,7 @@ import type { LiveSession } from '../../providers/base.js';
 import type { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
 import type { ClaudeSettingSource } from '../../config.js';
 import type { EffortLevel } from '../../utils/types.js';
-import { SESSION_STALE_THRESHOLD_MS } from '../../engine/constants.js';
+import { SESSION_STALE_THRESHOLD_MS } from '../../core/timing.js';
 import { chatKey as buildChatKey } from '../../core/key.js';
 
 /** Reason for closing a session — used for logging and diagnostics */
@@ -223,6 +223,41 @@ export class SessionManager {
     }
   }
 
+  /** Move a logical session from one chat scope to another and re-key bubble mappings. */
+  moveSessionToChat(sessionKey: string, newChatId: string): string | undefined {
+    const managed = this.registry.get(sessionKey);
+    if (!managed) return undefined;
+
+    const newKey = this.sessionKey(managed.channelType, newChatId, managed.bindingSessionId);
+    if (newKey === sessionKey) return sessionKey;
+    if (this.registry.has(newKey)) return undefined;
+
+    const oldChatKey = this.chatKey(managed.channelType, managed.chatId);
+    if (this.activeSessionByChat.get(oldChatKey) === sessionKey) {
+      this.activeSessionByChat.delete(oldChatKey);
+    }
+
+    this.registry.delete(sessionKey);
+    managed.chatId = newChatId;
+    managed.lastActiveAt = Date.now();
+    this.registry.set(newKey, managed);
+    this.activeSessionByChat.set(this.chatKey(managed.channelType, newChatId), newKey);
+
+    const bubbles = this.sessionToBubbles.get(sessionKey);
+    if (bubbles) {
+      this.sessionToBubbles.delete(sessionKey);
+      this.sessionToBubbles.set(newKey, bubbles);
+      for (const bubbleId of bubbles) {
+        if (this.bubbleToSession.get(bubbleId) === sessionKey) {
+          this.bubbleToSession.set(bubbleId, newKey);
+        }
+      }
+    }
+
+    console.log(`[tlive:engine] Session moved: ${sessionKey} -> ${newKey}`);
+    return newKey;
+  }
+
   getActiveSessionKey(channelType: string, chatId: string): string | undefined {
     return this.activeSessionByChat.get(this.chatKey(channelType, chatId));
   }
@@ -415,7 +450,6 @@ export class SessionManager {
 
     const existing = managed.session;
     const sessionIdChanged = actualOptions.sessionId !== undefined
-      && previousSdkSessionId !== undefined
       && actualOptions.sessionId !== previousSdkSessionId;
     const workdirChanged = previousWorkdir !== undefined && previousWorkdir !== actualWorkdir;
 

@@ -9,6 +9,7 @@ import { join } from 'node:path';
 export class RestartCommand extends BaseCommand {
   readonly name = '/restart';
   readonly quick = true;
+  readonly helpCategory = 'system' as const;
   readonly description = '重启 Bridge';
   readonly helpDesc = '重启 Bridge 服务。自动 spawn 新进程后退出，无需外部守护进程。';
   readonly helpExample = '/restart';

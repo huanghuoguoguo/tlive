@@ -13,11 +13,13 @@ import type { HomeData } from '../formatting/message-types.js';
 import type { RouterHelpers, CommandServices } from './commands/types.js';
 import type { PermissionCoordinator } from './coordinators/permission.js';
 import type { Locale } from '../i18n/index.js';
+import type { TopicSessionManager } from './state/topic-sessions.js';
 import { commandRegistry, registerAllCommands } from './commands/index.js';
 import { DEFAULT_CLAUDE_SETTING_SOURCES } from '../config.js';
 import { findGitRoot } from '../utils/repo.js';
 import { generateSessionId } from '../core/id.js';
 import { HomePayloadBuilder } from './presenters/home-payload-builder.js';
+import { messageScopeId } from '../core/key.js';
 
 // Register all commands on module load
 registerAllCommands();
@@ -41,11 +43,12 @@ export class CommandRouter {
     private defaultClaudeSettingSources: ClaudeSettingSource[] = DEFAULT_CLAUDE_SETTING_SOURCES,
     private sdkEngine?: SDKEngine,
     projectsConfig?: ProjectsValidationResult,
+    topicSessions?: TopicSessionManager,
   ) {
     this.projectsConfig = projectsConfig;
     this.services = {
       store, router, state, workspace, recentProjects, permissions, sdkEngine, llm,
-      activeControls, defaultWorkdir, defaultClaudeSettingSources, getAdapters,
+      activeControls, defaultWorkdir, defaultClaudeSettingSources, getAdapters, topicSessions,
     };
     this.homePayloadBuilder = new HomePayloadBuilder({
       store,
@@ -56,6 +59,7 @@ export class CommandRouter {
       activeControls,
       getAdapters,
       defaultWorkdir,
+      topicSessions,
     });
   }
 
@@ -145,6 +149,7 @@ export class CommandRouter {
       const ctx = {
         adapter,
         msg,
+        scopeId: messageScopeId(msg),
         parts,
         services: this.services,
         helpers: this.buildHelpers(),

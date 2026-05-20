@@ -36,6 +36,8 @@ function createDeps() {
         getGateway: () => ({ resolve }),
       },
       sdkEngine: {
+        getSessionForBubble: vi.fn().mockReturnValue(undefined),
+        getSessionContext: vi.fn().mockReturnValue(undefined),
         getInteractionState: () => ({
           getSdkQuestion: (permId: string) => sdkQuestionData.get(permId),
           getDeferredTool: (permId: string) => undefined,
@@ -124,5 +126,36 @@ describe('handleCallbackMessage form submissions', () => {
     expect(cleanupQuestion).toHaveBeenCalledWith('perm-1');
     expect(resolve).toHaveBeenCalledWith('perm-1', 'allow');
     expect(adapter.editCardResolution).toHaveBeenCalled();
+  });
+
+  it('infers Feishu topic scope from a callback card bubble', async () => {
+    const adapter = createAdapter();
+    const { deps } = createDeps();
+    deps.sdkEngine.getSessionForBubble.mockReturnValue('feishu:chat-1#thread:thread-1:session-1');
+    deps.sdkEngine.getSessionContext.mockReturnValue({
+      channelType: 'feishu',
+      chatId: 'chat-1#thread:thread-1',
+      bindingSessionId: 'session-1',
+      workdir: '/tmp/project',
+      lastActiveAt: Date.now(),
+    });
+
+    const handled = await handleCallbackMessage(adapter, {
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      messageId: 'msg-card-1',
+      callbackData: 'cmd:home',
+    } as any, deps);
+
+    expect(handled).toBe(true);
+    expect(deps.replayMessage).toHaveBeenCalledWith(adapter, expect.objectContaining({
+      chatId: 'chat-1',
+      scopeId: 'chat-1#thread:thread-1',
+      threadId: 'thread-1',
+      replyInThread: true,
+      replyTargetMessageId: 'msg-card-1',
+      text: '/home',
+    }));
   });
 });

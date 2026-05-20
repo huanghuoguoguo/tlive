@@ -20,6 +20,10 @@ export interface FeishuRenderedMessage {
   receiveIdType?: string;
   /** Reply to a specific message (root_id in Feishu) */
   replyToMessageId?: string;
+  /** Feishu topic/thread id for diagnostics and future routing. */
+  threadId?: string;
+  /** Use message.reply with reply_in_thread when replying. */
+  replyInThread?: boolean;
   /** Media attachment */
   media?: import('../media-types.js').MediaAttachment;
 }

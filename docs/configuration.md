@@ -9,6 +9,11 @@ TL_PORT=8080
 TL_TOKEN=auto-generated
 TL_DEFAULT_WORKDIR=/home/user/projects
 TL_DEFAULT_MODEL=
+
+# Completed/failed task card buttons.
+# Default is only the workbench button. Add more if needed.
+# Supported: home,sessions,new,help,perm,none
+TL_DONE_BUTTONS=home
 ```
 
 ## Feishu / Lark
@@ -19,6 +24,7 @@ TL_FS_APP_SECRET=xxx
 TL_FS_VERIFICATION_TOKEN=
 TL_FS_ENCRYPT_KEY=
 TL_FS_WEBHOOK_PORT=9100
+TL_FS_AUTO_PIN_TOPIC=true
 
 # Optional user whitelist: open_id or user_id, comma-separated
 TL_FS_ALLOWED_USERS=ou_xxx,xxx

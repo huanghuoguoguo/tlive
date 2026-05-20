@@ -3,9 +3,9 @@ import type { InboundMessage } from '../../channels/types.js';
 import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { SDKEngine } from '../sdk/engine.js';
 import { truncate } from '../../core/string.js';
-import {
-  CALLBACK_PREFIXES,
-} from '../../engine/constants.js';
+import { CALLBACK_PREFIXES } from '../../core/callbacks.js';
+import { withInboundReplyContext } from '../../channels/reply-context.js';
+import { threadIdFromScope } from '../../core/key.js';
 import {
   parseAskqCallback,
   parseAskqSubmitCallback,
@@ -25,11 +25,39 @@ interface CallbackDispatcherDeps {
   replayMessage: (adapter: BaseChannelAdapter, msg: InboundMessage) => Promise<boolean>;
 }
 
+function inheritInboundContext(msg: InboundMessage): Pick<InboundMessage, 'scopeId' | 'threadId' | 'replyInThread' | 'replyTargetMessageId' | 'replyToMessageId'> {
+  return {
+    scopeId: msg.scopeId,
+    threadId: msg.threadId,
+    replyInThread: msg.replyInThread,
+    replyTargetMessageId: msg.replyTargetMessageId,
+    replyToMessageId: msg.replyToMessageId,
+  };
+}
+
+function inferThreadContextFromBubble(msg: InboundMessage, deps: CallbackDispatcherDeps): InboundMessage {
+  if (msg.scopeId || msg.threadId || !msg.messageId) return msg;
+
+  const sessionKey = deps.sdkEngine.getSessionForBubble(msg.messageId);
+  const managed = sessionKey ? deps.sdkEngine.getSessionContext(sessionKey) : undefined;
+  const threadId = managed ? threadIdFromScope(msg.chatId, managed.chatId) : undefined;
+  if (!threadId) return msg;
+
+  return {
+    ...msg,
+    scopeId: managed!.chatId,
+    threadId,
+    replyInThread: true,
+    replyTargetMessageId: msg.messageId,
+  };
+}
+
 export async function handleCallbackMessage(
   adapter: BaseChannelAdapter,
-  msg: InboundMessage,
+  rawMsg: InboundMessage,
   deps: CallbackDispatcherDeps,
 ): Promise<boolean> {
+  const msg = inferThreadContextFromBubble(rawMsg, deps);
   if (!msg.callbackData) return false;
 
   // Prompt suggestion callback — re-inject as a normal user message
@@ -110,7 +138,7 @@ export async function handleCallbackMessage(
     const permId = askqSubmitSdkParsed.permId;
     const selected = deps.permissions.getToggledSelections(permId);
     if (selected.size === 0) {
-      await adapter.send({ chatId: msg.chatId, text: '⚠️ No options selected' });
+      await adapter.send(withInboundReplyContext({ chatId: msg.chatId, text: '⚠️ No options selected' }, msg));
       return true;
     }
     const interactionState = deps.sdkEngine.getInteractionState();
@@ -181,6 +209,7 @@ export async function handleCallbackMessage(
         const cmdMsg: InboundMessage = {
           channelType: msg.channelType,
           chatId: msg.chatId,
+          ...inheritInboundContext(msg),
           text: `/session ${idx}`,
           userId: msg.userId,
           messageId: msg.messageId,
@@ -189,7 +218,10 @@ export async function handleCallbackMessage(
         return true;
       }
       // Invalid input - show error
-      await adapter.send({ chatId: msg.chatId, text: `⚠️ 无效编号: "${sessionIdx}"，请输入正整数。` });
+      await adapter.send(withInboundReplyContext({
+        chatId: msg.chatId,
+        text: `⚠️ 无效编号: "${sessionIdx}"，请输入正整数。`,
+      }, msg));
       return true;
     }
 
@@ -245,13 +277,19 @@ export async function handleCallbackMessage(
         }
 
         if (msg.chatId) {
-          await adapter.send({ chatId: msg.chatId, text: '⚠️ Invalid selection, please try again.' });
+          await adapter.send(withInboundReplyContext({
+            chatId: msg.chatId,
+            text: '⚠️ Invalid selection, please try again.',
+          }, msg));
         }
         return true;
       }
 
       if (msg.chatId) {
-        await adapter.send({ chatId: msg.chatId, text: '⚠️ Please enter an answer or choose an option before submitting.' });
+        await adapter.send(withInboundReplyContext({
+          chatId: msg.chatId,
+          text: '⚠️ Please enter an answer or choose an option before submitting.',
+        }, msg));
       }
     } else {
       console.warn(`[bridge] Form submission for unknown question: ${permId}`);
@@ -265,6 +303,7 @@ export async function handleCallbackMessage(
     const cmdMsg: InboundMessage = {
       channelType: msg.channelType,
       chatId: msg.chatId,
+      ...inheritInboundContext(msg),
       text: `/${cmd}`,
       userId: msg.userId,
       messageId: msg.messageId,
@@ -279,6 +318,7 @@ export async function handleCallbackMessage(
     const cmdMsg: InboundMessage = {
       channelType: msg.channelType,
       chatId: msg.chatId,
+      ...inheritInboundContext(msg),
       text: `/cd ${path}`,
       userId: msg.userId,
       messageId: msg.messageId,

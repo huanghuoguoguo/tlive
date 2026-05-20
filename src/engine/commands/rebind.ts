@@ -10,16 +10,18 @@ import { shortPath } from '../../core/path.js';
 export class RebindCommand extends BaseCommand {
   readonly name = '/rebind';
   readonly quick = true;
+  readonly helpCategory = 'session' as const;
   readonly description = undefined; // Hidden from /help
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const targetBindingId = ctx.parts[1]?.trim();
+    const scopeId = ctx.scopeId;
     if (!targetBindingId) {
       await this.send(ctx, { chatId: ctx.msg.chatId, text: '⚠️ 用法: /rebind <bindingSessionId>' });
       return true;
     }
 
-    const sessions = ctx.services.sdkEngine?.getSessionsForChat(ctx.msg.channelType, ctx.msg.chatId) ?? [];
+    const sessions = ctx.services.sdkEngine?.getSessionsForChat(ctx.msg.channelType, scopeId) ?? [];
     const target = sessions.find(s => s.bindingSessionId === targetBindingId);
     if (!target) {
       await this.send(ctx, { chatId: ctx.msg.chatId, text: '⚠️ 未找到该会话，可能已过期。' });
@@ -32,16 +34,16 @@ export class RebindCommand extends BaseCommand {
       return true;
     }
 
-    const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+    const binding = await ctx.services.store.getBinding(ctx.msg.channelType, scopeId);
 
-    await ctx.services.router.rebind(ctx.msg.channelType, ctx.msg.chatId, targetBindingId, {
+    await ctx.services.router.rebind(ctx.msg.channelType, scopeId, targetBindingId, {
       sdkSessionId: target.sdkSessionId,
       cwd: target.workdir,
       claudeSettingSources: binding?.claudeSettingSources,
       projectName: binding?.projectName,
     });
-    ctx.services.workspace.pushHistory(ctx.msg.channelType, ctx.msg.chatId, target.workdir);
-    ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, ctx.msg.chatId, target.workdir);
+    ctx.services.workspace.pushHistory(ctx.msg.channelType, scopeId, target.workdir);
+    ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, scopeId, target.workdir);
 
     const sdkShort = target.sdkSessionId?.slice(0, 8) ?? '-';
     await this.send(ctx, presentSessionSwitched(

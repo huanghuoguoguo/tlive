@@ -273,9 +273,6 @@ export function buildProgressContentElements(params: FormatProgressParams): Feis
       if (completedBody) {
         elements.push(md(downgradeHeadings(truncate(completedBody, 3000))));
       }
-      if (data.footerLine) {
-        elements.push(md(`<font color='grey'>${data.footerLine}</font>`));
-      }
     }
   } else if (data.phase === 'waiting_permission' && data.permission) {
     const extraQueue = data.permission.queueLength > 1 ? `\n${t(locale, 'progress.labelPendingApprovals')}: ${data.permission.queueLength}` : '';

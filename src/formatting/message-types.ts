@@ -81,21 +81,45 @@ export interface NotificationData {
 /** Scanned session entry for home display */
 export interface HomeSessionEntry {
   index: number;
+  sdkSessionId?: string;
   date: string;
   cwd: string;
   size?: string;
   preview: string;
   transcript?: Array<{ role: string; text: string }>;
   isCurrent: boolean;
+  topic?: {
+    scopeId: string;
+    threadId: string;
+    updatedAt: string;
+    isActive: boolean;
+  };
   /** Whether this sdkSession is bound to another active bridge session */
   boundToActiveSession?: { channelType: string; chatId: string };
   isStale?: boolean;
+}
+
+/** Topic-backed conversation entry for /home display. */
+export interface HomeTopicEntry {
+  index: number;
+  sdkSessionId?: string;
+  scopeId: string;
+  threadId: string;
+  cwd: string;
+  title: string;
+  preview: string;
+  updatedAt: string;
+  isCurrent: boolean;
+  isActive: boolean;
 }
 
 /** Home screen for /home command */
 export interface HomeData {
   workspace: {
     cwd: string;
+    /** Workbench means the main chat control surface; topic means an actual Feishu topic conversation. */
+    scope?: 'workbench' | 'topic';
+    topicId?: string;
     /** Workspace binding (long-term repo attribution) */
     binding?: string;
     /** Current project name (if multi-project mode) */
@@ -116,6 +140,8 @@ export interface HomeData {
     };
     /** Managed sessions in SDKEngine for this chat (in-memory active sessions) */
     managed?: ManagedSessionSnapshot[];
+    /** Recent Feishu topics bound to Claude Code sessions. */
+    topics?: HomeTopicEntry[];
     /** Recent sessions in current workspace */
     recent?: HomeSessionEntry[];
     /** All sessions across all projects */
@@ -146,7 +172,7 @@ export interface HomeData {
   };
   help?: {
     /** Help entries from command registry */
-    entries?: Array<{ cmd: string; desc: string }>;
+    entries?: HelpCommandEntry[];
     /** Recent summary text */
     recentSummary?: string;
   };
@@ -214,9 +240,27 @@ export interface SessionDetailData {
   transcript: Array<{ role: string; text: string }>;
 }
 
+/** Help category display metadata. */
+export interface HelpCategoryInfo {
+  id: string;
+  title: string;
+  icon: string;
+  order: number;
+  expandedByDefault?: boolean;
+}
+
+/** Help command entry for /home and /help display. */
+export interface HelpCommandEntry {
+  cmd: string;
+  desc: string;
+  category: HelpCategoryInfo;
+  detail?: string;
+  example?: string;
+}
+
 /** Help menu for /help command */
 export interface HelpData {
-  commands: Array<{ cmd: string; desc: string; detail?: string; example?: string }>;
+  commands: HelpCommandEntry[];
 }
 
 /** New session confirmation */

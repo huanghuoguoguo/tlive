@@ -9,6 +9,11 @@ TL_PORT=8080
 TL_TOKEN=auto-generated
 TL_DEFAULT_WORKDIR=/home/user/projects
 TL_DEFAULT_MODEL=
+
+# 任务完成/失败卡片底部按钮。
+# 默认只显示工作台按钮。需要更多按钮时可追加。
+# 支持：home,sessions,new,help,perm,none
+TL_DONE_BUTTONS=home
 ```
 
 ## 飞书 / Lark
@@ -19,6 +24,7 @@ TL_FS_APP_SECRET=xxx
 TL_FS_VERIFICATION_TOKEN=
 TL_FS_ENCRYPT_KEY=
 TL_FS_WEBHOOK_PORT=9100
+TL_FS_AUTO_PIN_TOPIC=true
 
 # 可选用户白名单：open_id 或 user_id，逗号分隔
 TL_FS_ALLOWED_USERS=ou_xxx,xxx

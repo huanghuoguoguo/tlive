@@ -9,3 +9,29 @@
 export function chatKey(channelType: string, chatId: string): string {
   return `${channelType}:${chatId}`;
 }
+
+/** Split a chat key while preserving ':' characters inside chatId/scopeId. */
+export function splitChatKey(key: string): { channelType: string; chatId: string } {
+  const idx = key.indexOf(':');
+  if (idx < 0) return { channelType: key, chatId: '' };
+  return { channelType: key.slice(0, idx), chatId: key.slice(idx + 1) };
+}
+
+/** Separator used to derive a logical chat scope from a platform thread/topic. */
+export const THREAD_SCOPE_SEPARATOR = '#thread:';
+
+/** Build the logical scope id used for state/session binding. */
+export function chatScopeId(chatId: string, threadId?: string): string {
+  return threadId ? `${chatId}${THREAD_SCOPE_SEPARATOR}${threadId}` : chatId;
+}
+
+/** Extract a platform thread/topic id from a logical scope id. */
+export function threadIdFromScope(chatId: string, scopeId: string): string | undefined {
+  const prefix = `${chatId}${THREAD_SCOPE_SEPARATOR}`;
+  return scopeId.startsWith(prefix) ? scopeId.slice(prefix.length) : undefined;
+}
+
+/** Resolve the logical scope id for an inbound message-like object. */
+export function messageScopeId(message: { chatId: string; threadId?: string; scopeId?: string }): string {
+  return message.scopeId || chatScopeId(message.chatId, message.threadId);
+}

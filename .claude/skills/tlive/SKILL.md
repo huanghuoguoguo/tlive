@@ -2,14 +2,14 @@
 name: tlive
 description: |
   Feishu/Lark bridge for Claude Code.
-  Use for: starting the bridge, configuring Feishu credentials, checking status,
-  pushing the current Claude Code session to Feishu, reading logs, and diagnosing
+  Use for: configuring Feishu credentials, checking bridge status, pushing the
+  current Claude Code session to Feishu, reading logs, and diagnosing
   Feishu/Claude Code bridge issues.
-  Trigger phrases: "tlive", "Feishu bridge", "飞书桥接", "手机交互",
-  "启动桥接", "连接飞书", "诊断", "查看日志", "配置".
-  Do NOT use for: building unrelated bots, generic webhook integrations, or
-  non-tlive coding tasks.
-argument-hint: "setup | start | stop | restart | status | logs [N] | reconfigure | doctor | push"
+  Trigger phrases: "tlive", "Feishu bridge", "飞书桥接", "手机继续",
+  "推送到手机", "连接飞书", "诊断", "查看日志", "配置".
+  Do NOT use for: opening a new Claude conversation, starting a new chat session,
+  building unrelated bots, generic webhook integrations, or non-tlive coding tasks.
+argument-hint: "setup | status | logs [N] | reconfigure | doctor | push"
 allowed-tools:
   - Bash
   - Read
@@ -35,16 +35,13 @@ TLive has one supported channel and one runtime:
 
 | User says | Subcommand |
 |---|---|
-| no args, `start`, `启动`, `启动桥接` | start |
+| no args, `help`, `帮助`, `怎么用` | help |
 | `setup`, `configure`, `配置`, `连接飞书` | setup |
-| `stop`, `停止`, `关闭` | stop |
-| `restart`, `重启` | restart |
 | `status`, `状态`, `运行状态` | status |
 | `logs`, `logs 200`, `查看日志` | logs |
 | `reconfigure`, `修改配置`, `换 app`, `改密钥` | reconfigure |
 | `doctor`, `diagnose`, `诊断`, `挂了`, `没反应了` | doctor |
 | `push`, `推送`, `推送到手机`, `切换到手机` | push |
-| `help`, `帮助`, `怎么用` | help |
 
 Use `status` when the user only wants to know whether the bridge is running.
 Use `doctor` when the user reports a symptom or asks what is broken.
@@ -55,14 +52,6 @@ Before every command except `setup`, check whether `~/.tlive/config.env` exists.
 If it is missing, run the `setup` flow first.
 
 ## Subcommands
-
-### start
-
-1. Check config. If missing, run setup first.
-2. Run `tlive start`.
-3. Wait 2 seconds.
-4. Run `tlive status`.
-5. Report whether the Feishu bridge is running.
 
 ### setup
 
@@ -86,7 +75,7 @@ Then:
 4. Create `~/.tlive/{data,logs,runtime}`.
 5. Write `~/.tlive/config.env` and set mode `600`.
 6. Validate Feishu credentials using `references/token-validation.md`.
-7. On success, run `tlive start`.
+7. On success, tell the user configuration is ready and run `tlive status`.
 
 ### reconfigure
 
@@ -95,23 +84,7 @@ Then:
 3. Ask which Feishu/general fields to change.
 4. Update only those fields.
 5. Re-validate changed Feishu credentials.
-6. Tell the user changes apply to new conversations; restart only if they need
-   the daemon process to reload immediately.
-
-### stop
-
-Run:
-
-```bash
-tlive stop
-```
-
-### restart
-
-1. Run `tlive stop`.
-2. Run `tlive start`.
-3. Wait 2 seconds.
-4. Run `tlive status`.
+6. Tell the user changes apply to new conversations.
 
 ### status
 
@@ -146,7 +119,8 @@ curl -s -X POST http://localhost:8081/api/push \
   -d '{"workdir":"<cwd>","projectName":"<project>","preview":"<summary>"}'
 ```
 
-If the request fails because the bridge is not reachable, run `tlive start`.
+If the request fails because the bridge is not reachable, report that the bridge
+is not reachable and show `tlive status` as the next diagnostic command.
 
 ### doctor
 
@@ -167,18 +141,15 @@ Show the useful commands:
 TLive — Control Claude Code from Feishu
 
 In Claude Code:
-  /tlive               Start Feishu bridge
+  /tlive               Show this help
   /tlive setup         Configure Feishu credentials
   /tlive push          Push current session to Feishu
   /tlive reconfigure   Modify config
-  /tlive stop          Stop bridge
   /tlive status        Show status
   /tlive logs [N]      Show logs
   /tlive doctor        Diagnose issues
 
 In terminal:
-  tlive start
-  tlive stop
   tlive status
   tlive logs [N]
   tlive doctor
@@ -205,6 +176,5 @@ In Feishu:
 
 - Always mask secrets in output.
 - Do not mention unsupported channels or provider/runtime choices.
-- If `config.env` is missing, setup comes before start.
-- Config changes are read for new conversations; restart the daemon when the
-  user needs process-level settings to reload immediately.
+- If `config.env` is missing, setup comes before other skill commands.
+- Config changes are read for new conversations.

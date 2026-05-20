@@ -2,7 +2,6 @@ import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import {
   presentSessions,
-  presentSessionSwitched,
   presentSessionDetail,
   presentNoSessions,
 } from '../messages/presenter.js';
@@ -13,21 +12,172 @@ import {
 import { shortPath } from '../../core/path.js';
 import { generateSessionId } from '../../core/id.js';
 import { isSameRepoRoot } from '../../utils/repo.js';
-import {
-  FLAGS,
-  hasFlag,
-  getNonFlagArg,
-  SESSION_STALE_THRESHOLD_MS,
-} from '../../engine/constants.js';
-import { formatSize, formatSessionDate, parseSessionIndex } from '../../formatting/session-format.js';
-import { chatKey } from '../../core/key.js';
+import { FLAGS, hasFlag, getNonFlagArg } from '../../core/args.js';
+import { SESSION_STALE_THRESHOLD_MS } from '../../core/timing.js';
+import { formatSize, formatSessionDate } from '../../formatting/session-format.js';
+import { parseSessionIndex } from './session-parser.js';
+import { chatKey, chatScopeId } from '../../core/key.js';
+import { truncate } from '../../core/string.js';
+import { withInboundReplyContext } from '../../channels/reply-context.js';
+import type { TopicSessionRecord } from '../state/topic-sessions.js';
+import type { ScannedSession } from '../../providers/session-scanner.js';
 
 /** Verbose flag for session detail view */
 const VERBOSE_FLAG = { long: '--verbose', short: '-v' };
 
+type ClaudeSessionTarget = Pick<ScannedSession, 'sdkSessionId' | 'cwd' | 'preview'>;
+
+function buildTopicTitle(target: ClaudeSessionTarget): string {
+  const preview = target.preview.replace(/\s+/g, ' ').trim();
+  return truncate(preview || `Claude 会话 ${target.sdkSessionId.slice(0, 8)}`, 120);
+}
+
+function buildThreadIntro(target: ClaudeSessionTarget): string {
+  return `💬 已连接 Claude 会话 \`${target.sdkSessionId.slice(0, 8)}\` · ${shortPath(target.cwd)}\n\n请在本话题内继续发送消息。`;
+}
+
+async function sendPlain(ctx: CommandContext, text: string): Promise<void> {
+  await ctx.adapter.send(withInboundReplyContext({ chatId: ctx.msg.chatId, text }, ctx.msg) as any);
+}
+
+async function ensureTopicBinding(
+  ctx: CommandContext,
+  record: TopicSessionRecord,
+  target: ClaudeSessionTarget,
+): Promise<void> {
+  const existing = await ctx.services.store.getBinding(record.channelType, record.scopeId);
+  const source = existing ?? await ctx.services.store.getBinding(ctx.msg.channelType, ctx.scopeId);
+  await ctx.services.router.rebind(record.channelType, record.scopeId, existing?.sessionId ?? generateSessionId(), {
+    sdkSessionId: target.sdkSessionId,
+    cwd: target.cwd,
+    claudeSettingSources: existing?.claudeSettingSources ?? source?.claudeSettingSources,
+    projectName: existing?.projectName ?? source?.projectName,
+  });
+  ctx.services.workspace.pushHistory(record.channelType, record.scopeId, target.cwd);
+  ctx.helpers.updateWorkspaceBindingFromPath(record.channelType, record.scopeId, target.cwd);
+}
+
+async function notifyExistingTopic(
+  ctx: CommandContext,
+  record: TopicSessionRecord,
+  target: ClaudeSessionTarget,
+): Promise<void> {
+  const sdkShort = target.sdkSessionId.slice(0, 8);
+  const text = `▶️ 已回到 Claude 会话 \`${sdkShort}\`\n\n请在本话题内发送消息继续。`;
+  const outMsg = ctx.adapter.formatContent(record.chatId, text);
+  const replyTarget = record.lastMessageId ?? record.rootMessageId;
+  if (!replyTarget) {
+    await sendPlain(ctx, '⚠️ 已找到会话记录，但缺少话题消息锚点，请从工作台重新开启话题。');
+    return;
+  }
+  const result = await ctx.adapter.send({
+    ...outMsg,
+    threadId: record.threadId,
+    replyToMessageId: replyTarget,
+    replyInThread: true,
+  } as any);
+  ctx.services.topicSessions?.upsert({
+    ...record,
+    sdkSessionId: target.sdkSessionId,
+    cwd: target.cwd,
+    title: record.title || target.preview,
+    preview: target.preview,
+    lastMessageId: result.messageId || record.lastMessageId,
+  });
+}
+
+async function continueClaudeSession(
+  ctx: CommandContext,
+  target: ClaudeSessionTarget,
+  idxLabel?: string,
+): Promise<boolean> {
+  const topicSessions = ctx.services.topicSessions;
+  const existingTopic = topicSessions?.findBySdkSessionId(target.sdkSessionId);
+  if (existingTopic) {
+    await ensureTopicBinding(ctx, existingTopic, target);
+    await notifyExistingTopic(ctx, existingTopic, target);
+    return true;
+  }
+
+  const currentBinding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.scopeId);
+  const bindingId = currentBinding?.sessionId ?? generateSessionId();
+
+  if (ctx.msg.threadId) {
+    await ctx.services.router.rebind(ctx.msg.channelType, ctx.scopeId, bindingId, {
+      sdkSessionId: target.sdkSessionId,
+      cwd: target.cwd,
+      claudeSettingSources: currentBinding?.claudeSettingSources,
+      projectName: currentBinding?.projectName,
+    });
+    ctx.services.workspace.pushHistory(ctx.msg.channelType, ctx.scopeId, target.cwd);
+    ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, ctx.scopeId, target.cwd);
+    topicSessions?.upsert({
+      channelType: ctx.msg.channelType,
+      chatId: ctx.msg.chatId,
+      scopeId: ctx.scopeId,
+      threadId: ctx.msg.threadId,
+      rootMessageId: ctx.msg.threadRootMessageId ?? ctx.msg.replyTargetMessageId,
+      lastMessageId: ctx.msg.replyTargetMessageId ?? ctx.msg.messageId,
+      sdkSessionId: target.sdkSessionId,
+      cwd: target.cwd,
+      title: target.preview,
+      preview: target.preview,
+    });
+    await sendPlain(ctx, `✅ 已将本话题绑定到 Claude 会话 ${target.sdkSessionId.slice(0, 8)}，可以直接继续对话。`);
+    return true;
+  }
+
+  const startThreadWithTitle = (ctx.adapter as any).startThreadWithTitle;
+  const startThread = (ctx.adapter as any).startThreadFromMessage;
+  const topicTitle = buildTopicTitle(target);
+  const introText = buildThreadIntro(target);
+  if ((typeof startThreadWithTitle === 'function' || typeof startThread === 'function') && ctx.msg.messageId) {
+    const started = typeof startThreadWithTitle === 'function'
+      ? await startThreadWithTitle.call(ctx.adapter, ctx.msg.chatId, topicTitle, introText).catch(() => null)
+      : await startThread.call(ctx.adapter, ctx.msg.chatId, ctx.msg.messageId, introText).catch(() => null);
+    if (started?.threadId && started?.messageId) {
+      const scopeId = chatScopeId(ctx.msg.chatId, started.threadId);
+      await ctx.services.router.rebind(ctx.msg.channelType, scopeId, generateSessionId(), {
+        sdkSessionId: target.sdkSessionId,
+        cwd: target.cwd,
+        claudeSettingSources: currentBinding?.claudeSettingSources,
+        projectName: currentBinding?.projectName,
+      });
+      ctx.services.workspace.pushHistory(ctx.msg.channelType, scopeId, target.cwd);
+      ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, scopeId, target.cwd);
+      topicSessions?.upsert({
+        channelType: ctx.msg.channelType,
+        chatId: ctx.msg.chatId,
+        scopeId,
+        threadId: started.threadId,
+        rootMessageId: started.rootMessageId ?? started.messageId,
+        lastMessageId: started.messageId,
+        sdkSessionId: target.sdkSessionId,
+        cwd: target.cwd,
+        title: topicTitle,
+        preview: target.preview,
+      });
+      return true;
+    }
+  }
+
+  const switchedRepo = !isSameRepoRoot(currentBinding?.cwd || ctx.services.defaultWorkdir, target.cwd);
+  await ctx.services.router.rebind(ctx.msg.channelType, ctx.scopeId, generateSessionId(), {
+    sdkSessionId: target.sdkSessionId,
+    cwd: target.cwd,
+    claudeSettingSources: currentBinding?.claudeSettingSources,
+    projectName: switchedRepo ? undefined : currentBinding?.projectName,
+  });
+  ctx.services.workspace.pushHistory(ctx.msg.channelType, ctx.scopeId, target.cwd);
+  ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, ctx.scopeId, target.cwd);
+  await sendPlain(ctx, `✅ 已切换到 Claude 会话${idxLabel ? ` #${idxLabel}` : ''}：${shortPath(target.cwd)}\n${target.preview}`);
+  return true;
+}
+
 export class SessionCommand extends BaseCommand {
   readonly name = '/session';
   readonly quick = true;
+  readonly helpCategory = 'session' as const;
   readonly description = '会话管理';
   readonly helpDesc = `列出或切换 Claude Code 会话。
 无参数时列出当前工作区的会话。
@@ -60,12 +210,13 @@ export class SessionCommand extends BaseCommand {
 
   /** List available sessions */
   private async listSessions(ctx: CommandContext, showAll: boolean): Promise<boolean> {
-    const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+    const scopeId = ctx.scopeId;
+    const binding = await ctx.services.store.getBinding(ctx.msg.channelType, scopeId);
     const currentCwd = binding?.cwd || ctx.services.defaultWorkdir;
 
     const sessions = scanClaudeSessions(10, showAll ? undefined : currentCwd);
     const currentSdkId = binding?.sdkSessionId;
-    const workspaceBinding = ctx.services.workspace.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+    const workspaceBinding = ctx.services.workspace.getBinding(ctx.msg.channelType, scopeId);
 
     if (sessions.length === 0) {
       const hint = showAll ? '' : ` in ${shortPath(currentCwd)}\nUse /session -a to see all projects.`;
@@ -107,7 +258,8 @@ export class SessionCommand extends BaseCommand {
       return true;
     }
 
-    const { target, currentCwd } = result;
+    const { target } = result;
+    const existingTopic = ctx.services.topicSessions?.findBySdkSessionId(target.sdkSessionId);
 
     // Check if target sdkSession is bound to another active bridge session
     const allBindings = await ctx.services.store.listBindings();
@@ -115,7 +267,10 @@ export class SessionCommand extends BaseCommand {
       if (b.sdkSessionId === target.sdkSessionId) {
         const bChatKey = chatKey(b.channelType, b.chatId);
         const isActive = ctx.services.activeControls?.has(bChatKey) ?? false;
-        if (b.channelType === ctx.msg.channelType && b.chatId === ctx.msg.chatId) {
+        if (b.channelType === ctx.msg.channelType && b.chatId === ctx.scopeId) {
+          break;
+        }
+        if (existingTopic) {
           break;
         }
         if (isActive) {
@@ -129,28 +284,7 @@ export class SessionCommand extends BaseCommand {
       }
     }
 
-    const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
-    const switchedRepo = !isSameRepoRoot(currentCwd, target.cwd);
-    const hadActiveSession = binding
-      ? (ctx.services.sdkEngine?.hasSessionContext?.(ctx.msg.channelType, ctx.msg.chatId, binding.sessionId) ?? false)
-        || !!binding.sdkSessionId
-      : false;
-
-    const newBindingId = generateSessionId();
-    await ctx.services.router.rebind(ctx.msg.channelType, ctx.msg.chatId, newBindingId, {
-      sdkSessionId: target.sdkSessionId,
-      cwd: target.cwd,
-      claudeSettingSources: binding?.claudeSettingSources,
-      projectName: switchedRepo ? undefined : binding?.projectName,
-    });
-    ctx.services.workspace.pushHistory(ctx.msg.channelType, ctx.msg.chatId, target.cwd);
-    ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, ctx.msg.chatId, target.cwd);
-
-    const feedbackText = hadActiveSession && switchedRepo
-      ? `🧭 已保留旧工作区会话，并切换默认会话`
-      : undefined;
-    await this.send(ctx, presentSessionSwitched(ctx.msg.chatId, idx, shortPath(target.cwd), target.preview, feedbackText));
-    return true;
+    return continueClaudeSession(ctx, target, String(idx));
   }
 
   /** Show detailed session info */
@@ -181,5 +315,34 @@ export class SessionCommand extends BaseCommand {
       transcript,
     }));
     return true;
+  }
+}
+
+/** Hidden callback command: continue a Claude session by sdkSessionId. */
+export class ContinueSessionCommand extends BaseCommand {
+  readonly name = '/continue';
+  readonly quick = true;
+  readonly helpCategory = 'session' as const;
+  readonly description = undefined;
+
+  async execute(ctx: CommandContext): Promise<boolean> {
+    const sdkSessionId = ctx.parts[1]?.trim();
+    if (!sdkSessionId) {
+      await sendPlain(ctx, '⚠️ 用法: /continue <sdkSessionId>');
+      return true;
+    }
+
+    const target = scanClaudeSessions(50, undefined).find(s => s.sdkSessionId === sdkSessionId);
+    const topic = ctx.services.topicSessions?.findBySdkSessionId(sdkSessionId);
+    if (!target && !topic) {
+      await sendPlain(ctx, '⚠️ 未找到该 Claude 会话，可能已被清理。');
+      return true;
+    }
+
+    return continueClaudeSession(ctx, target ?? {
+      sdkSessionId,
+      cwd: topic?.cwd || ctx.services.defaultWorkdir,
+      preview: topic?.preview || topic?.title || 'Claude 会话',
+    });
   }
 }

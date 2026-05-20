@@ -11,6 +11,7 @@ import {
   presentUpgradeCommand,
 } from '../../engine/messages/presenter.js';
 import { FeishuFormatter } from '../../channels/feishu/formatter.js';
+import { HELP_CATEGORIES } from '../../engine/commands/help-categories.js';
 
 describe('command presenter', () => {
   const feishuFormatter = new FeishuFormatter('zh');
@@ -87,8 +88,8 @@ describe('command presenter', () => {
     it('returns semantic message data', () => {
       const msg = presentHelp('chat-1', {
         commands: [
-          { cmd: 'new', desc: 'New conversation' },
-          { cmd: 'status', desc: 'Show status' },
+          { cmd: 'new', desc: 'New conversation', category: HELP_CATEGORIES.session },
+          { cmd: 'status', desc: 'Show status', category: HELP_CATEGORIES.status },
         ],
       });
       expect(msg.type).toBe('help');
@@ -99,7 +100,7 @@ describe('command presenter', () => {
 
     it('formats for Feishu with buttons', () => {
       const msg = presentHelp('chat-1', {
-        commands: [{ cmd: 'new', desc: 'New conversation' }],
+        commands: [{ cmd: 'new', desc: 'New conversation', category: HELP_CATEGORIES.session }],
       });
       const formatted = feishuFormatter.format(msg);
       expect(formatted.feishuHeader?.template).toBe('blue');

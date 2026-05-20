@@ -6,6 +6,7 @@ import { truncate } from '../../core/string.js';
 import { buildProgressData } from './progress-builder.js';
 import type { Button } from '../../ui/types.js';
 import { t } from '../../i18n/index.js';
+import { withInboundReplyContext } from '../../channels/reply-context.js';
 
 /** Pass buttons through unchanged */
 function castButtons(buttons?: Button[]): Button[] | undefined {
@@ -61,10 +62,11 @@ export class QueryExecutionPresenter {
             completedTraceOnly: true,
           },
         });
+        const traceOutMsg = withInboundReplyContext(traceMsg, this.inbound);
         if (isEdit) {
-          await this.adapter.editMessage(this.inbound.chatId, this.getMessageId()!, traceMsg);
+          await this.adapter.editMessage(this.inbound.chatId, this.getMessageId()!, traceOutMsg);
         } else {
-          const traceResult = await this.adapter.send(traceMsg);
+          const traceResult = await this.adapter.send(traceOutMsg);
           this.clearTyping();
           void traceResult;
         }
@@ -74,7 +76,7 @@ export class QueryExecutionPresenter {
           chatId: this.inbound.chatId,
           data: this.buildTaskSummary(state),
         });
-        await this.adapter.send(summaryMsg);
+        await this.adapter.send(withInboundReplyContext(summaryMsg, this.inbound));
         return;
       }
 
@@ -82,6 +84,7 @@ export class QueryExecutionPresenter {
     } else {
       outMsg = this.adapter.formatContent(this.inbound.chatId, content, castButtons(buttons));
     }
+    outMsg = withInboundReplyContext(outMsg, this.inbound);
 
     if (!isEdit) {
       const result = await this.adapter.send(outMsg);
@@ -94,10 +97,13 @@ export class QueryExecutionPresenter {
       await this.adapter.editMessage(
         this.inbound.chatId,
         this.getMessageId()!,
-        this.adapter.formatContent(this.inbound.chatId, chunks[0]),
+        withInboundReplyContext(this.adapter.formatContent(this.inbound.chatId, chunks[0]), this.inbound),
       );
       for (let i = 1; i < chunks.length; i++) {
-        await this.adapter.send(this.adapter.formatContent(this.inbound.chatId, chunks[i]));
+        await this.adapter.send(withInboundReplyContext(
+          this.adapter.formatContent(this.inbound.chatId, chunks[i]),
+          this.inbound,
+        ));
       }
       return;
     }

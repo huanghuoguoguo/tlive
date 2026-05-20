@@ -9,7 +9,9 @@ import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { InteractionState } from '../state/interaction-state.js';
 import { truncate } from '../../core/string.js';
 import { generateId } from '../../core/id.js';
-import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../../engine/constants.js';
+import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../../core/timing.js';
+import { messageScopeId } from '../../core/key.js';
+import { withInboundReplyContext } from '../../channels/reply-context.js';
 
 /** Known deferred tools that need interactive input */
 export const DEFERRED_TOOLS = ['EnterPlanMode', 'EnterWorktree'] as const;
@@ -87,7 +89,7 @@ export class SDKDeferredToolHandler {
     };
 
     // Track pending deferred tool state (only in InteractionState, not PermissionCoordinator)
-    interactionState.beginDeferredTool(permId, toolName, msg.chatId);
+    interactionState.beginDeferredTool(permId, toolName, messageScopeId(msg));
 
     const abortCleanup = () => this.cleanup(permId, 'Cancelled');
 
@@ -117,7 +119,7 @@ export class SDKDeferredToolHandler {
       },
     });
 
-    const sendResult = await adapter.send(outMsg);
+    const sendResult = await adapter.send(withInboundReplyContext(outMsg, msg));
     permissions.trackPermissionMessage(sendResult.messageId, permId, binding.sessionId, msg.channelType);
 
     const result = await waitPromise;

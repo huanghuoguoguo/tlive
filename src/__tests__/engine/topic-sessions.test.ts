@@ -1,0 +1,82 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { TopicSessionManager } from '../../engine/state/topic-sessions.js';
+
+describe('TopicSessionManager', () => {
+  let tmpDir: string | undefined;
+
+  afterEach(() => {
+    if (tmpDir) {
+      rmSync(tmpDir, { recursive: true, force: true });
+      tmpDir = undefined;
+    }
+  });
+
+  function createManager(): TopicSessionManager {
+    tmpDir = mkdtempSync(join(tmpdir(), 'tlive-topic-sessions-'));
+    return new TopicSessionManager(tmpDir);
+  }
+
+  it('persists and restores topic sessions', () => {
+    const manager = createManager();
+    manager.upsert({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      scopeId: 'chat-1#thread:thread-1',
+      threadId: 'thread-1',
+      rootMessageId: 'msg-root',
+      lastMessageId: 'msg-last',
+      sdkSessionId: 'sdk-1',
+      cwd: '/repo',
+      title: 'Build feature',
+      preview: 'Build feature',
+    });
+
+    const restored = new TopicSessionManager(tmpDir);
+    expect(restored.findBySdkSessionId('sdk-1')).toMatchObject({
+      scopeId: 'chat-1#thread:thread-1',
+      lastMessageId: 'msg-last',
+      cwd: '/repo',
+    });
+  });
+
+  it('keeps one topic per Claude session id', () => {
+    const manager = createManager();
+    manager.upsert({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      scopeId: 'chat-1#thread:old',
+      threadId: 'old',
+      sdkSessionId: 'sdk-1',
+    });
+    manager.upsert({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      scopeId: 'chat-1#thread:new',
+      threadId: 'new',
+      sdkSessionId: 'sdk-1',
+    });
+
+    expect(manager.findByScope('chat-1#thread:old')).toBeUndefined();
+    expect(manager.findBySdkSessionId('sdk-1')?.scopeId).toBe('chat-1#thread:new');
+    expect(manager.listRecent(10, { channelType: 'feishu', chatId: 'chat-1' })).toHaveLength(1);
+  });
+
+  it('updates the last message anchor', () => {
+    const manager = createManager();
+    manager.upsert({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      scopeId: 'chat-1#thread:thread-1',
+      threadId: 'thread-1',
+      lastMessageId: 'msg-1',
+      sdkSessionId: 'sdk-1',
+    });
+
+    manager.updateLastMessage('chat-1#thread:thread-1', 'msg-2');
+
+    expect(manager.findBySdkSessionId('sdk-1')?.lastMessageId).toBe('msg-2');
+  });
+});

@@ -6,15 +6,17 @@ import { shortPath } from '../../core/path.js';
 export class PwdCommand extends BaseCommand {
   readonly name = '/pwd';
   readonly quick = true;
+  readonly helpCategory = 'session' as const;
   readonly description = '当前目录';
   readonly helpDesc = '显示当前工作目录。如果有历史目录或工作区绑定，也会一并显示。';
   readonly helpExample = '/pwd';
 
   async execute(ctx: CommandContext): Promise<boolean> {
-    const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+    const scopeId = ctx.scopeId;
+    const binding = await ctx.services.store.getBinding(ctx.msg.channelType, scopeId);
     const current = binding?.cwd || ctx.services.defaultWorkdir;
-    const history = ctx.services.workspace.getHistory(ctx.msg.channelType, ctx.msg.chatId);
-    const workspaceBinding = ctx.services.workspace.getBinding(ctx.msg.channelType, ctx.msg.chatId);
+    const history = ctx.services.workspace.getHistory(ctx.msg.channelType, scopeId);
+    const workspaceBinding = ctx.services.workspace.getBinding(ctx.msg.channelType, scopeId);
 
     if (history.length > 1 || workspaceBinding) {
       await this.send(ctx, presentDirectoryHistory(

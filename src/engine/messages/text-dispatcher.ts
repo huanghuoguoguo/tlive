@@ -4,6 +4,8 @@ import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { SDKEngine } from '../sdk/engine.js';
 import type { SessionStateManager } from '../state/session-state.js';
 import { t, matchesLocalizedInput } from '../../i18n/index.js';
+import { messageScopeId } from '../../core/key.js';
+import { withInboundReplyContext } from '../../channels/reply-context.js';
 
 interface TextDispatcherOptions {
   permissions: PermissionCoordinator;
@@ -35,12 +37,12 @@ type HookQuestion = {
 export class TextDispatcher {
   constructor(private options: TextDispatcherOptions) {}
 
-  hasPendingSdkQuestion(_channelType: string, chatId: string): boolean {
-    return this.findPendingSdkQuestion(chatId) !== null;
+  hasPendingSdkQuestion(msg: InboundMessage): boolean {
+    return this.findPendingSdkQuestion(messageScopeId(msg)) !== null;
   }
 
-  hasPendingDeferredTool(_channelType: string, chatId: string): boolean {
-    return this.findPendingDeferredTool(chatId) !== null;
+  hasPendingDeferredTool(msg: InboundMessage): boolean {
+    return this.findPendingDeferredTool(messageScopeId(msg)) !== null;
   }
 
   async handle(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
@@ -58,7 +60,7 @@ export class TextDispatcher {
 
     // Hook reply feature removed with Go Core
     if ((msg.text || msg.attachments?.length) && msg.replyToMessageId && this.options.permissions.isHookMessage(msg.replyToMessageId)) {
-      await adapter.send({ chatId: msg.chatId, text: '⚠️ Hook reply feature no longer available' });
+      await adapter.send(withInboundReplyContext({ chatId: msg.chatId, text: '⚠️ Hook reply feature no longer available' }, msg));
       return true;
     }
 
@@ -78,7 +80,7 @@ export class TextDispatcher {
   }
 
   private async handleDeferredToolInput(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
-    const pendingDeferred = this.findPendingDeferredTool(msg.chatId);
+    const pendingDeferred = this.findPendingDeferredTool(messageScopeId(msg));
     if (!pendingDeferred) {
       return false;
     }
@@ -88,14 +90,17 @@ export class TextDispatcher {
     if (matchesLocalizedInput(trimmed, 'input.skip')) {
       this.options.permissions.getGateway().resolve(pendingDeferred.permId, 'deny', 'Skipped');
       this.options.sdkEngine.getInteractionState().cleanupDeferredTool(pendingDeferred.permId);
-      await adapter.send({ chatId: msg.chatId, text: t(locale, 'input.skipped') });
+      await adapter.send(withInboundReplyContext({ chatId: msg.chatId, text: t(locale, 'input.skipped') }, msg));
       return true;
     }
 
     // Store user input and resolve permission
     this.options.sdkEngine.getInteractionState().setDeferredToolInput(pendingDeferred.permId, trimmed);
     this.options.permissions.getGateway().resolve(pendingDeferred.permId, 'allow');
-    await adapter.send({ chatId: msg.chatId, text: `${t(locale, 'input.submitted')} ${trimmed.slice(0, 50)}${trimmed.length > 50 ? '...' : ''}` });
+    await adapter.send(withInboundReplyContext({
+      chatId: msg.chatId,
+      text: `${t(locale, 'input.submitted')} ${trimmed.slice(0, 50)}${trimmed.length > 50 ? '...' : ''}`,
+    }, msg));
     return true;
   }
 
@@ -105,7 +110,7 @@ export class TextDispatcher {
       return false;
     }
 
-    const chatKey = this.options.state.stateKey(msg.channelType, msg.chatId);
+    const chatKey = this.options.state.stateKey(msg.channelType, messageScopeId(msg));
     if (this.options.permissions.tryResolveByText(chatKey, decision)) {
       const emoji = adapter.getPermissionDecisionReaction(decision);
       adapter.addReaction(msg.chatId, msg.messageId, emoji).catch(() => {});
@@ -114,7 +119,7 @@ export class TextDispatcher {
 
     if (this.options.permissions.pendingPermissionCount() > 1 && !msg.replyToMessageId) {
       const hint = t(adapter.getLocale(), 'dispatcher.multiPermHint');
-      await adapter.send({ chatId: msg.chatId, text: hint });
+      await adapter.send(withInboundReplyContext({ chatId: msg.chatId, text: hint }, msg));
       return true;
     }
 
@@ -131,9 +136,12 @@ export class TextDispatcher {
         : decision === 'allow_always'
           ? t(adapter.getLocale(), 'input.hookAlwaysAllowed')
           : t(adapter.getLocale(), 'input.hookAllowed');
-      await adapter.send({ chatId: msg.chatId, text: label });
+      await adapter.send(withInboundReplyContext({ chatId: msg.chatId, text: label }, msg));
     } catch (err) {
-      await adapter.send({ chatId: msg.chatId, text: `${t(adapter.getLocale(), 'input.hookFailed')} ${err}` });
+      await adapter.send(withInboundReplyContext({
+        chatId: msg.chatId,
+        text: `${t(adapter.getLocale(), 'input.hookFailed')} ${err}`,
+      }, msg));
     }
     return true;
   }
@@ -141,7 +149,7 @@ export class TextDispatcher {
   private async handleQuestionReply(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
     const trimmed = msg.text.trim();
     const pendingHookQuestion = this.options.permissions.getLatestPendingQuestion(adapter.channelType);
-    const pendingSdkQuestion = this.findPendingSdkQuestion(msg.chatId);
+    const pendingSdkQuestion = this.findPendingSdkQuestion(messageScopeId(msg));
 
     if (!pendingHookQuestion && !pendingSdkQuestion) {
       return false;

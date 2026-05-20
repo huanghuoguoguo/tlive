@@ -4,6 +4,7 @@ import type {
   RenderedMessage,
   SendResult,
   StreamingCardSession,
+  ThreadStartResult,
 } from './types.js';
 import type { CardResolutionData, FormattableMessage } from '../formatting/message-types.js';
 import type { MessageFormatter } from '../formatting/message-formatter.js';
@@ -34,12 +35,31 @@ export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = Ren
   /** Remove all bot reactions from a message. */
   async removeReaction(_chatId: string, _messageId: string): Promise<void> {}
 
+  /** Start a platform topic/thread from an existing user message. */
+  async startThreadFromMessage(
+    _chatId: string,
+    _messageId: string,
+    _text?: string,
+  ): Promise<ThreadStartResult | null> {
+    return null;
+  }
+
+  /** Start a platform topic/thread with a freshly posted title/root message. */
+  async startThreadWithTitle(
+    _chatId: string,
+    _title: string,
+    _text?: string,
+  ): Promise<ThreadStartResult | null> {
+    return null;
+  }
+
   /** Create a streaming card/message session when the platform supports it. */
   createStreamingSession(
     _chatId: string,
     _receiveIdType?: string,
     _replyToMessageId?: string,
     _header?: { template: string; title: string },
+    _replyInThread?: boolean,
   ): StreamingCardSession | null {
     return null;
   }

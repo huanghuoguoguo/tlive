@@ -156,6 +156,181 @@ describe('QueryOrchestrator', () => {
     expect(JSON.stringify((adapter.send as any).mock.calls[0][0])).toContain('hello');
   });
 
+  it('uses the Feishu topic scope for session routing while sending to the real chat', async () => {
+    const state = new SessionStateManager();
+    const scopeId = 'chat-1#thread:thread-1';
+    const topicBinding = { ...binding, chatId: scopeId };
+    const engine = {
+      processMessage: vi.fn().mockImplementation(async (params) => {
+        params.onTextDelta?.('topic reply');
+        await params.onQueryResult?.({
+          sessionId: 'sdk-topic',
+          isError: false,
+          usage: { inputTokens: 1, outputTokens: 1, costUsd: 0 },
+        });
+      }),
+    } as any;
+    const router = {
+      resolve: vi.fn().mockResolvedValue(topicBinding),
+      rebind: vi.fn(),
+    } as any;
+    const permissions = {
+      getGateway: vi.fn().mockReturnValue({ waitFor: vi.fn(), resolve: vi.fn() }),
+      setPendingSdkPerm: vi.fn(),
+      clearPendingSdkPerm: vi.fn(),
+      notePermissionPending: vi.fn(),
+      notePermissionResolved: vi.fn(),
+      clearPendingPermissionSnapshot: vi.fn(),
+      isToolAllowed: vi.fn().mockReturnValue(false),
+      rememberSessionAllowance: vi.fn(),
+      storeQuestionData: vi.fn(),
+      trackPermissionMessage: vi.fn(),
+    } as any;
+    const sdkEngine = {
+      getInteractionState: vi.fn().mockReturnValue({
+        beginSdkQuestion: vi.fn(),
+        cleanupSdkQuestion: vi.fn(),
+        consumeSdkQuestionAnswer: vi.fn().mockReturnValue({}),
+      }),
+      setControlsForChat: vi.fn(),
+      setActiveMessageId: vi.fn(),
+      getOrCreateSession: vi.fn().mockReturnValue(undefined),
+    } as any;
+    const adapter = createAdapter();
+
+    const orchestrator = new QueryOrchestrator({
+      engine,
+      llm: {} as any,
+      router,
+      state,
+      permissions,
+      sdkEngine,
+      store: mockStore,
+      defaultWorkdir: '/tmp/project',
+      defaultClaudeSettingSources: ['user', 'project', 'local'],
+      port: 8080,
+    });
+
+    await orchestrator.run(adapter, {
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      scopeId,
+      threadId: 'thread-1',
+      replyInThread: true,
+      replyTargetMessageId: 'msg-topic-1',
+      userId: 'user-1',
+      text: 'hello topic',
+      messageId: 'msg-1',
+    });
+
+    expect(mockStore.getBinding).toHaveBeenCalledWith('feishu', scopeId);
+    expect(sdkEngine.getOrCreateSession).toHaveBeenCalledWith(
+      expect.anything(),
+      'feishu',
+      scopeId,
+      topicBinding.sessionId,
+      '/tmp/project',
+      expect.any(Object),
+    );
+    expect((adapter.send as any).mock.calls[0][0]).toMatchObject({
+      chatId: 'chat-1',
+      replyToMessageId: 'msg-topic-1',
+      replyInThread: true,
+    });
+  });
+
+  it('auto-starts a Feishu topic for main-chat queries', async () => {
+    const state = new SessionStateManager();
+    const scopeId = 'chat-1#thread:thread-auto';
+    const topicBinding = { ...binding, chatId: scopeId };
+    mockStore.getBinding.mockImplementation(async (_channelType: string, chatId: string) =>
+      chatId === scopeId ? null : binding
+    );
+
+    const engine = {
+      processMessage: vi.fn().mockImplementation(async (params) => {
+        params.onTextDelta?.('auto topic reply');
+        await params.onQueryResult?.({
+          sessionId: 'sdk-topic',
+          isError: false,
+          usage: { inputTokens: 1, outputTokens: 1, costUsd: 0 },
+        });
+      }),
+    } as any;
+    const router = {
+      resolve: vi.fn().mockResolvedValue(topicBinding),
+      rebind: vi.fn(),
+    } as any;
+    const permissions = {
+      getGateway: vi.fn().mockReturnValue({ waitFor: vi.fn(), resolve: vi.fn() }),
+      setPendingSdkPerm: vi.fn(),
+      clearPendingSdkPerm: vi.fn(),
+      notePermissionPending: vi.fn(),
+      notePermissionResolved: vi.fn(),
+      clearPendingPermissionSnapshot: vi.fn(),
+      isToolAllowed: vi.fn().mockReturnValue(false),
+      rememberSessionAllowance: vi.fn(),
+      storeQuestionData: vi.fn(),
+      trackPermissionMessage: vi.fn(),
+    } as any;
+    const sdkEngine = {
+      getInteractionState: vi.fn().mockReturnValue({
+        beginSdkQuestion: vi.fn(),
+        cleanupSdkQuestion: vi.fn(),
+        consumeSdkQuestionAnswer: vi.fn().mockReturnValue({}),
+      }),
+      setControlsForChat: vi.fn(),
+      setActiveMessageId: vi.fn(),
+      getOrCreateSession: vi.fn().mockReturnValue(undefined),
+    } as any;
+    const adapter = createAdapter();
+    (adapter as any).startThreadFromMessage = vi.fn().mockResolvedValue({
+      threadId: 'thread-auto',
+      messageId: 'msg-topic-start',
+    });
+
+    const orchestrator = new QueryOrchestrator({
+      engine,
+      llm: {} as any,
+      router,
+      state,
+      permissions,
+      sdkEngine,
+      store: mockStore,
+      defaultWorkdir: '/tmp/project',
+      defaultClaudeSettingSources: ['user', 'project', 'local'],
+      port: 8080,
+    });
+
+    await orchestrator.run(adapter, {
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      text: 'start from main',
+      messageId: 'msg-main-1',
+    });
+
+    expect((adapter as any).startThreadFromMessage).toHaveBeenCalledWith(
+      'chat-1',
+      'msg-main-1',
+      expect.any(String),
+    );
+    expect(router.resolve).toHaveBeenCalledWith('feishu', scopeId);
+    expect(sdkEngine.getOrCreateSession).toHaveBeenCalledWith(
+      expect.anything(),
+      'feishu',
+      scopeId,
+      topicBinding.sessionId,
+      '/tmp/project',
+      expect.any(Object),
+    );
+    expect((adapter.send as any).mock.calls[0][0]).toMatchObject({
+      chatId: 'chat-1',
+      replyToMessageId: 'msg-topic-start',
+      replyInThread: true,
+    });
+  });
+
   it('splits Feishu completion into trace edit plus a separate result bubble', async () => {
     const state = new SessionStateManager();
     const engine = {
@@ -625,6 +800,7 @@ describe('QueryOrchestrator', () => {
   });
 
   it('uses binding setting sources instead of the default fallback', async () => {
+    mockStore.getBinding.mockResolvedValue({ ...binding, claudeSettingSources: ['user'] });
     const state = new SessionStateManager();
     const engine = {
       processMessage: vi.fn().mockImplementation(async (params) => {

@@ -1,35 +1,57 @@
 /**
- * Centralized button factories — locale-aware, using CALLBACK_PREFIXES.
+ * Centralized button factories - locale-aware, using CALLBACK_PREFIXES.
  * All UI components should use these instead of defining buttons inline.
  */
 
 import type { Button } from './types.js';
-import type { Locale } from '../i18n/index.js';
+import type { Locale, TranslationKey } from '../i18n/index.js';
 import { t } from '../i18n/index.js';
-import { CALLBACK_PREFIXES } from '../engine/constants.js';
+import { CALLBACK_PREFIXES } from '../core/callbacks.js';
+import {
+  DEFAULT_DONE_BUTTONS,
+  QUICK_BUTTONS,
+  encodeButtonAction,
+  type QuickButtonName,
+} from './button-registry.js';
+
+export { DEFAULT_DONE_BUTTONS, type QuickButtonName } from './button-registry.js';
 
 // ---------------------------------------------------------------------------
 // Internal navigation button helpers
 // ---------------------------------------------------------------------------
 
+function quickButton(
+  locale: Locale,
+  name: QuickButtonName,
+  options: Pick<Button, 'row' | 'style'> & { labelKey?: TranslationKey } = {},
+): Button {
+  const definition = QUICK_BUTTONS[name];
+  return {
+    label: t(locale, options.labelKey ?? definition.labelKey),
+    callbackData: encodeButtonAction(definition.action),
+    style: options.style ?? 'default',
+    row: options.row,
+  };
+}
+
 function navHome(locale: Locale): Button {
-  return { label: t(locale, 'perm.btnHome'), callbackData: `${CALLBACK_PREFIXES.CMD}home`, style: 'default', row: 0 };
+  return quickButton(locale, 'home', { row: 0 });
 }
 
 export function navNew(locale: Locale): Button {
-  return { label: t(locale, 'home.btnNew'), callbackData: `${CALLBACK_PREFIXES.CMD}new`, style: 'default', row: 1 };
+  return quickButton(locale, 'new', { row: 1 });
 }
 
 function navHelp(locale: Locale): Button {
-  return { label: t(locale, 'home.btnHelp'), callbackData: `${CALLBACK_PREFIXES.CMD}help`, style: 'default', row: 1 };
+  return quickButton(locale, 'help', { row: 1 });
 }
 
 function navSessionsList(locale: Locale): Button {
-  return { label: t(locale, 'sessions.btnList'), callbackData: `${CALLBACK_PREFIXES.CMD}sessions`, style: 'default', row: 0 };
+  return quickButton(locale, 'sessions', { labelKey: 'sessions.btnList', row: 0 });
 }
 
 function navSessionsRecent(locale: Locale): Button {
-  return { label: t(locale, 'home.btnSessions'), callbackData: `${CALLBACK_PREFIXES.CMD}sessions`, style: 'primary', row: 0 };
+  return quickButton(locale, 'sessions', { style: 'primary', row: 0 });
 }
 
 function navStop(locale: Locale): Button {
@@ -41,7 +63,18 @@ function navSettings(locale: Locale): Button {
 }
 
 function navPerm(locale: Locale): Button {
-  return { label: t(locale, 'home.btnPermissions'), callbackData: `${CALLBACK_PREFIXES.CMD}perm`, style: 'default', row: 0 };
+  return quickButton(locale, 'perm', { row: 0 });
+}
+
+function navQuick(locale: Locale, name: QuickButtonName, index: number): Button {
+  return quickButton(locale, name, {
+    style: index === 0 ? 'primary' : 'default',
+    row: index < 2 ? 0 : 1,
+  });
+}
+
+function quickButtons(locale: Locale, names: readonly QuickButtonName[] = DEFAULT_DONE_BUTTONS): Button[] {
+  return names.map((name, index) => navQuick(locale, name, index));
 }
 
 // ---------------------------------------------------------------------------
@@ -89,12 +122,11 @@ export function homeButtons(locale: Locale): Button[] {
   ];
 }
 
-export function progressDoneButtons(locale: Locale): Button[] {
-  return [
-    navSessionsRecent(locale),
-    { ...navNew(locale), row: 0 },
-    navHelp(locale),
-  ];
+export function progressDoneButtons(
+  locale: Locale,
+  names: readonly QuickButtonName[] = DEFAULT_DONE_BUTTONS,
+): Button[] {
+  return quickButtons(locale, names);
 }
 
 export function progressRunningButtons(locale: Locale): Button[] {
@@ -111,11 +143,11 @@ export function taskStartButtons(locale: Locale): Button[] {
   ];
 }
 
-export function taskSummaryButtons(locale: Locale): Button[] {
-  return [
-    { ...navHome(locale), style: 'primary' as const },
-    { ...navSessionsRecent(locale), style: 'default' as const },
-  ];
+export function taskSummaryButtons(
+  locale: Locale,
+  names: readonly QuickButtonName[] = DEFAULT_DONE_BUTTONS,
+): Button[] {
+  return quickButtons(locale, names);
 }
 
 export function helpButtons(locale: Locale): Button[] {

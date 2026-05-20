@@ -239,6 +239,28 @@ describe('SDKEngine', () => {
       expect(mockProvider.createSession).toHaveBeenCalledTimes(1);
     });
 
+    it('recreates an alive session when a resume session id is selected later', () => {
+      const firstSession = createMockSession(true, false);
+      const secondSession = createMockSession(true, false);
+      const provider = {
+        streamChat: vi.fn().mockReturnValue({ stream: new ReadableStream() }),
+        createSession: vi.fn()
+          .mockReturnValueOnce(firstSession)
+          .mockReturnValueOnce(secondSession),
+      } as unknown as ClaudeSDKProvider;
+
+      engine.getOrCreateSession(provider, 'feishu', 'chat-1', 'session-1', '/workdir');
+      const recreated = engine.getOrCreateSession(provider, 'feishu', 'chat-1', 'session-1', '/workdir', {
+        sessionId: 'sdk-existing',
+      });
+
+      expect(recreated).toBe(secondSession);
+      expect(firstSession.close).toHaveBeenCalled();
+      expect(provider.createSession).toHaveBeenLastCalledWith(expect.objectContaining({
+        sessionId: 'sdk-existing',
+      }));
+    });
+
     it('preserves reply routing after runtime reset and recreates the live session on demand', () => {
       const firstSession = createMockSession(true, false);
       const secondSession = createMockSession(true, false);
@@ -260,6 +282,26 @@ describe('SDKEngine', () => {
       const recreated = engine.getOrCreateSession(provider, 'feishu', 'chat-1', 'session-1', '/workdir');
       expect(recreated).toBe(secondSession);
       expect(provider.createSession).toHaveBeenCalledTimes(2);
+    });
+
+    it('moves a session from main chat scope to a topic scope', async () => {
+      const mockSession = createMockSession(true, false);
+      const provider = createMockProvider({ '/workdir': mockSession });
+
+      engine.getOrCreateSession(provider, 'feishu', 'chat-1', 'session-1', '/workdir');
+      engine.setActiveMessageId('feishu:chat-1', 'bubble-1', 'feishu:chat-1:session-1');
+      await engine.sendWithContext('feishu', 'chat-1', 'queued before move');
+
+      const newKey = engine.moveSessionToChat('feishu:chat-1:session-1', 'chat-1#thread:thread-1');
+
+      expect(newKey).toBe('feishu:chat-1#thread:thread-1:session-1');
+      expect(engine.getSessionForBubble('bubble-1')).toBe(newKey);
+      expect(engine.getActiveSessionKey('feishu', 'chat-1')).toBeUndefined();
+      expect(engine.getActiveSessionKey('feishu', 'chat-1#thread:thread-1')).toBe(newKey);
+      expect(engine.getQueueDepth('feishu:chat-1:session-1')).toBe(0);
+      expect(engine.getQueueDepth(newKey!)).toBe(1);
+      expect(engine.getSessionsForChat('feishu', 'chat-1')).toHaveLength(0);
+      expect(engine.getSessionsForChat('feishu', 'chat-1#thread:thread-1')[0].sessionKey).toBe(newKey);
     });
   });
 });

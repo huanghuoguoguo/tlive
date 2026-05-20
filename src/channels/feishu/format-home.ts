@@ -9,6 +9,7 @@ import type { HomeData } from '../../formatting/message-types.js';
 import type { Button } from '../../ui/types.js';
 import { navNew } from '../../ui/buttons.js';
 import { truncate } from '../../core/string.js';
+import { formatCompactHelp } from '../../formatting/help-format.js';
 import { downgradeHeadings, splitLargeTables } from './markdown.js';
 
 /** Unified session status label for consistent display across /status and /home */
@@ -67,8 +68,15 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
     elements: [mdPanel(panelLines.join('\n'))],
   } as FeishuCardElement);
 
-  // Current bridge session info (always show)
-  if (data.session.current) {
+  // Current context: main chat is a workbench; Feishu topics are real conversations.
+  if (data.workspace.scope !== 'topic') {
+    elements.push({
+      tag: 'collapsible_panel',
+      expanded: true,
+      header: { title: { tag: 'plain_text', content: '🧭 工作台模式' } },
+      elements: [mdPanel(`主会话只作为控制面。选择下方 Claude 会话会在话题内继续。\n**默认目录** \`${data.workspace.cwd}\``)],
+    } as FeishuCardElement);
+  } else if (data.session.current) {
     const sessionInfo = data.session.current;
     const sdkInfo = sessionInfo.sdkSessionId
       ? `\n**${t(locale, 'home.labelSdkSession')}** \`${sessionInfo.sdkSessionId.slice(0, 8)}…\``
@@ -79,44 +87,38 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
     elements.push({
       tag: 'collapsible_panel',
       expanded: sessionInfo.isActive,
-      header: { title: { tag: 'plain_text', content: `📍 ${t(locale, 'home.labelCurrentSession')} ${sessionInfo.isActive ? '⏳' : '✅'}` } },
+      header: { title: { tag: 'plain_text', content: `💬 当前话题 ${sessionInfo.isActive ? '⏳' : '✅'}` } },
       elements: [mdPanel(`**${t(locale, 'home.labelDirectory')}** \`${sessionInfo.cwd}\`${sdkInfo}${queueInfo}\n**${t(locale, 'home.labelPermission')}** ${data.permission.mode === 'on' ? '🔐 ' + t(locale, 'perm.labelModeOn') : '⚡ ' + t(locale, 'perm.labelModeOff')}`)],
     } as FeishuCardElement);
   }
 
-  // Active sessions (in-memory managed sessions for this chat)
-  if (data.session.managed && data.session.managed.length > 1) {
-    const bsessionElements: FeishuCardElement[] = [];
-    for (const s of data.session.managed) {
-      const { icon: statusIcon, text: statusText } = sessionStatusLabel(locale, s.isTurnActive, s.isAlive);
-      const status = `${statusIcon} ${statusText}`;
-      const currentMark = s.isCurrent ? ' ◀' : '';
-      const queueText = s.queueDepth > 0 ? ` · ${t(locale, 'home.labelQueue')} ${s.queueDepth}` : '';
-      const sdkShort = s.sdkSessionId ? s.sdkSessionId.slice(0, 8) : '-';
-      const headerText = `${status} \`${sdkShort}\` ${truncate(s.workdir, 20)}${queueText}${currentMark}`;
-
+  // Recent topic-backed conversations.
+  if (data.session.topics?.length) {
+    const topicElements: FeishuCardElement[] = [];
+    for (const topic of data.session.topics) {
+      const status = topic.isActive ? '⏳ 执行中' : '✅ 可继续';
+      const currentMark = topic.isCurrent ? ' ◀' : '';
+      const sdkShort = topic.sdkSessionId ? topic.sdkSessionId.slice(0, 8) : '-';
       const panelContent: FeishuCardElement[] = [
-        md(`**${t(locale, 'home.labelDirectory')}** \`${s.workdir}\`\n**SDK** \`${sdkShort}\`\n**${t(locale, 'home.labelStatus')}** ${status}${queueText}`),
+        md(`**${t(locale, 'home.labelDirectory')}** \`${topic.cwd}\`\n**Claude** \`${sdkShort}\`\n**最近** ${topic.updatedAt}\n\n${truncate(topic.preview, 160)}`),
       ];
-
-      if (!s.isCurrent) {
+      if (topic.sdkSessionId) {
         panelContent.push(...buildButtons([
-          { label: `${t(locale, 'home.labelSwitch')} ▶️`, callbackData: `cmd:rebind ${s.bindingSessionId}`, style: 'default', row: 0 },
+          { label: topic.isCurrent ? '当前话题' : '继续', callbackData: `cmd:continue ${topic.sdkSessionId}`, style: topic.isCurrent ? 'default' : 'primary', row: 0 },
         ]));
       }
-
-      bsessionElements.push({
+      topicElements.push({
         tag: 'collapsible_panel',
         expanded: false,
-        header: { title: { tag: 'plain_text', content: headerText } },
+        header: { title: { tag: 'plain_text', content: `${status} · ${truncate(topic.title, 28)}${currentMark}` } },
         elements: panelContent,
       } as FeishuCardElement);
     }
     elements.push({
       tag: 'collapsible_panel',
       expanded: true,
-      header: { title: { tag: 'plain_text', content: `🔄 ${t(locale, 'home.activeSessions')} (${data.session.managed.length})` } },
-      elements: bsessionElements,
+      header: { title: { tag: 'plain_text', content: `💬 最近对话 (${data.session.topics.length})` } },
+      elements: topicElements,
     } as FeishuCardElement);
   }
 
@@ -127,7 +129,7 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
       elements.push({
         tag: 'collapsible_panel',
         expanded: false,
-        header: { title: { tag: 'plain_text', content: `📋 ${t(locale, 'home.labelHistory')} (${data.workspace.cwd})` } },
+        header: { title: { tag: 'plain_text', content: `📋 Claude 历史 (${data.workspace.cwd})` } },
         elements: recentElements,
       } as FeishuCardElement);
     }
@@ -140,7 +142,7 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
       elements.push({
         tag: 'collapsible_panel',
         expanded: false,
-        header: { title: { tag: 'plain_text', content: `📋 ${t(locale, 'home.labelGlobal')}` } },
+        header: { title: { tag: 'plain_text', content: '📚 全部 Claude 历史' } },
         elements: allElements,
       } as FeishuCardElement);
     }
@@ -148,14 +150,11 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
 
   // Help as collapsible
   if (data.help?.entries?.length) {
-    const helpText = data.help.entries
-      .map(e => `/${e.cmd} — ${e.desc}`)
-      .join('\n');
     elements.push({
       tag: 'collapsible_panel',
       expanded: false,
       header: { title: { tag: 'plain_text', content: t(locale, 'home.btnHelp') } },
-      elements: [mdPanel(helpText)],
+      elements: [mdPanel(formatCompactHelp(data.help.entries))],
     } as FeishuCardElement);
   }
 
@@ -199,6 +198,8 @@ function buildRecentSessionPanels(
 
     const boundMarker = s.boundToActiveSession
       ? ` 🔒 (${s.boundToActiveSession.chatId.slice(-4)})`
+      : s.topic
+        ? ' 💬'
       : '';
     const headerText = `${s.index}. ${s.date} · ${truncate(s.preview, 30)}${boundMarker}`;
     const transcriptLines = s.transcript?.map(t => {
@@ -214,7 +215,12 @@ function buildRecentSessionPanels(
       panelContent.push(md(`⚠️ ${t(locale, 'home.labelActiveIn')} ${s.boundToActiveSession.chatId.slice(-4)}`));
     } else {
       panelContent.push(...buildButtons([
-        { label: `▶️`, callbackData: `cmd:session ${s.index}`, style: 'default', row: 0 },
+        {
+          label: '继续',
+          callbackData: s.sdkSessionId ? `cmd:continue ${s.sdkSessionId}` : `cmd:session ${s.index}`,
+          style: s.topic ? 'primary' : 'default',
+          row: 0,
+        },
       ]));
     }
 
@@ -240,6 +246,8 @@ function buildAllSessionPanels(
 
     const boundMarker = s.boundToActiveSession
       ? ` 🔒 (${s.boundToActiveSession.chatId.slice(-4)})`
+      : s.topic
+        ? ' 💬'
       : '';
     const headerText = `${s.index}. ${truncate(s.cwd, 20)} · ${truncate(s.preview, 20)}${boundMarker}`;
     const transcriptLines = s.transcript?.map(t => {
@@ -255,7 +263,12 @@ function buildAllSessionPanels(
       panelContent.push(md(`⚠️ ${t(locale, 'home.labelActiveIn')} ${s.boundToActiveSession.chatId.slice(-4)}`));
     } else {
       panelContent.push(...buildButtons([
-        { label: `▶️`, callbackData: `cmd:session ${s.index} --all`, style: 'default', row: 0 },
+        {
+          label: '继续',
+          callbackData: s.sdkSessionId ? `cmd:continue ${s.sdkSessionId}` : `cmd:session ${s.index} --all`,
+          style: s.topic ? 'primary' : 'default',
+          row: 0,
+        },
       ]));
     }
 

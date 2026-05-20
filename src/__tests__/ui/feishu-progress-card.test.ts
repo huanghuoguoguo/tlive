@@ -42,6 +42,27 @@ function findByTag(elements: any[], tag: string): any[] {
   return elements.filter(e => e.tag === tag);
 }
 
+function findButtons(elements: any[]): any[] {
+  const buttons: any[] = [];
+  const visit = (item: any) => {
+    if (!item) return;
+    if (Array.isArray(item)) {
+      item.forEach(visit);
+      return;
+    }
+    if (item.tag === 'button') buttons.push(item);
+    if (item.elements) visit(item.elements);
+    if (item.columns) visit(item.columns);
+  };
+  visit(elements);
+  return buttons;
+}
+
+function findFooterPanel(elements: any[], footerText: string): any | undefined {
+  return findByTag(elements, 'collapsible_panel')
+    .find(panel => panel.header?.title?.content?.includes(footerText));
+}
+
 describe('FeishuFormatter.formatQuestion', () => {
   const formatter = new FeishuFormatter('zh');
 
@@ -300,8 +321,11 @@ describe('FeishuFormatter.formatProgress', () => {
 
       // Should contain the response text
       expect(allText).toContain('Hello! How can I help?');
-      // Should contain footer (now in renderedText, not added separately)
-      expect(allText).toContain('~/workspace');
+      // Footer is rendered as a collapsed panel title, with the home button inside.
+      const footerPanel = findFooterPanel(elements, '~/workspace');
+      expect(footerPanel).toBeDefined();
+      expect(footerPanel.expanded).toBe(false);
+      expect(findButtons([footerPanel]).map(b => b.behaviors?.[0]?.value?.action)).toEqual(['cmd:home']);
       // Should NOT contain verbose status fields
       expect(allText).not.toContain('**任务**');
       expect(allText).not.toContain('**当前阶段**');
@@ -319,6 +343,25 @@ describe('FeishuFormatter.formatProgress', () => {
       const msg = formatter.formatProgress('chat1', createProgressData({ phase: 'failed' }));
       const header = getHeader(msg);
       expect(header.template).toBe('red');
+    });
+
+    it('defaults completed action buttons to workbench only', () => {
+      const msg = formatter.formatProgress('chat1', createProgressData({ phase: 'completed' }));
+      const buttons = findButtons(getElements(msg));
+      const actions = buttons.map(b => b.behaviors?.[0]?.value?.action).filter(Boolean);
+
+      expect(actions).toEqual(['cmd:home']);
+    });
+
+    it('uses configured completed action buttons', () => {
+      const customFormatter = new FeishuFormatter('zh', {
+        doneButtons: ['home', 'sessions', 'new', 'help'],
+      });
+      const msg = customFormatter.formatProgress('chat1', createProgressData({ phase: 'completed' }));
+      const buttons = findButtons(getElements(msg));
+      const actions = buttons.map(b => b.behaviors?.[0]?.value?.action).filter(Boolean);
+
+      expect(actions).toEqual(['cmd:home', 'cmd:sessions', 'cmd:new', 'cmd:help']);
     });
   });
 
@@ -424,22 +467,27 @@ describe('FeishuFormatter.formatProgress', () => {
 
       const elements = getElements(msg);
       const panels = findByTag(elements, 'collapsible_panel');
-      expect(panels).toHaveLength(2);
+      const operationPanels = panels.filter(panel => !panel.header?.title?.content?.includes('[glm-5]'));
+      expect(operationPanels).toHaveLength(2);
 
-      const firstPanel = panels[0];
+      const firstPanel = operationPanels[0];
       expect(firstPanel.header.title.content).toContain('用户想查看磁盘使用情况');
       expect(firstPanel.header.title.content).toContain('Bash×1');
       expect(firstPanel.elements[0].content).toContain('用户想查看磁盘使用情况。');
       expect(firstPanel.elements[0].content).toContain('Filesystem');
 
-      const secondPanel = panels[1];
+      const secondPanel = operationPanels[1];
       expect(secondPanel.header.title.content).toContain('显示磁盘使用情况表格');
       expect(secondPanel.elements[0].content).toContain('显示磁盘使用情况表格。');
+
+      const footerPanel = findFooterPanel(elements, '[glm-5]');
+      expect(footerPanel).toBeDefined();
+      expect(findButtons([footerPanel]).map(b => b.behaviors?.[0]?.value?.action)).toEqual(['cmd:home']);
 
       const markdowns = findByTag(elements, 'markdown').map(e => e.content).join('\n');
       expect(markdowns).toContain('Final answer');
       expect(markdowns).not.toContain('🖥️ Bash ×2 (2 total)');
-      expect(markdowns).toContain('~/workspace/tlive');
+      expect(markdowns).not.toContain('~/workspace/tlive');
     });
 
     it('thinking panel uses elements array (not body.elements)', () => {
@@ -538,7 +586,9 @@ describe('FeishuFormatter.formatProgress', () => {
       const markdowns = findByTag(elements, 'markdown').map(e => e.content).join('\n');
       expect(markdowns).not.toContain('Final answer');
       expect(markdowns).not.toContain('~/workspace/tlive');
-      expect(findByTag(elements, 'collapsible_panel')).toHaveLength(1);
+      const panels = findByTag(elements, 'collapsible_panel');
+      expect(panels.filter(panel => !panel.header?.title?.content?.includes('[glm-5]'))).toHaveLength(1);
+      expect(findFooterPanel(elements, '[glm-5]')).toBeDefined();
     });
   });
 

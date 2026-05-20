@@ -1,6 +1,6 @@
 import { Client, WSClient, EventDispatcher } from '@larksuiteoapi/node-sdk';
 import { BaseChannelAdapter } from '../base.js';
-import type { InboundMessage, SendResult, FileAttachment } from '../types.js';
+import type { InboundMessage, SendResult, FileAttachment, ThreadStartResult } from '../types.js';
 import type { BridgeError } from '../errors.js';
 import { RateLimitError, AuthError } from '../errors.js';
 import { checkNetworkError } from '../shared/index.js';
@@ -13,6 +13,8 @@ import type { Readable } from 'node:stream';
 import type { FeishuRenderedMessage } from './types.js';
 import type { FeishuCardElement } from './card-builder.js';
 import { t } from '../../i18n/index.js';
+import type { QuickButtonName } from '../../ui/buttons.js';
+import { chatScopeId } from '../../core/key.js';
 
 /**
  * Read a Feishu SDK response into a Buffer.
@@ -81,7 +83,7 @@ async function readFeishuBuffer(resp: unknown): Promise<Buffer | null> {
 interface FeishuCreateMessageResult {
   code?: number;
   msg?: string;
-  data?: { message_id?: string };
+  data?: { message_id?: string; thread_id?: string };
 }
 
 export interface FeishuConfig {
@@ -93,6 +95,11 @@ export interface FeishuConfig {
   allowedUsers: string[];
 }
 
+export interface FeishuAdapterOptions {
+  doneButtons?: readonly QuickButtonName[];
+  autoPinTopics?: boolean;
+}
+
 const FEISHU_MENU_EVENT_TO_COMMAND: Record<string, string> = {
   tlive_home: '/home',
   tlive_recent_sessions: '/sessions --all',
@@ -102,18 +109,37 @@ const FEISHU_MENU_EVENT_TO_COMMAND: Record<string, string> = {
 };
 const FEISHU_PROGRESS_SPLIT_BYTES = 27 * 1024;
 
+function isMissingReplyTarget(err: unknown): boolean {
+  const code = (err as any)?.code;
+  return code === 230011 || code === 231003;
+}
+
+function isThreadReplyUnsupported(err: unknown): boolean {
+  return (err as any)?.code === 230071;
+}
+
+function feishuInboundScope(chatId: string, threadId?: string): string | undefined {
+  return threadId ? chatScopeId(chatId, threadId) : undefined;
+}
+
+function feishuReplyTarget(messageId: string, rootId?: string, parentId?: string, threadId?: string): string | undefined {
+  return threadId ? messageId : (parentId || rootId || undefined);
+}
+
 export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
   readonly channelType = 'feishu' as const;
   private client: Client | null = null;
   private wsClient: WSClient | null = null;
   private config: FeishuConfig;
   private messageQueue: InboundMessage[] = [];
+  private autoPinTopics: boolean;
 
-  constructor(config: FeishuConfig) {
+  constructor(config: FeishuConfig, options: FeishuAdapterOptions = {}) {
     super();
     this.config = config;
+    this.autoPinTopics = options.autoPinTopics ?? false;
     // Set platform-specific formatter and policy (Chinese locale for Feishu)
-    this.formatter = new FeishuFormatter('zh');
+    this.formatter = new FeishuFormatter('zh', { doneButtons: options.doneButtons });
     this.setPolicy(FEISHU_POLICY);
   }
 
@@ -129,7 +155,7 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
     });
 
     eventDispatcher.register({
-      'im.message.receive_v1': async (event: { sender?: { sender_id?: { user_id?: string; open_id?: string; union_id?: string } }; message?: { message_type?: string; content: string; chat_id: string; message_id: string; parent_id?: string; root_id?: string } }) => {
+      'im.message.receive_v1': async (event: { sender?: { sender_id?: { user_id?: string; open_id?: string; union_id?: string } }; message?: { message_type?: string; content: string; chat_id: string; message_id: string; parent_id?: string; root_id?: string; thread_id?: string } }) => {
         const msg = event?.message;
         if (!msg) return;
 
@@ -137,6 +163,10 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
         // Use user_id as primary identifier; store open_id as fallback for auth matching
         const userId = senderId?.user_id || senderId?.open_id || '';
         const attachments: FileAttachment[] = [];
+        const threadId = msg.thread_id || undefined;
+        const replyToMessageId = threadId ? undefined : feishuReplyTarget(msg.message_id, msg.root_id, msg.parent_id, threadId);
+        const replyTargetMessageId = threadId ? msg.message_id : undefined;
+        const scopeId = feishuInboundScope(msg.chat_id, threadId);
 
         if (msg.message_type === 'text') {
           let text = '';
@@ -152,11 +182,17 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
           this.messageQueue.push({
             channelType: 'feishu',
             chatId: msg.chat_id,
+            scopeId,
+            threadId,
+            threadRootMessageId: msg.root_id,
+            threadParentMessageId: msg.parent_id,
+            replyInThread: !!threadId,
             userId,
 
             text,
             messageId: msg.message_id,
-            replyToMessageId: msg.parent_id || msg.root_id || undefined,
+            replyTargetMessageId,
+            replyToMessageId,
           });
         } else if (msg.message_type === 'image') {
           try {
@@ -186,11 +222,17 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
             this.messageQueue.push({
               channelType: 'feishu',
               chatId: msg.chat_id,
+              scopeId,
+              threadId,
+              threadRootMessageId: msg.root_id,
+              threadParentMessageId: msg.parent_id,
+              replyInThread: !!threadId,
               userId,
 
               text: '',
               messageId: msg.message_id,
-              replyToMessageId: msg.parent_id || msg.root_id || undefined,
+              replyTargetMessageId,
+              replyToMessageId,
               attachments,
             });
           }
@@ -220,11 +262,17 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
             this.messageQueue.push({
               channelType: 'feishu',
               chatId: msg.chat_id,
+              scopeId,
+              threadId,
+              threadRootMessageId: msg.root_id,
+              threadParentMessageId: msg.parent_id,
+              replyInThread: !!threadId,
               userId,
 
               text: '',
               messageId: msg.message_id,
-              replyToMessageId: msg.parent_id || msg.root_id || undefined,
+              replyTargetMessageId,
+              replyToMessageId,
               attachments,
             });
           }
@@ -239,7 +287,7 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
         const event = data as {
           operator?: { user_id?: string; open_id?: string };
           action?: { value?: Record<string, string>; form_value?: Record<string, string> };
-          context?: { chat_id?: string; open_chat_id?: string; open_message_id?: string };
+          context?: { chat_id?: string; open_chat_id?: string; open_message_id?: string; thread_id?: string };
         };
 
         // Check for form submission (form_value present)
@@ -250,16 +298,21 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
           const userId = event?.operator?.user_id || event?.operator?.open_id || '';
           const chatId = event?.context?.chat_id || event?.context?.open_chat_id || '';
           const messageId = event?.context?.open_message_id || '';
+          const threadId = event?.context?.thread_id || undefined;
 
           console.log('[feishu] Form submission:', interactionId, JSON.stringify(formValue));
 
           this.messageQueue.push({
             channelType: 'feishu',
             chatId,
+            scopeId: feishuInboundScope(chatId, threadId),
+            threadId,
+            replyInThread: !!threadId,
             userId,
             text: '',
             callbackData: `form:${interactionId}:${JSON.stringify(formValue)}`,
             messageId,
+            replyTargetMessageId: threadId ? messageId : undefined,
           });
           return {
             toast: {
@@ -278,13 +331,18 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
         const userId = event?.operator?.user_id || event?.operator?.open_id || '';
         const chatId = event?.context?.chat_id || event?.context?.open_chat_id || '';
         const messageId = event?.context?.open_message_id || '';
+        const threadId = event?.context?.thread_id || undefined;
         this.messageQueue.push({
           channelType: 'feishu',
           chatId,
+          scopeId: feishuInboundScope(chatId, threadId),
+          threadId,
+          replyInThread: !!threadId,
           userId,
           text: '',
           callbackData: action,
           messageId,
+          replyTargetMessageId: threadId ? messageId : undefined,
         });
         return {
           toast: {
@@ -356,6 +414,124 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
     });
   }
 
+  private async sendMessageContent(
+    message: FeishuRenderedMessage,
+    msgType: string,
+    content: string,
+  ): Promise<FeishuCreateMessageResult> {
+    if (!this.client) throw new Error('Feishu client not started');
+
+    const idType = message.receiveIdType || 'chat_id';
+    if (message.replyToMessageId && message.replyInThread) {
+      try {
+        return await this.client.im.message.reply({
+          path: { message_id: message.replyToMessageId },
+          data: {
+            msg_type: msgType,
+            content,
+            reply_in_thread: true,
+          },
+        }) as FeishuCreateMessageResult;
+      } catch (replyErr) {
+        if (!isThreadReplyUnsupported(replyErr) && !isMissingReplyTarget(replyErr)) {
+          throw replyErr;
+        }
+        console.warn(
+          `[feishu] reply_in_thread failed (${(replyErr as any)?.code ?? 'unknown'}), falling back to chat send`,
+        );
+      }
+    }
+
+    const data: Record<string, unknown> = {
+      receive_id: message.chatId,
+      msg_type: msgType,
+      content,
+    };
+    if (message.replyToMessageId) data.root_id = message.replyToMessageId;
+
+    try {
+      return await this.client.im.message.create({
+        params: { receive_id_type: idType as any },
+        data: data as any,
+      }) as FeishuCreateMessageResult;
+    } catch (createErr) {
+      if (message.replyToMessageId && isMissingReplyTarget(createErr)) {
+        delete data.root_id;
+        return await this.client.im.message.create({
+          params: { receive_id_type: idType as any },
+          data: data as any,
+        }) as FeishuCreateMessageResult;
+      }
+      throw createErr;
+    }
+  }
+
+  override async startThreadFromMessage(
+    chatId: string,
+    messageId: string,
+    text = '💬 已开启话题，正在处理...',
+  ): Promise<ThreadStartResult | null> {
+    if (!this.client) return null;
+    try {
+      const content = this.buildCard(text);
+      const result = await this.client.im.message.reply({
+        path: { message_id: messageId },
+        data: {
+          msg_type: 'interactive',
+          content,
+          reply_in_thread: true,
+        },
+      }) as FeishuCreateMessageResult;
+      const threadId = result?.data?.thread_id;
+      const replyMessageId = result?.data?.message_id;
+      if (!threadId || !replyMessageId) {
+        console.warn(`[feishu] startThreadFromMessage returned no thread_id for chat=${chatId.slice(-8)}`);
+        return null;
+      }
+      if (this.autoPinTopics) {
+        await this.pinMessage(String(replyMessageId)).catch((pinErr) => {
+          console.warn(`[feishu] auto pin topic failed (${(pinErr as any)?.code ?? 'unknown'})`);
+        });
+      }
+      return {
+        threadId: String(threadId),
+        rootMessageId: messageId,
+        messageId: String(replyMessageId),
+      };
+    } catch (err) {
+      if (isThreadReplyUnsupported(err) || isMissingReplyTarget(err)) {
+        console.warn(`[feishu] startThreadFromMessage unsupported (${(err as any)?.code ?? 'unknown'})`);
+        return null;
+      }
+      throw this.classifyError(err);
+    }
+  }
+
+  override async startThreadWithTitle(
+    chatId: string,
+    title: string,
+    text = '💬 已开启话题，请在本话题内继续...',
+  ): Promise<ThreadStartResult | null> {
+    if (!this.client) return null;
+    const content = JSON.stringify({ text: title });
+    const root = await this.client.im.message.create({
+      params: { receive_id_type: 'chat_id' as any },
+      data: {
+        receive_id: chatId,
+        msg_type: 'text',
+        content,
+      },
+    }) as FeishuCreateMessageResult;
+    const rootMessageId = root?.data?.message_id;
+    if (!rootMessageId) {
+      console.warn(`[feishu] startThreadWithTitle returned no root message_id for chat=${chatId.slice(-8)}`);
+      return null;
+    }
+
+    const started = await this.startThreadFromMessage(chatId, String(rootMessageId), text);
+    return started ? { ...started, rootMessageId: String(rootMessageId) } : null;
+  }
+
   async send(message: FeishuRenderedMessage): Promise<SendResult> {
     if (!this.client) throw new Error('Feishu client not started');
 
@@ -394,15 +570,11 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
           });
           const imageKey = (uploadResult as any)?.data?.image_key;
           if (imageKey) {
-            const idType = message.receiveIdType || 'chat_id';
-            const result = await this.client.im.message.create({
-              params: { receive_id_type: idType as any },
-              data: {
-                receive_id: message.chatId,
-                msg_type: 'image',
-                content: JSON.stringify({ image_key: imageKey }),
-              },
-            });
+            const result = await this.sendMessageContent(
+              message,
+              'image',
+              JSON.stringify({ image_key: imageKey }),
+            );
             const messageId = (result as any)?.data?.message_id ?? '';
             return { messageId: String(messageId), success: true };
           }
@@ -418,15 +590,11 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
           });
           const fileKey = (uploadResult as any)?.data?.file_key;
           if (fileKey) {
-            const idType = message.receiveIdType || 'chat_id';
-            const result = await this.client.im.message.create({
-              params: { receive_id_type: idType as any },
-              data: {
-                receive_id: message.chatId,
-                msg_type: 'file',
-                content: JSON.stringify({ file_key: fileKey }),
-              },
-            });
+            const result = await this.sendMessageContent(
+              message,
+              'file',
+              JSON.stringify({ file_key: fileKey }),
+            );
             const messageId = (result as any)?.data?.message_id ?? '';
             return { messageId: String(messageId), success: true };
           }
@@ -438,7 +606,6 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
     }
 
     try {
-      const idType = message.receiveIdType || 'chat_id';
       // If feishuElements provided, build card directly from structured elements
       const cardContent = message.feishuElements
         ? buildFeishuCard({
@@ -449,38 +616,20 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
             ],
           })
         : this.buildCard(raw, message.buttons, message.feishuHeader);
-      const data: Record<string, unknown> = {
-        receive_id: message.chatId,
-        msg_type: 'interactive',
-        content: cardContent,
-      };
-      if (message.replyToMessageId) data.root_id = message.replyToMessageId;
-
-      let result: FeishuCreateMessageResult;
-      try {
-        result = await this.client.im.message.create({
-          params: { receive_id_type: idType as any },
-          data: data as any,
-        }) as FeishuCreateMessageResult;
-      } catch (createErr) {
-        // Reply target withdrawn/deleted — retry without root_id
-        const code = (createErr as any)?.code;
-        if (message.replyToMessageId && (code === 230011 || code === 231003)) {
-          delete data.root_id;
-          result = await this.client.im.message.create({
-            params: { receive_id_type: idType as any },
-            data: data as any,
-          }) as FeishuCreateMessageResult;
-        } else {
-          throw createErr;
-        }
-      }
+      const result = await this.sendMessageContent(message, 'interactive', cardContent);
 
       const messageId = result?.data?.message_id ?? '';
       return { messageId: String(messageId), success: true };
     } catch (err) {
       throw this.classifyError(err);
     }
+  }
+
+  async pinMessage(messageId: string): Promise<void> {
+    if (!this.client) return;
+    await this.client.im.pin.create({
+      data: { message_id: messageId },
+    });
   }
 
   async deleteMessage(_chatId: string, messageId: string): Promise<void> {
@@ -525,7 +674,7 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
     }
   }
 
-  createStreamingSession(chatId: string, receiveIdType?: string, replyToMessageId?: string, header?: { template: string; title: string }): FeishuStreamingSession | null {
+  createStreamingSession(chatId: string, receiveIdType?: string, replyToMessageId?: string, header?: { template: string; title: string }, replyInThread?: boolean): FeishuStreamingSession | null {
     if (!this.client) return null;
     return new FeishuStreamingSession({
       client: this.client,
@@ -533,6 +682,7 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
       receiveIdType,
       replyToMessageId,
       header,
+      replyInThread,
     });
   }
 

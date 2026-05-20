@@ -5,7 +5,7 @@ import { HomeCommand } from './home.js';
 import { PermCommand } from './perm.js';
 import { StopCommand } from './stop.js';
 import { HooksCommand } from './hooks.js';
-import { SessionCommand } from './session.js';
+import { ContinueSessionCommand, SessionCommand } from './session.js';
 import { CdCommand } from './cd.js';
 import { PwdCommand } from './pwd.js';
 import { BashCommand } from './bash.js';
@@ -27,6 +27,7 @@ export function registerAllCommands(): void {
   commandRegistry.register(new StopCommand());
   commandRegistry.register(new HooksCommand());
   commandRegistry.register(new SessionCommand());
+  commandRegistry.register(new ContinueSessionCommand());
   commandRegistry.register(new CdCommand());
   commandRegistry.register(new PwdCommand());
   commandRegistry.register(new BashCommand());

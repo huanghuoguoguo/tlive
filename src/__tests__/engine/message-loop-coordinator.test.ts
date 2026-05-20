@@ -4,6 +4,7 @@ import type { InboundMessage } from '../../channels/types.js';
 import { MessageLoopCoordinator } from '../../engine/coordinators/message-loop.js';
 import { SessionStateManager } from '../../engine/state/session-state.js';
 import type { SendWithContextResult } from '../../engine/sdk/engine.js';
+import { messageScopeId } from '../../core/key.js';
 
 function createAdapter(channelType = 'feishu'): BaseChannelAdapter {
   return {
@@ -96,6 +97,54 @@ describe('MessageLoopCoordinator', () => {
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({ text: '💬 已插入当前会话' }),
     );
+  });
+
+  it('routes busy Feishu topic messages to the topic scope', async () => {
+    const state = new SessionStateManager();
+    const scopeId = 'chat-1#thread:thread-1';
+    state.setProcessing(state.stateKey('feishu', scopeId), true);
+
+    const sdkEngine = {
+      sendWithContext: vi.fn().mockResolvedValue({ sent: true, mode: 'steer', sessionKey: 'session-1' }),
+      MAX_QUEUE_DEPTH: 3,
+    } as any;
+    const permissions = {
+      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
+      parsePermissionText: vi.fn().mockReturnValue(null),
+    } as any;
+
+    const coordinator = createCoordinator(
+      state,
+      sdkEngine,
+      permissions,
+      async (msg) => state.stateKey(msg.channelType, messageScopeId(msg)),
+    );
+    const adapter = createAdapter();
+
+    await coordinator.dispatchSlowMessage({
+      adapter,
+      msg: createMessage('topic follow-up', {
+        scopeId,
+        threadId: 'thread-1',
+        replyInThread: true,
+        replyTargetMessageId: 'msg-topic-1',
+      }),
+      coalesceMessage: async (_adapter, msg) => msg,
+      handleMessage: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(sdkEngine.sendWithContext).toHaveBeenCalledWith(
+      'feishu',
+      scopeId,
+      'topic follow-up',
+      undefined,
+    );
+    expect(adapter.send).toHaveBeenCalledWith(expect.objectContaining({
+      chatId: 'chat-1',
+      replyToMessageId: 'msg-topic-1',
+      replyInThread: true,
+    }));
   });
 
   it('queues follow-up messages when turn is not active', async () => {

@@ -13,8 +13,9 @@ import { getToolCommand } from './tool-registry.js';
 import type { ChannelRouter } from '../../utils/router.js';
 import type { ChannelBinding } from '../../store/interface.js';
 import { generateId } from '../../core/id.js';
-import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../../engine/constants.js';
+import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../../core/timing.js';
 import { permissionButtons } from '../../ui/buttons.js';
+import { messageScopeId } from '../../core/key.js';
 
 interface SDKPermissionHandlerContext {
   adapter: BaseChannelAdapter;
@@ -49,9 +50,10 @@ export class SDKPermissionHandler {
     signal?: AbortSignal,
   ): Promise<'allow' | 'allow_always' | 'deny'> {
     const { msg, binding, permissions, state, renderer } = this.context;
+    const scopeId = messageScopeId(msg);
 
     // Check perm mode dynamically (so /perm off mid-query takes effect)
-    const permMode = state.getPermMode(msg.channelType, msg.chatId, binding.sessionId);
+    const permMode = state.getPermMode(msg.channelType, scopeId, binding.sessionId);
     if (permMode === 'off') {
       return 'allow' as const;
     }
@@ -68,7 +70,7 @@ export class SDKPermissionHandler {
     }
 
     const permId = generateId('sdk');
-    const chatKey = state.stateKey(msg.channelType, msg.chatId);
+    const chatKey = state.stateKey(msg.channelType, scopeId);
     permissions.setPendingSdkPerm(chatKey, permId);
     console.log(`[bridge] Permission request: ${toolName} (${permId}) for ${chatKey}`);
 

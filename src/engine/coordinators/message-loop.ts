@@ -3,13 +3,15 @@ import type { InboundMessage } from '../../channels/types.js';
 import type { PermissionCoordinator } from './permission.js';
 import type { SessionStateManager } from '../state/session-state.js';
 import type { SDKEngine, SendWithContextResult } from '../sdk/engine.js';
+import { messageScopeId } from '../../core/key.js';
+import { withInboundReplyContext } from '../../channels/reply-context.js';
 
 interface MessageLoopCoordinatorOptions {
   state: SessionStateManager;
   sdkEngine: SDKEngine;
   permissions: PermissionCoordinator;
   quickCommands: Set<string>;
-  hasPendingSdkQuestion: (channelType: string, chatId: string) => boolean;
+  hasPendingSdkQuestion: (msg: InboundMessage) => boolean;
   resolveProcessingKey: (msg: InboundMessage) => Promise<string>;
 }
 
@@ -33,7 +35,7 @@ export class MessageLoopCoordinator {
 
   isQuickMessage(adapter: BaseChannelAdapter, msg: InboundMessage): boolean {
     const hasPendingQuestion = this.options.permissions.getLatestPendingQuestion(adapter.channelType) !== null
-      || this.options.hasPendingSdkQuestion(adapter.channelType, msg.chatId);
+      || this.options.hasPendingSdkQuestion(msg);
 
     return !!msg.callbackData
       || (msg.text && this.options.quickCommands.has(msg.text.split(' ')[0].toLowerCase()))
@@ -68,14 +70,14 @@ export class MessageLoopCoordinator {
 
     const result = await this.options.sdkEngine.sendWithContext(
       msg.channelType,
-      msg.chatId,
+      messageScopeId(msg),
       msg.text,
       msg.replyToMessageId,
     );
 
     const feedbackText = this.formatQueueFeedback(result);
     if (feedbackText) {
-      await adapter.send({ chatId: msg.chatId, text: feedbackText }).catch(() => {});
+      await adapter.send(withInboundReplyContext({ chatId: msg.chatId, text: feedbackText }, msg)).catch(() => {});
     }
   }
 

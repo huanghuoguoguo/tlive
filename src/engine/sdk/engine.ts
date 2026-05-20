@@ -18,6 +18,7 @@ import type { ManagedSessionSnapshot } from '../../formatting/message-types.js';
 import { InteractionState, type SdkQuestionState } from '../state/interaction-state.js';
 import { SessionManager, type ManagedSession, type SessionCleanupReason } from './session-manager.js';
 import { QueueManager, type QueueStats } from './queue-manager.js';
+import { splitChatKey } from '../../core/key.js';
 
 // Re-export for backward compatibility
 export type { SessionCleanupReason } from './session-manager.js';
@@ -122,6 +123,36 @@ export class SDKEngine {
     this.sessions.updateSessionSdkSessionId(sessionKey, sdkSessionId);
   }
 
+  moveSessionToChat(sessionKey: string, newChatId: string): string | undefined {
+    const oldChatKey = this.controlChatBySession.get(sessionKey);
+    const newSessionKey = this.sessions.moveSessionToChat(sessionKey, newChatId);
+    if (!newSessionKey || newSessionKey === sessionKey) return newSessionKey;
+
+    this.queues.moveSessionKey(sessionKey, newSessionKey);
+
+    const controls = this.activeControlsBySession.get(sessionKey);
+    if (controls) {
+      this.activeControlsBySession.delete(sessionKey);
+      this.activeControlsBySession.set(newSessionKey, controls);
+    }
+
+    if (oldChatKey) {
+      this.controlChatBySession.delete(sessionKey);
+      this.activeControlsByChat.delete(oldChatKey);
+    }
+
+    const managed = this.sessions.getSessionContext(newSessionKey);
+    if (managed) {
+      const newChatKey = this.sessions.chatKey(managed.channelType, managed.chatId);
+      this.controlChatBySession.set(newSessionKey, newChatKey);
+      if (controls) {
+        this.activeControlsByChat.set(newChatKey, controls);
+      }
+    }
+
+    return newSessionKey;
+  }
+
   resolveSessionTarget(
     channelType: string,
     chatId: string,
@@ -192,9 +223,10 @@ export class SDKEngine {
     this.controlChatBySession.delete(sessionKey);
 
     // Try to find fallback from the current default session
+    const { channelType, chatId } = splitChatKey(chatKey);
     const defaultSessionKey = this.sessions.getActiveSessionKey(
-      chatKey.split(':')[0],
-      chatKey.split(':')[1],
+      channelType,
+      chatId,
     );
     if (defaultSessionKey) {
       const defaultCtrl = this.activeControlsBySession.get(defaultSessionKey);
@@ -516,7 +548,8 @@ export class SDKEngine {
 
   /** Track controls per session while preserving chat-level compatibility. */
   setControlsForChat(chatKey: string, controls: QueryControls | undefined, sessionKey?: string): void {
-    const targetSessionKey = sessionKey ?? this.sessions.getActiveSessionKey(chatKey.split(':')[0], chatKey.split(':')[1]) ?? chatKey;
+    const { channelType, chatId } = splitChatKey(chatKey);
+    const targetSessionKey = sessionKey ?? this.sessions.getActiveSessionKey(channelType, chatId) ?? chatKey;
 
     if (controls) {
       this.activeControlsBySession.set(targetSessionKey, controls);

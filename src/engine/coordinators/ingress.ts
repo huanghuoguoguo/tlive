@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { FileAttachment, InboundMessage } from '../../channels/types.js';
 import { getTliveRuntimeDir } from '../../core/path.js';
-import { chatKey as buildChatKey } from '../../core/key.js';
+import { chatKey as buildChatKey, messageScopeId } from '../../core/key.js';
 
 interface BufferedAttachments {
   attachments: FileAttachment[];
@@ -122,7 +122,7 @@ export class IngressCoordinator {
       if (!next) continue;
 
       if (next.userId === first.userId
-        && next.chatId === first.chatId
+        && messageScopeId(next) === messageScopeId(first)
         && next.text
         && !next.callbackData
         && !next.text.startsWith('/')) {
@@ -140,7 +140,7 @@ export class IngressCoordinator {
   }
 
   prepareAttachments(msg: InboundMessage): { handled: boolean; message: InboundMessage } {
-    const key = this.attachmentKey(msg.channelType, msg.chatId);
+    const key = this.attachmentKey(msg.channelType, messageScopeId(msg));
 
     if (msg.attachments?.length && !msg.text && !msg.callbackData) {
       const attachments = this.fitAttachmentBudget(msg.attachments);

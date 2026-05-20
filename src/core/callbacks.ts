@@ -1,0 +1,21 @@
+/** Callback data prefixes shared by UI builders and callback dispatchers. */
+export const CALLBACK_PREFIXES = {
+  SUGGEST: 'suggest:',
+  ASKQ: 'askq:',
+  ASKQ_TOGGLE: 'askq_toggle:',
+  ASKQ_SUBMIT: 'askq_submit:',
+  ASKQ_SKIP: 'askq_skip:',
+  ASKQ_SUBMIT_SDK: 'askq_submit_sdk:',
+  FORM: 'form:',
+  CMD: 'cmd:',
+  HOOK: 'hook:',
+  DEFERRED: 'deferred:',
+  DEFERRED_SUBMIT: 'deferred:submit:',
+  DEFERRED_SKIP: 'deferred:skip:',
+  PERM_ALLOW_EDITS: 'perm:allow_edits:',
+  PERM_ALLOW_TOOL: 'perm:allow_tool:',
+  PERM_ALLOW_BASH: 'perm:allow_bash:',
+  PERM_ALLOW: 'perm:allow:',
+  PERM_ALLOW_SESSION: 'perm:allow_session:',
+  PERM_DENY: 'perm:deny:',
+} as const;

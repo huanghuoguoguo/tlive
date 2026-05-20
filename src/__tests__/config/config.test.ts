@@ -37,11 +37,40 @@ describe('loadConfig', () => {
     expect(config.feishu.appId).toBe('fs-id');
     expect(config.feishu.appSecret).toBe('fs-secret');
     expect(config.feishu.allowedUsers).toEqual(['fsu1']);
+    expect(config.feishu.autoPinTopics).toBe(true);
+  });
+
+  it('allows disabling Feishu topic auto pinning', () => {
+    process.env.TL_FS_AUTO_PIN_TOPIC = 'false';
+    const config = loadConfig();
+    expect(config.feishu.autoPinTopics).toBe(false);
   });
 
   it('defaults push target to feishu', () => {
     const config = loadConfig();
     expect(config.push.defaultChannel).toBe('feishu');
+  });
+
+  it('defaults done card buttons to home only', () => {
+    const config = loadConfig();
+    expect(config.ui.doneButtons).toEqual(['home']);
+  });
+
+  it('parses configurable done card buttons with aliases and dedupe', () => {
+    process.env.TL_DONE_BUTTONS = 'home,recent,new,help,permissions,home';
+    const config = loadConfig();
+    expect(config.ui.doneButtons).toEqual(['home', 'sessions', 'new', 'help', 'perm']);
+  });
+
+  it('allows disabling done card buttons', () => {
+    process.env.TL_DONE_BUTTONS = 'none';
+    const config = loadConfig();
+    expect(config.ui.doneButtons).toEqual([]);
+  });
+
+  it('rejects unsupported done card buttons', () => {
+    process.env.TL_DONE_BUTTONS = 'home,unknown';
+    expect(() => loadConfig()).toThrow('TL_DONE_BUTTONS');
   });
 
   it('normalizes webhook path, strategy, and rate limit config', () => {

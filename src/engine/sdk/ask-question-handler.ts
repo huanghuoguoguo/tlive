@@ -9,7 +9,9 @@ import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { InteractionState } from '../state/interaction-state.js';
 import { truncate } from '../../core/string.js';
 import { generateId } from '../../core/id.js';
-import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../../engine/constants.js';
+import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../../core/timing.js';
+import { messageScopeId } from '../../core/key.js';
+import { withInboundReplyContext } from '../../channels/reply-context.js';
 
 interface SDKAskQuestionHandlerContext {
   adapter: BaseChannelAdapter;
@@ -50,7 +52,7 @@ export class SDKAskQuestionHandler {
     for (const q of questions) {
       const permId = generateId('askq');
       const isMulti = q.multiSelect;
-      interactionState.beginSdkQuestion(permId, [q], msg.chatId);
+      interactionState.beginSdkQuestion(permId, [q], messageScopeId(msg));
       if (isMulti) {
         permissions.storeQuestionData(permId, [q]);
       }
@@ -86,7 +88,7 @@ export class SDKAskQuestionHandler {
           sessionId: 'sdk',
         },
       });
-      const sendResult = await adapter.send(outMsg);
+      const sendResult = await adapter.send(withInboundReplyContext(outMsg, msg));
       permissions.trackPermissionMessage(sendResult.messageId, permId, binding.sessionId, msg.channelType);
 
       const result = await waitPromise;

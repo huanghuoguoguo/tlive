@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock @larksuiteoapi/node-sdk before importing the adapter
 const mockMessageCreate = vi.fn();
+const mockMessageReply = vi.fn();
 const mockMessagePatch = vi.fn().mockResolvedValue({});
+const mockPinCreate = vi.fn().mockResolvedValue({});
 const eventHandlers = new Map<string, (...args: any[]) => any>();
 const mockEventHandler = vi.fn(async (event: any) => {
   const handler = eventHandlers.get('im.message.receive_v1');
@@ -15,7 +17,11 @@ vi.mock('@larksuiteoapi/node-sdk', () => {
     this.im = {
       message: {
         create: mockMessageCreate,
+        reply: mockMessageReply,
         patch: mockMessagePatch,
+      },
+      pin: {
+        create: mockPinCreate,
       },
       v1: { messageResource: { get: vi.fn().mockResolvedValue({ data: null }) } },
       image: { get: vi.fn().mockResolvedValue(null) },
@@ -61,7 +67,9 @@ describe('FeishuAdapter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockMessageCreate.mockResolvedValue({ data: { message_id: 'msg-feishu-1' } });
+    mockMessageReply.mockResolvedValue({ data: { message_id: 'msg-feishu-reply-1' } });
     mockMessagePatch.mockResolvedValue({});
+    mockPinCreate.mockResolvedValue({});
     adapter = new FeishuAdapter({
       appId: 'cli_test123',
       appSecret: 'secret_abc',
@@ -172,6 +180,98 @@ describe('FeishuAdapter', () => {
 
       const call = mockMessageCreate.mock.calls[0][0];
       expect(call.data.root_id).toBe('msg-parent-1');
+      await adapter.stop();
+    });
+
+    it('uses Feishu threaded reply when replyInThread is set', async () => {
+      await adapter.start();
+      await adapter.send({
+        chatId: 'oc_chat123',
+        text: 'Reply text',
+        replyToMessageId: 'msg-topic-1',
+        replyInThread: true,
+      });
+
+      expect(mockMessageReply).toHaveBeenCalledOnce();
+      expect(mockMessageCreate).not.toHaveBeenCalled();
+      const call = mockMessageReply.mock.calls[0][0];
+      expect(call.path.message_id).toBe('msg-topic-1');
+      expect(call.data.reply_in_thread).toBe(true);
+      await adapter.stop();
+    });
+
+    it('starts a Feishu topic from a main-chat message', async () => {
+      mockMessageReply.mockResolvedValueOnce({
+        data: { message_id: 'msg-topic-start', thread_id: 'thread-1' },
+      });
+      await adapter.start();
+
+      const result = await adapter.startThreadFromMessage('oc_chat123', 'msg-main-1');
+
+      expect(result).toEqual({ messageId: 'msg-topic-start', rootMessageId: 'msg-main-1', threadId: 'thread-1' });
+      expect(mockMessageReply).toHaveBeenCalledWith({
+        path: { message_id: 'msg-main-1' },
+        data: expect.objectContaining({
+          msg_type: 'interactive',
+          reply_in_thread: true,
+        }),
+      });
+      await adapter.stop();
+    });
+
+    it('starts a Feishu topic from a new title message', async () => {
+      mockMessageCreate.mockResolvedValueOnce({
+        data: { message_id: 'msg-topic-title' },
+      });
+      mockMessageReply.mockResolvedValueOnce({
+        data: { message_id: 'msg-topic-start', thread_id: 'thread-1' },
+      });
+      await adapter.start();
+
+      const result = await adapter.startThreadWithTitle('oc_chat123', 'Continue previous Claude task');
+
+      expect(result).toEqual({
+        messageId: 'msg-topic-start',
+        rootMessageId: 'msg-topic-title',
+        threadId: 'thread-1',
+      });
+      expect(mockMessageCreate).toHaveBeenCalledWith({
+        params: { receive_id_type: 'chat_id' },
+        data: {
+          receive_id: 'oc_chat123',
+          msg_type: 'text',
+          content: JSON.stringify({ text: 'Continue previous Claude task' }),
+        },
+      });
+      expect(mockMessageReply).toHaveBeenCalledWith({
+        path: { message_id: 'msg-topic-title' },
+        data: expect.objectContaining({
+          msg_type: 'interactive',
+          reply_in_thread: true,
+        }),
+      });
+      await adapter.stop();
+    });
+
+    it('pins the topic entry message when autoPinTopics is enabled', async () => {
+      adapter = new FeishuAdapter({
+        appId: 'cli_test123',
+        appSecret: 'secret_abc',
+        verificationToken: 'verify_token',
+        encryptKey: '',
+        webhookPort: 0,
+        allowedUsers: [],
+      }, { autoPinTopics: true });
+      mockMessageReply.mockResolvedValueOnce({
+        data: { message_id: 'msg-topic-start', thread_id: 'thread-1' },
+      });
+      await adapter.start();
+
+      await adapter.startThreadFromMessage('oc_chat123', 'msg-main-1');
+
+      expect(mockPinCreate).toHaveBeenCalledWith({
+        data: { message_id: 'msg-topic-start' },
+      });
       await adapter.stop();
     });
 
@@ -290,6 +390,34 @@ describe('FeishuAdapter', () => {
 
       const msg = await adapter.consumeOne();
       expect(msg!.replyToMessageId).toBe('msg_parent');
+
+      await adapter.stop();
+    });
+
+    it('maps Feishu topic messages to a logical scope and replies to the current message', async () => {
+      await adapter.start();
+
+      await mockEventHandler({
+        message: {
+          message_id: 'msg_topic_reply',
+          chat_id: 'chat_1',
+          thread_id: 'thread_abc',
+          message_type: 'text',
+          content: JSON.stringify({ text: 'topic message' }),
+          root_id: 'msg_root',
+        },
+        sender: { sender_id: { user_id: 'user_1' } },
+      });
+
+      const msg = await adapter.consumeOne();
+      expect(msg).toMatchObject({
+        chatId: 'chat_1',
+        scopeId: 'chat_1#thread:thread_abc',
+        threadId: 'thread_abc',
+        replyInThread: true,
+        replyTargetMessageId: 'msg_topic_reply',
+      });
+      expect(msg!.replyToMessageId).toBeUndefined();
 
       await adapter.stop();
     });

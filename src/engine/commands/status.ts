@@ -7,6 +7,7 @@ import { formatSize } from '../../formatting/session-format.js';
 export class StatusCommand extends BaseCommand {
   readonly name = '/status';
   readonly quick = true;
+  readonly helpCategory = 'status' as const;
   readonly description = 'Bridge 状态';
   readonly helpDesc = '查看 Bridge 运行状态，包括通道连接、活跃会话数、内存使用、运行时间等系统信息。';
   readonly helpExample = '/status';

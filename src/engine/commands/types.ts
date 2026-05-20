@@ -10,8 +10,10 @@ import type { ChannelRouter } from '../../utils/router.js';
 import type { SDKEngine, SessionCleanupReason } from '../sdk/engine.js';
 import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { ClaudeSettingSource, ProjectsValidationResult } from '../../config.js';
-import type { HomeData } from '../../formatting/message-types.js';
+import type { HelpCommandEntry, HomeData } from '../../formatting/message-types.js';
 import type { Locale } from '../../i18n/index.js';
+import type { HelpCategoryId } from './help-categories.js';
+import type { TopicSessionManager } from '../state/topic-sessions.js';
 
 /** Router helpers - encapsulates complex internal operations */
 export interface RouterHelpers {
@@ -53,12 +55,15 @@ export interface CommandServices {
   defaultWorkdir: string;
   defaultClaudeSettingSources: ClaudeSettingSource[];
   getAdapters: () => Map<string, BaseChannelAdapter>;
+  topicSessions?: TopicSessionManager;
 }
 
 /** Context passed to each command handler */
 export interface CommandContext {
   adapter: BaseChannelAdapter;
   msg: InboundMessage;
+  /** Logical state/session scope. For Feishu topics this is chat_id + thread_id. */
+  scopeId: string;
   parts: string[];
   services: CommandServices;
   /** Router helpers for complex operations */
@@ -73,6 +78,8 @@ export interface CommandHandler {
   readonly name: string;
   /** Whether this is a quick command (doesn't block message loop) */
   readonly quick: boolean;
+  /** Help category used by /home and /help. */
+  readonly helpCategory: HelpCategoryId;
   /** Short description for /home summary */
   readonly description?: string;
   /** Detailed description for /help (Chinese) */
@@ -84,11 +91,4 @@ export interface CommandHandler {
 }
 
 /** Help command entry for display */
-export interface HelpEntry {
-  cmd: string;
-  desc: string;
-  /** Detailed description (Chinese) */
-  detail?: string;
-  /** Example usage */
-  example?: string;
-}
+export type HelpEntry = HelpCommandEntry;

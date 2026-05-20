@@ -6,6 +6,7 @@ import { formatSize } from '../../formatting/session-format.js';
 export class DiagnoseCommand extends BaseCommand {
   readonly name = '/diagnose';
   readonly quick = true;
+  readonly helpCategory = 'system' as const;
   readonly description = '诊断信息';
   readonly helpDesc = '运行系统诊断，显示会话统计、队列深度、内存使用等详细信息。用于排查问题。';
   readonly helpExample = '/diagnose';
