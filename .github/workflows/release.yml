@@ -52,6 +52,21 @@ jobs:
         run: |
           TAG="${{ needs.get-tag.outputs.tag }}"
           TARBALL="tlive-${TAG}.tar.gz"
+          FILES=(
+            package.json
+            package-lock.json
+            dist/
+            scripts/
+            config.env.example
+            install.sh
+            install.ps1
+          )
+
+          for optional in .claude SKILL.md references; do
+            if [[ -e "$optional" ]]; then
+              FILES+=("$optional")
+            fi
+          done
 
           tar czf "$TARBALL" \
             --exclude='node_modules' \
@@ -60,16 +75,7 @@ jobs:
             --exclude='esbuild.config.js' \
             --exclude='tsconfig.json' \
             --exclude='biome.json' \
-            package.json \
-            package-lock.json \
-            dist/ \
-            .claude/ \
-            SKILL.md \
-            references/ \
-            scripts/ \
-            config.env.example \
-            install.sh \
-            install.ps1
+            "${FILES[@]}"
 
           echo "TARBALL=$TARBALL" >> $GITHUB_ENV
           echo "TAG=$TAG" >> $GITHUB_ENV
