@@ -252,6 +252,25 @@ export interface Translations {
 
   // --- recent projects ---
   'recentProjects.hint': string;
+
+  // --- error notification ---
+  'error.title': string;
+  'error.requestId': string;
+
+  // --- doctor command ---
+  'doctor.title': string;
+  'doctor.os': string;
+  'doctor.node': string;
+  'doctor.tlive': string;
+  'doctor.uptime': string;
+  'doctor.config': string;
+  'doctor.configFound': string;
+  'doctor.configMissing': string;
+  'doctor.claudeCli': string;
+  'doctor.notFound': string;
+  'doctor.channels': string;
+  'doctor.connected': string;
+  'doctor.disconnected': string;
 }
 
 export type TranslationKey = keyof Translations;

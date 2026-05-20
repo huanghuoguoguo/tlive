@@ -16,6 +16,7 @@ import { RestartCommand } from './restart.js';
 import { QueueCommand } from './queue.js';
 import { DiagnoseCommand } from './diagnose.js';
 import { RebindCommand } from './rebind.js';
+import { DoctorCommand } from './doctor.js';
 
 /** Register all built-in commands */
 export function registerAllCommands(): void {
@@ -36,6 +37,7 @@ export function registerAllCommands(): void {
   commandRegistry.register(new QueueCommand());
   commandRegistry.register(new DiagnoseCommand());
   commandRegistry.register(new RebindCommand());
+  commandRegistry.register(new DoctorCommand());
 }
 
 export { commandRegistry } from './registry.js';
