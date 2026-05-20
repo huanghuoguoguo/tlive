@@ -58,7 +58,11 @@ allowed-tools:
 运行完整熵控检测：
 
 ```bash
-npm run lint:entropy
+npm run check
+npm run lint:dead
+npm run lint:duplicate
+npx type-coverage
+bash scripts/lint-patterns.sh
 ```
 
 分析输出，报告发现的问题。

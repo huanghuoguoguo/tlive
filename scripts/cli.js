@@ -599,7 +599,7 @@ if (command === '--version' || command === '-v' || command === '-V') {
 
 switch (command) {
   case 'setup': {
-    const setupEntry = join(PACKAGE_ROOT, 'bridge', 'dist', 'setup.mjs');
+    const setupEntry = join(PACKAGE_ROOT, 'dist', 'setup.mjs');
     if (existsSync(setupEntry)) {
       const r = spawnSync(process.execPath, [setupEntry], { stdio: 'inherit' });
       if (r.status) process.exit(r.status);
@@ -861,7 +861,7 @@ switch (command) {
       // Sync reference docs to ~/.tlive/docs/
       const docsDir = join(TLIVE_HOME, 'docs');
       mkdirSync(docsDir, { recursive: true });
-      const refsDir = join(PACKAGE_ROOT, 'references');
+      const refsDir = join(PACKAGE_ROOT, '.claude', 'skills', 'tlive', 'references');
       for (const doc of ['setup-guides.md', 'token-validation.md', 'troubleshooting.md']) {
         const refSrc = join(refsDir, doc);
         const dest = join(docsDir, doc);

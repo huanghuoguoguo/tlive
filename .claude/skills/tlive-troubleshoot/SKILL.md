@@ -1,11 +1,11 @@
 ---
 name: tlive-troubleshoot
-description: Troubleshoot tlive IM bridge issues using logs. TRIGGER when: user reports message not received, bot not responding, permission stuck, connection issues, or asks to diagnose tlive problems. Also use when user says "check logs", "what happened", "why didn't it work" in context of tlive/IM bot. When user says "出了问题" or "帮我提 issue", collect diagnostics to generate issue report.
+description: Troubleshoot tlive Feishu bridge issues using logs. TRIGGER when: user reports Feishu messages not received, bot not responding, permission stuck, connection issues, or asks to diagnose tlive problems. Also use when user says "check logs", "what happened", "why didn't it work" in context of tlive. When user says "出了问题" or "帮我提 issue", collect diagnostics to generate issue report.
 ---
 
 # TLive Troubleshoot
 
-Help diagnose tlive IM bridge issues by reading and analyzing logs.
+Help diagnose tlive Feishu bridge issues by reading and analyzing logs.
 
 ## Quick Commands
 
@@ -29,7 +29,7 @@ When user says "出了问题" or "帮我提 issue" or "想报告bug":
 - OS: <from /doctor>
 - Node.js version: <from /doctor>
 - tlive version: <from /doctor>
-- IM Platform: <Telegram/Feishu/QQ>
+- Channel: Feishu/Lark
 
 **Logs**
 <last 50 lines from log file>
@@ -98,7 +98,7 @@ grep -E "(WebSocket|connected|closed|error)" ~/.tlive/logs/bridge-*.log | tail -
 
 | Module | Responsibility |
 |--------|----------------|
-| `[feishu]` `[qqbot]` `[telegram]` | IM adapter, message receive/send |
+| `[feishu]` | Feishu adapter, message receive/send |
 | `[bridge]` | Message routing, command handling |
 | `[query]` | Claude query lifecycle (START/COMPLETE/ERROR) |
 | `[perm]` | Permission request/response |

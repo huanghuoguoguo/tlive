@@ -56,13 +56,18 @@ jobs:
             package.json
             package-lock.json
             dist/
-            scripts/
+            scripts/cli.js
+            scripts/postinstall.js
+            scripts/preuninstall.js
             config.env.example
             install.sh
             install.ps1
           )
 
-          for optional in .claude SKILL.md references; do
+          for optional in \
+            .claude/skills/tlive \
+            .claude/skills/tlive-cron \
+            .claude/skills/tlive-troubleshoot; do
             if [[ -e "$optional" ]]; then
               FILES+=("$optional")
             fi

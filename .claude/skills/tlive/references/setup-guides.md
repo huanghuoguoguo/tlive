@@ -1,51 +1,18 @@
-# Platform Setup Guides
+# Feishu / Lark Setup Guide
 
-Detailed step-by-step guides for each IM platform. Referenced by the `setup` subcommand — only show the relevant section when the user asks for help.
+This guide is referenced by `/tlive setup`. Show only the specific step the user
+needs unless they ask for the full guide.
 
----
+## App ID and App Secret
 
-## Telegram
+1. Open the Feishu developer console: https://open.feishu.cn/app
+2. For Lark tenants, use: https://open.larksuite.com/app
+3. Create a custom app.
+4. Open **Credentials & Basic Info**.
+5. Copy **App ID** to `TL_FS_APP_ID`.
+6. Copy **App Secret** to `TL_FS_APP_SECRET`.
 
-### Bot Token
-
-1. Open Telegram and search for `@BotFather`
-2. Send `/newbot` to create a new bot
-3. Follow the prompts: choose a display name and a username (must end in `bot`)
-4. BotFather will reply with a token like `7823456789:AAF-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
-5. Copy the full token
-
-**Recommended bot settings** (send to @BotFather):
-- `/setprivacy` → choose your bot → `Disable` (for group messages)
-- `/setcommands` → set: `new - Start new session`, `sessions - List recent sessions`, `hooks - Toggle hook approval`
-
-### Chat ID
-
-1. Start a chat with your bot (search for the bot's username and click **Start**)
-2. Send any message to the bot (e.g. "hello")
-3. Open: `https://api.telegram.org/botYOUR_BOT_TOKEN/getUpdates`
-4. In the JSON response, find `"chat":{"id":123456789,...}` — that number is your Chat ID
-5. For group chats, the Chat ID is negative (e.g. `-1001234567890`)
-
-### Allowed User IDs (optional)
-
-1. Search for `@userinfobot` on Telegram and start a chat
-2. It will reply with your User ID (e.g. `123456789`)
-
-Enter comma-separated IDs to restrict access. Leave empty to allow anyone who can message the bot.
-
-**Important:** At least one of Chat ID or Allowed User IDs should be set for security.
-
----
-
-## Feishu / Lark
-
-### App ID & App Secret
-
-1. Go to https://open.feishu.cn/app (or https://open.larksuite.com/app for Lark)
-2. Click **Create Custom App**
-3. Go to **Credentials & Basic Info** to find App ID and App Secret
-
-### Required Permissions
+## Required Permissions
 
 In **Permissions & Scopes**, click **Batch import** and paste:
 
@@ -67,16 +34,36 @@ In **Permissions & Scopes**, click **Batch import** and paste:
 }
 ```
 
-### Event Subscriptions
+## Event Subscriptions
 
-After starting the bridge, configure events:
-1. Go to **Events & Callbacks**
-2. Add events:
-   - `im.message.receive_v1` — receive messages
-   - `card.action.trigger` — card button interactions (permission approval)
-3. Set callback mode: **Long Connection (WebSocket)**
-4. Publish the app version and get admin approval
+TLive uses Feishu long connection mode, so users do not need a public callback
+URL for ordinary message receive or card actions.
 
-### Allowed User IDs (optional)
+1. Open **Events & Callbacks**.
+2. Enable **Long Connection** mode.
+3. Add these events:
+   - `im.message.receive_v1`
+   - `card.action.trigger`
+4. Publish the app version.
+5. Complete admin approval.
 
-Feishu user IDs can be found in the admin console or via the Feishu API.
+## Allowed User IDs
+
+`TL_FS_ALLOWED_USERS` is optional. If set, only listed Feishu user IDs can use
+the bot.
+
+Ways to find a user ID:
+- Ask the user to send the bot a private message, then check `tlive logs`.
+- Use the Feishu admin console.
+- Use Feishu's contact/user API.
+
+Use comma-separated IDs for multiple users.
+
+## First Run Check
+
+After writing `~/.tlive/config.env`:
+
+1. Run `tlive start`.
+2. Send the bot a private Feishu message.
+3. Confirm normal replies, progress cards, and permission approval cards work.
+4. If messages do not arrive, run `tlive doctor` and inspect `tlive logs 200`.

@@ -1,60 +1,100 @@
 # Troubleshooting
 
-## Bridge won't start
+## Bridge will not start
 
-**Symptoms**: `tlive start` or `/tlive start` fails, or daemon exits immediately.
+Symptoms: `tlive start` or `/tlive start` fails, or the daemon exits quickly.
 
-**Steps**:
-1. Run `/tlive doctor` to identify the issue
-2. Check Node.js >= 22: `node --version`
-3. Check Claude Code CLI: `claude --version`
-4. Verify config exists: `ls -la ~/.tlive/config.env`
-5. Check logs: `/tlive logs`
+Steps:
+1. Run `tlive doctor`.
+2. Check Node.js: `node --version`.
+3. Check Claude Code: `claude --version`.
+4. Verify config exists: `ls -la ~/.tlive/config.env`.
+5. Check logs: `tlive logs 200`.
 
-**Common causes**:
-- Missing or invalid config.env → run `/tlive setup`
-- Node.js not found or wrong version → install Node.js >= 22
-- Port conflict → check if another instance is running with `/tlive status`
-- Stale PID file → `rm ~/.tlive/runtime/bridge.pid` and retry
+Common causes:
+- Missing or invalid `config.env`: run `/tlive setup`.
+- Node.js too old: use Node.js 20+.
+- Port conflict: run `tlive status` and inspect the configured ports.
+- Stale PID file: stop first with `tlive stop`, then retry.
 
-## Messages not received
+## Feishu messages not received
 
-**Symptoms**: Bot is online but doesn't respond to messages.
+Symptoms: the Feishu bot is visible but TLive does not react to messages.
 
-**Steps**:
-1. Verify token is valid: `/tlive doctor`
-2. Check allowed user IDs in config — only listed users can interact
-3. For Telegram: ensure you've sent `/start` to the bot first
-4. For Telegram: ensure you've sent `/start` to the bot first
-5. For Feishu: confirm app is approved and event subscriptions are configured
-6. For QQ Bot: verify app credentials and whitelist
-7. Check logs for incoming messages: `/tlive logs 200`
+Steps:
+1. Run `tlive doctor`.
+2. Validate Feishu credentials with `references/token-validation.md`.
+3. Confirm the Feishu app is published and admin-approved.
+4. Confirm **Long Connection** mode is enabled.
+5. Confirm these events are subscribed:
+   - `im.message.receive_v1`
+   - `card.action.trigger`
+6. Check allowed users in `TL_FS_ALLOWED_USERS`.
+7. Inspect incoming logs: `tlive logs 200`.
 
-## Hook approval not working
+## Permission approval not working
 
-**Symptoms**: Claude Code runs without sending permission requests to phone.
+Symptoms: Claude Code asks for tool permission but Feishu buttons do not work,
+or permission waits time out.
 
-**Steps**:
-1. Verify the `/tlive` skill is installed: `tlive install skills`
-2. Check Claude Code settings in `~/.claude/settings.json`
-3. Check hooks aren't paused: `tlive hooks`
-4. Verify the bridge is running: `tlive status`
-5. Check recent bridge logs: `/tlive logs 200`
+Steps:
+1. Run `tlive install skills`.
+2. Check the bridge is running: `tlive status`.
+3. Check hooks are active: `tlive hooks`.
+4. Confirm `card.action.trigger` is subscribed and approved in Feishu.
+5. Inspect recent permission logs:
 
-## Streaming not working
+```bash
+grep "\[perm\]" ~/.tlive/logs/bridge-*.log | tail -50
+```
 
-**Symptoms**: Bot sends final response only, no real-time updates.
+Look for `REQUEST`, `RESOLVED`, and `TIMEOUT`.
 
-**Steps**:
-1. Check the bridge is healthy with `/status` or `tlive logs`
-2. For Feishu: verify `editMessage` card patching works (check logs for API errors)
-3. Check delivery rate limiting — rapid edits may be throttled
+## Streaming cards not updating
 
-## High memory usage
+Symptoms: Feishu only receives the final answer, or progress cards stop
+refreshing.
 
-**Symptoms**: Bridge process consumes increasing memory over time.
+Steps:
+1. Run `tlive status`.
+2. Check logs for Feishu API errors: `tlive logs 200`.
+3. Confirm card permissions are granted:
+   - `cardkit:card:read`
+   - `cardkit:card:write`
+4. Check for rate limiting or card patch failures in logs.
 
-**Steps**:
-1. Check status: `/tlive status`
-2. Restart: `/tlive stop` then `/tlive start`
-3. Check for large conversation buffers in logs
+## Session issues
+
+Use request IDs and session IDs from logs:
+
+```bash
+grep "\[query\]" ~/.tlive/logs/bridge-*.log | tail -80
+```
+
+Common signals:
+- `SESSION_EXPIRED`: the Claude SDK session rotated.
+- `SESSION_STALE`: the saved Claude SDK session is no longer valid.
+- `QUEUE_FULL`: messages are arriving faster than they can be processed.
+
+## Log Flow
+
+Successful message processing:
+
+```text
+[feishu] a1b2c3d4 RECV user=xxx chat=...abcd: hello
+[query] a1b2c3d4 START session=ef12 cwd=~/proj
+[query] a1b2c3d4 COMPLETE tokens=100+200 cost=0.0012$
+[query] a1b2c3d4 SENT msgId=msg_5678
+```
+
+Permission flow:
+
+```text
+[perm] a1b2c3d4 REQUEST Bash permId=3456
+[perm] a1b2c3d4 RESOLVED Bash permId=3456 -> allow
+```
+
+Tips:
+- Start from the request ID when a user reports a specific message.
+- Error logs are in `~/.tlive/logs/*-error.log`.
+- Use `tail -f ~/.tlive/logs/bridge-$(date +%Y-%m-%d).log` during live tests.

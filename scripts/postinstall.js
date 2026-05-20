@@ -6,12 +6,13 @@ import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const TLIVE_HOME = process.env.TLIVE_HOME?.trim() || join(homedir(), '.tlive');
 
 function copyReferenceDocs() {
-  const docsDir = join(homedir(), '.tlive', 'docs');
+  const docsDir = join(TLIVE_HOME, 'docs');
   mkdirSync(docsDir, { recursive: true });
 
-  const refsDir = join(__dirname, '..', 'references');
+  const refsDir = join(__dirname, '..', '.claude', 'skills', 'tlive', 'references');
   const docs = ['setup-guides.md', 'token-validation.md', 'troubleshooting.md'];
   for (const doc of docs) {
     const src = join(refsDir, doc);

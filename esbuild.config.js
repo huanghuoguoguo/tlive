@@ -1,10 +1,11 @@
 import { build } from 'esbuild';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 
 // Read version from package.json for build-time injection
 const packageJson = JSON.parse(readFileSync('package.json', 'utf-8'));
 
-mkdirSync('dist/channels', { recursive: true });
+rmSync('dist', { recursive: true, force: true });
+mkdirSync('dist', { recursive: true });
 
 const common = {
   bundle: true,
