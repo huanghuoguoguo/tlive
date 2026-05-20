@@ -20,19 +20,6 @@ export interface PushRequest {
   preview?: string;
 }
 
-export interface PushResponse {
-  success: boolean;
-  error?: string;
-  /** Session ID for resuming on mobile */
-  sessionId?: string;
-  /** Channel that received the push */
-  channelType?: string;
-  /** Chat ID that received the push */
-  chatId?: string;
-  /** Whether fallback was used */
-  fallback?: boolean;
-}
-
 export interface PushApiOptions {
   bridge: AutomationBridge;
   /** Push config: default channel and chat */

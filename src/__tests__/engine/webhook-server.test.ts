@@ -81,7 +81,7 @@ describe('WebhookServer', () => {
 
   beforeEach(() => {
     mockAdapter = {
-      channelType: 'telegram',
+      channelType: 'feishu',
       send: vi.fn().mockResolvedValue(undefined),
     };
     mockBridge = {
@@ -163,7 +163,7 @@ describe('WebhookServer', () => {
 
     it('accepts projects configuration', () => {
       const projects: ProjectConfig[] = [
-        { name: 'project-a', workdir: '/path/a', webhookDefaultChat: { channelType: 'telegram', chatId: 'chat-a' } },
+        { name: 'project-a', workdir: '/path/a', webhookDefaultChat: { channelType: 'feishu', chatId: 'chat-a' } },
         { name: 'project-b', workdir: '/path/b' },
       ];
       server = new WebhookServer({
@@ -311,7 +311,7 @@ describe('WebhookServer', () => {
       });
 
       vi.mocked(mockBridge.getBindingBySessionId!).mockResolvedValue({
-        channelType: 'telegram',
+        channelType: 'feishu',
         chatId: 'chat-from-session',
         sessionId: 'binding-1',
         sdkSessionId: 'sdk-456',
@@ -322,13 +322,13 @@ describe('WebhookServer', () => {
       const route = await (server as any).resolveRoute({
         event: 'test',
         prompt: 'Hello',
-        channelType: 'telegram',
+        channelType: 'feishu',
         chatId: 'chat-ignored',
         sessionId: 'sdk-456',
       });
 
       expect(route).toEqual({
-        channelType: 'telegram',
+        channelType: 'feishu',
         chatId: 'chat-from-session',
         workdir: '/repo/session',
         projectName: undefined,
@@ -350,7 +350,7 @@ describe('WebhookServer', () => {
       });
 
       vi.mocked(mockBridge.getBinding!).mockResolvedValue({
-        channelType: 'telegram',
+        channelType: 'feishu',
         chatId: 'chat-123',
         sessionId: 'binding-1',
         cwd: '/repo/session',
@@ -361,11 +361,11 @@ describe('WebhookServer', () => {
         {
           event: 'test',
           prompt: 'Hello',
-          channelType: 'telegram',
+          channelType: 'feishu',
           chatId: 'chat-123',
         },
         {
-          channelType: 'telegram',
+          channelType: 'feishu',
           chatId: 'chat-123',
           workdir: '/repo/session',
         },
@@ -375,9 +375,9 @@ describe('WebhookServer', () => {
 
       expect(result).toEqual({
         success: false,
-        error: 'No active session for telegram:chat-123. Start a conversation in IM first, or set webhook.sessionStrategy=\'create\'.',
+        error: 'No active session for feishu:chat-123. Start a conversation in IM first, or set webhook.sessionStrategy=\'create\'.',
       });
-      expect(mockBridge.hasActiveSession).toHaveBeenCalledWith('telegram', 'chat-123', '/repo/session');
+      expect(mockBridge.hasActiveSession).toHaveBeenCalledWith('feishu', 'chat-123', '/repo/session');
       expect(mockBridge.injectAutomationPrompt).not.toHaveBeenCalled();
     });
 
@@ -394,11 +394,11 @@ describe('WebhookServer', () => {
         {
           event: 'test',
           prompt: 'Hello',
-          channelType: 'telegram',
+          channelType: 'feishu',
           chatId: 'chat-123',
         },
         {
-          channelType: 'telegram',
+          channelType: 'feishu',
           chatId: 'chat-123',
           workdir: '/repo/session',
         },
@@ -412,7 +412,7 @@ describe('WebhookServer', () => {
       });
       expect(mockBridge.hasActiveSession).not.toHaveBeenCalled();
       expect(mockBridge.injectAutomationPrompt).toHaveBeenCalledWith(expect.objectContaining({
-        channelType: 'telegram',
+        channelType: 'feishu',
         chatId: 'chat-123',
         text: 'Hello',
         workdir: '/repo/session',
@@ -426,7 +426,7 @@ describe('WebhookServer', () => {
         requestId: 'req-123',
         success: true,
         event: 'git:commit',
-        channelType: 'telegram',
+        channelType: 'feishu',
         chatId: 'chat-456',
         sessionId: 'sess-789',
         timestamp: '2024-01-01T00:00:00Z',
@@ -441,7 +441,7 @@ describe('WebhookServer', () => {
         requestId: 'req-123',
         success: false,
         event: 'git:commit',
-        channelType: 'telegram',
+        channelType: 'feishu',
         chatId: 'chat-456',
         error: 'No active session',
         timestamp: '2024-01-01T00:00:00Z',
@@ -474,9 +474,9 @@ describe('WebhookServer', () => {
       const response: WebhookResponse = {
         success: true,
         message: 'Prompt delivered',
-        route: { channelType: 'telegram', chatId: 'chat-123', workdir: '/project' },
+        route: { channelType: 'feishu', chatId: 'chat-123', workdir: '/project' },
       };
-      expect(response.route?.channelType).toBe('telegram');
+      expect(response.route?.channelType).toBe('feishu');
       expect(response.route?.workdir).toBe('/project');
     });
   });
@@ -486,7 +486,7 @@ describe('WebhookServer', () => {
       const request: WebhookRequest = {
         event: 'test',
         prompt: 'Hello',
-        channelType: 'telegram',
+        channelType: 'feishu',
         chatId: 'chat-123',
         sessionId: 'sess-456',
       };

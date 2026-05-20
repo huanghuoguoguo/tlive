@@ -1,4 +1,3 @@
-import { escapeHtml } from '../formatting/escape.js';
 import type { ProgressPhase, ProgressTraceStats, PermissionDecision } from './policy.js';
 
 /**
@@ -27,7 +26,7 @@ export interface ReactionPolicy {
 }
 
 export interface FormatPolicy {
-  /** Format code output for this platform (e.g., HTML <pre> for Telegram, ``` for Feishu). */
+  /** Format code output for this platform. */
   formatCodeOutput(text: string): string;
 }
 
@@ -45,7 +44,7 @@ export interface ChannelPolicy {
   format: FormatPolicy;
 }
 
-// --- Default implementations (for Telegram) ---
+// --- Default implementations ---
 
 const DEFAULT_PROGRESS: ProgressPolicy = {
   shouldRenderPhase: (_phase: ProgressPhase) => true,
@@ -68,10 +67,10 @@ const DEFAULT_REACTIONS: ReactionPolicy = {
 };
 
 const DEFAULT_FORMAT: FormatPolicy = {
-  formatCodeOutput: (text: string) => `<pre>${escapeHtml(text)}</pre>`,
+  formatCodeOutput: (text: string) => `\`\`\`\n${text}\n\`\`\`\n`,
 };
 
-/** Default policy for Telegram (baseline behavior). */
+/** Default channel policy used by tests and lightweight adapters. */
 export const DEFAULT_CHANNEL_POLICY: ChannelPolicy = {
   locale: 'en',
   progress: DEFAULT_PROGRESS,

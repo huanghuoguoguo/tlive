@@ -31,13 +31,10 @@ export interface ProjectsValidationResult {
 export interface Config {
   port: number;
   token: string;
-  enabledChannels: string[];
   defaultWorkdir: string;
   defaultModel: string;
   /** Claude Code settings sources to load (default: ['user', 'project', 'local']) */
   claudeSettingSources: ClaudeSettingSource[];
-  /** Global proxy URL (e.g., http://127.0.0.1:7890, socks5://127.0.0.1:1080) */
-  proxy: string;
   /** Webhook configuration for automation entry */
   webhook: {
     /** Enable webhook endpoint (default: false) */
@@ -87,23 +84,6 @@ export interface Config {
     /** Log all exec commands to dedicated file */
     logExec: boolean;
   };
-  telegram: {
-    botToken: string;
-    chatId: string;
-    allowedUsers: string[];
-    /** Require @mention in groups (default: true) */
-    requireMention: boolean;
-    /** Webhook URL (if set, uses webhook instead of polling) */
-    webhookUrl: string;
-    /** Webhook secret for verification */
-    webhookSecret: string;
-    /** Webhook listen port (default: 8443) */
-    webhookPort: number;
-    /** Disable link previews in outbound messages (default: true) */
-    disableLinkPreview: boolean;
-    /** HTTP/SOCKS proxy URL — overrides global TL_PROXY */
-    proxy: string;
-  };
   feishu: {
     appId: string;
     appSecret: string;
@@ -112,16 +92,9 @@ export interface Config {
     webhookPort: number;
     allowedUsers: string[];
   };
-  qqbot: {
-    appId: string;
-    clientSecret: string;
-    allowedUsers: string[];
-    /** HTTP/SOCKS proxy URL — overrides global TL_PROXY */
-    proxy: string;
-  };
   /** Push configuration for /tlive:push command */
   push: {
-    /** Default channel for push notifications (e.g., 'telegram', 'feishu') */
+    /** Default channel for push notifications. Only feishu is supported. */
     defaultChannel: string;
     /** Default chat ID for push notifications */
     defaultChat: string;
@@ -161,32 +134,13 @@ function validateProjectConfig(project: ProjectConfig, index: number): { valid: 
   return { valid: true, name: project.name };
 }
 
-/** Validate required fields for enabled channels */
-function validateEnabledChannels(config: Config): void {
-  for (const channel of config.enabledChannels) {
-    switch (channel) {
-      case 'telegram':
-        if (!config.telegram.botToken) {
-          throw new Error('Config error: TL_TG_BOT_TOKEN is required (telegram is in enabled channels)');
-        }
-        break;
-      case 'feishu':
-        if (!config.feishu.appId) {
-          throw new Error('Config error: TL_FS_APP_ID is required (feishu is in enabled channels)');
-        }
-        if (!config.feishu.appSecret) {
-          throw new Error('Config error: TL_FS_APP_SECRET is required (feishu is in enabled channels)');
-        }
-        break;
-      case 'qqbot':
-        if (!config.qqbot.appId) {
-          throw new Error('Config error: TL_QQ_APP_ID is required (qqbot is in enabled channels)');
-        }
-        if (!config.qqbot.clientSecret) {
-          throw new Error('Config error: TL_QQ_CLIENT_SECRET is required (qqbot is in enabled channels)');
-        }
-        break;
-    }
+/** Validate required Feishu fields. */
+function validateFeishuConfig(config: Config): void {
+  if (!config.feishu.appId) {
+    throw new Error('Config error: TL_FS_APP_ID is required');
+  }
+  if (!config.feishu.appSecret) {
+    throw new Error('Config error: TL_FS_APP_SECRET is required');
   }
 }
 
@@ -239,11 +193,6 @@ export function loadProjectsConfig(): ProjectsValidationResult | undefined {
     // File doesn't exist or invalid JSON — single-project mode
   }
   return undefined;
-}
-
-/** Get project config by name */
-export function getProjectByName(projects: ProjectConfig[], name: string): ProjectConfig | undefined {
-  return projects.find(p => p.name === name);
 }
 
 function parseList(value: string | undefined): string[] {
@@ -308,16 +257,13 @@ export function loadConfig(): Config {
     process.env[key] ?? envFile[key] ?? defaultValue;
 
   const port = parseInt(get('TL_PORT', '8080'), 10);
-  const globalProxy = get('TL_PROXY');
 
   const config: Config = {
     port,
     token: get('TL_TOKEN'),
-    enabledChannels: parseList(get('TL_ENABLED_CHANNELS')),
     claudeSettingSources: parseList(
       get('TL_CLAUDE_SETTINGS', DEFAULT_CLAUDE_SETTING_SOURCES.join(',')),
     ) as ClaudeSettingSource[],
-    proxy: globalProxy,
     defaultWorkdir: get('TL_DEFAULT_WORKDIR', process.cwd()),
     defaultModel: get('TL_DEFAULT_MODEL'),
     webhook: {
@@ -342,17 +288,6 @@ export function loadConfig(): Config {
       timeout: parseInt(get('TL_EXEC_TIMEOUT', '30000'), 10),
       logExec: get('TL_EXEC_LOG', 'true') === 'true',
     },
-    telegram: {
-      botToken: get('TL_TG_BOT_TOKEN'),
-      chatId: get('TL_TG_CHAT_ID'),
-      allowedUsers: parseList(get('TL_TG_ALLOWED_USERS')),
-      requireMention: get('TL_TG_REQUIRE_MENTION', 'true') !== 'false',
-      webhookUrl: get('TL_TG_WEBHOOK_URL'),
-      webhookSecret: get('TL_TG_WEBHOOK_SECRET'),
-      webhookPort: parseInt(get('TL_TG_WEBHOOK_PORT', '8443'), 10),
-      disableLinkPreview: get('TL_TG_DISABLE_LINK_PREVIEW', 'true') !== 'false',
-      proxy: get('TL_TG_PROXY') || globalProxy,
-    },
     feishu: {
       appId: get('TL_FS_APP_ID'),
       appSecret: get('TL_FS_APP_SECRET'),
@@ -361,14 +296,8 @@ export function loadConfig(): Config {
       webhookPort: parseInt(get('TL_FS_WEBHOOK_PORT', '9100'), 10),
       allowedUsers: parseList(get('TL_FS_ALLOWED_USERS')),
     },
-    qqbot: {
-      appId: get('TL_QQ_APP_ID'),
-      clientSecret: get('TL_QQ_CLIENT_SECRET'),
-      allowedUsers: parseList(get('TL_QQ_ALLOWED_USERS')),
-      proxy: get('TL_QQ_PROXY') || globalProxy,
-    },
     push: {
-      defaultChannel: get('TL_PUSH_DEFAULT_CHANNEL'),
+      defaultChannel: get('TL_PUSH_DEFAULT_CHANNEL', 'feishu'),
       defaultChat: get('TL_PUSH_DEFAULT_CHAT'),
     },
   };
@@ -378,14 +307,11 @@ export function loadConfig(): Config {
     throw new Error('Config error: TL_TOKEN is required');
   }
 
-  validateEnabledChannels(config);
+  validateFeishuConfig(config);
 
   // Validate push config
-  if (config.push.defaultChannel && !config.enabledChannels.includes(config.push.defaultChannel)) {
-    throw new Error(`Config error: TL_PUSH_DEFAULT_CHANNEL '${config.push.defaultChannel}' is not in enabled channels (${config.enabledChannels.join(', ') || 'none'})`);
-  }
-  if (config.push.defaultChannel && !config.push.defaultChat) {
-    throw new Error('Config error: TL_PUSH_DEFAULT_CHAT is required when TL_PUSH_DEFAULT_CHANNEL is set');
+  if (config.push.defaultChannel && config.push.defaultChannel !== 'feishu') {
+    throw new Error(`Config error: TL_PUSH_DEFAULT_CHANNEL '${config.push.defaultChannel}' is not supported (only 'feishu')`);
   }
 
   return config;

@@ -26,7 +26,7 @@ print_json_key_count() {
 
   if check_cmd node; then
     local count
-    count=$(node -e "const fs=require('node:fs'); try { const data=JSON.parse(fs.readFileSync(process.argv[1],'utf8')); console.log(Object.keys(data).length); } catch { process.exit(1); }" "$file" 2>/dev/null) || true
+    count=$(node -e "const fs=require('node:fs'); try { const data=JSON.parse(fs.readFileSync(process.argv[1],'utf8')); console.log(Object.values(data).filter(binding => binding && binding.channelType === 'feishu').length); } catch { process.exit(1); }" "$file" 2>/dev/null) || true
     if [ -n "${count:-}" ]; then
       if [ "$count" -gt 0 ] 2>/dev/null; then
         echo "$count active"
@@ -78,9 +78,11 @@ if [ -f "$CONFIG_FILE" ]; then
   source "$CONFIG_FILE" 2>/dev/null || true
   set +a
   [ -n "${TL_TOKEN:-}" ] && echo "  TL_TOKEN: set" || echo "  TL_TOKEN: NOT SET"
-  [ -n "${TL_TG_BOT_TOKEN:-}" ] && echo "  Telegram: configured" || echo "  Telegram: not configured"
-  [ -n "${TL_FS_APP_ID:-}" ] && echo "  Feishu:   configured" || echo "  Feishu:   not configured"
-  [ -n "${TL_QQ_APP_ID:-}" ] && echo "  QQ Bot:   configured" || echo "  QQ Bot:   not configured"
+  if [ -n "${TL_FS_APP_ID:-}" ] && [ -n "${TL_FS_APP_SECRET:-}" ]; then
+    echo "  Feishu:   configured"
+  else
+    echo "  Feishu:   not configured"
+  fi
 else
   echo "  config.env: NOT FOUND (run 'tlive setup')"
 fi

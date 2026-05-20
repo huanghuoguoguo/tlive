@@ -4,8 +4,7 @@ import { Logger } from './logger.js';
 import { JsonFileStore } from './store/json-file.js';
 import { ClaudeSDKProvider } from './providers/claude-sdk.js';
 import { BridgeManager } from './engine/coordinators/bridge-manager.js';
-import { createAdapter, loadAdapters } from './channels/index.js';
-import type { ChannelType } from './channels/types.js';
+import { FeishuAdapter } from './channels/feishu/adapter.js';
 import { checkForUpdates, getCurrentVersion, isVersionNotified, markVersionNotified } from './utils/version-checker.js';
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync, readFileSync, unlinkSync, existsSync } from 'node:fs';
@@ -119,18 +118,18 @@ export async function main() {
 
   const logger = new Logger(
     join(tliveHome, 'logs', 'bridge.log'),
-    [config.token, config.telegram.botToken, config.feishu.appSecret].filter(Boolean)
+    [config.token, config.feishu.appSecret].filter(Boolean)
   );
   logger.installConsoleInterception();
 
   logger.info('TLive Bridge starting...');
-  logger.info(`Enabled channels: ${config.enabledChannels.join(', ') || 'none'}`);
+  logger.info('Enabled channel: feishu');
 
   // Write startup status
   writeStatusFile({
     pid: process.pid,
     startedAt: new Date().toISOString(),
-    channels: config.enabledChannels,
+    channels: ['feishu'],
     version: getCurrentVersion(),
   });
 
@@ -147,19 +146,8 @@ export async function main() {
 
   // Start Bridge Manager with enabled IM adapters
   const manager = new BridgeManager({ store, llm, defaultWorkdir: config.defaultWorkdir, config });
-
-  // Dynamically load only the adapters we need (reduces memory from ~180MB to ~60MB)
-  await loadAdapters(config.enabledChannels);
-
-  for (const channelType of config.enabledChannels) {
-    try {
-      const adapter = createAdapter(channelType as ChannelType);
-      manager.registerAdapter(adapter);
-      logger.info(`Registered ${channelType} adapter`);
-    } catch (err) {
-      logger.warn(`Failed to create ${channelType} adapter: ${err}`);
-    }
-  }
+  manager.registerAdapter(new FeishuAdapter(config.feishu));
+  logger.info('Registered feishu adapter');
 
   await manager.start();
   logger.info('Bridge started');

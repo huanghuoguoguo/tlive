@@ -18,11 +18,11 @@ import { join } from 'node:path';
 const createMockBridge = (): BridgeManager => {
   return {
     getAdapter: vi.fn().mockReturnValue({
-      channelType: 'telegram',
+      channelType: 'feishu',
       send: vi.fn().mockResolvedValue(undefined),
     }),
     getAdapters: vi.fn().mockReturnValue([
-      { channelType: 'telegram', send: vi.fn().mockResolvedValue(undefined) },
+      { channelType: 'feishu', send: vi.fn().mockResolvedValue(undefined) },
     ]),
     getLastChatId: vi.fn().mockReturnValue('test-chat-123'),
     injectAutomationPrompt: vi.fn().mockResolvedValue({ sessionId: 'sdk-123' }),
@@ -173,7 +173,7 @@ describe('CronScheduler', () => {
     const job = scheduler.addJob({
       name: 'Daily review',
       schedule: '0 9 * * *',
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'test-chat',
       prompt: 'Review the daily progress',
       event: 'daily-review',
@@ -387,7 +387,7 @@ describe('CronScheduler', () => {
     const job = scheduler.addJob({
       name: 'Run prompt',
       schedule: '0 9 * * *',
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'test-chat-123',
       prompt: 'summarize the repo status',
       enabled: true,
@@ -396,7 +396,7 @@ describe('CronScheduler', () => {
     await (scheduler as any).executeJob(job);
 
     expect(mockBridge.injectAutomationPrompt).toHaveBeenCalledWith(expect.objectContaining({
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'test-chat-123',
       text: 'summarize the repo status',
       userId: 'cron',

@@ -1,15 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import { HookNotificationDispatcher } from '../../engine/messages/hook-notification.js';
-import { TelegramFormatter } from '../../channels/telegram/formatter.js';
 import { FeishuFormatter } from '../../channels/feishu/formatter.js';
 
-function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
-  const formatter = channelType === 'feishu'
-    ? new FeishuFormatter('zh')
-    : new TelegramFormatter('en');
+function createAdapter(): BaseChannelAdapter {
+  const formatter = new FeishuFormatter('zh');
   const adapter = {
-    channelType,
+    channelType: 'feishu',
     send: vi.fn().mockResolvedValue({ messageId: 'msg-1', success: true }),
     format: (msg: any) => formatter.format(msg),
   };
@@ -34,7 +31,7 @@ describe('HookNotificationDispatcher', () => {
     });
 
     const sent = (adapter.send as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    const content = sent.html ?? sent.text ?? '';
+    const content = JSON.stringify(sent);
     expect(content).toContain('Terminal');
     expect(permissions.trackHookMessage).toHaveBeenCalledWith('msg-1', 'sess-1');
   });
@@ -44,7 +41,7 @@ describe('HookNotificationDispatcher', () => {
       permissions: { trackHookMessage: vi.fn() } as any,
       buildTerminalUrl: () => '',
     });
-    const adapter = createAdapter('feishu');
+    const adapter = createAdapter();
 
     await dispatcher.send(adapter, 'chat-1', {
       notification_type: 'idle_prompt',

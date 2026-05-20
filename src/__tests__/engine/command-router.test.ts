@@ -41,7 +41,7 @@ describe('CommandRouter /settings', () => {
     store = new JsonFileStore(tmpDir);
     permissions = createMockPermissions();
     adapter = {
-      channelType: 'telegram',
+      channelType: 'feishu',
       send: vi.fn().mockResolvedValue(undefined),
       sendFormatted: vi.fn().mockResolvedValue(undefined),
     };
@@ -86,7 +86,7 @@ describe('CommandRouter /settings', () => {
 
   it('stores settings overrides per chat and rotates the default session on change', async () => {
     await store.saveBinding({
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'c1',
       sessionId: 'binding-1',
       sdkSessionId: 'sdk-1',
@@ -94,14 +94,14 @@ describe('CommandRouter /settings', () => {
     });
 
     await router.handle(adapter, {
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'c1',
       userId: 'u1',
       text: '/settings isolated',
       messageId: 'm1',
     } as any);
 
-    const binding = await store.getBinding('telegram', 'c1');
+    const binding = await store.getBinding('feishu', 'c1');
     expect(binding?.claudeSettingSources).toEqual([]);
     expect(binding?.sdkSessionId).toBeUndefined();
     expect(binding?.sessionId).not.toBe('binding-1');
@@ -114,7 +114,7 @@ describe('CommandRouter /settings', () => {
 
   it('reports defaults for other chats without inheriting another chat override', async () => {
     await store.saveBinding({
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'c1',
       sessionId: 'binding-1',
       claudeSettingSources: [],
@@ -122,7 +122,7 @@ describe('CommandRouter /settings', () => {
     });
 
     await router.handle(adapter, {
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'c2',
       userId: 'u2',
       text: '/settings',
@@ -138,7 +138,7 @@ describe('CommandRouter /settings', () => {
 
   it('preserves chat settings overrides across /new', async () => {
     await store.saveBinding({
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'c1',
       sessionId: 'binding-1',
       sdkSessionId: 'sdk-1',
@@ -149,14 +149,14 @@ describe('CommandRouter /settings', () => {
     });
 
     await router.handle(adapter, {
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'c1',
       userId: 'u1',
       text: '/new',
       messageId: 'm3',
     } as any);
 
-    const binding = await store.getBinding('telegram', 'c1');
+    const binding = await store.getBinding('feishu', 'c1');
     expect(binding?.claudeSettingSources).toEqual(['user']);
     expect(binding?.projectName).toBe('repo');
   });
@@ -170,16 +170,16 @@ describe('CommandRouter /settings', () => {
     mkdirSync(dirC);
 
     await store.saveBinding({
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'c1',
       sessionId: 'binding-1',
       cwd: dirA,
       createdAt: '',
     });
-    workspace.pushHistory('telegram', 'c1', dirA);
+    workspace.pushHistory('feishu', 'c1', dirA);
 
     await router.handle(adapter, {
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'c1',
       userId: 'u1',
       text: `/cd ${dirB}`,
@@ -187,7 +187,7 @@ describe('CommandRouter /settings', () => {
     } as any);
 
     await router.handle(adapter, {
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'c1',
       userId: 'u1',
       text: `/cd ${dirC}`,
@@ -195,16 +195,16 @@ describe('CommandRouter /settings', () => {
     } as any);
 
     await router.handle(adapter, {
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'c1',
       userId: 'u1',
       text: '/cd -',
       messageId: 'm6',
     } as any);
 
-    const binding = await store.getBinding('telegram', 'c1');
+    const binding = await store.getBinding('feishu', 'c1');
     expect(binding?.cwd).toBe(dirB);
-    expect(workspace.getHistory('telegram', 'c1')).toEqual([dirB, dirC, dirA]);
+    expect(workspace.getHistory('feishu', 'c1')).toEqual([dirB, dirC, dirA]);
   });
 
   it('does not cleanup session when /cd stays in the same git repo', async () => {
@@ -214,7 +214,7 @@ describe('CommandRouter /settings', () => {
     mkdirSync(subDir, { recursive: true });
 
     await store.saveBinding({
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'c1',
       sessionId: 'binding-1',
       sdkSessionId: 'sdk-1',
@@ -224,7 +224,7 @@ describe('CommandRouter /settings', () => {
     });
 
     await router.handle(adapter, {
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'c1',
       userId: 'u1',
       text: `/cd ${subDir}`,
@@ -233,11 +233,11 @@ describe('CommandRouter /settings', () => {
 
     expect(sdkEngine.cleanupSession).not.toHaveBeenCalled();
     expect(permissions.clearSessionWhitelist).not.toHaveBeenCalled();
-    const binding = await store.getBinding('telegram', 'c1');
+    const binding = await store.getBinding('feishu', 'c1');
     expect(binding?.cwd).toBe(subDir);
     expect(binding?.sdkSessionId).toBe('sdk-1');
     expect(binding?.projectName).toBe('repo');
-    expect(workspace.getBinding('telegram', 'c1')).toBe(repoDir);
+    expect(workspace.getBinding('feishu', 'c1')).toBe(repoDir);
   });
 
   it('cleans session and clears project binding when /cd crosses repos', async () => {
@@ -247,7 +247,7 @@ describe('CommandRouter /settings', () => {
     mkdirSync(join(repoB, '.git'), { recursive: true });
 
     await store.saveBinding({
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'c1',
       sessionId: 'binding-1',
       sdkSessionId: 'sdk-1',
@@ -257,7 +257,7 @@ describe('CommandRouter /settings', () => {
     });
 
     await router.handle(adapter, {
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'c1',
       userId: 'u1',
       text: `/cd ${repoB}`,
@@ -266,12 +266,12 @@ describe('CommandRouter /settings', () => {
 
     expect(sdkEngine.cleanupSession).not.toHaveBeenCalled();
     expect(permissions.clearSessionWhitelist).not.toHaveBeenCalled();
-    const binding = await store.getBinding('telegram', 'c1');
+    const binding = await store.getBinding('feishu', 'c1');
     expect(binding?.cwd).toBe(repoB);
     expect(binding?.sdkSessionId).toBeUndefined();
     expect(binding?.sessionId).not.toBe('binding-1');
     expect(binding?.projectName).toBeUndefined();
-    expect(workspace.getBinding('telegram', 'c1')).toBe(repoB);
+    expect(workspace.getBinding('feishu', 'c1')).toBe(repoB);
   });
 
   it('clears project binding when /session --all switches to another repo', async () => {
@@ -291,7 +291,7 @@ describe('CommandRouter /settings', () => {
     ] as any);
 
     await store.saveBinding({
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'c1',
       sessionId: 'binding-1',
       sdkSessionId: 'sdk-1',
@@ -299,10 +299,10 @@ describe('CommandRouter /settings', () => {
       projectName: 'repo-a',
       createdAt: '',
     });
-    workspace.setBinding('telegram', 'c1', repoA);
+    workspace.setBinding('feishu', 'c1', repoA);
 
     await router.handle(adapter, {
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'c1',
       userId: 'u1',
       text: '/session --all 1',
@@ -311,12 +311,12 @@ describe('CommandRouter /settings', () => {
 
     expect(sdkEngine.cleanupSession).not.toHaveBeenCalled();
     expect(permissions.clearSessionWhitelist).not.toHaveBeenCalled();
-    const binding = await store.getBinding('telegram', 'c1');
+    const binding = await store.getBinding('feishu', 'c1');
     expect(binding?.cwd).toBe(repoB);
     expect(binding?.sdkSessionId).toBe('sdk-target');
     expect(binding?.sessionId).not.toBe('binding-1');
     expect(binding?.projectName).toBeUndefined();
-    expect(workspace.getBinding('telegram', 'c1')).toBe(repoB);
+    expect(workspace.getBinding('feishu', 'c1')).toBe(repoB);
 
     scanSpy.mockRestore();
   });

@@ -16,7 +16,7 @@ const mockReadFile = vi.mocked(readFile);
 function createMockBridge(overrides?: Partial<BridgeManager>): BridgeManager {
   return {
     getAdapter: vi.fn().mockReturnValue({
-      channelType: 'telegram',
+      channelType: 'feishu',
       formatContent: vi.fn().mockReturnValue({ chatId: 'chat-1', text: '' }),
       send: vi.fn().mockResolvedValue({ success: true }),
     }),
@@ -36,7 +36,7 @@ describe('sendFileToChat', () => {
     mockStat.mockRejectedValue(new Error('ENOENT'));
 
     const bridge = createMockBridge();
-    const result = await sendFileToChat('/missing.png', undefined, 'telegram', 'chat-1', '/work', bridge);
+    const result = await sendFileToChat('/missing.png', undefined, 'feishu', 'chat-1', '/work', bridge);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('File not found');
@@ -46,7 +46,7 @@ describe('sendFileToChat', () => {
     mockStat.mockResolvedValue({ isFile: () => false, size: 100 } as any);
 
     const bridge = createMockBridge();
-    const result = await sendFileToChat('/somedir', undefined, 'telegram', 'chat-1', '/work', bridge);
+    const result = await sendFileToChat('/somedir', undefined, 'feishu', 'chat-1', '/work', bridge);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('Not a file');
@@ -56,7 +56,7 @@ describe('sendFileToChat', () => {
     mockStat.mockResolvedValue({ isFile: () => true, size: 25 * 1024 * 1024 } as any);
 
     const bridge = createMockBridge();
-    const result = await sendFileToChat('/big.zip', undefined, 'telegram', 'chat-1', '/work', bridge);
+    const result = await sendFileToChat('/big.zip', undefined, 'feishu', 'chat-1', '/work', bridge);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('too large');
@@ -66,7 +66,7 @@ describe('sendFileToChat', () => {
     mockStat.mockResolvedValue({ isFile: () => true, size: 0 } as any);
 
     const bridge = createMockBridge();
-    const result = await sendFileToChat('/empty.txt', undefined, 'telegram', 'chat-1', '/work', bridge);
+    const result = await sendFileToChat('/empty.txt', undefined, 'feishu', 'chat-1', '/work', bridge);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('empty');
@@ -77,10 +77,10 @@ describe('sendFileToChat', () => {
     mockReadFile.mockResolvedValue(Buffer.from('hello'));
 
     const bridge = createMockBridge({ getAdapter: vi.fn().mockReturnValue(null) as any });
-    const result = await sendFileToChat('/test.txt', undefined, 'telegram', 'chat-1', '/work', bridge);
+    const result = await sendFileToChat('/test.txt', undefined, 'feishu', 'chat-1', '/work', bridge);
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("Channel 'telegram' not available");
+    expect(result.error).toContain("Channel 'feishu' not available");
   });
 
   it('sends image file successfully', async () => {
@@ -91,13 +91,13 @@ describe('sendFileToChat', () => {
     const mockFormatContent = vi.fn().mockReturnValue({ chatId: 'chat-1', text: '' });
     const bridge = createMockBridge({
       getAdapter: vi.fn().mockReturnValue({
-        channelType: 'telegram',
+        channelType: 'feishu',
         formatContent: mockFormatContent,
         send: mockSend,
       }) as any,
     });
 
-    const result = await sendFileToChat('/work/output.png', 'Here is the chart', 'telegram', 'chat-1', '/work', bridge);
+    const result = await sendFileToChat('/work/output.png', 'Here is the chart', 'feishu', 'chat-1', '/work', bridge);
 
     expect(result.success).toBe(true);
     expect(result.filename).toBe('output.png');
@@ -118,13 +118,13 @@ describe('sendFileToChat', () => {
     const mockSend = vi.fn().mockResolvedValue({ success: true });
     const bridge = createMockBridge({
       getAdapter: vi.fn().mockReturnValue({
-        channelType: 'telegram',
+        channelType: 'feishu',
         formatContent: vi.fn().mockReturnValue({ chatId: 'chat-1', text: '' }),
         send: mockSend,
       }) as any,
     });
 
-    const result = await sendFileToChat('report.pdf', undefined, 'telegram', 'chat-1', '/work', bridge);
+    const result = await sendFileToChat('report.pdf', undefined, 'feishu', 'chat-1', '/work', bridge);
 
     expect(result.success).toBe(true);
     expect(result.filename).toBe('report.pdf');
@@ -144,13 +144,13 @@ describe('sendFileToChat', () => {
     const mockSend = vi.fn().mockResolvedValue({ success: true });
     const bridge = createMockBridge({
       getAdapter: vi.fn().mockReturnValue({
-        channelType: 'telegram',
+        channelType: 'feishu',
         formatContent: vi.fn().mockReturnValue({ chatId: 'chat-1', text: '' }),
         send: mockSend,
       }) as any,
     });
 
-    await sendFileToChat('output/chart.png', undefined, 'telegram', 'chat-1', '/my/project', bridge);
+    await sendFileToChat('output/chart.png', undefined, 'feishu', 'chat-1', '/my/project', bridge);
 
     // stat should be called with resolved path
     expect(mockStat).toHaveBeenCalledWith('/my/project/output/chart.png');
@@ -162,13 +162,13 @@ describe('sendFileToChat', () => {
 
     const bridge = createMockBridge({
       getAdapter: vi.fn().mockReturnValue({
-        channelType: 'telegram',
+        channelType: 'feishu',
         formatContent: vi.fn().mockReturnValue({ chatId: 'chat-1', text: '' }),
         send: vi.fn().mockRejectedValue(new Error('Network timeout')),
       }) as any,
     });
 
-    const result = await sendFileToChat('/test.png', undefined, 'telegram', 'chat-1', '/work', bridge);
+    const result = await sendFileToChat('/test.png', undefined, 'feishu', 'chat-1', '/work', bridge);
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('Network timeout');
@@ -181,13 +181,13 @@ describe('sendFileToChat', () => {
     const mockFormatContent = vi.fn().mockReturnValue({ chatId: 'chat-1', text: '' });
     const bridge = createMockBridge({
       getAdapter: vi.fn().mockReturnValue({
-        channelType: 'telegram',
+        channelType: 'feishu',
         formatContent: mockFormatContent,
         send: vi.fn().mockResolvedValue({ success: true }),
       }) as any,
     });
 
-    await sendFileToChat('/test.txt', undefined, 'telegram', 'chat-1', '/work', bridge);
+    await sendFileToChat('/test.txt', undefined, 'feishu', 'chat-1', '/work', bridge);
 
     expect(mockFormatContent).toHaveBeenCalledWith('chat-1', '');
   });
@@ -199,13 +199,13 @@ describe('sendFileToChat', () => {
     const mockSend = vi.fn().mockResolvedValue({ success: true });
     const bridge = createMockBridge({
       getAdapter: vi.fn().mockReturnValue({
-        channelType: 'telegram',
+        channelType: 'feishu',
         formatContent: vi.fn().mockReturnValue({ chatId: 'chat-1', text: '' }),
         send: mockSend,
       }) as any,
     });
 
-    await sendFileToChat('/data.xyz', undefined, 'telegram', 'chat-1', '/work', bridge);
+    await sendFileToChat('/data.xyz', undefined, 'feishu', 'chat-1', '/work', bridge);
 
     expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({
       media: expect.objectContaining({

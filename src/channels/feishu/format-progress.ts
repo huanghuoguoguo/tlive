@@ -23,7 +23,7 @@ type TimelineOperationDisplay = {
   toolEntries: TimelineToolDisplay[];
 };
 
-export function summarizeOperationText(text: string): string {
+function summarizeOperationText(text: string): string {
   const cleaned = text
     .replace(/[*_`>#-]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -38,7 +38,7 @@ export function summarizeOperationText(text: string): string {
   return truncate(sentence, 20);
 }
 
-export function collectTimelineOperations(data: ProgressData): TimelineOperationDisplay[] {
+function collectTimelineOperations(data: ProgressData): TimelineOperationDisplay[] {
   const operations: TimelineOperationDisplay[] = [];
   let current: TimelineOperationDisplay | undefined;
   let currentToolByKey: Map<string, TimelineToolDisplay> | undefined;
@@ -110,7 +110,7 @@ export function collectTimelineOperations(data: ProgressData): TimelineOperation
   return operations;
 }
 
-export function buildOperationHeader(locale: Locale, operation: TimelineOperationDisplay, isExpanded: boolean): string {
+function buildOperationHeader(locale: Locale, operation: TimelineOperationDisplay, isExpanded: boolean): string {
   const summarySource = operation.thinkingContent.trim()
     || operation.textEntries.find(text => text.trim())
     || '';
@@ -134,7 +134,7 @@ export function buildOperationHeader(locale: Locale, operation: TimelineOperatio
   return `${icon} ${title}`;
 }
 
-export function buildOperationContent(operation: TimelineOperationDisplay, includeTextEntries: boolean): string {
+function buildOperationContent(operation: TimelineOperationDisplay, includeTextEntries: boolean): string {
   const sections: string[] = [];
 
   if (operation.thinkingContent.trim()) {
@@ -163,7 +163,7 @@ export function buildOperationContent(operation: TimelineOperationDisplay, inclu
   return sections.join('\n\n');
 }
 
-export function extractCompletedBody(data: ProgressData): string {
+function extractCompletedBody(data: ProgressData): string {
   let body = data.renderedText.trim();
 
   if (data.footerLine && body.endsWith(data.footerLine)) {
@@ -179,7 +179,7 @@ export function extractCompletedBody(data: ProgressData): string {
   return body;
 }
 
-export function operationBudget(data: ProgressData, isDone: boolean): number {
+function operationBudget(data: ProgressData, isDone: boolean): number {
   const renderedBytes = Buffer.byteLength(data.renderedText || '', 'utf8');
   const footerBytes = Buffer.byteLength(data.footerLine || '', 'utf8');
   const available = Math.max(4500, 20_000 - renderedBytes - footerBytes);

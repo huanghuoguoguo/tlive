@@ -13,14 +13,8 @@ const common = {
   format: 'esm',
   external: [
     '@anthropic-ai/*',
-    'grammy',
-    '@grammyjs/*',
     '@larksuiteoapi/*',
-    'node-telegram-bot-api',
-    'socks-proxy-agent',
-    'https-proxy-agent',
     'undici',
-    'ws',
   ],
   sourcemap: true,
   define: {
@@ -30,9 +24,6 @@ const common = {
 
 const entryPoints = [
   { entry: 'src/main.ts', outfile: 'dist/main.mjs' },
-  { entry: 'src/channels/telegram/adapter.ts', outfile: 'dist/channels/telegram.mjs' },
-  { entry: 'src/channels/feishu/adapter.ts', outfile: 'dist/channels/feishu.mjs' },
-  { entry: 'src/channels/qqbot/adapter.ts', outfile: 'dist/channels/qqbot.mjs' },
   { entry: 'src/setup-wizard.ts', outfile: 'dist/setup.mjs' },
 ];
 

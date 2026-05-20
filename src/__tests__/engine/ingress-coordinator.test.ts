@@ -10,7 +10,7 @@ function tempChatIdFile(): string {
   return join(tmpdir(), `tlive-ingress-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`);
 }
 
-function createAdapter(channelType: 'telegram' | 'feishu' | 'qqbot' = 'telegram') {
+function createAdapter(channelType: 'feishu' | 'feishu' | 'feishu' = 'feishu') {
   const queue: Array<InboundMessage> = [];
   return {
     adapter: {
@@ -34,12 +34,12 @@ describe('IngressCoordinator', () => {
     }
 
     const ingress = new IngressCoordinator({ chatIdFile, persistDebounceMs: 10 });
-    ingress.recordChat('telegram', 'chat-1');
+    ingress.recordChat('feishu', 'chat-1');
     vi.advanceTimersByTime(10);
     ingress.dispose();
 
     const reloaded = new IngressCoordinator({ chatIdFile, persistDebounceMs: 10 });
-    expect(reloaded.getLastChatId('telegram')).toBe('chat-1');
+    expect(reloaded.getLastChatId('feishu')).toBe('chat-1');
 
     reloaded.dispose();
     rmSync(chatIdFile);
@@ -49,7 +49,7 @@ describe('IngressCoordinator', () => {
     const chatIdFile = tempChatIdFile();
     const ingress = new IngressCoordinator({ chatIdFile });
     const imageOnly = ingress.prepareAttachments({
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'chat-1',
       userId: 'user-1',
       text: '',
@@ -65,7 +65,7 @@ describe('IngressCoordinator', () => {
     expect(imageOnly.handled).toBe(true);
 
     const merged = ingress.prepareAttachments({
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'chat-1',
       userId: 'user-1',
       text: 'please review this',
@@ -85,14 +85,14 @@ describe('IngressCoordinator', () => {
     const ingress = new IngressCoordinator({ chatIdFile: tempChatIdFile() });
 
     push({
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'chat-1',
       userId: 'user-1',
       text: 'second chunk',
       messageId: 'msg-2',
     });
     push({
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'chat-2',
       userId: 'user-2',
       text: 'other message',
@@ -100,7 +100,7 @@ describe('IngressCoordinator', () => {
     });
 
     const coalescePromise = ingress.coalesceMessages(adapter, {
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'chat-1',
       userId: 'user-1',
       text: 'a'.repeat(3900),

@@ -167,7 +167,7 @@ export interface Translations {
   // --- text-dispatcher ---
   'dispatcher.multiPermHint': string;
 
-  // --- qqbot progress ---
+  // --- progress ---
   'progress.starting': string;
   'progress.executing': string;
   'progress.waitingPermission': string;

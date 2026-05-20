@@ -19,90 +19,90 @@ describe('WorkspaceStateManager', () => {
 
   describe('history', () => {
     it('pushes directory to history', () => {
-      manager.pushHistory('telegram', 'chat1', '/home/user/project');
-      const history = manager.getHistory('telegram', 'chat1');
+      manager.pushHistory('feishu', 'chat1', '/home/user/project');
+      const history = manager.getHistory('feishu', 'chat1');
       expect(history).toEqual(['/home/user/project']);
     });
 
     it('maintains history order (newest first)', () => {
-      manager.pushHistory('telegram', 'chat1', '/dir1');
-      manager.pushHistory('telegram', 'chat1', '/dir2');
-      manager.pushHistory('telegram', 'chat1', '/dir3');
+      manager.pushHistory('feishu', 'chat1', '/dir1');
+      manager.pushHistory('feishu', 'chat1', '/dir2');
+      manager.pushHistory('feishu', 'chat1', '/dir3');
 
-      const history = manager.getHistory('telegram', 'chat1');
+      const history = manager.getHistory('feishu', 'chat1');
       expect(history).toEqual(['/dir3', '/dir2', '/dir1']);
     });
 
     it('deduplicates history', () => {
-      manager.pushHistory('telegram', 'chat1', '/dir1');
-      manager.pushHistory('telegram', 'chat1', '/dir2');
-      manager.pushHistory('telegram', 'chat1', '/dir1'); // revisit
+      manager.pushHistory('feishu', 'chat1', '/dir1');
+      manager.pushHistory('feishu', 'chat1', '/dir2');
+      manager.pushHistory('feishu', 'chat1', '/dir1'); // revisit
 
-      const history = manager.getHistory('telegram', 'chat1');
+      const history = manager.getHistory('feishu', 'chat1');
       expect(history).toEqual(['/dir1', '/dir2']);
     });
 
     it('truncates history to MAX_HISTORY_SIZE', () => {
       for (let i = 0; i < 15; i++) {
-        manager.pushHistory('telegram', 'chat1', `/dir${i}`);
+        manager.pushHistory('feishu', 'chat1', `/dir${i}`);
       }
 
-      const history = manager.getHistory('telegram', 'chat1');
+      const history = manager.getHistory('feishu', 'chat1');
       expect(history.length).toBe(WorkspaceStateManager.MAX_HISTORY_SIZE);
       // Most recent should be at front
       expect(history[0]).toBe('/dir14');
     });
 
     it('returns previous directory for /cd -', () => {
-      manager.pushHistory('telegram', 'chat1', '/dir1');
-      manager.pushHistory('telegram', 'chat1', '/dir2');
+      manager.pushHistory('feishu', 'chat1', '/dir1');
+      manager.pushHistory('feishu', 'chat1', '/dir2');
 
-      const previous = manager.getPreviousDirectory('telegram', 'chat1');
+      const previous = manager.getPreviousDirectory('feishu', 'chat1');
       expect(previous).toBe('/dir1'); // history[1]
     });
 
     it('returns undefined if no previous directory', () => {
-      manager.pushHistory('telegram', 'chat1', '/dir1');
+      manager.pushHistory('feishu', 'chat1', '/dir1');
 
-      const previous = manager.getPreviousDirectory('telegram', 'chat1');
+      const previous = manager.getPreviousDirectory('feishu', 'chat1');
       expect(previous).toBeUndefined();
     });
 
     it('separates history by chat', () => {
-      manager.pushHistory('telegram', 'chat1', '/dir1');
-      manager.pushHistory('telegram', 'chat2', '/dir2');
+      manager.pushHistory('feishu', 'chat1', '/dir1');
+      manager.pushHistory('feishu', 'chat2', '/dir2');
 
-      expect(manager.getHistory('telegram', 'chat1')).toEqual(['/dir1']);
-      expect(manager.getHistory('telegram', 'chat2')).toEqual(['/dir2']);
+      expect(manager.getHistory('feishu', 'chat1')).toEqual(['/dir1']);
+      expect(manager.getHistory('feishu', 'chat2')).toEqual(['/dir2']);
     });
   });
 
   describe('binding', () => {
     it('sets workspace binding', () => {
-      manager.setBinding('telegram', 'chat1', '/home/user/repo');
-      expect(manager.getBinding('telegram', 'chat1')).toBe('/home/user/repo');
+      manager.setBinding('feishu', 'chat1', '/home/user/repo');
+      expect(manager.getBinding('feishu', 'chat1')).toBe('/home/user/repo');
     });
 
     it('returns undefined if no binding', () => {
-      expect(manager.getBinding('telegram', 'chat1')).toBeUndefined();
+      expect(manager.getBinding('feishu', 'chat1')).toBeUndefined();
     });
 
     it('clears workspace binding', () => {
-      manager.setBinding('telegram', 'chat1', '/home/user/repo');
-      manager.clearBinding('telegram', 'chat1');
-      expect(manager.getBinding('telegram', 'chat1')).toBeUndefined();
+      manager.setBinding('feishu', 'chat1', '/home/user/repo');
+      manager.clearBinding('feishu', 'chat1');
+      expect(manager.getBinding('feishu', 'chat1')).toBeUndefined();
     });
   });
 
   describe('clear', () => {
     it('clears workspace state for a chat', () => {
-      manager.pushHistory('telegram', 'chat1', '/dir1');
-      manager.setBinding('telegram', 'chat1', '/repo');
+      manager.pushHistory('feishu', 'chat1', '/dir1');
+      manager.setBinding('feishu', 'chat1', '/repo');
 
-      manager.clear('telegram', 'chat1');
+      manager.clear('feishu', 'chat1');
 
-      expect(manager.getHistory('telegram', 'chat1')).toEqual([]);
-      expect(manager.getBinding('telegram', 'chat1')).toBeUndefined();
+      expect(manager.getHistory('feishu', 'chat1')).toEqual([]);
+      expect(manager.getBinding('feishu', 'chat1')).toBeUndefined();
     });
   });
 });

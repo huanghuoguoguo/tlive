@@ -59,7 +59,7 @@ export abstract class MessageFormatter<TRendered extends { chatId: string }> {
 
   // --- Abstract methods that subclasses must implement --
 
-  /** Format markdown content for this platform (e.g., HTML for Telegram) */
+  /** Format markdown content for the current platform. */
   protected abstract formatMarkdown(text: string): string;
 
   /** Check if platform supports native buttons */

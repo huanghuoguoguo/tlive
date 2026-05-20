@@ -1,7 +1,6 @@
 import { Client, WSClient, EventDispatcher } from '@larksuiteoapi/node-sdk';
-import { BaseChannelAdapter, registerAdapterFactory } from '../base.js';
+import { BaseChannelAdapter } from '../base.js';
 import type { InboundMessage, SendResult, FileAttachment } from '../types.js';
-import { loadConfig } from '../../config.js';
 import type { BridgeError } from '../errors.js';
 import { RateLimitError, AuthError } from '../errors.js';
 import { checkNetworkError } from '../shared/index.js';
@@ -85,7 +84,7 @@ interface FeishuCreateMessageResult {
   data?: { message_id?: string };
 }
 
-interface FeishuConfig {
+export interface FeishuConfig {
   appId: string;
   appSecret: string;
   verificationToken: string;
@@ -630,6 +629,3 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
     return { appId: this.config.appId };
   }
 }
-
-// Self-register
-registerAdapterFactory('feishu', () => new FeishuAdapter(loadConfig().feishu));

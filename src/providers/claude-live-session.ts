@@ -5,11 +5,11 @@
  * across multiple turns. Each startTurn() yields a new user message into the
  * generator; the background consumer routes SDK events to the active turn's stream.
  *
- * Aligned with Codex's Thread/Turn/Steer model:
- *   startTurn() ≈ turn/start
- *   steerTurn() ≈ turn/steer
- *   interruptTurn() ≈ turn/interrupt
- *   close() ≈ thread unsubscribe
+ * The bridge exposes a small turn-oriented control surface:
+ *   startTurn() starts a user turn
+ *   steerTurn() injects text into the active turn
+ *   interruptTurn() interrupts the active turn
+ *   close() releases the session
  */
 
 import { query } from '@anthropic-ai/claude-agent-sdk';

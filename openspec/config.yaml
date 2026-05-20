@@ -12,8 +12,8 @@ context: |
     - Claude Agent SDK for AI interaction
 
   Architecture:
-    - src/channels/ - IM platform adapters (Telegram, Feishu, QQ Bot)
-    - src/providers/ - AI provider integrations (Claude SDK, live session)
+    - src/channels/ - Feishu/Lark adapter and message rendering
+    - src/providers/ - Claude Code SDK integration and live session
     - src/engine/ - Core engine with submodules:
       - commands/ - Command registry and handlers (status, new, cd, project, etc.)
       - coordinators/ - Orchestrators (bridge-manager, query, permission, ingress)
@@ -36,9 +36,8 @@ context: |
 
   Key dependencies:
     - @anthropic-ai/claude-agent-sdk
-    - grammy (Telegram)
     - @larksuiteoapi/node-sdk (Feishu/Lark)
-    - ws, zod
+    - zod
 
   Code conventions:
     - Utility functions go in src/utils/

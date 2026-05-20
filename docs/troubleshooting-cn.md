@@ -50,23 +50,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$tmp = Join-Path $env:TE
 
 ### 收不到 IM 消息
 
-**Telegram:**
-- 确认 Bot Token 正确
-- 确认已向 Bot 发送过消息
-- 确认 Chat ID 正确（私聊为用户 ID，群组为群 ID）
-
 **飞书:**
 - 确认应用已发布
 - 确认有消息接收权限
 - 检查白名单配置
 
-**QQ Bot:**
-- 确认应用凭证正确
-- 检查白名单配置
-
 ### 权限审批超时
 
-默认 5 分钟超时，超时后自动拒绝。QQ Bot 请直接回复 `allow` / `deny` / `always`；不要等待按钮。
+默认 5 分钟超时，超时后自动拒绝。飞书权限卡片也可以通过回复 `allow`、`deny` 或 `always` 处理。
 
 ## 重置
 

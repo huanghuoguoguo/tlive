@@ -165,7 +165,7 @@ export const zh: Translations = {
   // --- text-dispatcher ---
   'dispatcher.multiPermHint': '⚠️ 多个权限待审批，请引用回复具体的权限消息',
 
-  // --- qqbot progress ---
+  // --- progress ---
   'progress.starting': '⏳ 准备开始',
   'progress.executing': '⏳ 执行中',
   'progress.waitingPermission': '🔐 等待权限',

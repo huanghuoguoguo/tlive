@@ -165,7 +165,7 @@ export const en: Translations = {
   // --- text-dispatcher ---
   'dispatcher.multiPermHint': '⚠️ Multiple permissions pending — reply to the specific permission message',
 
-  // --- qqbot progress ---
+  // --- progress ---
   'progress.starting': '⏳ Starting',
   'progress.executing': '⏳ Running',
   'progress.waitingPermission': '🔐 Waiting for permission',

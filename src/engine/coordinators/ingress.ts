@@ -20,7 +20,7 @@ interface IngressCoordinatorOptions {
  * Owns low-level ingress state that would otherwise bloat BridgeManager:
  * - last active chat tracking for hook routing
  * - attachment buffering/merge on multi-part IM messages
- * - long Telegram message coalescing with single-message pushback
+ * - long IM message coalescing with single-message pushback
  */
 export class IngressCoordinator {
   private lastChatId = new Map<string, string>();

@@ -63,17 +63,17 @@ describe('PermissionCoordinator', () => {
 
   describe('SDK permission tracking', () => {
     it('set/get/clear', () => {
-      expect(coord.getPendingSdkPerm('telegram:123')).toBeUndefined();
-      coord.setPendingSdkPerm('telegram:123', 'perm-1');
-      expect(coord.getPendingSdkPerm('telegram:123')).toBe('perm-1');
-      coord.clearPendingSdkPerm('telegram:123');
-      expect(coord.getPendingSdkPerm('telegram:123')).toBeUndefined();
+      expect(coord.getPendingSdkPerm('feishu:123')).toBeUndefined();
+      coord.setPendingSdkPerm('feishu:123', 'perm-1');
+      expect(coord.getPendingSdkPerm('feishu:123')).toBe('perm-1');
+      coord.clearPendingSdkPerm('feishu:123');
+      expect(coord.getPendingSdkPerm('feishu:123')).toBeUndefined();
     });
 
     it('isolates per chat key', () => {
-      coord.setPendingSdkPerm('telegram:123', 'perm-1');
+      coord.setPendingSdkPerm('feishu:123', 'perm-1');
       coord.setPendingSdkPerm('feishu:456', 'perm-2');
-      expect(coord.getPendingSdkPerm('telegram:123')).toBe('perm-1');
+      expect(coord.getPendingSdkPerm('feishu:123')).toBe('perm-1');
       expect(coord.getPendingSdkPerm('feishu:456')).toBe('perm-2');
     });
   });
@@ -82,24 +82,24 @@ describe('PermissionCoordinator', () => {
     it('resolves when SDK perm is pending', async () => {
       // Set up a pending gateway entry
       const promise = gateway.waitFor('sdk-123', { timeoutMs: 5000 });
-      coord.setPendingSdkPerm('telegram:chat1', 'sdk-123');
+      coord.setPendingSdkPerm('feishu:chat1', 'sdk-123');
 
-      const resolved = coord.tryResolveByText('telegram:chat1', 'allow');
+      const resolved = coord.tryResolveByText('feishu:chat1', 'allow');
       expect(resolved).toBe(true);
-      expect(coord.getPendingSdkPerm('telegram:chat1')).toBeUndefined();
+      expect(coord.getPendingSdkPerm('feishu:chat1')).toBeUndefined();
 
       const result = await promise;
       expect(result.behavior).toBe('allow');
     });
 
     it('returns false when no pending perm', () => {
-      const resolved = coord.tryResolveByText('telegram:chat1', 'allow');
+      const resolved = coord.tryResolveByText('feishu:chat1', 'allow');
       expect(resolved).toBe(false);
     });
 
     it('returns false when gateway has no matching entry', () => {
-      coord.setPendingSdkPerm('telegram:chat1', 'nonexistent');
-      const resolved = coord.tryResolveByText('telegram:chat1', 'allow');
+      coord.setPendingSdkPerm('feishu:chat1', 'nonexistent');
+      const resolved = coord.tryResolveByText('feishu:chat1', 'allow');
       expect(resolved).toBe(false);
     });
 
@@ -156,30 +156,30 @@ describe('PermissionCoordinator', () => {
 
   describe('permission message tracking', () => {
     it('tracks and finds permission messages', () => {
-      coord.trackPermissionMessage('msg-1', 'perm-1', 'session-1', 'telegram');
-      const found = coord.findHookPermission('msg-1', 'telegram');
+      coord.trackPermissionMessage('msg-1', 'perm-1', 'session-1', 'feishu');
+      const found = coord.findHookPermission('msg-1', 'feishu');
       expect(found).toMatchObject({ permissionId: 'perm-1', sessionId: 'session-1' });
     });
 
     it('finds latest when only one pending', () => {
-      coord.trackPermissionMessage('msg-1', 'perm-1', 'session-1', 'telegram');
+      coord.trackPermissionMessage('msg-1', 'perm-1', 'session-1', 'feishu');
       // No replyToMessageId — should find the single pending
-      const found = coord.findHookPermission(undefined, 'telegram');
+      const found = coord.findHookPermission(undefined, 'feishu');
       expect(found).toMatchObject({ permissionId: 'perm-1' });
     });
 
     it('returns undefined when multiple pending and no reply', () => {
-      coord.trackPermissionMessage('msg-1', 'perm-1', 's1', 'telegram');
-      coord.trackPermissionMessage('msg-2', 'perm-2', 's2', 'telegram');
-      const found = coord.findHookPermission(undefined, 'telegram');
+      coord.trackPermissionMessage('msg-1', 'perm-1', 's1', 'feishu');
+      coord.trackPermissionMessage('msg-2', 'perm-2', 's2', 'feishu');
+      const found = coord.findHookPermission(undefined, 'feishu');
       expect(found).toBeUndefined();
     });
 
     it('counts pending permissions', () => {
       expect(coord.pendingPermissionCount()).toBe(0);
-      coord.trackPermissionMessage('msg-1', 'perm-1', 's1', 'telegram');
+      coord.trackPermissionMessage('msg-1', 'perm-1', 's1', 'feishu');
       expect(coord.pendingPermissionCount()).toBe(1);
-      coord.trackPermissionMessage('msg-2', 'perm-2', 's2', 'telegram');
+      coord.trackPermissionMessage('msg-2', 'perm-2', 's2', 'feishu');
       expect(coord.pendingPermissionCount()).toBe(2);
     });
   });
@@ -254,31 +254,31 @@ describe('PermissionCoordinator', () => {
 
   describe('permission status snapshots', () => {
     it('tracks pending and resolved sdk permissions per chat', () => {
-      coord.notePermissionPending('telegram:chat-1', 'perm-1', 'session-1', 'Edit', 'src/main.ts');
+      coord.notePermissionPending('feishu:chat-1', 'perm-1', 'session-1', 'Edit', 'src/main.ts');
 
-      expect(coord.getPermissionStatus('telegram:chat-1', 'session-1')).toMatchObject({
+      expect(coord.getPermissionStatus('feishu:chat-1', 'session-1')).toMatchObject({
         rememberedTools: 0,
         rememberedBashPrefixes: 0,
         pending: { toolName: 'Edit' },
       });
 
-      coord.notePermissionResolved('telegram:chat-1', 'session-1', 'Edit', 'allow_always', 'perm-1');
+      coord.notePermissionResolved('feishu:chat-1', 'session-1', 'Edit', 'allow_always', 'perm-1');
 
-      expect(coord.getPermissionStatus('telegram:chat-1', 'session-1')).toMatchObject({
+      expect(coord.getPermissionStatus('feishu:chat-1', 'session-1')).toMatchObject({
         lastDecision: { toolName: 'Edit', decision: 'allow_always' },
       });
-      expect(coord.getPermissionStatus('telegram:chat-1', 'session-1').pending).toBeUndefined();
+      expect(coord.getPermissionStatus('feishu:chat-1', 'session-1').pending).toBeUndefined();
     });
 
     it('clears only the matching pending snapshot', () => {
-      coord.notePermissionPending('telegram:chat-1', 'perm-1', 'session-1', 'Edit', 'src/main.ts');
-      coord.clearPendingPermissionSnapshot('telegram:chat-1', 'perm-1');
-      expect(coord.getPermissionStatus('telegram:chat-1', 'session-1').pending).toBeUndefined();
+      coord.notePermissionPending('feishu:chat-1', 'perm-1', 'session-1', 'Edit', 'src/main.ts');
+      coord.clearPendingPermissionSnapshot('feishu:chat-1', 'perm-1');
+      expect(coord.getPermissionStatus('feishu:chat-1', 'session-1').pending).toBeUndefined();
     });
 
     it('does not surface a previous session snapshot to a new session', () => {
-      coord.notePermissionResolved('telegram:chat-1', 'session-1', 'Edit', 'allow_always');
-      expect(coord.getPermissionStatus('telegram:chat-1', 'session-2').lastDecision).toBeUndefined();
+      coord.notePermissionResolved('feishu:chat-1', 'session-1', 'Edit', 'allow_always');
+      expect(coord.getPermissionStatus('feishu:chat-1', 'session-2').lastDecision).toBeUndefined();
     });
   });
 });

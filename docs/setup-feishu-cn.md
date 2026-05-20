@@ -11,7 +11,7 @@
 - 使用长连接（WebSocket）即可跑通
 - 配置成功后，你就可以在飞书里给 Claude Code 发消息，并在手机上点权限审批
 
-飞书确实比 Telegram 多几步控制台操作，但并不需要额外部署一套服务。按下面步骤做即可。
+飞书控制台步骤较多，但不需要额外部署一套服务。按下面步骤做即可。
 
 ## 前置条件
 
@@ -170,7 +170,7 @@
 ```
 /tlive setup
 ```
-在 Claude Code 中运行，按提示选择飞书，然后粘贴 App ID 和 App Secret。
+在 Claude Code 中运行，按提示粘贴 App ID 和 App Secret。
 
 **方式 B — 交互式设置：**
 ```bash
@@ -182,7 +182,6 @@ tlive setup
 
 编辑 `~/.tlive/config.env`：
 ```env
-TL_ENABLED_CHANNELS=feishu
 TL_FS_APP_ID=cli_xxxxxxxxxxxxxxxx
 TL_FS_APP_SECRET=你的-app-secret
 TL_FS_ALLOWED_USERS=ou_xxxxxxxxxxxxxxxx
@@ -267,7 +266,6 @@ TL_FS_ALLOWED_USERS=ou_xxxxxxxxxxxxxxxx
 - 运行 `tlive doctor` 检查配置
 
 **飞书中机器人有回复但 tlive 没反应**
-- 确认 `TL_ENABLED_CHANNELS` 包含 `feishu`
 - 查看 tlive 日志中是否有连接错误信息
 
 ## 成功后建议

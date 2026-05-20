@@ -4,17 +4,15 @@ import { initBridgeContext } from '../../context.js';
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { OutboundMessage } from '../../channels/types.js';
 import type { FormattableMessage } from '../../formatting/message-types.js';
-import { TelegramFormatter } from '../../channels/telegram/formatter.js';
 import { FeishuFormatter } from '../../channels/feishu/formatter.js';
 
-const telegramFormatter = new TelegramFormatter('en');
 const feishuFormatter = new FeishuFormatter('zh');
 
-function mockAdapter(channelType = 'telegram'): BaseChannelAdapter {
+function mockAdapter(channelType = 'feishu'): BaseChannelAdapter {
   const messageQueue: any[] = [];
   const send = vi.fn().mockResolvedValue({ messageId: '1', success: true });
   const editMessage = vi.fn().mockResolvedValue(undefined);
-  const formatter = channelType === 'feishu' ? feishuFormatter : telegramFormatter;
+  const formatter = feishuFormatter;
   return {
     channelType,
     start: vi.fn().mockResolvedValue(undefined),
@@ -25,7 +23,7 @@ function mockAdapter(channelType = 'telegram'): BaseChannelAdapter {
     sendTyping: vi.fn().mockResolvedValue(undefined),
     addReaction: vi.fn().mockResolvedValue(undefined),
     removeReaction: vi.fn().mockResolvedValue(undefined),
-    supportsPairing: vi.fn().mockReturnValue(channelType === 'telegram'),
+    supportsPairing: vi.fn().mockReturnValue(false),
     supportsStreaming: vi.fn().mockReturnValue(false),
     getLifecycleReactions: vi.fn().mockImplementation(() => channelType === 'feishu'
       ? { processing: 'Typing', done: 'OK', error: 'FACEPALM', stalled: 'OneSecond', permission: 'Pin' }
@@ -33,9 +31,7 @@ function mockAdapter(channelType = 'telegram'): BaseChannelAdapter {
     getPermissionDecisionReaction: vi.fn().mockImplementation((decision: string) => channelType === 'feishu'
       ? decision === 'deny' ? 'No' : decision === 'allow_always' ? 'DONE' : 'OK'
       : decision === 'deny' ? '👎' : decision === 'allow_always' ? '👌' : '👍'),
-    shouldRenderProgressPhase: vi.fn().mockImplementation((phase: string) =>
-      channelType === 'qqbot' ? phase !== 'starting' && phase !== 'executing' : true
-    ),
+    shouldRenderProgressPhase: vi.fn().mockReturnValue(true),
     shouldSplitCompletedTrace: vi.fn().mockImplementation(() => channelType === 'feishu'),
     shouldSplitProgressMessage: vi.fn().mockReturnValue(false),
     validateConfig: vi.fn().mockReturnValue(null),
@@ -59,6 +55,8 @@ describe('BridgeManager', () => {
   beforeEach(() => {
     // Set required env vars for loadConfig validation
     process.env.TL_TOKEN = 'test-token';
+    process.env.TL_FS_APP_ID = 'cli_test123';
+    process.env.TL_FS_APP_SECRET = 'secret';
     // Use port 0 (random available port) to avoid conflicts in parallel tests
     process.env.TL_WEBHOOK_ENABLED = 'true';
     process.env.TL_WEBHOOK_TOKEN = 'test-webhook-token';
@@ -69,7 +67,7 @@ describe('BridgeManager', () => {
         acquireLock: vi.fn().mockResolvedValue(true),
         renewLock: vi.fn().mockResolvedValue(true),
         releaseLock: vi.fn(),
-        getBinding: vi.fn().mockResolvedValue({ channelType: 'telegram', chatId: 'c1', sessionId: 's1', createdAt: '' }),
+        getBinding: vi.fn().mockResolvedValue({ channelType: 'feishu', chatId: 'c1', sessionId: 's1', createdAt: '' }),
         saveBinding: vi.fn(), deleteBinding: vi.fn(), listBindings: vi.fn().mockResolvedValue([]),
         isDuplicate: vi.fn().mockResolvedValue(false), markProcessed: vi.fn(),
       } as any,
@@ -114,7 +112,7 @@ describe('BridgeManager', () => {
     manager.registerAdapter(adapter);
 
     const processed = await manager.handleInboundMessage(adapter, {
-      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: 'hello', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: 'hello', messageId: 'm1',
     });
     expect(processed).toBe(false);
   });
@@ -137,6 +135,9 @@ describe('BridgeManager', () => {
   it('drops menu events without a user-scoped chat even if another chat was recently active', async () => {
     const adapter = mockAdapter('feishu');
     manager.registerAdapter(adapter);
+    const store = (await import('../../context.js')).getBridgeContext().store as any;
+    store.getBinding.mockResolvedValue(null);
+    manager.getState().clearUserLastChat('u1');
     manager.getIngress().recordChat('feishu', 'other-users-chat');
 
     const handled = await manager.handleInboundMessage(adapter, {
@@ -153,7 +154,7 @@ describe('BridgeManager', () => {
     manager.registerAdapter(adapter);
 
     const handled = await manager.handleInboundMessage(adapter, {
-      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: '',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '',
       callbackData: 'perm:allow:p1', messageId: 'm1',
     });
     // Even if permission not found, it should attempt handling
@@ -165,7 +166,7 @@ describe('BridgeManager', () => {
     manager.registerAdapter(adapter);
 
     const handled = await manager.handleInboundMessage(adapter, {
-      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: '/status', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/status', messageId: 'm1',
     });
     expect(handled).toBe(true);
     expect(adapter.send).toHaveBeenCalled();
@@ -176,7 +177,7 @@ describe('BridgeManager', () => {
     manager.registerAdapter(adapter);
 
     await manager.handleInboundMessage(adapter, {
-      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: 'hello', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: 'hello', messageId: 'm1',
     });
 
     expect((adapter as any).sendTyping).toHaveBeenCalledWith('c1');
@@ -187,12 +188,10 @@ describe('BridgeManager', () => {
     manager.registerAdapter(adapter);
 
     await manager.handleInboundMessage(adapter, {
-      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: '/new', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/new', messageId: 'm1',
     });
 
-    expect(adapter.send).toHaveBeenCalledWith(
-      expect.objectContaining({ html: expect.stringContaining('New Session') })
-    );
+    expect(JSON.stringify((adapter.send as ReturnType<typeof vi.fn>).mock.calls[0][0])).toContain('新会话');
   });
 
   it('rotates the default session when automation changes workdir', async () => {
@@ -201,7 +200,7 @@ describe('BridgeManager', () => {
 
     const store = (await import('../../context.js')).getBridgeContext().store as any;
     const binding = {
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'c1',
       sessionId: 'binding-1',
       sdkSessionId: 'sdk-old',
@@ -219,7 +218,7 @@ describe('BridgeManager', () => {
     const queryRunSpy = vi.spyOn(manager.getQuery(), 'run').mockResolvedValue(true);
 
     const result = await manager.injectAutomationPrompt({
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'c1',
       text: 'analyze',
       workdir: '/repo/new',
@@ -241,12 +240,10 @@ describe('BridgeManager', () => {
     manager.registerAdapter(adapter);
 
     await manager.handleInboundMessage(adapter, {
-      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: '/help', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/help', messageId: 'm1',
     });
 
-    expect(adapter.send).toHaveBeenCalledWith(
-      expect.objectContaining({ html: expect.not.stringContaining('verbose') })
-    );
+    expect(JSON.stringify((adapter.send as ReturnType<typeof vi.fn>).mock.calls[0][0])).not.toContain('verbose');
   });
 
   it('expires session after 30 minutes of inactivity', async () => {
@@ -256,7 +253,7 @@ describe('BridgeManager', () => {
 
     // First message — creates session
     await manager.handleInboundMessage(adapter, {
-      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: 'first', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: 'first', messageId: 'm1',
     });
     const firstSaveBinding = vi.mocked(manager.getRouter()).rebind;
 
@@ -269,7 +266,7 @@ describe('BridgeManager', () => {
     const callsBefore = saveBindingSpy.mock.calls.length;
 
     await manager.handleInboundMessage(adapter, {
-      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: 'second', messageId: 'm2',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: 'second', messageId: 'm2',
     });
 
     // saveBinding should have been called again (rebind creates new binding)
@@ -283,7 +280,7 @@ describe('BridgeManager', () => {
     manager.registerAdapter(adapter);
 
     await manager.handleInboundMessage(adapter, {
-      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: 'first', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: 'first', messageId: 'm1',
     });
 
     const store = (await import('../../context.js')).getBridgeContext().store;
@@ -294,13 +291,13 @@ describe('BridgeManager', () => {
     const callsBefore = saveBindingSpy.mock.calls.length;
 
     await manager.handleInboundMessage(adapter, {
-      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: 'second', messageId: 'm2',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: 'second', messageId: 'm2',
     });
 
     // saveBinding may be called by onSdkSessionId (persisting SDK session),
     // but should NOT have been called for rebind (no session expiry)
     // Check that no rebind happened by verifying the binding's sessionId didn't change
-    const binding = await store.getBinding('telegram', 'c1');
+    const binding = await store.getBinding('feishu', 'c1');
     expect(binding?.sessionId).toBeDefined();
     vi.useRealTimers();
   });
@@ -321,7 +318,7 @@ describe('BridgeManager', () => {
     const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
 
     await manager.handleInboundMessage(adapter, {
-      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: 'fail', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: 'fail', messageId: 'm1',
     });
 
     // clearInterval should have been called (finally block)
@@ -338,7 +335,7 @@ describe('BridgeManager', () => {
       manager.trackHookMessage('hook-msg-1', 'session-abc');
 
       await manager.handleInboundMessage(adapter, {
-        channelType: 'telegram', chatId: 'c1', userId: 'u1',
+        channelType: 'feishu', chatId: 'c1', userId: 'u1',
         text: 'A', messageId: 'm1', replyToMessageId: 'hook-msg-1',
       });
 
@@ -352,7 +349,7 @@ describe('BridgeManager', () => {
       manager.registerAdapter(adapter);
 
       await manager.handleInboundMessage(adapter, {
-        channelType: 'telegram', chatId: 'c1', userId: 'u1',
+        channelType: 'feishu', chatId: 'c1', userId: 'u1',
         text: 'hello', messageId: 'm1', replyToMessageId: 'unknown-msg',
       });
 
@@ -370,7 +367,7 @@ describe('BridgeManager', () => {
       });
 
       const sentMsg = (adapter.send as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      const content = sentMsg.html ?? sentMsg.text ?? '';
+      const content = JSON.stringify(sentMsg);
       expect(content).toContain('Terminal');
     });
 
@@ -383,7 +380,7 @@ describe('BridgeManager', () => {
       });
 
       const sentMsg = (adapter.send as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      const content = sentMsg.html ?? sentMsg.text ?? '';
+      const content = JSON.stringify(sentMsg);
       expect(content).toContain('Claude is waiting for your input');
     });
 
@@ -408,7 +405,7 @@ describe('BridgeManager', () => {
       manager.registerAdapter(adapter);
 
       await manager.handleInboundMessage(adapter, {
-        channelType: 'telegram', chatId: 'c1', userId: 'u1', text: '/hooks', messageId: 'm1',
+        channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/hooks', messageId: 'm1',
       });
 
       expect(adapter.send).toHaveBeenCalledWith(
@@ -421,7 +418,7 @@ describe('BridgeManager', () => {
       manager.registerAdapter(adapter);
 
       await manager.handleInboundMessage(adapter, {
-        channelType: 'telegram', chatId: 'c1', userId: 'u1', text: '/hooks pause', messageId: 'm1',
+        channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/hooks pause', messageId: 'm1',
       });
 
       expect(adapter.send).toHaveBeenCalledWith(
@@ -434,7 +431,7 @@ describe('BridgeManager', () => {
       manager.registerAdapter(adapter);
 
       await manager.handleInboundMessage(adapter, {
-        channelType: 'telegram', chatId: 'c1', userId: 'u1', text: '/hooks resume', messageId: 'm1',
+        channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/hooks resume', messageId: 'm1',
       });
 
       expect(adapter.send).toHaveBeenCalledWith(
@@ -443,17 +440,17 @@ describe('BridgeManager', () => {
     });
   });
 
-  it('text-based permission works for Telegram (not only Feishu)', async () => {
-    const adapter = mockAdapter('telegram');
+  it('text-based permission works for Feishu (not only Feishu)', async () => {
+    const adapter = mockAdapter('feishu');
     manager.registerAdapter(adapter);
 
     // The text "allow" should be parsed as a permission decision
     // Without pending permissions, it falls through to normal message handling
     const result = await manager.handleInboundMessage(adapter, {
-      channelType: 'telegram', chatId: 'c1', userId: 'u1', text: 'allow', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: 'allow', messageId: 'm1',
     });
     // Since no pending permissions, it should proceed to LLM conversation (not return immediately)
-    // This verifies the text-based check runs for Telegram now
+    // This verifies the text-based check runs for Feishu now
     expect(result).toBe(true);
   });
 

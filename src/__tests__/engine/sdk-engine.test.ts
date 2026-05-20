@@ -59,7 +59,7 @@ describe('SDKEngine', () => {
 
   describe('sendWithContext', () => {
     it('returns none mode when no session found', async () => {
-      const result = await engine.sendWithContext('telegram', 'chat-1', 'test message');
+      const result = await engine.sendWithContext('feishu', 'chat-1', 'test message');
       expect(result.sent).toBe(false);
       expect(result.mode).toBe('none');
       expect(result.failureReason).toBe('no_session');
@@ -69,9 +69,9 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession(true, true);
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'telegram', 'chat-1', '/workdir');
+      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
 
-      const result = await engine.sendWithContext('telegram', 'chat-1', 'reply message', 'missing-bubble');
+      const result = await engine.sendWithContext('feishu', 'chat-1', 'reply message', 'missing-bubble');
       expect(result).toMatchObject({
         sent: false,
         mode: 'none',
@@ -85,16 +85,16 @@ describe('SDKEngine', () => {
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
       // Create session first
-      engine.getOrCreateSession(mockProvider, 'telegram', 'chat-1', '/workdir');
+      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
 
-      const result = await engine.sendWithContext('telegram', 'chat-1', 'queued message');
+      const result = await engine.sendWithContext('feishu', 'chat-1', 'queued message');
 
       expect(result.sent).toBe(true);
       expect(result.mode).toBe('queue');
       expect(result.queuePosition).toBe(1);
       expect(result.queueDepth).toBe(1);
       expect(result.maxQueueDepth).toBe(3);
-      expect(result.sessionKey).toBe('telegram:chat-1:/workdir');
+      expect(result.sessionKey).toBe('feishu:chat-1:/workdir');
       expect(mockSession.sendWithPriority).toHaveBeenCalledWith('queued message', 'later');
     });
 
@@ -102,11 +102,11 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession(true, false);
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'telegram', 'chat-1', '/workdir');
+      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
 
-      const result1 = await engine.sendWithContext('telegram', 'chat-1', 'message 1');
-      const result2 = await engine.sendWithContext('telegram', 'chat-1', 'message 2');
-      const result3 = await engine.sendWithContext('telegram', 'chat-1', 'message 3');
+      const result1 = await engine.sendWithContext('feishu', 'chat-1', 'message 1');
+      const result2 = await engine.sendWithContext('feishu', 'chat-1', 'message 2');
+      const result3 = await engine.sendWithContext('feishu', 'chat-1', 'message 3');
 
       expect(result1.queuePosition).toBe(1);
       expect(result2.queuePosition).toBe(2);
@@ -117,15 +117,15 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession(true, false);
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'telegram', 'chat-1', '/workdir');
+      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
 
       // Fill the queue
-      await engine.sendWithContext('telegram', 'chat-1', 'message 1');
-      await engine.sendWithContext('telegram', 'chat-1', 'message 2');
-      await engine.sendWithContext('telegram', 'chat-1', 'message 3');
+      await engine.sendWithContext('feishu', 'chat-1', 'message 1');
+      await engine.sendWithContext('feishu', 'chat-1', 'message 2');
+      await engine.sendWithContext('feishu', 'chat-1', 'message 3');
 
       // Fourth message should be rejected
-      const result = await engine.sendWithContext('telegram', 'chat-1', 'message 4');
+      const result = await engine.sendWithContext('feishu', 'chat-1', 'message 4');
 
       expect(result.sent).toBe(false);
       expect(result.mode).toBe('queue');
@@ -138,9 +138,9 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession(true, true);
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'telegram', 'chat-1', '/workdir');
+      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
 
-      const result = await engine.sendWithContext('telegram', 'chat-1', 'steer message');
+      const result = await engine.sendWithContext('feishu', 'chat-1', 'steer message');
 
       expect(result.sent).toBe(true);
       expect(result.mode).toBe('steer');
@@ -153,14 +153,14 @@ describe('SDKEngine', () => {
       vi.mocked(mockSession.sendWithPriority).mockRejectedValueOnce(new Error('boom'));
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'telegram', 'chat-1', '/workdir');
+      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
 
-      const result = await engine.sendWithContext('telegram', 'chat-1', 'steer message');
+      const result = await engine.sendWithContext('feishu', 'chat-1', 'steer message');
       expect(result).toMatchObject({
         sent: false,
         mode: 'none',
         failureReason: 'send_failed',
-        sessionKey: 'telegram:chat-1:/workdir',
+        sessionKey: 'feishu:chat-1:/workdir',
       });
     });
 
@@ -168,12 +168,12 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession(true, true);
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'telegram', 'chat-1', '/workdir');
+      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
 
-      await engine.sendWithContext('telegram', 'chat-1', 'steer 1');
-      await engine.sendWithContext('telegram', 'chat-1', 'steer 2');
+      await engine.sendWithContext('feishu', 'chat-1', 'steer 1');
+      await engine.sendWithContext('feishu', 'chat-1', 'steer 2');
 
-      const sessionKey = 'telegram:chat-1:/workdir';
+      const sessionKey = 'feishu:chat-1:/workdir';
       expect(engine.getQueueDepth(sessionKey)).toBe(0);
     });
 
@@ -181,13 +181,13 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession(true, false);
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'telegram', 'chat-1', '/workdir');
-      await engine.sendWithContext('telegram', 'chat-1', 'queued');
+      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
+      await engine.sendWithContext('feishu', 'chat-1', 'queued');
 
-      const sessionKey = 'telegram:chat-1:/workdir';
+      const sessionKey = 'feishu:chat-1:/workdir';
       expect(engine.getQueueDepth(sessionKey)).toBe(1);
 
-      engine.closeSession('telegram', 'chat-1', '/workdir');
+      engine.closeSession('feishu', 'chat-1', '/workdir');
       expect(engine.getQueueDepth(sessionKey)).toBe(0);
     });
 
@@ -195,26 +195,26 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession(true, false);
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'telegram', 'chat-1', '/workdir');
-      await engine.sendWithContext('telegram', 'chat-1', 'queued');
+      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
+      await engine.sendWithContext('feishu', 'chat-1', 'queued');
 
-      engine.closeSession('telegram', 'chat-1'); // Close all sessions for chat
-      expect(engine.getQueueDepth('telegram:chat-1:/workdir')).toBe(0);
+      engine.closeSession('feishu', 'chat-1'); // Close all sessions for chat
+      expect(engine.getQueueDepth('feishu:chat-1:/workdir')).toBe(0);
     });
 
     it('decrements queue depth as queued turns are consumed', async () => {
       const mockSession = createMockSession(true, false) as LiveSession & { __triggerTurnComplete: () => void };
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'telegram', 'chat-1', '/workdir');
-      await engine.sendWithContext('telegram', 'chat-1', 'message 1');
-      await engine.sendWithContext('telegram', 'chat-1', 'message 2');
+      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
+      await engine.sendWithContext('feishu', 'chat-1', 'message 1');
+      await engine.sendWithContext('feishu', 'chat-1', 'message 2');
 
       mockSession.__triggerTurnComplete();
-      expect(engine.getQueueDepth('telegram:chat-1:/workdir')).toBe(1);
+      expect(engine.getQueueDepth('feishu:chat-1:/workdir')).toBe(1);
 
       mockSession.__triggerTurnComplete();
-      expect(engine.getQueueDepth('telegram:chat-1:/workdir')).toBe(0);
+      expect(engine.getQueueDepth('feishu:chat-1:/workdir')).toBe(0);
     });
   });
 
@@ -223,7 +223,7 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession();
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      const session = engine.getOrCreateSession(mockProvider, 'telegram', 'chat-1', '/workdir');
+      const session = engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
 
       expect(session).toBeDefined();
       expect(mockProvider.createSession).toHaveBeenCalled();
@@ -233,8 +233,8 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession(true, false);
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'telegram', 'chat-1', '/workdir');
-      engine.getOrCreateSession(mockProvider, 'telegram', 'chat-1', '/workdir');
+      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
+      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
 
       expect(mockProvider.createSession).toHaveBeenCalledTimes(1);
     });
@@ -249,15 +249,15 @@ describe('SDKEngine', () => {
           .mockReturnValueOnce(secondSession),
       } as unknown as ClaudeSDKProvider;
 
-      engine.getOrCreateSession(provider, 'telegram', 'chat-1', 'session-1', '/workdir');
-      engine.setActiveMessageId('telegram:chat-1', 'bubble-1', 'telegram:chat-1:session-1');
+      engine.getOrCreateSession(provider, 'feishu', 'chat-1', 'session-1', '/workdir');
+      engine.setActiveMessageId('feishu:chat-1', 'bubble-1', 'feishu:chat-1:session-1');
 
-      engine.resetSessionRuntime('telegram:chat-1:session-1', 'expire');
+      engine.resetSessionRuntime('feishu:chat-1:session-1', 'expire');
 
-      expect(engine.getSessionForBubble('bubble-1')).toBe('telegram:chat-1:session-1');
-      expect(engine.hasActiveSession('telegram', 'chat-1', '/workdir')).toBe(false);
+      expect(engine.getSessionForBubble('bubble-1')).toBe('feishu:chat-1:session-1');
+      expect(engine.hasActiveSession('feishu', 'chat-1', '/workdir')).toBe(false);
 
-      const recreated = engine.getOrCreateSession(provider, 'telegram', 'chat-1', 'session-1', '/workdir');
+      const recreated = engine.getOrCreateSession(provider, 'feishu', 'chat-1', 'session-1', '/workdir');
       expect(recreated).toBe(secondSession);
       expect(provider.createSession).toHaveBeenCalledTimes(2);
     });

@@ -130,7 +130,7 @@ You have three options:
 ```bash
 tlive setup
 ```
-Select Feishu when prompted, then paste your App ID and App Secret.
+Paste your App ID and App Secret when prompted.
 
 **Option B — AI-guided setup (recommended):**
 ```
@@ -142,7 +142,6 @@ Run this inside Claude Code for a guided experience.
 
 Edit `~/.tlive/config.env`:
 ```env
-TL_ENABLED_CHANNELS=feishu
 TL_FS_APP_ID=cli_xxxxxxxxxxxxxxxx
 TL_FS_APP_SECRET=your-app-secret
 TL_FS_ALLOWED_USERS=ou_xxxxxxxxxxxxxxxx
@@ -201,5 +200,4 @@ All environment variable names, permissions, and event names are identical.
 - Run `tlive doctor` to check your configuration
 
 **Bot responds in Feishu but not in tlive**
-- Make sure `TL_ENABLED_CHANNELS` includes `feishu`
 - Check the tlive logs for connection errors

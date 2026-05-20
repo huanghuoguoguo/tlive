@@ -1,8 +1,6 @@
 /** Channel type constants - use these instead of raw strings */
 export const CHANNEL_TYPES = {
-  TELEGRAM: 'telegram',
   FEISHU: 'feishu',
-  QQBOT: 'qqbot',
 } as const;
 
 export type ChannelType = typeof CHANNEL_TYPES[keyof typeof CHANNEL_TYPES];
@@ -31,9 +29,7 @@ export const CALLBACK_PREFIXES = {
 
 /** Platform message limits */
 export const PLATFORM_LIMITS: Record<ChannelType, number> = {
-  [CHANNEL_TYPES.TELEGRAM]: 4096,
   [CHANNEL_TYPES.FEISHU]: 30000,
-  [CHANNEL_TYPES.QQBOT]: 4096,
 };
 
 /** Default permission/question timeout (5 minutes) */

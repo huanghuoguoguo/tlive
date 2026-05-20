@@ -148,7 +148,7 @@ grep "\[perm\]" ~/.tlive/logs/bridge-*.log
 ### 日志模块说明
 | 模块 | 职责 |
 |------|------|
-| `[feishu]` `[qqbot]` `[telegram]` | IM 平台适配器，消息接收/发送 |
+| `[feishu]` | 飞书/Lark 适配器，消息接收/发送 |
 | `[bridge]` | 消息分发、命令处理 |
 | `[query]` | Claude 查询生命周期 |
 | `[perm]` | 权限请求/响应 |

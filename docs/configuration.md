@@ -5,47 +5,28 @@ Config file location: `~/.tlive/config.env`
 ## Basic Settings
 
 ```env
-# Service port
 TL_PORT=8080
-
-# Access token (auto-generated)
 TL_TOKEN=auto-generated
-
-# Enabled IM platforms
-TL_ENABLED_CHANNELS=telegram,feishu
+TL_DEFAULT_WORKDIR=/home/user/projects
+TL_DEFAULT_MODEL=
 ```
 
-## Telegram
-
-```env
-TL_TG_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrSTUvwxYZ
-TL_TG_CHAT_ID=123456789
-
-# Require @mention in groups
-TL_TG_REQUIRE_MENTION=true
-
-# Disable link preview
-TL_TG_DISABLE_LINK_PREVIEW=true
-
-# Allowed users whitelist
-TL_TG_ALLOWED_USERS=123456789,987654321
-```
-
-See [Telegram Setup Guide](setup-telegram.md)
-
-## Feishu
+## Feishu / Lark
 
 ```env
 TL_FS_APP_ID=cli_xxx
 TL_FS_APP_SECRET=xxx
+TL_FS_VERIFICATION_TOKEN=
+TL_FS_ENCRYPT_KEY=
+TL_FS_WEBHOOK_PORT=9100
 
-# Allowed users (open_id or user_id)
+# Optional user whitelist: open_id or user_id, comma-separated
 TL_FS_ALLOWED_USERS=ou_xxx,xxx
 ```
 
-See [Feishu Setup Guide](setup-feishu.md)
+See [Feishu Setup Guide](setup-feishu.md).
 
-## Claude Settings
+## Claude Code Settings
 
 ```env
 # Settings sources loaded by default for new chats
@@ -53,9 +34,6 @@ See [Feishu Setup Guide](setup-feishu.md)
 # project = .claude/settings.json + CLAUDE.md + MCP + skills
 # local   = .claude/settings.local.json
 TL_CLAUDE_SETTINGS=user,project,local
-
-# Default working directory
-TL_DEFAULT_WORKDIR=/home/user/projects
 ```
 
 Use `/settings user|full|isolated` to override Claude settings for the current chat only:
@@ -64,18 +42,27 @@ Use `/settings user|full|isolated` to override Claude settings for the current c
 - `full`: user + project + local settings
 - `isolated`: ignore external settings for this chat
 
-## Proxy
+## Automation
 
 ```env
-# HTTP proxy (for regions where Telegram is blocked)
-TL_PROXY=http://127.0.0.1:7890
+TL_WEBHOOK_ENABLED=false
+TL_WEBHOOK_TOKEN=
+TL_WEBHOOK_PORT=8081
+TL_WEBHOOK_PATH=/webhook
+TL_WEBHOOK_SESSION_STRATEGY=reject
+
+TL_CRON_ENABLED=true
+TL_CRON_MAX_CONCURRENCY=3
+
+# Optional explicit push target; channel is always feishu.
+TL_PUSH_DEFAULT_CHANNEL=feishu
+TL_PUSH_DEFAULT_CHAT=
 ```
 
 ## Security
 
 ```bash
-# Set config file permissions
 chmod 600 ~/.tlive/config.env
 ```
 
-Sensitive info (API keys, tokens) in config is automatically redacted before sending to IM.
+Sensitive info in config is automatically redacted before sending to IM.

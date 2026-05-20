@@ -86,10 +86,10 @@ describe('Logger', () => {
   it('preserves module prefix in unified format', () => {
     const logPath = join(tmpDir, 'test.log');
     const logger = new Logger(logPath, []);
-    logger.info('[qqbot] Reconnecting in 2000ms');
+    logger.info('[feishu] Reconnecting in 2000ms');
     logger.close();
     const content = readFileSync(join(tmpDir, `test-${localDateStamp()}.log`), 'utf-8');
-    expect(content).toContain('[qqbot] INFO: Reconnecting in 2000ms');
+    expect(content).toContain('[feishu] INFO: Reconnecting in 2000ms');
   });
 
   it('generates short request ID', () => {

@@ -35,7 +35,7 @@ async function main() {
   copyReferenceDocs();
   console.log('\nTLive setup complete.');
   console.log('Next steps:');
-  console.log('  1. tlive setup              — configure IM platforms');
+  console.log('  1. tlive setup              — configure Feishu/Lark');
   console.log('  2. tlive install skills     — install Claude Code skill');
 }
 

@@ -223,14 +223,12 @@ function daemonStart() {
   }
 
   const config = loadConfigEnv();
-  const runtime = process.env.TL_RUNTIME || config.TL_RUNTIME || 'claude';
 
-  console.log(`Starting Bridge (runtime: ${runtime})...`);
+  console.log('Starting Bridge...');
 
   const env = {
     ...process.env,
     ...config,
-    TL_RUNTIME: runtime,
     TL_DEFAULT_WORKDIR: process.env.TL_DEFAULT_WORKDIR || process.cwd(),
   };
 
@@ -265,8 +263,6 @@ function daemonStop() {
 async function daemonStatus() {
   console.log('=== TLive Status ===');
 
-  const config = loadConfigEnv();
-  const runtime = process.env.TL_RUNTIME || config.TL_RUNTIME || 'claude';
   const pid = getBridgePid();
 
   // Read status.json for bridge details
@@ -288,7 +284,7 @@ async function daemonStatus() {
     const startedAt = statusData?.startedAt;
     const uptime = startedAt ? formatUptime(new Date(startedAt)) : 'unknown';
     const channels = statusData?.channels || [];
-    console.log(`Bridge:       running (PID ${pid}, runtime: ${runtime})`);
+    console.log(`Bridge:       running (PID ${pid})`);
     console.log(`Version:      ${version}`);
     console.log(`Uptime:       ${uptime}`);
     console.log(`Channels:     ${channels.join(', ') || 'none'}`);
@@ -301,12 +297,17 @@ async function daemonStatus() {
   }
 
   // Show active sessions from bindings
-  if (bindings && Object.keys(bindings).length > 0) {
+  const supportedChannels = new Set(statusData?.channels?.length ? statusData.channels : ['feishu']);
+  const activeBindings = bindings
+    ? Object.entries(bindings).filter(([, binding]) => supportedChannels.has(binding.channelType))
+    : [];
+
+  if (activeBindings.length > 0) {
     console.log('');
     console.log('=== Active Sessions ===');
-    for (const [key, binding] of Object.entries(bindings)) {
+    for (const [key, binding] of activeBindings) {
       const { channelType, chatId, cwd, createdAt } = binding;
-      const channelIcon = channelType === 'telegram' ? '📱' : channelType === 'feishu' ? '🚀' : channelType === 'qqbot' ? '💬' : '❓';
+      const channelIcon = channelType === 'feishu' ? '🚀' : '•';
       const workdir = cwd ? ` (${cwd})` : '';
       const age = createdAt ? formatAge(new Date(createdAt)) : 'unknown';
       console.log(`${channelIcon} ${channelType}:${chatId.slice(-8)}${workdir} — ${age}`);
@@ -419,9 +420,11 @@ async function runDoctor() {
     console.log('  config.env: OK');
     const config = loadConfigEnv();
     console.log(config.TL_TOKEN ? '  TL_TOKEN: set' : '  TL_TOKEN: NOT SET');
-    console.log(config.TL_TG_BOT_TOKEN ? '  Telegram: configured' : '  Telegram: not configured');
-    console.log(config.TL_FS_APP_ID ? '  Feishu:   configured' : '  Feishu:   not configured');
-    console.log(config.TL_QQ_APP_ID ? '  QQ Bot:   configured' : '  QQ Bot:   not configured');
+    console.log(
+      config.TL_FS_APP_ID && config.TL_FS_APP_SECRET
+        ? '  Feishu:   configured'
+        : '  Feishu:   not configured',
+    );
   } else {
     console.log("  config.env: NOT FOUND (run 'tlive setup')");
   }
@@ -437,7 +440,7 @@ async function runDoctor() {
   const bindingsFile = join(TLIVE_HOME, 'data', 'bindings.json');
   try {
     const bindings = JSON.parse(readFileSync(bindingsFile, 'utf-8'));
-    const count = Object.keys(bindings).length;
+    const count = Object.values(bindings).filter(binding => binding?.channelType === 'feishu').length;
     console.log(count > 0 ? `  Sessions: ${count} active` : '  Sessions: none');
   } catch {
     console.log('  Sessions: (no data)');
@@ -454,11 +457,11 @@ Usage:
   tlive <subcommand>         Manage TLive services
 
 Setup (one-time):
-  tlive setup                Configure IM platforms (Telegram/Feishu/QQ Bot)
+  tlive setup                Configure Feishu/Lark
   tlive install skills       Install /tlive skill to Claude Code
 
 Service Management:
-  tlive start [--runtime R]  Start IM Bridge (R: claude|codex, default: claude)
+  tlive start                Start Feishu Bridge for Claude Code
   tlive stop                 Stop IM Bridge daemon
   tlive status               Show Bridge status
   tlive logs [N]             Show last N log lines (default: 50)
@@ -466,9 +469,8 @@ Service Management:
   tlive upgrade [version]    Upgrade to latest or specified version
   tlive version              Show version info
 
-IM Commands (in Telegram/Feishu/QQ Bot):
+IM Commands (in Feishu/Lark):
   /new                       New conversation
-  /runtime claude|codex      Switch AI provider
   /perm on|off               Permission prompts
   /stop                      Interrupt execution
   /sessions                  List recent sessions
@@ -522,17 +524,9 @@ switch (command) {
   }
 
   case 'start': {
-    // Parse --runtime flag
-    const rtIdx = args.indexOf('--runtime');
-    if (rtIdx !== -1 && args[rtIdx + 1]) {
-      const rt = args[rtIdx + 1].toLowerCase();
-      if (['claude', 'codex'].includes(rt)) {
-        process.env.TL_RUNTIME = rt;
-        console.log(`Runtime: ${rt}`);
-      } else {
-        console.error(`Unknown runtime: ${rt}. Use: claude | codex`);
-        process.exit(1);
-      }
+    if (args.includes('--runtime')) {
+      console.error('Runtime selection has been removed; TLive now runs Claude Code only.');
+      process.exit(1);
     }
     daemonStart();
     break;
@@ -771,7 +765,7 @@ switch (command) {
         console.log(`Removed legacy TLive hook entries from: ${settingsPath}`);
     } else {
       console.log('Usage:');
-      console.log('  tlive install skills [--codex]  Install /tlive skill');
+      console.log('  tlive install skills  Install /tlive skill');
     }
     break;
   }

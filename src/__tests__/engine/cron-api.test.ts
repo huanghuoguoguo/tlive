@@ -17,11 +17,11 @@ import { join } from 'node:path';
 const createMockBridge = (): BridgeManager => {
   return {
     getAdapter: vi.fn().mockReturnValue({
-      channelType: 'telegram',
+      channelType: 'feishu',
       send: vi.fn().mockResolvedValue(undefined),
     }),
     getAdapters: vi.fn().mockReturnValue([
-      { channelType: 'telegram', send: vi.fn().mockResolvedValue(undefined) },
+      { channelType: 'feishu', send: vi.fn().mockResolvedValue(undefined) },
     ]),
     getLastChatId: vi.fn().mockReturnValue('test-chat-123'),
     injectAutomationPrompt: vi.fn().mockResolvedValue({ sessionId: 'sdk-123' }),
@@ -172,7 +172,7 @@ describe('handleCronApiRequest', () => {
         name: 'Daily check',
         schedule: '0 9 * * *',
         prompt: 'check status',
-        channelType: 'telegram',
+        channelType: 'feishu',
         chatId: 'chat-123',
       }));
       const res = createMockRes();

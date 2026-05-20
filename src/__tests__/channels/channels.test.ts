@@ -1,28 +1,22 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { createAdapter, getRegisteredTypes } from '../../channels/index.js';
+import { describe, expect, it } from 'vitest';
+import { FEISHU_CHANNEL } from '../../channels/types.js';
+import { FeishuAdapter } from '../../channels/index.js';
 
-// Import adapters to trigger self-registration
-import '../../channels/telegram/adapter.js';
-import '../../channels/feishu/adapter.js';
-import '../../channels/qqbot/adapter.js';
-
-describe('Channel Adapter Registry', () => {
-  beforeEach(() => {
-    process.env.TL_TOKEN = 'test-token';
-  });
-  it('has all three adapters registered', () => {
-    const types = getRegisteredTypes();
-    expect(types).toContain('telegram');
-    expect(types).toContain('feishu');
-    expect(types).toContain('qqbot');
+describe('Feishu channel exports', () => {
+  it('uses Feishu as the only channel type', () => {
+    expect(FEISHU_CHANNEL).toBe('feishu');
   });
 
-  it('creates telegram adapter', () => {
-    const adapter = createAdapter('telegram');
-    expect(adapter.channelType).toBe('telegram');
-  });
+  it('exports the Feishu adapter directly', () => {
+    const adapter = new FeishuAdapter({
+      appId: 'cli_test123',
+      appSecret: 'secret',
+      verificationToken: '',
+      encryptKey: '',
+      webhookPort: 0,
+      allowedUsers: [],
+    });
 
-  it('throws on unknown channel type', () => {
-    expect(() => createAdapter('unknown' as any)).toThrow('Unknown channel type: unknown');
+    expect(adapter.channelType).toBe('feishu');
   });
 });

@@ -4,7 +4,7 @@ import type { InboundMessage } from '../../channels/types.js';
 import { SessionStateManager } from '../../engine/state/session-state.js';
 import { TextDispatcher } from '../../engine/messages/text-dispatcher.js';
 
-function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
+function createAdapter(channelType = 'feishu'): BaseChannelAdapter {
   return {
     channelType,
     send: vi.fn().mockResolvedValue({ messageId: '1', success: true }),
@@ -20,7 +20,7 @@ function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
 
 function createMessage(text: string, overrides: Partial<InboundMessage> = {}): InboundMessage {
   return {
-    channelType: 'telegram',
+    channelType: 'feishu',
     chatId: 'chat-1',
     userId: 'user-1',
     text,
@@ -76,7 +76,7 @@ describe('TextDispatcher', () => {
     const handled = await dispatcher.handle(adapter, createMessage('allow'));
 
     expect(handled).toBe(true);
-    expect(adapter.addReaction).toHaveBeenCalledWith('chat-1', 'msg-1', '👍');
+    expect(adapter.addReaction).toHaveBeenCalledWith('chat-1', 'msg-1', 'OK');
   });
 
   it('uses Feishu-supported reaction identifiers for text-based permissions', async () => {

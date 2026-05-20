@@ -11,8 +11,6 @@ import { PwdCommand } from './pwd.js';
 import { BashCommand } from './bash.js';
 import { SettingsCommand } from './settings.js';
 import { HelpCommand } from './help.js';
-import { ApproveCommand } from './approve.js';
-import { PairingsCommand } from './pairings.js';
 import { UpgradeCommand } from './upgrade.js';
 import { RestartCommand } from './restart.js';
 import { QueueCommand } from './queue.js';
@@ -33,8 +31,6 @@ export function registerAllCommands(): void {
   commandRegistry.register(new BashCommand());
   commandRegistry.register(new SettingsCommand());
   commandRegistry.register(new HelpCommand());
-  commandRegistry.register(new ApproveCommand());
-  commandRegistry.register(new PairingsCommand());
   commandRegistry.register(new UpgradeCommand());
   commandRegistry.register(new RestartCommand());
   commandRegistry.register(new QueueCommand());

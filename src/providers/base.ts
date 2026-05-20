@@ -72,7 +72,7 @@ export type MessagePriority = 'now' | 'next' | 'later';
 export interface LiveSession {
   /** Start a new turn (user message → agent response). Returns per-turn event stream. */
   startTurn(prompt: string, params?: TurnParams): StreamChatResult;
-  /** Inject text into active turn — like Codex turn/steer. No-op if no turn is active. */
+  /** Inject text into active turn. No-op if no turn is active. */
   steerTurn(text: string): void;
   /** Send message with SDK native priority. 'now' = steer, 'later' = queue. */
   sendWithPriority(text: string, priority: MessagePriority): Promise<void>;

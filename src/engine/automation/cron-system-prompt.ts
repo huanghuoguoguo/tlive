@@ -36,7 +36,7 @@ Required fields:
 - \`prompt\`: The prompt that will be sent to a Claude session when triggered
 
 Optional fields:
-- \`channelType\`: Target IM channel (e.g., "telegram", "feishu")
+- \`channelType\`: Target IM channel. Use "feishu".
 - \`chatId\`: Target chat ID
 - \`projectName\`: Route to a specific project
 - \`workdir\`: Working directory for this job (absolute path). Use this to isolate the job's execution context.

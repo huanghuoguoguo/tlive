@@ -440,8 +440,7 @@ export class CronScheduler {
         };
       }
 
-      const enabledChannels = project.channels || this.bridge.getAdapters().map(adapter => adapter.channelType);
-      for (const channelType of enabledChannels) {
+      for (const channelType of this.bridge.getAdapters().map(adapter => adapter.channelType)) {
         const adapter = this.bridge.getAdapter(channelType);
         const chatId = this.bridge.getLastChatId(channelType);
         if (adapter && chatId) {

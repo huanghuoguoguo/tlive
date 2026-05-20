@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-`src/` contains the TypeScript bridge runtime. Key areas are `channels/` for Telegram/Feishu/QQ Bot adapters, `engine/` for conversation and routing orchestration, `providers/` for Claude integration, and `formatting/`, `markdown/`, `store/`, and `utils/` for shared infrastructure. Unit tests live in `src/__tests__/` using `*.test.ts` names. Build output goes to `dist/` and should not be edited manually. Shell and Node helpers live in `scripts/`. User-facing docs live in `docs/`, and configuration starts from `config.env.example`.
+`src/` contains the TypeScript bridge runtime. Key areas are `channels/` for the Feishu/Lark adapter, `engine/` for conversation and routing orchestration, `providers/` for Claude Code integration, and `formatting/`, `markdown/`, `store/`, and `utils/` for shared infrastructure. Unit tests live in `src/__tests__/` using `*.test.ts` names. Build output goes to `dist/` and should not be edited manually. Shell and Node helpers live in `scripts/`. User-facing docs live in `docs/`, and configuration starts from `config.env.example`.
 
 ## Build, Test, and Development Commands
 Use Node.js 20+; CI runs on Node 20.x and 22.x.
@@ -9,7 +9,7 @@ Use Node.js 20+; CI runs on Node 20.x and 22.x.
 - `npm run build` bundles the bridge into `dist/main.mjs` with esbuild.
 - `npm run build:watch` rebuilds on `src/**/*.ts` changes.
 - `npm run dev` rebuilds and starts the local bridge with `nodemon` (recommended for development).
-- `npm start` builds, then runs the bridge with `TL_RUNTIME=claude`.
+- `npm start` builds, then runs the Feishu bridge for Claude Code.
 - `npm run typecheck` runs strict TypeScript checks.
 - `npm run lint` runs Biome linting.
 - `npm run format` formats `src/` and `esbuild.config.js`.

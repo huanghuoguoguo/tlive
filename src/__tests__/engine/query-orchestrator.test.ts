@@ -4,20 +4,12 @@ import { initBridgeContext } from '../../context.js';
 import { QueryOrchestrator } from '../../engine/coordinators/query.js';
 import { SessionStateManager } from '../../engine/state/session-state.js';
 import { FeishuFormatter } from '../../channels/feishu/formatter.js';
-import { QQBotFormatter } from '../../channels/qqbot/formatter.js';
-import { TelegramFormatter } from '../../channels/telegram/formatter.js';
 
-const telegramFormatter = new TelegramFormatter('en');
 const feishuFormatter = new FeishuFormatter('zh');
-const qqbotFormatter = new QQBotFormatter('zh');
 
-function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
-  const formatter = channelType === 'feishu'
-    ? feishuFormatter
-    : channelType === 'qqbot'
-      ? qqbotFormatter
-      : telegramFormatter;
-  const locale = channelType === 'feishu' ? 'zh' : 'en';
+function createAdapter(channelType = 'feishu'): BaseChannelAdapter {
+  const formatter = feishuFormatter;
+  const locale = 'zh';
   let sendCount = 0;
   return {
     channelType,
@@ -42,9 +34,7 @@ function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
         ? decision === 'deny' ? 'No' : decision === 'allow_always' ? 'DONE' : 'OK'
         : decision === 'deny' ? '👎' : decision === 'allow_always' ? '👌' : '👍'
     ),
-    shouldRenderProgressPhase: vi.fn().mockImplementation((phase: string) =>
-      channelType === 'qqbot' ? phase !== 'starting' && phase !== 'executing' : true
-    ),
+    shouldRenderProgressPhase: vi.fn().mockReturnValue(true),
     shouldSplitCompletedTrace: vi.fn().mockImplementation((stats: any) => {
       if (channelType !== 'feishu') return false;
       const hasLongTrace = stats.thinkingTextLength > 80 || stats.timelineLength >= 4;
@@ -61,7 +51,7 @@ function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
 
 describe('QueryOrchestrator', () => {
   const binding = {
-    channelType: 'telegram',
+    channelType: 'feishu',
     chatId: 'chat-1',
     sessionId: 'session-1',
     createdAt: '2026-01-01T00:00:00Z',
@@ -153,7 +143,7 @@ describe('QueryOrchestrator', () => {
     });
 
     await orchestrator.run(adapter, {
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'chat-1',
       userId: 'user-1',
       text: 'hello',
@@ -163,7 +153,7 @@ describe('QueryOrchestrator', () => {
     expect(mockStore.saveBinding).toHaveBeenCalledWith(expect.objectContaining({ sdkSessionId: 'sdk-2' }));
     expect(adapter.sendTyping).toHaveBeenCalledWith('chat-1');
     expect(adapter.addReaction).toHaveBeenCalledWith('chat-1', 'msg-1', expect.any(String));
-    expect(adapter.send).toHaveBeenCalledWith(expect.objectContaining({ html: expect.stringContaining('hello') }));
+    expect(JSON.stringify((adapter.send as any).mock.calls[0][0])).toContain('hello');
   });
 
   it('splits Feishu completion into trace edit plus a separate result bubble', async () => {
@@ -492,7 +482,7 @@ describe('QueryOrchestrator', () => {
     });
 
     await orchestrator.run(createAdapter(), {
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'chat-1',
       userId: 'user-1',
       text: 'hello',
@@ -694,7 +684,7 @@ describe('QueryOrchestrator', () => {
     });
 
     await orchestrator.run(createAdapter(), {
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: 'chat-1',
       userId: 'user-1',
       text: 'hello',
@@ -703,7 +693,7 @@ describe('QueryOrchestrator', () => {
 
     expect(sdkEngine.getOrCreateSession).toHaveBeenCalledWith(
       expect.anything(),
-      'telegram',
+      'feishu',
       'chat-1',
       'session-1',
       '/tmp/project',
@@ -711,84 +701,4 @@ describe('QueryOrchestrator', () => {
     );
   });
 
-  it('qqbot sends only the final result instead of streaming progress bubbles', async () => {
-    const state = new SessionStateManager();
-    const engine = {
-      processMessage: vi.fn().mockImplementation(async (params) => {
-        params.onTextDelta?.('第一段');
-        params.onTextDelta?.('第二段');
-        await params.onQueryResult?.({
-          sessionId: 'sdk-2',
-          isError: false,
-          usage: { inputTokens: 10, outputTokens: 5, costUsd: 0.01 },
-        });
-      }),
-    } as any;
-    const router = {
-      resolve: vi.fn().mockResolvedValue({ ...binding, channelType: 'qqbot' }),
-      rebind: vi.fn(),
-    } as any;
-    const permissions = {
-      clearSessionWhitelist: vi.fn(),
-      getGateway: vi.fn().mockReturnValue({
-        waitFor: vi.fn(),
-        resolve: vi.fn(),
-      }),
-      setPendingSdkPerm: vi.fn(),
-      clearPendingSdkPerm: vi.fn(),
-      notePermissionPending: vi.fn(),
-      notePermissionResolved: vi.fn(),
-      clearPendingPermissionSnapshot: vi.fn(),
-      isToolAllowed: vi.fn().mockReturnValue(false),
-      rememberSessionAllowance: vi.fn(),
-      storeQuestionData: vi.fn(),
-      trackPermissionMessage: vi.fn(),
-    } as any;
-    const sdkEngine = {
-      getInteractionState: vi.fn().mockReturnValue({
-        beginSdkQuestion: vi.fn(),
-        cleanupSdkQuestion: vi.fn(),
-        consumeSdkQuestionAnswer: vi.fn().mockReturnValue({}),
-      }),
-      getQuestionState: vi.fn().mockReturnValue({
-        sdkQuestionData: new Map(),
-        sdkQuestionAnswers: new Map(),
-        sdkQuestionTextAnswers: new Map(),
-      }),
-      setControlsForChat: vi.fn(),
-      setActiveMessageId: vi.fn(),
-      closeSession: vi.fn(),
-      getOrCreateSession: vi.fn().mockReturnValue(undefined),
-    } as any;
-    const adapter = createAdapter('qqbot');
-
-    const orchestrator = new QueryOrchestrator({
-      engine,
-      llm: {} as any,
-      router,
-      state,
-      permissions,
-      sdkEngine,
-      store: mockStore,
-      defaultWorkdir: '/tmp/project',
-      defaultClaudeSettingSources: ['user', 'project', 'local'],
-      port: 8080,
-    });
-
-    await orchestrator.run(adapter, {
-      channelType: 'qqbot',
-      chatId: 'chat-1',
-      userId: 'user-1',
-      text: 'hello',
-      messageId: 'msg-1',
-    });
-
-    expect(adapter.send).toHaveBeenCalledTimes(1);
-    expect(adapter.send).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: expect.stringContaining('第一段第二段'),
-      }),
-    );
-    expect(adapter.editMessage).not.toHaveBeenCalled();
-  });
 });

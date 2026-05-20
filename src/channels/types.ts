@@ -1,4 +1,5 @@
-export type ChannelType = 'telegram' | 'feishu' | 'qqbot';
+export const FEISHU_CHANNEL = 'feishu' as const;
+export type ChannelType = typeof FEISHU_CHANNEL;
 
 // Import FileAttachment for use in InboundMessage
 import type { FileAttachment } from './media-types.js';
@@ -21,10 +22,7 @@ export type { FileAttachment, MediaAttachment } from './media-types.js';
 // Re-exported from platforms for convenience
 
 /** Union type for all platform-specific rendered messages */
-export type RenderedMessage =
-  | import('./telegram/types.js').TelegramRenderedMessage
-  | import('./feishu/types.js').FeishuRenderedMessage
-  | import('./qqbot/types.js').QQBotRenderedMessage;
+export type RenderedMessage = import('./feishu/types.js').FeishuRenderedMessage;
 
 /** Legacy type alias for backwards compatibility - will be removed */
 export type OutboundMessage = RenderedMessage;

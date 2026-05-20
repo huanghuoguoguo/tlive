@@ -488,27 +488,8 @@ export class BridgeManager implements AutomationBridge {
       }
     }
 
-    // Auth check — with pairing mode for platforms that support it
+    // Auth check
     if (!adapter.isAuthorized(msg.userId, msg.chatId)) {
-      // Pairing mode: generate code for unknown user (DM only)
-      if (adapter.supportsPairing() && 'requestPairing' in adapter && msg.text) {
-        const tgAdapter = adapter as any;
-        const username = msg.userId;
-        const code = tgAdapter.requestPairing(msg.userId, msg.chatId, username);
-        if (code) {
-          await adapter.send({
-            chatId: msg.chatId,
-            html: [
-              `🔐 <b>Pairing Required</b>`,
-              '',
-              `Your pairing code: <code>${code}</code>`,
-              '',
-              `Ask an admin to run <code>/approve ${code}</code> in an authorized channel.`,
-              `Code expires in 1 hour.`,
-            ].join('\n'),
-          });
-        }
-      }
       return false;
     }
 

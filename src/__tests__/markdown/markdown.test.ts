@@ -1,29 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { markdownToHtml, truncateLongCodeBlocks } from '../../markdown/index.js';
-import { markdownToTelegram } from '../../channels/telegram/markdown.js';
 import { markdownToFeishu } from '../../channels/feishu/markdown.js';
-
-describe('Telegram rendering', () => {
-  it('converts bold', () => {
-    expect(markdownToTelegram('**hello**')).toContain('<b>hello</b>');
-  });
-
-  it('converts inline code', () => {
-    expect(markdownToTelegram('`code`')).toContain('<code>code</code>');
-  });
-
-  it('converts code blocks', () => {
-    const result = markdownToTelegram('```js\nconsole.log()\n```');
-    expect(result).toContain('<pre>');
-    expect(result).toContain('console.log()');
-  });
-
-  it('strips unsupported HTML tags', () => {
-    const result = markdownToTelegram('# Heading\nparagraph');
-    // Telegram doesn't support <h1>, should be plain text or bold
-    expect(result).not.toContain('<h1>');
-  });
-});
 
 describe('Feishu rendering', () => {
   it('passes through markdown unchanged', () => {

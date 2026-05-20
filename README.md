@@ -5,36 +5,27 @@
 
 [中文文档](README_CN.md)
 
-> **Fork of [y49/tlive](https://github.com/y49/tlive)** — Claude-only version with enhancements.
+**Control Claude Code from Feishu/Lark** — send tasks from your phone, watch progress in real time, and approve Claude Code permissions remotely.
 
-**Control Claude Code from your phone** — Send tasks via Telegram, Feishu, or QQ Bot. Watch progress in real-time. Approve permissions remotely.
+## Scope
 
-## Changes from Original
+tlive is intentionally focused on one workflow:
 
-### Architecture Simplified
-- **Removed Go Core + Web Terminal** — Pure TypeScript, no web terminal, IM-only interaction
-- **Removed Codex + Discord** — Claude-only, Discord adapter removed, cleaner codebase
+- **IM channel:** Feishu/Lark
+- **Agent runtime:** Claude Code via `@anthropic-ai/claude-agent-sdk`
+- **Interaction model:** Feishu cards for streaming progress, questions, and permission approvals
 
-### Feishu Deep Optimization
-- **Collapsible panels** — Thinking & tool calls fold/unfold, long content doesn't clutter screen
-- **Real-time progress** — Thinking content pushed live, tool execution status instant update
-- **Enhanced permission cards** — Allow Always (auto-allow in session), AskUserQuestion multi-select
-- **Table limit handling** — Large tables auto-truncated to avoid Feishu API errors
+The project no longer carries Telegram, QQ Bot, Codex, or generic provider/channel runtime layers.
 
-### Session Management Enhanced
-- **Session scanning** — Scan `~/.claude/projects/`, list recent sessions, resume any
-- **Efficient tail reading** — 32KB tail read for latest message, 5s cache avoids repeated I/O
-- **Fixed O(n) lookup** — Direct session ID indexing, no iteration
-- **Added `/cd`, `/pwd` commands** — Per-chat directory control
+## Features
 
-### Agent Capabilities Extended
-- **Proactive file sending** — Agent can send files (images, PDFs) to IM via REST API
-- **Cron job API** — Agent can create/manage scheduled tasks
-- **Entropy control tools** — Dead code detection, duplicate identification, code quality tools
-
-### UX Improvements
-- **Compact Bash display** — Command output in single-line format
-- **Improved daemon mode** — Auto-start on demand, no manual activation needed
+- Feishu/Lark chat to Claude Code sessions
+- Real-time progress cards with thinking, tool calls, summaries, and final output
+- Remote permission approval, including session-level allow rules
+- AskUserQuestion and deferred tool interactions in Feishu cards
+- Claude Code session scanning and resume from `~/.claude/projects/`
+- Per-chat working directory with `/cd`, `/pwd`, `/new`, and `/sessions`
+- Automation hooks for push, webhook, and cron workflows
 
 ## Install
 
@@ -59,80 +50,72 @@ tlive --help
 ## Quick Start
 
 ```bash
-# 1. Clone the repo
 git clone https://github.com/huanghuoguoguo/tlive.git
 cd tlive
-
-# 2. Start Claude Code in the project
 claude
-
-# 3. Say "help me setup tlive"
-# Claude Code will guide you through all configuration
 ```
 
-That's it! Claude Code will help you:
-- Choose IM platforms (Telegram/Feishu/QQ Bot)
-- Get platform credentials
-- Configure Claude Code integration
-- Start the service
+Then ask Claude Code:
 
-## Features
+```text
+help me setup tlive
+```
 
-| Feature | Required | Description |
-|---------|----------|-------------|
-| **IM Chat** | Yes | Phone → Claude → Streaming response with tool visibility |
-| **Permission Approval** | Yes | Approve tool executions from your phone |
+Claude Code will guide you through Feishu app credentials, local config, and bridge startup.
 
 ## Architecture
 
-```
+```text
 ┌─────────────┐     ┌──────────────────┐     ┌─────────────┐
-│   Telegram  │     │                  │     │             │
-├─────────────┤     │   Bridge (TS)    │     │  ~/.claude  │
-│   Feishu    │────▶│   IM Adapter     │◀────│   sessions  │
-├─────────────┤     │                  │     │             │
-│   QQ Bot    │     │                  │     │  (scanned)  │
+│   Feishu    │────▶│  tlive Bridge    │◀────│  Claude Code│
+│   / Lark    │     │  TypeScript      │     │  sessions   │
 └─────────────┘     └──────────────────┘     └─────────────┘
 ```
 
-**Bridge**: TypeScript service that connects IM platforms to Claude Code by scanning session files and forwarding chat-driven tasks into Claude Code sessions.
+The bridge runs locally, connects to Feishu through the Feishu/Lark SDK long connection, and drives Claude Code through the Claude Agent SDK.
 
 ## IM Commands
 
-Send directly in Telegram/Feishu/QQ Bot:
+Send a normal message to start or continue work:
 
-```
+```text
 Fix the login bug in auth.ts
 ```
 
-Claude executes and returns results. Key commands:
+Common commands:
 
 | Command | Description |
 |---------|-------------|
-| `/new` | New conversation |
-| `/sessions` | List sessions in current directory |
-| `/session <n>` | Switch to session #n |
-| `/stop` | Interrupt execution |
+| `/new` | Start a new Claude Code conversation |
+| `/sessions` | List Claude Code sessions in the current directory |
+| `/session <n>` | Switch to a listed session |
+| `/stop` | Interrupt current execution |
 | `/perm on\|off` | Toggle permission prompts |
 | `/cd <path>` | Change working directory |
-| `/help` | Show all commands |
+| `/pwd` | Show current working directory |
+| `/help` | Show commands |
 
 ## Settings
 
-Claude Code settings are loaded per conversation from the session's working directory:
+Claude Code settings are loaded per conversation from the session working directory:
 
 | Priority | Source | Path |
 |----------|--------|------|
 | Low | `user` | `~/.claude/settings.json` |
 | Medium | `project` | `<cwd>/.claude/settings.json` |
-| **High** | `local` | `<cwd>/.claude/settings.local.json` |
+| High | `local` | `<cwd>/.claude/settings.local.json` |
 
-Configure via `TL_CLAUDE_SETTINGS=user,project,local` (order = priority). Changes apply to new conversations.
+Configure with:
+
+```env
+TL_CLAUDE_SETTINGS=user,project,local
+```
 
 ## Documentation
 
-- [Full Getting Started Guide](docs/getting-started.md)
-- [Configuration Options](docs/configuration.md)
+- [Getting Started](docs/getting-started.md)
+- [Feishu Setup](docs/setup-feishu.md)
+- [Configuration](docs/configuration.md)
 - [Troubleshooting](docs/troubleshooting.md)
 
 ## License

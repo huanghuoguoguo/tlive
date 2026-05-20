@@ -20,21 +20,21 @@ describe('JsonFileStore', () => {
 
   // Bindings
   it('saves and retrieves binding', async () => {
-    const binding = { channelType: 'telegram', chatId: '123', sessionId: 's1', createdAt: '' };
+    const binding = { channelType: 'feishu', chatId: '123', sessionId: 's1', createdAt: '' };
     await store.saveBinding(binding);
-    const got = await store.getBinding('telegram', '123');
+    const got = await store.getBinding('feishu', '123');
     expect(got).toEqual(binding);
   });
 
   it('deletes binding', async () => {
-    await store.saveBinding({ channelType: 'telegram', chatId: '123', sessionId: 's1', createdAt: '' });
-    await store.deleteBinding('telegram', '123');
-    expect(await store.getBinding('telegram', '123')).toBeNull();
+    await store.saveBinding({ channelType: 'feishu', chatId: '123', sessionId: 's1', createdAt: '' });
+    await store.deleteBinding('feishu', '123');
+    expect(await store.getBinding('feishu', '123')).toBeNull();
   });
 
   it('persists sdkSessionId and cwd in binding', async () => {
     const binding = {
-      channelType: 'telegram',
+      channelType: 'feishu',
       chatId: '123',
       sessionId: 's1',
       sdkSessionId: 'uuid-1',
@@ -43,7 +43,7 @@ describe('JsonFileStore', () => {
       createdAt: '',
     };
     await store.saveBinding(binding);
-    const got = await store.getBinding('telegram', '123');
+    const got = await store.getBinding('feishu', '123');
     expect(got?.sdkSessionId).toBe('uuid-1');
     expect(got?.cwd).toBe('/home/test');
     expect(got?.claudeSettingSources).toEqual(['user', 'project']);

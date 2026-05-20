@@ -5,7 +5,6 @@
   "delay": 1000,
   "verbose": true,
   "env": {
-    "TL_DEFAULT_WORKDIR": "",
-    "TL_RUNTIME": "claude"
+    "TL_DEFAULT_WORKDIR": ""
   }
 }

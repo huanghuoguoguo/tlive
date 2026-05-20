@@ -26,24 +26,6 @@ async function ask(question: string, defaultValue = ''): Promise<string> {
   });
 }
 
-type Choice = {
-  label: string;
-  value: string;
-};
-
-async function askChoice(question: string, choices: Choice[], current?: string[]): Promise<string[]> {
-  console.log(question);
-  choices.forEach((c, i) => {
-    const marker = current?.includes(c.value) ? ' (current)' : '';
-    console.log(`  ${i + 1}. ${c.label}${marker}`);
-  });
-  const hint = current?.length ? ` [${current.join(',')}]` : '';
-  const answer = await ask(`Enter numbers, comma-separated${hint}`);
-  if (!answer && current?.length) return current;
-  const indices = answer.split(',').map(s => parseInt(s.trim(), 10) - 1);
-  return indices.filter(i => i >= 0 && i < choices.length).map(i => choices[i].value);
-}
-
 function loadExistingConfig(): Record<string, string> {
   if (!existsSync(CONFIG_PATH)) return {};
   const content = readFileSync(CONFIG_PATH, 'utf-8');
@@ -62,33 +44,16 @@ function maskSecret(value: string): string {
   return value.slice(0, 4) + '****' + value.slice(-4);
 }
 
-function printNextSteps(platforms: string[]): void {
+function printNextSteps(): void {
   console.log('\nNext steps:');
   console.log('  tlive install skills    Install Claude Code skill');
   console.log('  tlive start             Start services');
 
-  if (platforms.includes('feishu')) {
-    console.log('\nFeishu first-run checklist:');
-    console.log('  1. Finish app publish + admin approval in Feishu');
-    console.log('  2. Run /tlive or tlive start');
-    console.log('  3. Send the bot a private message in Feishu');
-    console.log('  4. Confirm you receive replies, progress updates, and approval cards');
-  }
-
-  if (platforms.includes('telegram')) {
-    console.log('\nTelegram first-run checklist:');
-    console.log('  1. Start a chat with your bot');
-    console.log('  2. Run /tlive or tlive start');
-    console.log('  3. Send a real task and confirm the reply reaches Telegram');
-  }
-
-  if (platforms.includes('qqbot')) {
-    console.log('\nQQ Bot first-run checklist:');
-    console.log('  1. Confirm the bot is available in your target chat');
-    console.log('  2. Run /tlive or tlive start');
-    console.log('  3. Send a real task and confirm the reply reaches QQ');
-    console.log('  4. If a permission prompt appears, reply allow / deny / always in text');
-  }
+  console.log('\nFeishu first-run checklist:');
+  console.log('  1. Finish app publish + admin approval in Feishu');
+  console.log('  2. Run /tlive or tlive start');
+  console.log('  3. Send the bot a private message in Feishu');
+  console.log('  4. Confirm you receive replies, progress updates, and approval cards');
 }
 
 export async function runSetupWizard(): Promise<void> {
@@ -104,7 +69,7 @@ export async function runSetupWizard(): Promise<void> {
 
   if (isUpdate) {
     console.log(`Existing config: ${CONFIG_PATH}`);
-    console.log(`  Channels: ${existing.TL_ENABLED_CHANNELS || '(none)'}`);
+    console.log('  Channel: feishu');
     console.log(`  Port: ${existing.TL_PORT || '8080'}`);
     console.log('');
 
@@ -124,40 +89,10 @@ export async function runSetupWizard(): Promise<void> {
   if (!config.TL_TOKEN) config.TL_TOKEN = randomBytes(16).toString('hex');
   config.TL_PORT = await ask('Web server port', config.TL_PORT || '8080');
 
-  // Choose platforms
-  const currentChannels = (config.TL_ENABLED_CHANNELS || '').split(',').filter(Boolean);
-  const platforms = await askChoice(
-    '\nWhich IM platforms do you want to enable?\nRecommended for most personal users in Chinese environments: Feishu.',
-    [
-      { label: 'Feishu (recommended for personal users)', value: 'feishu' },
-      { label: 'Telegram', value: 'telegram' },
-      { label: 'QQBot', value: 'qqbot' },
-    ],
-    currentChannels,
-  );
-  config.TL_ENABLED_CHANNELS = platforms.join(',');
-
-  // Collect credentials per platform
-  if (platforms.includes('telegram')) {
-    console.log('\n--- Telegram ---');
-    const cur = maskSecret(config.TL_TG_BOT_TOKEN || '');
-    config.TL_TG_BOT_TOKEN = await ask('Bot Token (from @BotFather)', cur.includes('****') ? config.TL_TG_BOT_TOKEN : '');
-    config.TL_TG_CHAT_ID = await ask('Chat ID (blank = any)', config.TL_TG_CHAT_ID || '');
-    config.TL_TG_ALLOWED_USERS = await ask('Allowed user IDs (comma-separated, blank = all)', config.TL_TG_ALLOWED_USERS || '');
-  }
-
-  if (platforms.includes('feishu')) {
-    console.log('\n--- Feishu ---');
-    config.TL_FS_APP_ID = await ask('App ID', config.TL_FS_APP_ID || '');
-    config.TL_FS_APP_SECRET = await ask('App Secret', config.TL_FS_APP_SECRET || '');
-  }
-
-  if (platforms.includes('qqbot')) {
-    console.log('\n--- QQ Bot ---');
-    config.TL_QQ_APP_ID = await ask('App ID (from QQ Open Platform)', config.TL_QQ_APP_ID || '');
-    config.TL_QQ_CLIENT_SECRET = await ask('Client Secret', config.TL_QQ_CLIENT_SECRET || '');
-    config.TL_QQ_ALLOWED_USERS = await ask('Allowed user openids (comma-separated, blank = all)', config.TL_QQ_ALLOWED_USERS || '');
-  }
+  console.log('\n--- Feishu ---');
+  config.TL_FS_APP_ID = await ask('App ID', config.TL_FS_APP_ID || '');
+  config.TL_FS_APP_SECRET = await ask('App Secret', config.TL_FS_APP_SECRET || '');
+  config.TL_FS_ALLOWED_USERS = await ask('Allowed user IDs (comma-separated, blank = all)', config.TL_FS_ALLOWED_USERS || '');
 
   // General
   console.log('\n--- General ---');
@@ -174,8 +109,8 @@ export async function runSetupWizard(): Promise<void> {
   console.log(`\n✅ Config saved to ${CONFIG_PATH}`);
   console.log(`   Token: ${maskSecret(config.TL_TOKEN)}`);
   console.log(`   Port: ${config.TL_PORT}`);
-  console.log(`   Channels: ${config.TL_ENABLED_CHANNELS}`);
-  printNextSteps(platforms);
+  console.log('   Channel: feishu');
+  printNextSteps();
 }
 
 // Run if executed directly

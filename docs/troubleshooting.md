@@ -50,23 +50,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$tmp = Join-Path $env:TE
 
 ### No IM Messages Received
 
-**Telegram:**
-- Verify Bot Token is correct
-- Send a message to the bot first
-- Verify Chat ID (user ID for DM, group ID for groups)
-
 **Feishu:**
 - Verify app is published
 - Verify message receive permission
 - Check whitelist config
 
-**QQ Bot:**
-- Verify app credentials are correct
-- Check whitelist config
-
 ### Permission Approval Timeout
 
-Default timeout is 5 minutes with auto-deny on timeout. On QQ Bot, reply `allow` / `deny` / `always` directly instead of waiting for buttons.
+Default timeout is 5 minutes with auto-deny on timeout. Feishu approval cards can also be resolved by replying `allow`, `deny`, or `always`.
 
 ## Reset
 

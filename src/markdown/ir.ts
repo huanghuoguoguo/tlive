@@ -121,7 +121,7 @@ export function truncateLongCodeBlocks(text: string, maxLines?: number): string 
 }
 
 /**
- * Convert markdown to Telegram-compatible HTML.
+ * Convert markdown to basic HTML.
  */
 export function markdownToHtml(text: string): string {
   // Pre-process: truncate long code blocks

@@ -3,9 +3,7 @@ import type { KnipConfig } from 'knip';
 const config: KnipConfig = {
   entry: [
     'src/setup-wizard.ts',
-    'src/channels/telegram/adapter.ts',
     'src/channels/feishu/adapter.ts',
-    'src/channels/qqbot/adapter.ts',
   ],
   project: ['src/**/*.ts'],
   // Barrel files with unused re-exports — these are dead code themselves (tracked in docs/code-health-audit.md)

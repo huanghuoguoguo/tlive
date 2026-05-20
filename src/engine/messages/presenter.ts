@@ -11,7 +11,6 @@ import type {
   SessionDetailData,
   HelpData,
   NewSessionData,
-  ProjectListData,
   QueueStatusData,
   DiagnoseData,
   FormattableMessage,
@@ -43,10 +42,6 @@ export function presentSessionDetail(chatId: string, data: SessionDetailData): F
 
 export function presentHelp(chatId: string, data: HelpData): FormattableMessage {
   return { type: 'help', chatId, data };
-}
-
-export function presentProjectList(chatId: string, data: ProjectListData): FormattableMessage {
-  return { type: 'projectList', chatId, data };
 }
 
 // --- Simple text messages (no platform-specific formatting needed) ---
@@ -135,44 +130,7 @@ export function presentSettingsStatus(
   };
 }
 
-export function presentApproveUsage(chatId: string): { chatId: string; text: string } {
-  return { chatId, text: 'Usage: /approve <pairing_code>' };
-}
-
-export function presentApproveSuccess(chatId: string, username: string, userId: string): { chatId: string; text: string } {
-  return { chatId, text: `✅ Approved user ${username} (${userId})` };
-}
-
-export function presentApproveFailure(chatId: string): { chatId: string; text: string } {
-  return { chatId, text: '❌ Code not found or expired' };
-}
-
-export function presentPairingUnavailable(chatId: string): { chatId: string; text: string } {
-  return { chatId, text: '⚠️ Pairing not available' };
-}
-
-export function presentNoPairings(chatId: string): { chatId: string; text: string } {
-  return { chatId, text: 'No pending pairing requests.' };
-}
-
-export function presentPairings(chatId: string, lines: string[]): { chatId: string; text: string } {
-  return { chatId, text: `🔐 **Pending Pairings**\n\n${lines.join('\n')}\n\nUse /approve <code> to approve.` };
-}
-
 // --- Version/Upgrade messages ---
-
-export interface VersionCheckData {
-  current: string;
-  latest: string;
-  hasUpdate: boolean;
-  publishedAt?: string;
-}
-
-export interface UpgradeResultData {
-  success: boolean;
-  version?: string;
-  error?: string;
-}
 
 function getManualInstallCommand(platform: NodeJS.Platform = process.platform, version?: string): string {
   const normalizedVersion = version?.trim() ? version.trim().replace(/^v/i, '') : '';
@@ -184,38 +142,6 @@ function getManualInstallCommand(platform: NodeJS.Platform = process.platform, v
   return normalizedVersion
     ? `curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash -s -- v${normalizedVersion}`
     : 'curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash';
-}
-
-export function presentVersionCheck(chatId: string, info: VersionCheckData): FormattableMessage {
-  // Use a generic 'notification' type for version check
-  // The formatter will handle platform-specific rendering
-  const summary = info.hasUpdate
-    ? `Current: v${info.current}\nLatest: v${info.latest}`
-    : `You're on the latest version: v${info.current}`;
-
-  return {
-    type: 'notification',
-    chatId,
-    data: {
-      type: 'generic',
-      title: info.hasUpdate ? '🔄 Update Available' : '✅ Up to Date',
-      summary,
-    },
-  };
-}
-
-export function presentUpgradeResult(chatId: string, result: UpgradeResultData): FormattableMessage {
-  return {
-    type: 'notification',
-    chatId,
-    data: {
-      type: result.success ? 'stop' : 'generic',
-      title: result.success ? '⬆️ Upgrade Complete' : '❌ Upgrade Failed',
-      summary: result.success
-        ? `Version: v${result.version}\nRestart tlive to apply changes.`
-        : result.error || 'Unknown error',
-    },
-  };
 }
 
 export function presentUpgradeCommand(chatId: string, platform: NodeJS.Platform = process.platform): { chatId: string; text: string } {

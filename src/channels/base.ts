@@ -63,7 +63,7 @@ export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = Ren
 
   // --- Policy support ---
 
-  /** Platform behavior policy. Default is Telegram-like behavior. */
+  /** Platform behavior policy. */
   protected policy: ChannelPolicy = DEFAULT_CHANNEL_POLICY;
 
   /** Set the policy for this adapter. */
@@ -111,10 +111,6 @@ export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = Ren
   /** Send code output (bash command result, etc.) using platform-appropriate formatting. */
   async sendCodeOutput(chatId: string, text: string): Promise<SendResult> {
     const formatted = this.formatCodeOutput(text);
-    // Use 'html' for Telegram (native HTML), 'text' for others
-    if (this.channelType === 'telegram') {
-      return this.send({ chatId, html: formatted } as TRendered);
-    }
     return this.send({ chatId, text: formatted } as TRendered);
   }
 
@@ -154,7 +150,7 @@ export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = Ren
     return this.editMessage(chatId, messageId, outMsg);
   }
 
-  /** Format raw markdown content into a platform-appropriate message (HTML for Telegram, text for others). */
+  /** Format raw markdown content into a platform-appropriate message. */
   formatContent(chatId: string, content: string, buttons?: Button[]): TRendered {
     return this.formatter.formatContent(chatId, content, buttons);
   }
@@ -190,30 +186,4 @@ export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = Ren
   getBotInfo(): { appId?: string; name?: string } {
     return {};
   }
-}
-
-// Use globalThis to share the registry across module instances (for dynamic imports)
-const GLOBAL_KEY = '__tlive_adapter_registry__';
-
-type AdapterRegistry = Map<ChannelType, () => BaseChannelAdapter>;
-
-function getRegistry(): AdapterRegistry {
-  if (!(globalThis as any)[GLOBAL_KEY]) {
-    (globalThis as any)[GLOBAL_KEY] = new Map<ChannelType, () => BaseChannelAdapter>();
-  }
-  return (globalThis as any)[GLOBAL_KEY];
-}
-
-export function registerAdapterFactory(type: ChannelType, factory: () => BaseChannelAdapter): void {
-  getRegistry().set(type, factory);
-}
-
-export function createAdapter(type: ChannelType): BaseChannelAdapter {
-  const factory = getRegistry().get(type);
-  if (!factory) throw new Error(`Unknown channel type: ${type}`);
-  return factory();
-}
-
-export function getRegisteredTypes(): ChannelType[] {
-  return Array.from(getRegistry().keys());
 }

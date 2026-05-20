@@ -5,7 +5,7 @@ import type { BaseChannelAdapter } from '../../channels/base.js';
 
 function mockAdapter(): BaseChannelAdapter {
   return {
-    channelType: 'telegram',
+    channelType: 'feishu',
     send: vi.fn().mockResolvedValue({ messageId: '1', success: true }),
     editMessage: vi.fn(), start: vi.fn(), stop: vi.fn(),
     consumeOne: vi.fn(), validateConfig: vi.fn(), isAuthorized: vi.fn(),
@@ -23,7 +23,7 @@ describe('DeliveryLayer', () => {
   it('chunks long message at platform limit', async () => {
     const adapter = mockAdapter();
     const layer = new DeliveryLayer();
-    const longMsg = 'x'.repeat(5000); // Telegram limit is 4096
+    const longMsg = 'x'.repeat(5000); // Feishu limit is 4096
     await layer.deliver(adapter, 'chat1', longMsg, { platformLimit: 4096 });
     expect((adapter.send as any).mock.calls.length).toBeGreaterThan(1);
   });

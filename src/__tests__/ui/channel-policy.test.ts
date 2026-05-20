@@ -68,17 +68,17 @@ describe('ui/channel-policy', () => {
   });
 
   describe('FormatPolicy', () => {
-    it('formatCodeOutput wraps text in pre tags', () => {
+    it('formatCodeOutput wraps text in markdown code fences', () => {
       const policy = DEFAULT_CHANNEL_POLICY.format;
       const result = policy.formatCodeOutput('console.log("hello")');
-      expect(result).toBe('<pre>console.log("hello")</pre>');
+      expect(result).toBe('```\nconsole.log("hello")\n```\n');
     });
 
-    it('formatCodeOutput escapes HTML in text', () => {
+    it('formatCodeOutput preserves raw code text', () => {
       const policy = DEFAULT_CHANNEL_POLICY.format;
       const result = policy.formatCodeOutput('<script>alert(1)</script>');
-      expect(result).toContain('&lt;');
-      expect(result).toContain('&gt;');
+      expect(result).toContain('<script>');
+      expect(result).toContain('</script>');
     });
   });
 

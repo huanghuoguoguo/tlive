@@ -22,7 +22,7 @@ import { handlePushRequest } from './push-handler.js';
 
 /** Webhook request body */
 export interface WebhookRequest {
-  /** Target channel type (e.g., 'telegram', 'feishu') */
+  /** Target channel type. Only 'feishu' is supported. */
   channelType?: string;
   /** Target chat ID */
   chatId?: string;
@@ -473,9 +473,8 @@ export class WebhookServer {
         };
       }
 
-      // Fallback: find last active chat for project's enabled channels
-      const enabledChannels = project.channels || this.options.bridge.getAdapters().map(a => a.channelType);
-      for (const channelType of enabledChannels) {
+      // Fallback: find the last active chat for the configured Feishu adapter.
+      for (const channelType of this.options.bridge.getAdapters().map(adapter => adapter.channelType)) {
         const lastChatId = this.options.bridge.getLastChatId(channelType);
         if (lastChatId) {
           console.log(`[webhook] Project '${request.projectName}' using last active chat: ${channelType}:${lastChatId.slice(-8)}`);

@@ -5,7 +5,7 @@ import { MessageLoopCoordinator } from '../../engine/coordinators/message-loop.j
 import { SessionStateManager } from '../../engine/state/session-state.js';
 import type { SendWithContextResult } from '../../engine/sdk/engine.js';
 
-function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
+function createAdapter(channelType = 'feishu'): BaseChannelAdapter {
   return {
     channelType,
     send: vi.fn().mockResolvedValue({ messageId: '1', success: true }),
@@ -14,7 +14,7 @@ function createAdapter(channelType = 'telegram'): BaseChannelAdapter {
 
 function createMessage(text: string, overrides: Partial<InboundMessage> = {}): InboundMessage {
   return {
-    channelType: 'telegram',
+    channelType: 'feishu',
     chatId: 'chat-1',
     userId: 'user-1',
     text,
@@ -69,7 +69,7 @@ describe('MessageLoopCoordinator', () => {
 
   it('steers the active session when turn is active', async () => {
     const state = new SessionStateManager();
-    const chatKey = state.stateKey('telegram', 'chat-1');
+    const chatKey = state.stateKey('feishu', 'chat-1');
     state.setProcessing(chatKey, true);
 
     const sdkEngine = {
@@ -92,7 +92,7 @@ describe('MessageLoopCoordinator', () => {
       onError: vi.fn(),
     });
 
-    expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('telegram', 'chat-1', 'follow-up', undefined);
+    expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('feishu', 'chat-1', 'follow-up', undefined);
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({ text: '💬 已插入当前会话' }),
     );
@@ -100,7 +100,7 @@ describe('MessageLoopCoordinator', () => {
 
   it('queues follow-up messages when turn is not active', async () => {
     const state = new SessionStateManager();
-    const chatKey = state.stateKey('telegram', 'chat-1');
+    const chatKey = state.stateKey('feishu', 'chat-1');
     state.setProcessing(chatKey, true);
 
     const sdkEngine = {
@@ -123,7 +123,7 @@ describe('MessageLoopCoordinator', () => {
       onError: vi.fn(),
     });
 
-    expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('telegram', 'chat-1', 'queued follow-up', undefined);
+    expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('feishu', 'chat-1', 'queued follow-up', undefined);
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({ text: '📥 已排队（位置 1/3），当前任务结束后继续处理' }),
     );
@@ -131,7 +131,7 @@ describe('MessageLoopCoordinator', () => {
 
   it('shows queue position for subsequent queued messages', async () => {
     const state = new SessionStateManager();
-    const chatKey = state.stateKey('telegram', 'chat-1');
+    const chatKey = state.stateKey('feishu', 'chat-1');
     state.setProcessing(chatKey, true);
 
     const sdkEngine = {
@@ -154,7 +154,7 @@ describe('MessageLoopCoordinator', () => {
       onError: vi.fn(),
     });
 
-    expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('telegram', 'chat-1', 'second queued message', undefined);
+    expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('feishu', 'chat-1', 'second queued message', undefined);
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({ text: '📥 已排队（位置 2/3），当前任务结束后继续处理' }),
     );
@@ -162,7 +162,7 @@ describe('MessageLoopCoordinator', () => {
 
   it('rejects message when queue is full', async () => {
     const state = new SessionStateManager();
-    const chatKey = state.stateKey('telegram', 'chat-1');
+    const chatKey = state.stateKey('feishu', 'chat-1');
     state.setProcessing(chatKey, true);
 
     const sdkEngine = {
@@ -185,7 +185,7 @@ describe('MessageLoopCoordinator', () => {
       onError: vi.fn(),
     });
 
-    expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('telegram', 'chat-1', 'message when queue full', undefined);
+    expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('feishu', 'chat-1', 'message when queue full', undefined);
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({ text: '⚠️ 排队已满（3/3），请稍后再发' }),
     );
@@ -226,7 +226,7 @@ describe('MessageLoopCoordinator', () => {
 
   it('warns when session injection fails', async () => {
     const state = new SessionStateManager();
-    const chatKey = state.stateKey('telegram', 'chat-1');
+    const chatKey = state.stateKey('feishu', 'chat-1');
     state.setProcessing(chatKey, true);
 
     const sdkEngine = {
@@ -283,7 +283,7 @@ describe('MessageLoopCoordinator', () => {
       onError: vi.fn(),
     });
 
-    expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('telegram', 'chat-1', 'reply to bubble', 'bubble-1');
+    expect(sdkEngine.sendWithContext).toHaveBeenCalledWith('feishu', 'chat-1', 'reply to bubble', 'bubble-1');
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({ text: '💬 已插入当前会话' }),
     );
@@ -291,7 +291,7 @@ describe('MessageLoopCoordinator', () => {
 
   it('prompts user when no active session found', async () => {
     const state = new SessionStateManager();
-    const chatKey = state.stateKey('telegram', 'chat-1');
+    const chatKey = state.stateKey('feishu', 'chat-1');
     state.setProcessing(chatKey, true);
 
     const sdkEngine = {

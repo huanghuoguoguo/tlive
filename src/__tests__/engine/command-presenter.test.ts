@@ -10,33 +10,23 @@ import {
   presentDiagnose,
   presentUpgradeCommand,
 } from '../../engine/messages/presenter.js';
-import { TelegramFormatter } from '../../channels/telegram/formatter.js';
 import { FeishuFormatter } from '../../channels/feishu/formatter.js';
-import type { FormattableMessage } from '../../formatting/message-types.js';
 
 describe('command presenter', () => {
-  const telegramFormatter = new TelegramFormatter('en');
   const feishuFormatter = new FeishuFormatter('zh');
 
   describe('presentStatus', () => {
     it('returns semantic message data', () => {
       const msg = presentStatus('chat-1', {
         healthy: true,
-        channels: ['telegram', 'feishu'],
+        channels: ['feishu'],
       });
       expect(msg.type).toBe('status');
       expect(msg.chatId).toBe('chat-1');
       if (msg.type === 'status') {
         expect(msg.data.healthy).toBe(true);
-        expect(msg.data.channels).toEqual(['telegram', 'feishu']);
+        expect(msg.data.channels).toEqual(['feishu']);
       }
-    });
-
-    it('formats correctly for Telegram', () => {
-      const msg = presentStatus('chat-1', { healthy: true, channels: ['telegram'] });
-      const formatted = telegramFormatter.format(msg);
-      expect(formatted.html).toContain('TLive Status');
-      expect(formatted.html).toContain('telegram');
     });
 
     it('formats correctly for Feishu', () => {
@@ -54,12 +44,6 @@ describe('command presenter', () => {
       if (msg.type === 'newSession') {
         expect(msg.data.cwd).toBe('/home/user/project');
       }
-    });
-
-    it('formats for Telegram', () => {
-      const msg = presentNewSession('chat-1', { cwd: '/home/user/project' });
-      const formatted = telegramFormatter.format(msg);
-      expect(formatted.html).toContain('New Session');
     });
 
     it('formats for Feishu', () => {
@@ -111,14 +95,6 @@ describe('command presenter', () => {
       if (msg.type === 'help') {
         expect(msg.data.commands).toHaveLength(2);
       }
-    });
-
-    it('formats for Telegram', () => {
-      const msg = presentHelp('chat-1', {
-        commands: [{ cmd: 'new', desc: 'New conversation' }],
-      });
-      const formatted = telegramFormatter.format(msg);
-      expect(formatted.html).toContain('/new');
     });
 
     it('formats for Feishu with buttons', () => {
@@ -199,7 +175,7 @@ describe('command presenter', () => {
     it('returns semantic queue data without mutating payload', () => {
       const now = Date.now();
       const msg = presentQueueStatus('chat-1', {
-        sessionKey: 'telegram:chat-1:/repo',
+        sessionKey: 'feishu:chat-1:/repo',
         depth: 2,
         maxDepth: 4,
         queuedMessages: [

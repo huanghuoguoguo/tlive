@@ -1,95 +1,49 @@
 # tlive 入门指南
 
-本指南将带你从零开始配置 tlive。完成后，你可以在手机上监控终端会话、通过 IM 与 Claude Code 对话，以及远程审批权限请求。
-
-如果你是中文环境下的个人用户，默认推荐直接选择飞书。你不需要先比较所有平台，再决定怎么开始。
+本指南带你从零配置一个飞书 / Lark 到 Claude Code 的桥接服务。
 
 ## 前置条件
 
-- **Node.js 20+** 和 npm
-- 以下 IM 平台至少其一：**飞书**、**Telegram**（IM Bridge 和 Hook 审批功能需要）
-- 已安装 **Claude Code**（IM Bridge 和 Hook 审批功能需要）
+- Node.js 20+ 和 npm
+- 一个可创建自建应用的飞书或 Lark 工作区
+- 已安装并登录 Claude Code
 
 ## 安装
 
-Linux / macOS：
+Linux / macOS:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash
 ```
 
-Windows PowerShell：
+Windows PowerShell:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$tmp = Join-Path $env:TEMP 'tlive-install.ps1'; Invoke-WebRequest 'https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.ps1' -UseBasicParsing -OutFile $tmp; & $tmp"
 ```
 
-验证安装：
+验证：
 
 ```bash
 tlive --help
 ```
 
-**安装过程说明：** 这个 fork 没有发布到 npm。上面的安装脚本会从 GitHub Release 下载当前版本；如果安装时遇到下载问题，请重新运行上面对应平台的安装命令，或按仓库 README 的源码构建方式安装。
+## 配置飞书
 
-## 选择 IM 平台
+按照 [飞书配置指南](setup-feishu-cn.md) 创建自建应用、启用机器人能力、配置事件订阅并发布应用。
 
-你可以同时启用多个平台，但首次配置时不建议把选择压力留给自己。
-
-默认建议如下：
-
-| 平台 | 推荐级别 | 适合场景 |
-|------|-----------|---------|
-| **飞书** | 默认推荐 | 中文个人用户最顺手；使用长连接，不需要公网 IP 或自建 webhook |
-| **Telegram** | 备选 | 你已经长期使用 Telegram，希望最快创建机器人 |
-
-各平台详细配置指南：
-
-- [飞书配置](setup-feishu-cn.md)
-- [Telegram 配置](setup-telegram-cn.md)
-
-## 配置
-
-选择你喜欢的方式。
-
-### 方案 A：AI 引导配置（推荐）
-
-在 Claude Code 中运行：
-
-```
-/tlive setup
-```
-
-AI 会一步步引导你完成配置。对中文个人用户，默认就按飞书这条路径走即可。
-
-### 方案 B：命令行引导
-
-```bash
-tlive setup
-```
-
-通过交互式命令行引导你选择平台并填写凭证。如果你已经准备好了 bot token，这种方式最快。
-
-### 方案 C：手动配置
-
-直接编辑 `~/.tlive/config.env`。参考 [config.env.example](../config.env.example) 查看所有可用选项。
-
-关键配置项：
+`~/.tlive/config.env` 至少需要：
 
 ```env
-# 启用的平台（逗号分隔）
-TL_ENABLED_CHANNELS=feishu
-
-# Feishu 示例
-TL_FS_APP_ID=cli_xxxxxxxxxxxxxxxx
-TL_FS_APP_SECRET=your-app-secret
-
-# Web 终端端口和访问令牌
-TL_PORT=8080
 TL_TOKEN=your-secret-token
+TL_FS_APP_ID=cli_xxx
+TL_FS_APP_SECRET=xxx
+TL_FS_VERIFICATION_TOKEN=
+TL_FS_ENCRYPT_KEY=
+TL_FS_ALLOWED_USERS=
 ```
 
-记得保护配置文件的权限：
+保护配置文件权限：
 
 ```bash
 chmod 600 ~/.tlive/config.env
@@ -101,67 +55,48 @@ chmod 600 ~/.tlive/config.env
 tlive install skills
 ```
 
-这个命令会注册：
+也可以在 Claude Code 里运行：
 
-- Claude Code 的 `/tlive` 技能
-- `~/.tlive/docs/` 下的参考文档
-
-## 试一试
-
-### 功能一：IM Bridge
-
-在 Claude Code 中启动 Bridge：
-
+```text
+/tlive setup
 ```
+
+引导流程会帮你填写飞书凭证并启动 bridge。
+
+## 启动
+
+在 Claude Code 中：
+
+```text
 /tlive
 ```
 
-如果你按默认路径选择了飞书，现在就去飞书里给机器人发一条私聊消息，例如：
+然后在飞书 / Lark 里给机器人发任务：
 
+```text
+Fix the login bug in auth.ts
 ```
-帮我看一下当前仓库里有哪些未提交改动
-```
 
-Claude Code 会接收消息、处理任务，并将响应实时回传到你的手机上。
+Claude Code 会在本地执行，并把进度、工具调用、权限审批和最终结果实时回传到飞书。
 
-看到以下结果就说明你已经跑通了：
+## 常用命令
 
-- 机器人能正常回复你的消息
-- Claude Code 的执行进度会持续回传
-- 需要权限时，你会收到审批卡片
+- `/perm on|off`：开关权限审批
+- `/stop`：中断当前执行
+- `/sessions`：列出最近 Claude Code 会话
+- `/session <n>`：恢复指定会话
+- `/cd <path>`：切换工作目录
+- `/pwd`：查看工作目录
 
-其他常用命令：`/perm on|off`（权限提示）、`/stop`（中断执行）、`/sessions`（查看最近会话）。
-
-第一次跑通后，建议立刻再做三件事：
-
-- 发一条你真实会用到的任务，确认不是只有示例消息能工作
-- 主动触发一次需要审批的操作，确认手机端卡片能正常点击
-- 用 `/sessions` 和 `/session <n>` 验证你能接续之前的会话
-
-## 故障排除
-
-**运行自动诊断：**
+## 故障排查
 
 ```bash
 tlive doctor
-```
-
-**查看日志：**
-
-```bash
 tlive logs 50
 ```
 
-**常见问题：**
+常见问题：
 
-- **"二进制文件未找到"** — 安装不完整，重新运行上面安装章节里对应平台的命令。
-- **"Bridge not starting"** — 检查 `~/.tlive/config.env` 是否存在且凭证有效。运行 `tlive doctor` 查看详情。
-- **"No IM messages"** — 确认 bot token 正确，且机器人已加入正确的对话。参考上方各平台的配置指南进行排查。
-
-## 下一步
-
-- **继续历史会话：** 用 `/sessions` 查看最近记录，再用 `/session <n>` 切回去
-- **安装 Claude Code 命令：** 如果还没执行过，运行一次 `tlive install skills`
-- 阅读完整的 [中文文档](../README_CN.md) 了解所有命令和架构详情
-- 如果你刚才走的是默认路径，下一步建议直接看 [飞书配置指南](setup-feishu-cn.md) 做精细化配置
-- 如果你还没做过权限审批验证，建议现在就触发一次，确认手机端审批链路是通的
+- Bridge 启动失败：检查 `TL_FS_APP_ID`、`TL_FS_APP_SECRET` 和 `TL_TOKEN`。
+- 机器人能发消息但按钮无效：检查飞书卡片回调配置。
+- 收不到飞书消息：检查事件订阅、应用发布和管理员审批状态。
