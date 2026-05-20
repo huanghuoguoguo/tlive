@@ -8,6 +8,9 @@ $ErrorActionPreference = 'Stop'
 $Repo = 'huanghuoguoguo/tlive'
 $InstallDir = if ($env:TLIVE_HOME) { $env:TLIVE_HOME } else { Join-Path $HOME '.tlive' }
 $AppDir = Join-Path $InstallDir 'app'
+$RuntimeDir = Join-Path $InstallDir 'runtime'
+$PidFile = Join-Path $RuntimeDir 'bridge.pid'
+$StatusFile = Join-Path $RuntimeDir 'status.json'
 $BinDir = Join-Path $HOME '.local\bin'
 
 function Write-Info([string]$Message) {
@@ -85,6 +88,88 @@ function Install-Dependencies([string]$TargetDir) {
   }
 }
 
+function Test-ProcessAlive([int]$ProcessId) {
+  try {
+    Get-Process -Id $ProcessId -ErrorAction Stop | Out-Null
+    return $true
+  } catch {
+    return $false
+  }
+}
+
+function Get-BridgePid {
+  if (-not (Test-Path $PidFile)) {
+    return $null
+  }
+  try {
+    $BridgePid = [int]((Get-Content $PidFile -Raw).Trim())
+    if ($BridgePid -gt 0 -and (Test-ProcessAlive $BridgePid)) {
+      return $BridgePid
+    }
+  } catch {}
+  try { Remove-Item -Force $PidFile -ErrorAction SilentlyContinue } catch {}
+  return $null
+}
+
+function Wait-ProcessExit([int]$ProcessId, [int]$TimeoutSeconds = 30) {
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ((Get-Date) -lt $deadline) {
+    if (-not (Test-ProcessAlive $ProcessId)) {
+      return
+    }
+    Start-Sleep -Milliseconds 250
+  }
+  throw "Timed out waiting for process $ProcessId to exit"
+}
+
+function Stop-BridgeIfRunning {
+  $BridgePid = Get-BridgePid
+  if (-not $BridgePid) {
+    return $false
+  }
+
+  Write-Info "Stopping running bridge (PID $BridgePid)..."
+  try {
+    Stop-Process -Id $BridgePid -ErrorAction Stop
+    Wait-ProcessExit $BridgePid 30
+  } catch {
+    Write-Warn 'Bridge did not stop gracefully; forcing shutdown...'
+    Stop-Process -Id $BridgePid -Force -ErrorAction SilentlyContinue
+    Wait-ProcessExit $BridgePid 10
+  }
+
+  try { Remove-Item -Force $PidFile -ErrorAction SilentlyContinue } catch {}
+  return $true
+}
+
+function Start-BridgeAndWait([string]$ExpectedVersion) {
+  $cliPath = Join-Path $AppDir 'scripts\cli.js'
+  $startedAt = Get-Date
+  & node $cliPath start
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Failed to start bridge after install'
+  }
+
+  $deadline = (Get-Date).AddSeconds(30)
+  while ((Get-Date) -lt $deadline) {
+    $BridgePid = Get-BridgePid
+    if ($BridgePid -and (Test-Path $StatusFile)) {
+      try {
+        $status = Get-Content $StatusFile -Raw | ConvertFrom-Json
+        $readyAt = if ($status.readyAt) { [DateTime]::Parse($status.readyAt) } else { $null }
+        $hasFeishu = $status.channels -contains 'feishu'
+        if ($readyAt -and $readyAt -ge $startedAt.AddSeconds(-1) -and $status.version -eq $ExpectedVersion -and $hasFeishu) {
+          Write-Info "Bridge restarted (PID $BridgePid)"
+          return
+        }
+      } catch {}
+    }
+    Start-Sleep -Milliseconds 250
+  }
+
+  throw 'Bridge did not become healthy after install'
+}
+
 Write-Host ''
 Write-Host '  ╔═══════════════════════════════════════╗'
 Write-Host '  ║       TLive Installer (Windows)      ║'
@@ -104,9 +189,17 @@ $TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("tlive-install-" + [gui
 $Tarball = Join-Path $TempRoot 'tlive.tar.gz'
 $StagedDir = Join-Path $TempRoot 'app'
 $BackupDir = $null
+$BridgeWasRunning = $false
+$PreviousVersion = $null
 
 try {
   New-Item -ItemType Directory -Force -Path $TempRoot | Out-Null
+  $currentPackage = Join-Path $AppDir 'package.json'
+  if (Test-Path $currentPackage) {
+    try {
+      $PreviousVersion = (Get-Content $currentPackage -Raw | ConvertFrom-Json).version
+    } catch {}
+  }
 
   Write-Info "Downloading tlive $ResolvedVersion..."
   Invoke-WebRequest -Uri $DownloadUrl -OutFile $Tarball -Headers @{
@@ -122,6 +215,8 @@ try {
 
   Write-Info 'Installing dependencies...'
   Install-Dependencies $StagedDir
+
+  $BridgeWasRunning = Stop-BridgeIfRunning
 
   Write-Info "Installing to $AppDir..."
   New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
@@ -157,6 +252,10 @@ if ($env:TLIVE_HOME) {
 
   Write-Info "Created wrappers in $BinDir"
 
+  if ($BridgeWasRunning) {
+    Start-BridgeAndWait ($ResolvedVersion.TrimStart('v'))
+  }
+
   $pathEntries = ($env:Path -split ';') | Where-Object { $_ }
   if ($pathEntries -notcontains $BinDir) {
     Write-Warn "$BinDir is not in your PATH"
@@ -178,6 +277,13 @@ if ($env:TLIVE_HOME) {
       Move-Item -Force $BackupDir $AppDir
     } catch {
       Write-Warn "Failed to restore backup from $BackupDir"
+    }
+  }
+  if ($BridgeWasRunning -and (Test-Path (Join-Path $AppDir 'scripts\cli.js'))) {
+    try {
+      Start-BridgeAndWait $(if ($PreviousVersion) { $PreviousVersion } else { $ResolvedVersion.TrimStart('v') })
+    } catch {
+      Write-Warn 'Failed to restart bridge after failed install'
     }
   }
   throw

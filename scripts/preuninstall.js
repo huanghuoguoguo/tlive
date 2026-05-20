@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { execSync } from 'node:child_process';
 
-const TLIVE_HOME = join(homedir(), '.tlive');
+const TLIVE_HOME = process.env.TLIVE_HOME?.trim() || join(homedir(), '.tlive');
 const BIN_DIR = join(TLIVE_HOME, 'bin');
 const DOCS_DIR = join(TLIVE_HOME, 'docs');
 

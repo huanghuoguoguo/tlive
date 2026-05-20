@@ -79,7 +79,12 @@ export class UpgradeCommand extends BaseCommand {
         throw new Error(`CLI not found: ${cliPath}`);
       }
 
-      const child = spawn(process.execPath, [cliPath, 'upgrade'], {
+      await ctx.adapter.send({
+        chatId: ctx.msg.chatId,
+        text: `🔄 开始升级：v${info.current} → v${info.latest}\n服务将自动重启...`,
+      });
+
+      const child = spawn(process.execPath, [cliPath, 'upgrade', info.latest], {
         detached: true,
         stdio: 'ignore',
         env: {
@@ -92,11 +97,7 @@ export class UpgradeCommand extends BaseCommand {
       });
       child.unref();
 
-      await ctx.adapter.send({
-        chatId: ctx.msg.chatId,
-        text: `🔄 开始升级：v${info.current} → v${info.latest}\n服务将自动重启...`,
-      });
-      setTimeout(() => process.exit(0), 1000);
+      setTimeout(() => process.exit(0), 250);
     } catch (err: any) {
       await ctx.adapter.send({
         chatId: ctx.msg.chatId,

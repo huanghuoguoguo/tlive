@@ -33,6 +33,8 @@ interface UpgradeResult {
   chatId?: string;
   channelType?: string;
   timestamp: string;
+  attempts?: number;
+  lastError?: string;
 }
 
 function readUpgradeResult(): UpgradeResult | null {
@@ -41,12 +43,22 @@ function readUpgradeResult(): UpgradeResult | null {
   if (!existsSync(resultFile)) return null;
   try {
     const data = JSON.parse(readFileSync(resultFile, 'utf-8')) as UpgradeResult;
-    // Clean up after reading
-    unlinkSync(resultFile);
     return data;
   } catch {
     return null;
   }
+}
+
+function writeUpgradeResult(data: UpgradeResult): void {
+  const runtimeDir = getTliveRuntimeDir();
+  mkdirSync(runtimeDir, { recursive: true });
+  writeFileSync(join(runtimeDir, 'upgrade-result.json'), JSON.stringify(data, null, 2));
+}
+
+function deleteUpgradeResult(): void {
+  try {
+    unlinkSync(join(getTliveRuntimeDir(), 'upgrade-result.json'));
+  } catch {}
 }
 
 /**
@@ -125,10 +137,12 @@ export async function main() {
   logger.info('TLive Bridge starting...');
   logger.info('Enabled channel: feishu');
 
+  const startedAt = new Date().toISOString();
+
   // Write startup status
   writeStatusFile({
     pid: process.pid,
-    startedAt: new Date().toISOString(),
+    startedAt,
     channels: ['feishu'],
     version: getCurrentVersion(),
   });
@@ -151,6 +165,13 @@ export async function main() {
 
   await manager.start();
   logger.info('Bridge started');
+  writeStatusFile({
+    pid: process.pid,
+    startedAt,
+    readyAt: new Date().toISOString(),
+    channels: ['feishu'],
+    version: getCurrentVersion(),
+  });
 
   // Check for upgrade result from previous session and notify user
   const upgradeResult = readUpgradeResult();
@@ -160,19 +181,31 @@ export async function main() {
       ? `✅ 升级成功\n版本: v${previousVersion} → v${version}\n查看更新: https://github.com/huanghuoguoguo/tlive/releases`
       : `❌ 升级失败\n错误: ${error || 'Unknown error'}\n版本: v${previousVersion}`;
 
-    // Send to specific chat if we have the info, otherwise broadcast
-    if (chatId && channelType) {
-      const adapter = manager.getAdapter(channelType);
-      if (adapter) {
-        adapter.send({ chatId, text }).catch((err) => {
-          logger.warn(`Failed to send upgrade result to ${channelType}: ${err}`);
-        });
-      } else {
-        // Fallback to broadcast if adapter not available
-        manager.broadcastText(text).catch(() => {});
+    let delivered = false;
+    try {
+      if (chatId && channelType) {
+        const adapter = manager.getAdapter(channelType);
+        if (adapter) {
+          await adapter.send({ chatId, text });
+          delivered = true;
+        }
       }
+      if (!delivered) {
+        await manager.broadcastText(text);
+        delivered = true;
+      }
+    } catch (err) {
+      logger.warn(`Failed to send upgrade result notification: ${err}`);
+    }
+
+    if (delivered) {
+      deleteUpgradeResult();
     } else {
-      manager.broadcastText(text).catch(() => {});
+      writeUpgradeResult({
+        ...upgradeResult,
+        attempts: (upgradeResult.attempts ?? 0) + 1,
+        lastError: 'Failed to send upgrade result notification',
+      });
     }
     logger.info(`Upgrade result: ${success ? 'success' : 'failed'} (${previousVersion} → ${version})`);
   }

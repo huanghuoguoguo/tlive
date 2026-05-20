@@ -63,9 +63,13 @@ jobs:
             package.json \
             package-lock.json \
             dist/ \
+            .claude/ \
+            SKILL.md \
+            references/ \
             scripts/ \
             config.env.example \
-            install.sh
+            install.sh \
+            install.ps1
 
           echo "TARBALL=$TARBALL" >> $GITHUB_ENV
           echo "TAG=$TAG" >> $GITHUB_ENV

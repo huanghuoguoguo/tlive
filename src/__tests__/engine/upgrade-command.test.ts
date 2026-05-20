@@ -102,7 +102,7 @@ describe('UpgradeCommand', () => {
 
     expect(spawnMock).toHaveBeenCalledWith(
       process.execPath,
-      [cliPath, 'upgrade'],
+      [cliPath, 'upgrade', '0.13.4'],
       expect.objectContaining({
         detached: true,
         stdio: 'ignore',
@@ -114,6 +114,7 @@ describe('UpgradeCommand', () => {
     expect(send).toHaveBeenCalledWith(
       expect.objectContaining({ text: expect.stringContaining('0.13.3') }),
     );
+    expect(send.mock.invocationCallOrder[0]).toBeLessThan(spawnMock.mock.invocationCallOrder[0]);
 
     vi.runAllTimers();
     expect(exitSpy).toHaveBeenCalledWith(0);
