@@ -1,5 +1,12 @@
-import type { ProgressPhase, ProgressTraceStats, PermissionDecision } from '../../ui/policy.js';
-import type { ChannelPolicy, ProgressPolicy, ReactionPolicy, FormatPolicy } from '../../ui/channel-policy.js';
+import type {
+  ChannelPolicy,
+  FormatPolicy,
+  PermissionDecision,
+  ProgressPhase,
+  ProgressPolicy,
+  ProgressTraceStats,
+  ReactionPolicy,
+} from '../policy.js';
 
 // --- Feishu Progress Policy ---
 

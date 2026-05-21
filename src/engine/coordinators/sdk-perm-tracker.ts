@@ -1,5 +1,7 @@
-import type { PendingPermissions } from '../../permissions/gateway.js';
-import type { PermissionDecision as TextPermissionDecision } from '../../ui/policy.js';
+import type {
+  PendingPermissions,
+  PermissionDecision as TextPermissionDecision,
+} from '../../permissions/gateway.js';
 import { truncate } from '../../core/string.js';
 import { getLocalizedVariants } from '../../i18n/index.js';
 
@@ -25,8 +27,7 @@ interface PermissionSnapshotState {
  * Handles:
  * - pendingSdkPerms: SDK permission IDs per chat for text-based resolution
  * - permissionSnapshotsByChat: Recent pending/resolved SDK permission snapshots
- * - permissionMessages: Track permission messages for text-based approval
- * - latestPermission: Latest permission per channel type for single-pending shortcut
+ * - permissionMessages: Track interactive cards for pruning/diagnostics
  */
 export class SdkPermTracker {
   private gateway: PendingPermissions;
@@ -35,10 +36,8 @@ export class SdkPermTracker {
   private pendingSdkPerms = new Map<string, string>();
   /** Recent pending / resolved SDK permission snapshots per chat */
   private permissionSnapshotsByChat = new Map<string, PermissionSnapshotState>();
-  /** Track permission messages for text-based approval */
+  /** Track interactive permission/question messages. */
   private permissionMessages = new Map<string, { permissionId: string; sessionId: string; timestamp: number }>();
-  /** Latest permission per channel type for single-pending shortcut */
-  private latestPermission = new Map<string, { permissionId: string; sessionId: string; messageId: string }>();
 
   constructor(gateway: PendingPermissions) {
     this.gateway = gateway;
@@ -174,37 +173,9 @@ export class SdkPermTracker {
 
   // --- Permission message tracking ---
 
-  /** Track a permission message for text-based approval (Feishu) */
-  trackPermissionMessage(messageId: string, permissionId: string, sessionId: string, channelType: string): void {
+  /** Track an interactive permission/question message. */
+  trackPermissionMessage(messageId: string, permissionId: string, sessionId: string, _channelType: string): void {
     this.permissionMessages.set(messageId, { permissionId, sessionId, timestamp: Date.now() });
-    this.latestPermission.set(channelType, { permissionId, sessionId, messageId });
-  }
-
-  /** Find a hook permission entry for text-based resolution. Returns the entry or undefined. */
-  findHookPermission(replyToMessageId: string | undefined, channelType: string): { permissionId: string; sessionId: string; timestamp: number } | undefined {
-    let permEntry = replyToMessageId ? this.permissionMessages.get(replyToMessageId) : undefined;
-    if (!permEntry) {
-      if (this.permissionMessages.size === 1) {
-        const latest = this.latestPermission.get(channelType);
-        if (latest) permEntry = this.permissionMessages.get(latest.messageId);
-      }
-    }
-    return permEntry;
-  }
-
-  /** Count of pending permission messages (used for "multiple pending" check) */
-  pendingPermissionCount(): number {
-    return this.permissionMessages.size;
-  }
-
-  /** Get permission messages map (for cleanup by HookResolver) */
-  getPermissionMessages(): Map<string, { permissionId: string; sessionId: string; timestamp: number }> {
-    return this.permissionMessages;
-  }
-
-  /** Get latest permission map (for cleanup by HookResolver) */
-  getLatestPermission(): Map<string, { permissionId: string; sessionId: string; messageId: string }> {
-    return this.latestPermission;
   }
 
   // --- Pruning ---

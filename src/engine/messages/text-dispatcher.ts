@@ -4,7 +4,7 @@ import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { SDKEngine } from '../sdk/engine.js';
 import type { SessionStateManager } from '../state/session-state.js';
 import { t, matchesLocalizedInput } from '../../i18n/index.js';
-import { messageScopeId } from '../../core/key.js';
+import { conversationScopeId } from '../../channels/conversation-context.js';
 import { withInboundReplyContext } from '../../channels/reply-context.js';
 
 interface TextDispatcherOptions {
@@ -22,12 +22,6 @@ type PendingDeferredTool = {
   toolName: string;
 };
 
-type HookQuestion = {
-  hookId: string;
-  sessionId: string;
-  messageId: string;
-};
-
 /**
  * Handles text-driven control flows before a message reaches the main Claude turn:
  * - plain-text permission approvals
@@ -38,11 +32,11 @@ export class TextDispatcher {
   constructor(private options: TextDispatcherOptions) {}
 
   hasPendingSdkQuestion(msg: InboundMessage): boolean {
-    return this.findPendingSdkQuestion(messageScopeId(msg)) !== null;
+    return this.findPendingSdkQuestion(conversationScopeId(msg)) !== null;
   }
 
   hasPendingDeferredTool(msg: InboundMessage): boolean {
-    return this.findPendingDeferredTool(messageScopeId(msg)) !== null;
+    return this.findPendingDeferredTool(conversationScopeId(msg)) !== null;
   }
 
   async handle(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
@@ -54,13 +48,7 @@ export class TextDispatcher {
       return true;
     }
 
-    if (msg.text && await this.handleQuestionReply(adapter, msg)) {
-      return true;
-    }
-
-    // Hook reply feature removed with Go Core
-    if ((msg.text || msg.attachments?.length) && msg.replyToMessageId && this.options.permissions.isHookMessage(msg.replyToMessageId)) {
-      await adapter.send(withInboundReplyContext({ chatId: msg.chatId, text: '⚠️ Hook reply feature no longer available' }, msg));
+    if (msg.text && await this.handleQuestionReply(msg)) {
       return true;
     }
 
@@ -80,7 +68,7 @@ export class TextDispatcher {
   }
 
   private async handleDeferredToolInput(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
-    const pendingDeferred = this.findPendingDeferredTool(messageScopeId(msg));
+    const pendingDeferred = this.findPendingDeferredTool(conversationScopeId(msg));
     if (!pendingDeferred) {
       return false;
     }
@@ -110,103 +98,45 @@ export class TextDispatcher {
       return false;
     }
 
-    const chatKey = this.options.state.stateKey(msg.channelType, messageScopeId(msg));
+    const chatKey = this.options.state.stateKey(msg.channelType, conversationScopeId(msg));
     if (this.options.permissions.tryResolveByText(chatKey, decision)) {
       const emoji = adapter.getPermissionDecisionReaction(decision);
       adapter.addReaction(msg.chatId, msg.messageId, emoji).catch(() => {});
       return true;
     }
 
-    if (this.options.permissions.pendingPermissionCount() > 1 && !msg.replyToMessageId) {
-      const hint = t(adapter.getLocale(), 'dispatcher.multiPermHint');
-      await adapter.send(withInboundReplyContext({ chatId: msg.chatId, text: hint }, msg));
-      return true;
-    }
-
-    const permEntry = this.options.permissions.findHookPermission(msg.replyToMessageId, adapter.channelType);
-    if (!permEntry) {
-      return false;
-    }
-
-    // Hook permission resolution simplified (Go Core removed)
-    try {
-      await this.options.permissions.resolveHookPermission(permEntry.permissionId, decision, adapter.channelType);
-      const label = decision === 'deny'
-        ? t(adapter.getLocale(), 'input.hookDenied')
-        : decision === 'allow_always'
-          ? t(adapter.getLocale(), 'input.hookAlwaysAllowed')
-          : t(adapter.getLocale(), 'input.hookAllowed');
-      await adapter.send(withInboundReplyContext({ chatId: msg.chatId, text: label }, msg));
-    } catch (err) {
-      await adapter.send(withInboundReplyContext({
-        chatId: msg.chatId,
-        text: `${t(adapter.getLocale(), 'input.hookFailed')} ${err}`,
-      }, msg));
-    }
-    return true;
+    return false;
   }
 
-  private async handleQuestionReply(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
+  private async handleQuestionReply(msg: InboundMessage): Promise<boolean> {
     const trimmed = msg.text.trim();
-    const pendingHookQuestion = this.options.permissions.getLatestPendingQuestion(adapter.channelType);
-    const pendingSdkQuestion = this.findPendingSdkQuestion(messageScopeId(msg));
+    const pendingSdkQuestion = this.findPendingSdkQuestion(conversationScopeId(msg));
 
-    if (!pendingHookQuestion && !pendingSdkQuestion) {
+    if (!pendingSdkQuestion) {
       return false;
     }
 
-    const optionIndex = this.getValidOptionIndex(trimmed, pendingHookQuestion, pendingSdkQuestion);
+    const optionIndex = this.getValidOptionIndex(trimmed, pendingSdkQuestion);
     if (optionIndex !== null) {
-      if (pendingHookQuestion) {
-        await this.options.permissions.resolveAskQuestion(
-          pendingHookQuestion.hookId,
-          optionIndex,
-          pendingHookQuestion.sessionId,
-          pendingHookQuestion.messageId,
-          adapter,
-          msg.chatId,
-        );
-        return true;
-      }
-
-      if (pendingSdkQuestion) {
-        this.options.sdkEngine.getInteractionState().setSdkQuestionOptionAnswer(
-          pendingSdkQuestion.permId,
-          optionIndex,
-        );
-        this.options.permissions.getGateway().resolve(pendingSdkQuestion.permId, 'allow');
-        return true;
-      }
-    }
-
-    if (pendingHookQuestion) {
-      await this.options.permissions.resolveAskQuestionWithText(
-        pendingHookQuestion.hookId,
-        trimmed,
-        pendingHookQuestion.sessionId,
-        pendingHookQuestion.messageId,
-        adapter,
-        msg.chatId,
-      );
-      return true;
-    }
-
-    if (pendingSdkQuestion) {
-      this.options.sdkEngine.getInteractionState().setSdkQuestionTextAnswer(
+      this.options.sdkEngine.getInteractionState().setSdkQuestionOptionAnswer(
         pendingSdkQuestion.permId,
-        trimmed,
+        optionIndex,
       );
       this.options.permissions.getGateway().resolve(pendingSdkQuestion.permId, 'allow');
       return true;
     }
 
-    return false;
+    this.options.sdkEngine.getInteractionState().setSdkQuestionTextAnswer(
+      pendingSdkQuestion.permId,
+      trimmed,
+    );
+    this.options.permissions.getGateway().resolve(pendingSdkQuestion.permId, 'allow');
+    return true;
   }
 
   private getValidOptionIndex(
     trimmed: string,
-    pendingHookQuestion: HookQuestion | null,
-    pendingSdkQuestion: PendingSdkQuestion | null,
+    pendingSdkQuestion: PendingSdkQuestion,
   ): number | null {
     const numericMatch = trimmed.match(/^(\d+)$/);
     if (!numericMatch) {
@@ -219,11 +149,7 @@ export class TextDispatcher {
     }
 
     const interactionState = this.options.sdkEngine.getInteractionState();
-    const questionData = pendingHookQuestion
-      ? this.options.permissions.getQuestionData(pendingHookQuestion.hookId)
-      : pendingSdkQuestion
-        ? interactionState.getSdkQuestion(pendingSdkQuestion.permId)
-        : null;
+    const questionData = interactionState.getSdkQuestion(pendingSdkQuestion.permId);
 
     const optionsCount = questionData?.questions?.[0]?.options?.length ?? 0;
     return index < optionsCount ? index : null;

@@ -4,6 +4,7 @@
  */
 
 import type { Button } from '../ui/types.js';
+import type { AgentProviderKind } from '../providers/kinds.js';
 
 /** Session snapshot for /status detail */
 export interface SessionSnapshot {
@@ -12,19 +13,6 @@ export interface SessionSnapshot {
   isAlive: boolean;
   isTurnActive: boolean;
   lastActiveAt: number;
-}
-
-/** Managed session snapshot for /home display */
-export interface ManagedSessionSnapshot {
-  sessionKey: string;
-  bindingSessionId: string;
-  workdir: string;
-  sdkSessionId?: string;
-  isAlive: boolean;
-  isTurnActive: boolean;
-  lastActiveAt: number;
-  isCurrent: boolean;
-  queueDepth: number;
 }
 
 /** Status display for /status command */
@@ -68,7 +56,7 @@ export interface QuestionData {
   sessionId: string;
 }
 
-/** Hook notification (stop, idle_prompt, etc.) */
+/** Runtime notification card. */
 export interface NotificationData {
   type: 'stop' | 'idle_prompt' | 'generic';
   title: string;
@@ -81,6 +69,8 @@ export interface NotificationData {
 /** Scanned session entry for home display */
 export interface HomeSessionEntry {
   index: number;
+  provider?: AgentProviderKind;
+  providerDisplayName?: string;
   sdkSessionId?: string;
   date: string;
   cwd: string;
@@ -95,7 +85,7 @@ export interface HomeSessionEntry {
     isActive: boolean;
   };
   /** Whether this sdkSession is bound to another active bridge session */
-  boundToActiveSession?: { channelType: string; chatId: string };
+  boundToActiveSession?: { channelType: string; chatId: string; provider?: AgentProviderKind };
   isStale?: boolean;
 }
 
@@ -108,18 +98,30 @@ export interface HomeTopicEntry {
   cwd: string;
   title: string;
   preview: string;
+  provider?: AgentProviderKind;
+  providerDisplayName?: string;
   updatedAt: string;
   isCurrent: boolean;
   isActive: boolean;
 }
 
+export interface HomeProviderEntry {
+  kind: AgentProviderKind;
+  displayName: string;
+  available: boolean;
+  isDefault: boolean;
+  reason?: string;
+}
+
 /** Home screen for /home command */
 export interface HomeData {
+  providers?: {
+    defaultKind: AgentProviderKind;
+    available: HomeProviderEntry[];
+    all: HomeProviderEntry[];
+  };
   workspace: {
     cwd: string;
-    /** Workbench means the main chat control surface; topic means an actual Feishu topic conversation. */
-    scope?: 'workbench' | 'topic';
-    topicId?: string;
     /** Workspace binding (long-term repo attribution) */
     binding?: string;
     /** Current project name (if multi-project mode) */
@@ -129,17 +131,6 @@ export interface HomeData {
     active: boolean;
   };
   session: {
-    /** Current bridge session info */
-    current?: {
-      sessionId: string;
-      sdkSessionId?: string;
-      cwd: string;
-      isActive: boolean;
-      queueDepth?: number;
-      lastActiveAt?: string;
-    };
-    /** Managed sessions in SDKEngine for this chat (in-memory active sessions) */
-    managed?: ManagedSessionSnapshot[];
     /** Recent Feishu topics bound to Claude Code sessions. */
     topics?: HomeTopicEntry[];
     /** Recent sessions in current workspace */
@@ -211,12 +202,14 @@ export interface TaskStartData {
   reason?: 'idle' | 'manual' | 'stale';
 }
 
-/** Session list for /sessions command */
+/** Session list for /session command */
 export interface SessionsData {
   /** Current workspace binding for this chat */
   workspaceBinding?: string;
   sessions: Array<{
     index: number;
+    provider?: AgentProviderKind;
+    providerDisplayName?: string;
     date: string;
     cwd: string;
     size: string;
@@ -233,6 +226,8 @@ export interface SessionsData {
 /** Session detail for /sessioninfo command */
 export interface SessionDetailData {
   index: number;
+  provider?: AgentProviderKind;
+  providerDisplayName?: string;
   cwd: string;
   preview: string;
   date: string;
@@ -261,6 +256,7 @@ export interface HelpCommandEntry {
 /** Help menu for /help command */
 export interface HelpData {
   commands: HelpCommandEntry[];
+  actionButtons?: Button[];
 }
 
 /** New session confirmation */
@@ -293,7 +289,14 @@ export interface ProgressData {
   /** Tool call history with input/result details */
   toolLogs?: Array<{ name: string; input: string; result?: string; isError?: boolean }>;
   /** Ordered interleaved timeline of thinking, text, and tool calls */
-  timeline?: Array<{ kind: 'thinking' | 'text' | 'tool'; text?: string; toolName?: string; toolInput?: string; toolResult?: string; isError?: boolean }>;
+  timeline?: Array<{
+    kind: 'thinking' | 'text' | 'tool';
+    text?: string;
+    toolName?: string;
+    toolInput?: string;
+    toolResult?: string;
+    isError?: boolean;
+  }>;
   /** Completed Feishu flow: keep only trace panels in the progress bubble. */
   completedTraceOnly?: boolean;
   /** Override buttons (e.g., permission-specific). Formatters derive defaults from phase when absent. */
@@ -329,6 +332,8 @@ export interface TaskSummaryData {
   hasError: boolean;
   /** Footer line with model, cwd, sessionId (e.g., '[claude-sonnet] │ ~/workspace │ #ea22') */
   footerLine?: string;
+  /** Context-specific action buttons. Topic summaries should not show workbench/session controls. */
+  actionButtons?: Button[];
 }
 
 /** Card resolution state update (after button click) */
@@ -398,35 +403,6 @@ export interface DiagnoseData {
   busiestSession?: { sessionKey: string; depth: number; maxDepth: number };
 }
 
-/** Project list for /project command */
-export interface ProjectListData {
-  projects: Array<{
-    name: string;
-    workdir: string;
-    isDefault: boolean;
-    isCurrent: boolean;
-  }>;
-  defaultProject?: string;
-  currentProject?: string;
-  hasMultipleProjects?: boolean;
-}
-
-/** Project info for /project info command */
-export interface ProjectInfoData {
-  projectName: string;
-  workdir: string;
-  /** If true, this is an implicit project (derived from cwd, not from projects.json) */
-  isImplicit?: boolean;
-  /** Workspace binding (long-term repo attribution) */
-  workspaceBinding?: string;
-  /** If false, the project name is bound but the project config is missing */
-  isValidProject?: boolean;
-  channels?: string[];
-  claudeSettingSources?: string[];
-  isDefault?: boolean;
-  isCurrent?: boolean;
-}
-
 /** Deferred tool input request (EnterPlanMode, EnterWorktree, etc.) */
 export interface DeferredToolInputData {
   toolName: 'EnterPlanMode' | 'EnterWorktree' | string;
@@ -465,6 +441,4 @@ export type FormattableMessage =
   | { type: 'multiSelectToggle'; chatId: string; data: MultiSelectToggleData }
   | { type: 'queueStatus'; chatId: string; data: QueueStatusData }
   | { type: 'diagnose'; chatId: string; data: DiagnoseData }
-  | { type: 'projectList'; chatId: string; data: ProjectListData }
-  | { type: 'projectInfo'; chatId: string; data: ProjectInfoData }
   | { type: 'deferredToolInput'; chatId: string; data: DeferredToolInputData };

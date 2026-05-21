@@ -1,8 +1,23 @@
 export { BaseChannelAdapter } from './base.js';
+export {
+  conversationContextFromInbound,
+  conversationScopeId,
+  conversationSurfaceFor,
+  type ConversationContext,
+  type ConversationSurface,
+} from './conversation-context.js';
+export type {
+  ChannelPolicy,
+  FormatPolicy,
+  PermissionDecision,
+  ProgressPhase,
+  ProgressPolicy,
+  ProgressTraceStats,
+  ReactionPolicy,
+} from './policy.js';
 export type {
   ChannelType,
   InboundMessage,
-  OutboundMessage,
   RenderedMessage,
   SendResult,
   FileAttachment,

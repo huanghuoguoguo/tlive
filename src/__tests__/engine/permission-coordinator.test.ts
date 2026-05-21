@@ -1,17 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PermissionCoordinator } from '../../engine/coordinators/permission.js';
 import { PendingPermissions } from '../../permissions/gateway.js';
-import { PermissionBroker } from '../../permissions/broker.js';
 
 describe('PermissionCoordinator', () => {
   let gateway: PendingPermissions;
-  let broker: PermissionBroker;
   let coord: PermissionCoordinator;
 
   beforeEach(() => {
     gateway = new PendingPermissions();
-    broker = new PermissionBroker(gateway, 'http://localhost:8080');
-    coord = new PermissionCoordinator(gateway, broker);
+    coord = new PermissionCoordinator(gateway);
   });
 
   describe('parsePermissionText', () => {
@@ -120,10 +117,10 @@ describe('PermissionCoordinator', () => {
     });
   });
 
-  describe('handleBrokerCallback', () => {
-    it('delegates to broker', async () => {
+  describe('handlePermissionCallback', () => {
+    it('resolves active permission button callbacks', async () => {
       const promise = gateway.waitFor('perm-abc', { timeoutMs: 5000 });
-      const resolved = coord.handleBrokerCallback('perm:allow:perm-abc');
+      const resolved = coord.handlePermissionCallback('perm:allow:perm-abc');
       expect(resolved).toBe(true);
 
       const result = await promise;
@@ -131,70 +128,20 @@ describe('PermissionCoordinator', () => {
     });
 
     it('returns false for non-matching callback', () => {
-      expect(coord.handleBrokerCallback('unknown:data')).toBe(false);
-    });
-  });
-
-  describe('hook message tracking', () => {
-    it('tracks and retrieves hook messages', () => {
-      expect(coord.isHookMessage('msg-1')).toBe(false);
-      coord.trackHookMessage('msg-1', 'session-1');
-      expect(coord.isHookMessage('msg-1')).toBe(true);
-      expect(coord.getHookMessage('msg-1')).toMatchObject({ sessionId: 'session-1' });
-    });
-
-    it('handles empty sessionId', () => {
-      coord.trackHookMessage('msg-2', '');
-      expect(coord.isHookMessage('msg-2')).toBe(true);
-      expect(coord.getHookMessage('msg-2')?.sessionId).toBe('');
-    });
-
-    it('returns undefined for unknown messages', () => {
-      expect(coord.getHookMessage('unknown')).toBeUndefined();
+      expect(coord.handlePermissionCallback('unknown:data')).toBe(false);
     });
   });
 
   describe('permission message tracking', () => {
-    it('tracks and finds permission messages', () => {
+    it('tracks interactive permission messages for pruning', () => {
       coord.trackPermissionMessage('msg-1', 'perm-1', 'session-1', 'feishu');
-      const found = coord.findHookPermission('msg-1', 'feishu');
-      expect(found).toMatchObject({ permissionId: 'perm-1', sessionId: 'session-1' });
-    });
-
-    it('finds latest when only one pending', () => {
-      coord.trackPermissionMessage('msg-1', 'perm-1', 'session-1', 'feishu');
-      // No replyToMessageId — should find the single pending
-      const found = coord.findHookPermission(undefined, 'feishu');
-      expect(found).toMatchObject({ permissionId: 'perm-1' });
-    });
-
-    it('returns undefined when multiple pending and no reply', () => {
-      coord.trackPermissionMessage('msg-1', 'perm-1', 's1', 'feishu');
-      coord.trackPermissionMessage('msg-2', 'perm-2', 's2', 'feishu');
-      const found = coord.findHookPermission(undefined, 'feishu');
-      expect(found).toBeUndefined();
-    });
-
-    it('counts pending permissions', () => {
-      expect(coord.pendingPermissionCount()).toBe(0);
-      coord.trackPermissionMessage('msg-1', 'perm-1', 's1', 'feishu');
-      expect(coord.pendingPermissionCount()).toBe(1);
-      coord.trackPermissionMessage('msg-2', 'perm-2', 's2', 'feishu');
-      expect(coord.pendingPermissionCount()).toBe(2);
+      expect(() => coord.pruneStaleEntries()).not.toThrow();
     });
   });
 
-  describe('storeHookPermissionText', () => {
-    it('stores and is used by pruneStaleEntries', () => {
-      coord.storeHookPermissionText('hook-1', 'some text');
-      // No error — pruneStaleEntries ran internally
-    });
-  });
-
-  describe('getGateway / getBroker', () => {
-    it('returns the injected instances', () => {
+  describe('getGateway', () => {
+    it('returns the injected gateway', () => {
       expect(coord.getGateway()).toBe(gateway);
-      expect(coord.getBroker()).toBe(broker);
     });
   });
 
@@ -234,6 +181,17 @@ describe('PermissionCoordinator', () => {
       expect(coord.isToolAllowed('session-1', 'Edit', {})).toBe(true);
       expect(coord.isToolAllowed('session-1', 'Bash', { command: 'npm run build' })).toBe(true);
       expect(coord.isToolAllowed('session-2', 'Edit', {})).toBe(false);
+    });
+
+    it('remembers same-command approvals exactly within the session', () => {
+      coord.rememberSameCommandAllowance('session-1', 'Bash', { command: 'npm test' });
+      coord.rememberSameCommandAllowance('session-1', 'Edit', { file_path: 'src/a.ts' });
+
+      expect(coord.isToolAllowed('session-1', 'Bash', { command: 'npm test' })).toBe(true);
+      expect(coord.isToolAllowed('session-1', 'Bash', { command: 'npm run build' })).toBe(false);
+      expect(coord.isToolAllowed('session-1', 'Edit', { file_path: 'src/a.ts' })).toBe(true);
+      expect(coord.isToolAllowed('session-1', 'Edit', { file_path: 'src/b.ts' })).toBe(false);
+      expect(coord.isToolAllowed('session-2', 'Bash', { command: 'npm test' })).toBe(false);
     });
 
     it('clears all whitelists when sessionId is omitted', () => {

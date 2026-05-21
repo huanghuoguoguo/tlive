@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PendingPermissions } from '../../permissions/gateway.js';
+import {
+  parsePermissionCallback,
+  PendingPermissions,
+} from '../../permissions/gateway.js';
 
 describe('PendingPermissions', () => {
   let gateway: PendingPermissions;
@@ -84,6 +87,54 @@ describe('PendingPermissions', () => {
       expect(result.behavior).toBe('deny');
 
       vi.useRealTimers();
+    });
+  });
+
+  describe('permission callbacks', () => {
+    it('parses the active four-button permission callbacks', () => {
+      expect(parsePermissionCallback('perm:allow:perm-1')).toEqual({
+        permissionId: 'perm-1',
+        decision: 'allow',
+      });
+      expect(parsePermissionCallback('perm:allow_same:perm-1')).toEqual({
+        permissionId: 'perm-1',
+        decision: 'allow',
+        grantScope: 'same_command',
+      });
+      expect(parsePermissionCallback('perm:allow_all_session:perm-1')).toEqual({
+        permissionId: 'perm-1',
+        decision: 'allow',
+        grantScope: 'session_all',
+      });
+      expect(parsePermissionCallback('perm:deny:perm-1')).toEqual({
+        permissionId: 'perm-1',
+        decision: 'deny',
+      });
+    });
+
+    it('does not treat AskUserQuestion option callbacks as permission decisions', () => {
+      expect(parsePermissionCallback('perm:allow:perm-1:askq:0')).toBeNull();
+    });
+
+    it('resolves allow_same and session-wide callbacks through the gateway', async () => {
+      const exactCommand = gateway.waitFor('same-1', { timeoutMs: 5000 });
+      expect(gateway.resolveCallback('perm:allow_same:same-1')).toBe(true);
+      await expect(exactCommand).resolves.toMatchObject({
+        behavior: 'allow',
+        grantScope: 'same_command',
+      });
+
+      const sessionWide = gateway.waitFor('session-1', { timeoutMs: 5000 });
+      expect(gateway.resolveCallback('perm:allow_all_session:session-1')).toBe(true);
+      await expect(sessionWide).resolves.toMatchObject({
+        behavior: 'allow',
+        grantScope: 'session_all',
+      });
+    });
+
+    it('returns false for stale or unsupported callbacks', () => {
+      expect(gateway.resolveCallback('perm:allow:missing')).toBe(false);
+      expect(gateway.resolveCallback('perm:allow_tool:perm-1:Edit')).toBe(false);
     });
   });
 });

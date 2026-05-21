@@ -50,14 +50,6 @@ export function presentStopResult(chatId: string, interrupted: boolean): { chatI
   return { chatId, text: interrupted ? '⏹ Interrupted current execution' : '⚠️ No active execution to stop' };
 }
 
-export function presentHooksStatus(chatId: string, paused: boolean): { chatId: string; text: string } {
-  return { chatId, text: `Hooks: ${paused ? '⏸ paused' : '▶ active'}` };
-}
-
-export function presentHooksChanged(chatId: string, paused: boolean): { chatId: string; text: string } {
-  return { chatId, text: paused ? '⏸ Hooks paused — auto-allow, no notifications.' : '▶ Hooks resumed — forwarding to IM.' };
-}
-
 export function presentNoSessions(chatId: string, hint: string): { chatId: string; text: string } {
   return { chatId, text: `No sessions found${hint}` };
 }

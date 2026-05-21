@@ -16,6 +16,14 @@ import type { AutomationBridge } from '../types/automation-bridge.js';
 import type { ProjectConfig } from '../../store/interface.js';
 import { generateRequestId, Logger } from '../../logger.js';
 import { handleFileSendRequest } from './file-send-api.js';
+import {
+  WebhookRouteResolver,
+  type ResolvedWebhookRoute,
+} from './webhook-route-resolver.js';
+import {
+  WebhookPromptDeliverer,
+  type WebhookPromptDeliveryResult,
+} from './webhook-prompt-deliverer.js';
 
 /** Webhook request body */
 export interface WebhookRequest {
@@ -68,14 +76,6 @@ export interface WebhookCallbackPayload {
   error?: string;
   /** Timestamp */
   timestamp: string;
-}
-
-interface ResolvedWebhookRoute {
-  channelType: string;
-  chatId: string;
-  workdir?: string;
-  projectName?: string;
-  claudeSettingSources?: ProjectConfig['claudeSettingSources'];
 }
 
 /**
@@ -164,10 +164,21 @@ async function sendCallback(callbackUrl: string, payload: WebhookCallbackPayload
 export class WebhookServer {
   private server: Server | null = null;
   private options: WebhookServerOptions;
+  private routeResolver: WebhookRouteResolver;
+  private promptDeliverer: WebhookPromptDeliverer;
   private recentRequestsBySource = new Map<string, number[]>();
 
   constructor(options: WebhookServerOptions) {
     this.options = options;
+    this.routeResolver = new WebhookRouteResolver({
+      bridge: options.bridge,
+      projects: options.projects,
+      defaultProject: options.defaultProject,
+    });
+    this.promptDeliverer = new WebhookPromptDeliverer({
+      bridge: options.bridge,
+      sessionStrategy: options.sessionStrategy,
+    });
   }
 
   /** Get default workdir for file path resolution */
@@ -417,104 +428,8 @@ export class WebhookServer {
     return null;
   }
 
-  /**
-   * Resolve routing target based on request fields.
-   * Priority:
-   * 1. Explicit channelType + chatId
-   * 2. Explicit projectName (use project's webhookDefaultChat or last active chat)
-   * 3. Default project's webhookDefaultChat
-   */
   private async resolveRoute(request: WebhookRequest): Promise<ResolvedWebhookRoute | null> {
-    if (request.sessionId) {
-      const binding = await this.options.bridge.getBindingBySessionId(request.sessionId);
-      if (!binding) {
-        console.warn(`[webhook] Session '${request.sessionId}' not found`);
-        return null;
-      }
-
-      return {
-        channelType: binding.channelType,
-        chatId: binding.chatId,
-        workdir: binding.cwd,
-        projectName: binding.projectName,
-        claudeSettingSources: binding.claudeSettingSources,
-      };
-    }
-
-    // Priority 1: Explicit channelType + chatId
-    if (request.channelType && request.chatId) {
-      const binding = await this.options.bridge.getBinding(request.channelType, request.chatId);
-      return {
-        channelType: request.channelType,
-        chatId: request.chatId,
-        workdir: binding?.cwd,
-        projectName: binding?.projectName,
-        claudeSettingSources: binding?.claudeSettingSources,
-      };
-    }
-
-    // Priority 2: Explicit projectName
-    if (request.projectName) {
-      const project = this.options.projects?.find((p) => p.name === request.projectName);
-      if (!project) {
-        console.warn(`[webhook] Project '${request.projectName}' not found`);
-        return null;
-      }
-
-      // Use project's configured webhook default chat
-      if (project.webhookDefaultChat) {
-        return {
-          channelType: project.webhookDefaultChat.channelType,
-          chatId: project.webhookDefaultChat.chatId,
-          workdir: project.workdir,
-          projectName: project.name,
-          claudeSettingSources: project.claudeSettingSources,
-        };
-      }
-
-      // Fallback: find the last active chat for the configured Feishu adapter.
-      for (const channelType of this.options.bridge
-        .getAdapters()
-        .map((adapter) => adapter.channelType)) {
-        const lastChatId = this.options.bridge.getLastChatId(channelType);
-        if (lastChatId) {
-          console.log(
-            `[webhook] Project '${request.projectName}' using last active chat: ${channelType}:${lastChatId.slice(-8)}`,
-          );
-          return {
-            channelType,
-            chatId: lastChatId,
-            workdir: project.workdir,
-            projectName: project.name,
-            claudeSettingSources: project.claudeSettingSources,
-          };
-        }
-      }
-
-      console.warn(
-        `[webhook] Project '${request.projectName}' has no webhookDefaultChat and no recent chats`,
-      );
-      return null;
-    }
-
-    // Priority 3: Default project
-    if (this.options.defaultProject && this.options.projects) {
-      const defaultProject = this.options.projects.find(
-        (p) => p.name === this.options.defaultProject,
-      );
-      if (defaultProject?.webhookDefaultChat) {
-        return {
-          channelType: defaultProject.webhookDefaultChat.channelType,
-          chatId: defaultProject.webhookDefaultChat.chatId,
-          workdir: defaultProject.workdir,
-          projectName: defaultProject.name,
-          claudeSettingSources: defaultProject.claudeSettingSources,
-        };
-      }
-    }
-
-    // No valid route found
-    return null;
+    return this.routeResolver.resolve(request);
   }
 
   private async deliverPrompt(
@@ -522,75 +437,7 @@ export class WebhookServer {
     route: ResolvedWebhookRoute,
     injectedPrompt: string,
     requestId: string,
-  ): Promise<{ success: boolean; sessionId?: string; error?: string }> {
-    const { event, silent } = request;
-    const { channelType, chatId, workdir, projectName, claudeSettingSources } = route;
-
-    // Get the adapter for this channel
-    const adapter = this.options.bridge.getAdapter(channelType);
-    if (!adapter) {
-      const enabledChannels =
-        this.options.bridge
-          .getAdapters()
-          .map((a) => a.channelType)
-          .join(', ') || 'none';
-      return {
-        success: false,
-        error: `Channel '${channelType}' not available. Enabled channels: ${enabledChannels}`,
-      };
-    }
-
-    // Check session routing strategy
-    if (this.options.sessionStrategy === 'reject') {
-      const existingBinding = request.sessionId
-        ? await this.options.bridge.getBindingBySessionId(request.sessionId)
-        : await this.options.bridge.getBinding(channelType, chatId);
-      const hasActiveSession = existingBinding
-        ? this.options.bridge.hasActiveSession(channelType, chatId, existingBinding.cwd ?? workdir)
-        : false;
-      if (!existingBinding || !hasActiveSession) {
-        return {
-          success: false,
-          error: `No active session for ${channelType}:${chatId}. Start a conversation in IM first, or set webhook.sessionStrategy='create'.`,
-        };
-      }
-    }
-
-    // Send feedback to IM (unless silent)
-    if (!silent) {
-      const projectHint = request.projectName ? ` [${request.projectName}]` : '';
-      const payloadPreview = request.payload
-        ? `\n📦 Payload: ${JSON.stringify(request.payload).slice(0, 100)}`
-        : '';
-      const feedbackText = `🔔 Webhook${projectHint}: ${event}${payloadPreview}\n\n📝 ${injectedPrompt.slice(0, 200)}${injectedPrompt.length > 200 ? '...' : ''}`;
-      await adapter.send({ chatId, text: feedbackText }).catch((err) => {
-        console.warn(`[webhook] ${requestId} Failed to send feedback: ${Logger.formatError(err)}`);
-      });
-    }
-
-    try {
-      const result = await this.options.bridge.injectAutomationPrompt({
-        channelType,
-        chatId,
-        text: injectedPrompt,
-        requestId,
-        messageId: `webhook-${requestId}`,
-        userId: 'webhook',
-        workdir,
-        projectName,
-        claudeSettingSources,
-      });
-
-      return {
-        success: true,
-        sessionId: result.sessionId,
-      };
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      return {
-        success: false,
-        error: `Failed to deliver prompt: ${errorMessage}`,
-      };
-    }
+  ): Promise<WebhookPromptDeliveryResult> {
+    return this.promptDeliverer.deliver(request, route, injectedPrompt, requestId);
   }
 }

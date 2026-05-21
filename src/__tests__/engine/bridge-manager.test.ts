@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { BridgeManager } from '../../engine/coordinators/bridge-manager.js';
 import { initBridgeContext } from '../../context.js';
 import type { BaseChannelAdapter } from '../../channels/base.js';
-import type { OutboundMessage } from '../../channels/types.js';
+import type { RenderedMessage } from '../../channels/types.js';
 import type { FormattableMessage } from '../../formatting/message-types.js';
 import { FeishuFormatter } from '../../channels/feishu/formatter.js';
 
@@ -23,8 +23,6 @@ function mockAdapter(channelType = 'feishu'): BaseChannelAdapter {
     sendTyping: vi.fn().mockResolvedValue(undefined),
     addReaction: vi.fn().mockResolvedValue(undefined),
     removeReaction: vi.fn().mockResolvedValue(undefined),
-    supportsPairing: vi.fn().mockReturnValue(false),
-    supportsStreaming: vi.fn().mockReturnValue(false),
     getLifecycleReactions: vi.fn().mockImplementation(() => channelType === 'feishu'
       ? { processing: 'Typing', done: 'OK', error: 'FACEPALM', stalled: 'OneSecond', permission: 'Pin' }
       : { processing: '🤔', done: '👍', error: '😱', stalled: '⏳', permission: '🔐' }),
@@ -34,11 +32,12 @@ function mockAdapter(channelType = 'feishu'): BaseChannelAdapter {
     shouldRenderProgressPhase: vi.fn().mockReturnValue(true),
     shouldSplitCompletedTrace: vi.fn().mockImplementation(() => channelType === 'feishu'),
     shouldSplitProgressMessage: vi.fn().mockReturnValue(false),
+    getLocale: vi.fn().mockReturnValue('zh'),
     validateConfig: vi.fn().mockReturnValue(null),
     isAuthorized: vi.fn().mockReturnValue(true),
     _pushMessage: (msg: any) => messageQueue.push(msg),
     // Use real formatter
-    format: (msg: FormattableMessage): OutboundMessage => formatter.format(msg),
+    format: (msg: FormattableMessage): RenderedMessage => formatter.format(msg),
     sendFormatted: async (msg: FormattableMessage) => send(formatter.format(msg)),
     editCardResolution: async (chatId: string, messageId: string, data: any) => {
       const outMsg = formatter.format({ type: 'cardResolution', chatId, data });
@@ -149,24 +148,54 @@ describe('BridgeManager', () => {
     expect(adapter.send).not.toHaveBeenCalled();
   });
 
-  it('routes callback data to permission broker', async () => {
+  it('drops callbacks without an explicit chat id instead of routing to the last chat', async () => {
+    const adapter = mockAdapter('feishu');
+    manager.registerAdapter(adapter);
+    manager.getIngress().recordChat('feishu', 'other-chat');
+
+    const handled = await manager.handleInboundMessage(adapter, {
+      channelType: 'feishu',
+      userId: 'u1',
+      text: '',
+      callbackData: 'perm:allow:p1',
+      messageId: 'm1',
+    } as any);
+
+    expect(handled).toBe(false);
+    expect(adapter.isAuthorized).not.toHaveBeenCalled();
+    expect(adapter.send).not.toHaveBeenCalled();
+  });
+
+  it('routes active permission callbacks directly to the permission gateway', async () => {
     const adapter = mockAdapter();
     manager.registerAdapter(adapter);
+    const pending = manager.getPermissions().getGateway().waitFor('p1', { timeoutMs: 5000 });
 
     const handled = await manager.handleInboundMessage(adapter, {
       channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '',
       callbackData: 'perm:allow:p1', messageId: 'm1',
     });
-    // Even if permission not found, it should attempt handling
     expect(handled).toBe(true);
+    await expect(pending).resolves.toMatchObject({ behavior: 'allow' });
   });
 
-  it('routes /status command', async () => {
+  it('does not swallow stale permission callbacks', async () => {
     const adapter = mockAdapter();
     manager.registerAdapter(adapter);
 
     const handled = await manager.handleInboundMessage(adapter, {
-      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/status', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '',
+      callbackData: 'perm:allow:missing', messageId: 'm1',
+    });
+    expect(handled).toBe(false);
+  });
+
+  it('routes /tlive command', async () => {
+    const adapter = mockAdapter();
+    manager.registerAdapter(adapter);
+
+    const handled = await manager.handleInboundMessage(adapter, {
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/tlive', messageId: 'm1',
     });
     expect(handled).toBe(true);
     expect(adapter.send).toHaveBeenCalled();
@@ -183,12 +212,12 @@ describe('BridgeManager', () => {
     expect((adapter as any).sendTyping).toHaveBeenCalledWith('c1');
   });
 
-  it('handles /new command with rebind', async () => {
+  it('handles internal /new action with rebind', async () => {
     const adapter = mockAdapter();
     manager.registerAdapter(adapter);
 
     await manager.handleInboundMessage(adapter, {
-      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/new', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/new', internalCommand: true, messageId: 'm1',
     });
 
     expect(JSON.stringify((adapter.send as ReturnType<typeof vi.fn>).mock.calls[0][0])).toContain('新会话');
@@ -231,6 +260,34 @@ describe('BridgeManager', () => {
       (manager as any).sendErrorNotification(adapter, undefined, testErr, 'req-789');
 
       expect(adapter.send).not.toHaveBeenCalled();
+    });
+
+    it('preserves topic reply context when sending error notifications', async () => {
+      const adapter = mockAdapter();
+      manager.registerAdapter(adapter);
+
+      const testErr = new Error('topic error');
+      (manager as any).sendErrorNotification(adapter, 'c1', testErr, 'req-topic', {
+        channelType: 'feishu',
+        chatId: 'c1',
+        scopeId: 'c1#thread:t1',
+        threadId: 't1',
+        replyInThread: true,
+        replyTargetMessageId: 'topic-root',
+        userId: 'u1',
+        text: 'hello',
+        messageId: 'm1',
+      });
+
+      expect(adapter.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chatId: 'c1',
+          threadId: 't1',
+          replyToMessageId: 'topic-root',
+          replyInThread: true,
+          text: expect.stringContaining('topic error'),
+        }),
+      );
     });
   });
 
@@ -366,120 +423,6 @@ describe('BridgeManager', () => {
     clearIntervalSpy.mockRestore();
   });
 
-  describe('hook reply routing', () => {
-    it('shows warning for hook replies (feature removed with Go Core)', async () => {
-      const adapter = mockAdapter();
-      manager.registerAdapter(adapter);
-
-      // Simulate a tracked hook message
-      manager.trackHookMessage('hook-msg-1', 'session-abc');
-
-      await manager.handleInboundMessage(adapter, {
-        channelType: 'feishu', chatId: 'c1', userId: 'u1',
-        text: 'A', messageId: 'm1', replyToMessageId: 'hook-msg-1',
-      });
-
-      expect(adapter.send).toHaveBeenCalledWith(
-        expect.objectContaining({ text: '⚠️ Hook reply feature no longer available' })
-      );
-    });
-
-    it('ignores quote-reply to non-hook message', async () => {
-      const adapter = mockAdapter();
-      manager.registerAdapter(adapter);
-
-      await manager.handleInboundMessage(adapter, {
-        channelType: 'feishu', chatId: 'c1', userId: 'u1',
-        text: 'hello', messageId: 'm1', replyToMessageId: 'unknown-msg',
-      });
-
-      // Should fall through to normal handling
-      expect(adapter.send).toHaveBeenCalled();
-    });
-  });
-
-  describe('hook notification formatting', () => {
-    it('formats stop notification with [Local] prefix', async () => {
-      const adapter = mockAdapter();
-      await (manager as any).sendHookNotification(adapter, 'c1', {
-        tlive_hook_type: 'stop',
-        tlive_session_id: 'sess-1',
-      });
-
-      const sentMsg = (adapter.send as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      const content = JSON.stringify(sentMsg);
-      expect(content).toContain('Terminal');
-    });
-
-    it('formats idle_prompt notification with message', async () => {
-      const adapter = mockAdapter();
-      await (manager as any).sendHookNotification(adapter, 'c1', {
-        notification_type: 'idle_prompt',
-        message: 'Claude is waiting for your input',
-        tlive_session_id: 'sess-1',
-      });
-
-      const sentMsg = (adapter.send as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      const content = JSON.stringify(sentMsg);
-      expect(content).toContain('Claude is waiting for your input');
-    });
-
-    it('tracks hook message for reply routing', async () => {
-      const adapter = mockAdapter();
-      await (manager as any).sendHookNotification(adapter, 'c1', {
-        tlive_hook_type: 'notification',
-        tlive_session_id: 'sess-1',
-        message: 'test',
-      });
-
-      // mockAdapter.send returns { messageId: '1' }
-      // hookMessages now live inside PermissionCoordinator
-      expect(manager.getPermissions().isHookMessage('1')).toBe(true);
-      expect(manager.getPermissions().getHookMessage('1')?.sessionId).toBe('sess-1');
-    });
-  });
-
-  describe('/hooks command', () => {
-    it('shows hook status', async () => {
-      const adapter = mockAdapter();
-      manager.registerAdapter(adapter);
-
-      await manager.handleInboundMessage(adapter, {
-        channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/hooks', messageId: 'm1',
-      });
-
-      expect(adapter.send).toHaveBeenCalledWith(
-        expect.objectContaining({ text: expect.stringContaining('Hooks:') })
-      );
-    });
-
-    it('handles /hooks pause', async () => {
-      const adapter = mockAdapter();
-      manager.registerAdapter(adapter);
-
-      await manager.handleInboundMessage(adapter, {
-        channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/hooks pause', messageId: 'm1',
-      });
-
-      expect(adapter.send).toHaveBeenCalledWith(
-        expect.objectContaining({ text: expect.stringContaining('paused') })
-      );
-    });
-
-    it('handles /hooks resume', async () => {
-      const adapter = mockAdapter();
-      manager.registerAdapter(adapter);
-
-      await manager.handleInboundMessage(adapter, {
-        channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/hooks resume', messageId: 'm1',
-      });
-
-      expect(adapter.send).toHaveBeenCalledWith(
-        expect.objectContaining({ text: expect.stringContaining('resumed') })
-      );
-    });
-  });
-
   it('text-based permission works for Feishu (not only Feishu)', async () => {
     const adapter = mockAdapter('feishu');
     manager.registerAdapter(adapter);
@@ -494,27 +437,27 @@ describe('BridgeManager', () => {
     expect(result).toBe(true);
   });
 
-  it('Feishu /status renders with header', async () => {
+  it('Feishu /tlive renders with header', async () => {
     const adapter = mockAdapter('feishu');
     manager.registerAdapter(adapter);
 
     await manager.handleInboundMessage(adapter, {
-      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/status', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/tlive', messageId: 'm1',
     });
 
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        feishuHeader: expect.objectContaining({ title: expect.stringContaining('TLive') }),
+        feishuHeader: expect.objectContaining({ title: expect.stringContaining('工作台') }),
       })
     );
   });
 
-  it('Feishu /help renders with buttons', async () => {
+  it('Feishu internal /help renders with buttons', async () => {
     const adapter = mockAdapter('feishu');
     manager.registerAdapter(adapter);
 
     await manager.handleInboundMessage(adapter, {
-      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/help', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/help', internalCommand: true, messageId: 'm1',
     });
 
     expect(adapter.send).toHaveBeenCalledWith(
@@ -525,12 +468,12 @@ describe('BridgeManager', () => {
     );
   });
 
-  it('Feishu /new renders with header', async () => {
+  it('Feishu internal /new renders with header', async () => {
     const adapter = mockAdapter('feishu');
     manager.registerAdapter(adapter);
 
     await manager.handleInboundMessage(adapter, {
-      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/new', messageId: 'm1',
+      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/new', internalCommand: true, messageId: 'm1',
     });
 
     expect(adapter.send).toHaveBeenCalledWith(

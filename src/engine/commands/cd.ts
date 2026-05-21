@@ -1,6 +1,10 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
-import { presentDirectory, presentDirectoryHistory, presentDirectoryNotFound } from '../messages/presenter.js';
+import {
+  presentDirectory,
+  presentDirectoryHistory,
+  presentDirectoryNotFound,
+} from '../messages/presenter.js';
 import { shortPath, expandTilde } from '../../core/path.js';
 import { generateSessionId } from '../../core/id.js';
 import { existsSync } from 'node:fs';
@@ -12,7 +16,8 @@ export class CdCommand extends BaseCommand {
   readonly quick = true;
   readonly helpCategory = 'session' as const;
   readonly description = '切换目录';
-  readonly helpDesc = '切换当前 IM session 的工作目录，影响后续 bash 执行的目录。不影响 Claude Code 配置。若要在新工作区开始工作，请先 /cd 切换目录，再执行 /new。';
+  readonly helpDesc =
+    '切换当前 IM session 的工作目录，影响后续 bash 执行的目录。不影响 Claude Code 配置。若要在新工作区开始工作，请先 /cd 切换目录，再执行 /new。';
   readonly helpExample = '/cd ~/workspace/project · /cd - · /cd';
 
   async execute(ctx: CommandContext): Promise<boolean> {
@@ -25,7 +30,15 @@ export class CdCommand extends BaseCommand {
       const current = binding?.cwd || ctx.services.defaultWorkdir;
       const history = ctx.services.workspace.getHistory(ctx.msg.channelType, scopeId);
       const workspaceBinding = ctx.services.workspace.getBinding(ctx.msg.channelType, scopeId);
-      await this.send(ctx, presentDirectoryHistory(ctx.msg.chatId, shortPath(current), history.map(shortPath), workspaceBinding ? shortPath(workspaceBinding) : undefined));
+      await this.send(
+        ctx,
+        presentDirectoryHistory(
+          ctx.msg.chatId,
+          shortPath(current),
+          history.map(shortPath),
+          workspaceBinding ? shortPath(workspaceBinding) : undefined,
+        ),
+      );
       return true;
     }
 
@@ -42,25 +55,30 @@ export class CdCommand extends BaseCommand {
       const switchedRepo = !isSameRepoRoot(currentCwd, previousDir);
 
       if (switchedRepo) {
-        await ctx.helpers.resetSessionContext(
-          ctx.msg.channelType,
-          scopeId,
-          'cd',
-          { previousCwd: currentCwd, clearProject: true, binding },
-        );
+        await ctx.helpers.resetSessionContext(ctx.msg.channelType, scopeId, 'cd', {
+          previousCwd: currentCwd,
+          clearProject: true,
+          binding,
+        });
       }
 
       if (binding) {
         binding.cwd = previousDir;
         await ctx.services.store.saveBinding(binding);
       } else {
-        await ctx.services.router.rebind(ctx.msg.channelType, scopeId, generateSessionId(), { cwd: previousDir });
+        await ctx.services.router.rebind(ctx.msg.channelType, scopeId, generateSessionId(), {
+          provider: ctx.services.providers.defaultProviderKind,
+          cwd: previousDir,
+        });
       }
       ctx.services.workspace.pushHistory(ctx.msg.channelType, scopeId, previousDir);
       ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, scopeId, previousDir);
 
       const feedbackText = `🔙 已切换到上一目录`;
-      await this.send(ctx, presentDirectory(ctx.msg.chatId, shortPath(previousDir), true, feedbackText));
+      await this.send(
+        ctx,
+        presentDirectory(ctx.msg.chatId, shortPath(previousDir), true, feedbackText),
+      );
       return true;
     }
 
@@ -82,27 +100,31 @@ export class CdCommand extends BaseCommand {
     const switchedRepo = !isSameRepoRoot(baseCwd, resolvedPath);
 
     const { hadActiveSession } = switchedRepo
-      ? await ctx.helpers.resetSessionContext(
-        ctx.msg.channelType,
-        scopeId,
-        'cd',
-        { previousCwd: baseCwd, clearProject: true, binding },
-      )
+      ? await ctx.helpers.resetSessionContext(ctx.msg.channelType, scopeId, 'cd', {
+          previousCwd: baseCwd,
+          clearProject: true,
+          binding,
+        })
       : { hadActiveSession: false };
 
     if (binding) {
       binding.cwd = resolvedPath;
       await ctx.services.store.saveBinding(binding);
     } else {
-      await ctx.services.router.rebind(ctx.msg.channelType, scopeId, generateSessionId(), { cwd: resolvedPath });
+      await ctx.services.router.rebind(ctx.msg.channelType, scopeId, generateSessionId(), {
+        provider: ctx.services.providers.defaultProviderKind,
+        cwd: resolvedPath,
+      });
     }
     ctx.services.workspace.pushHistory(ctx.msg.channelType, scopeId, resolvedPath);
     ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, scopeId, resolvedPath);
 
-    const feedbackText = hadActiveSession && switchedRepo
-      ? `🧭 已保留旧仓库会话，默认切到新目录`
-      : undefined;
-    await this.send(ctx, presentDirectory(ctx.msg.chatId, shortPath(resolvedPath), true, feedbackText));
+    const feedbackText =
+      hadActiveSession && switchedRepo ? `🧭 已保留旧仓库会话，默认切到新目录` : undefined;
+    await this.send(
+      ctx,
+      presentDirectory(ctx.msg.chatId, shortPath(resolvedPath), true, feedbackText),
+    );
     return true;
   }
 }

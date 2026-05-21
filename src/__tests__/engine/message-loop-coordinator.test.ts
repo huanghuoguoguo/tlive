@@ -4,7 +4,7 @@ import type { InboundMessage } from '../../channels/types.js';
 import { MessageLoopCoordinator } from '../../engine/coordinators/message-loop.js';
 import { SessionStateManager } from '../../engine/state/session-state.js';
 import type { SendWithContextResult } from '../../engine/sdk/engine.js';
-import { messageScopeId } from '../../core/key.js';
+import { conversationScopeId } from '../../channels/conversation-context.js';
 
 function createAdapter(channelType = 'feishu'): BaseChannelAdapter {
   return {
@@ -42,29 +42,29 @@ function createCoordinator(
 }
 
 describe('MessageLoopCoordinator', () => {
-  it('classifies commands and pending questions as quick messages', () => {
+  it('classifies commands and pending SDK questions as quick messages', () => {
     const state = new SessionStateManager();
     const sdkEngine = {
       sendWithContext: vi.fn().mockResolvedValue({ sent: false, mode: 'none' }),
       MAX_QUEUE_DEPTH: 3,
     } as any;
     const permissions = {
-      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
+    let hasPendingSdkQuestion = false;
 
     const coordinator = new MessageLoopCoordinator({
       state,
       sdkEngine,
       permissions,
       quickCommands: new Set(['/status']),
-      hasPendingSdkQuestion: () => false,
+      hasPendingSdkQuestion: () => hasPendingSdkQuestion,
       resolveProcessingKey: async (msg) => state.stateKey(msg.channelType, msg.chatId),
     });
 
     expect(coordinator.isQuickMessage(createAdapter(), createMessage('/status'))).toBe(true);
 
-    permissions.getLatestPendingQuestion.mockReturnValue({ hookId: 'q1' });
+    hasPendingSdkQuestion = true;
     expect(coordinator.isQuickMessage(createAdapter(), createMessage('hello'))).toBe(true);
   });
 
@@ -78,7 +78,6 @@ describe('MessageLoopCoordinator', () => {
       MAX_QUEUE_DEPTH: 3,
     } as any;
     const permissions = {
-      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
 
@@ -109,7 +108,6 @@ describe('MessageLoopCoordinator', () => {
       MAX_QUEUE_DEPTH: 3,
     } as any;
     const permissions = {
-      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
 
@@ -117,7 +115,7 @@ describe('MessageLoopCoordinator', () => {
       state,
       sdkEngine,
       permissions,
-      async (msg) => state.stateKey(msg.channelType, messageScopeId(msg)),
+      async (msg) => state.stateKey(msg.channelType, conversationScopeId(msg)),
     );
     const adapter = createAdapter();
 
@@ -157,7 +155,6 @@ describe('MessageLoopCoordinator', () => {
       MAX_QUEUE_DEPTH: 3,
     } as any;
     const permissions = {
-      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
 
@@ -188,7 +185,6 @@ describe('MessageLoopCoordinator', () => {
       MAX_QUEUE_DEPTH: 3,
     } as any;
     const permissions = {
-      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
 
@@ -219,7 +215,6 @@ describe('MessageLoopCoordinator', () => {
       MAX_QUEUE_DEPTH: 3,
     } as any;
     const permissions = {
-      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
 
@@ -253,7 +248,6 @@ describe('MessageLoopCoordinator', () => {
       MAX_QUEUE_DEPTH: 3,
     } as any;
     const permissions = {
-      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
 
@@ -288,7 +282,6 @@ describe('MessageLoopCoordinator', () => {
       MAX_QUEUE_DEPTH: 3,
     } as any;
     const permissions = {
-      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
 
@@ -308,6 +301,72 @@ describe('MessageLoopCoordinator', () => {
     );
   });
 
+  it('warns on unknown busy-session delivery failure', async () => {
+    const state = new SessionStateManager();
+    const chatKey = state.stateKey('feishu', 'chat-1');
+    state.setProcessing(chatKey, true);
+
+    const sdkEngine = {
+      sendWithContext: vi.fn().mockResolvedValue({
+        sent: false,
+        mode: 'queue',
+        sessionKey: 'session-1',
+      } satisfies SendWithContextResult),
+      MAX_QUEUE_DEPTH: 3,
+    } as any;
+    const permissions = {
+      parsePermissionText: vi.fn().mockReturnValue(null),
+    } as any;
+
+    const coordinator = createCoordinator(state, sdkEngine, permissions);
+    const adapter = createAdapter();
+
+    await coordinator.dispatchSlowMessage({
+      adapter,
+      msg: createMessage('unknown failure'),
+      coalesceMessage: async (_adapter, msg) => msg,
+      handleMessage: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '⚠️ 会话处理失败，请稍后重试' }),
+    );
+  });
+
+  it('reports pre-dispatch backend errors through onError', async () => {
+    const state = new SessionStateManager();
+    const error = new Error('resolve failed');
+    const sdkEngine = {
+      sendWithContext: vi.fn(),
+      MAX_QUEUE_DEPTH: 3,
+    } as any;
+    const permissions = {
+      parsePermissionText: vi.fn().mockReturnValue(null),
+    } as any;
+    const coordinator = createCoordinator(
+      state,
+      sdkEngine,
+      permissions,
+      async () => {
+        throw error;
+      },
+    );
+    const adapter = createAdapter();
+    const onError = vi.fn();
+    const msg = createMessage('backend failure');
+
+    await coordinator.dispatchSlowMessage({
+      adapter,
+      msg,
+      coalesceMessage: async (_adapter, inbound) => inbound,
+      handleMessage: vi.fn(),
+      onError,
+    });
+
+    expect(onError).toHaveBeenCalledWith(error, undefined, msg);
+  });
+
   it('steers to specific session when replying to a bubble', async () => {
     const state = new SessionStateManager();
     state.setProcessing('session-2', true);
@@ -317,7 +376,6 @@ describe('MessageLoopCoordinator', () => {
       MAX_QUEUE_DEPTH: 3,
     } as any;
     const permissions = {
-      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
 
@@ -348,7 +406,6 @@ describe('MessageLoopCoordinator', () => {
       MAX_QUEUE_DEPTH: 3,
     } as any;
     const permissions = {
-      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
 
@@ -377,7 +434,6 @@ describe('MessageLoopCoordinator', () => {
       MAX_QUEUE_DEPTH: 3,
     } as any;
     const permissions = {
-      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
       parsePermissionText: vi.fn().mockReturnValue(null),
     } as any;
     const coordinator = createCoordinator(

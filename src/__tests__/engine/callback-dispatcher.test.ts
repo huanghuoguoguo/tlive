@@ -65,6 +65,25 @@ function createDeps() {
 }
 
 describe('handleCallbackMessage form submissions', () => {
+  it('replays workbench command form submissions as internal commands', async () => {
+    const adapter = createAdapter();
+    const { deps } = createDeps();
+
+    const handled = await handleCallbackMessage(adapter, {
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      messageId: 'msg-1',
+      callbackData: 'form:tlive_command:{"_tlive_command":"status"}',
+    } as any, deps);
+
+    expect(handled).toBe(true);
+    expect(deps.replayMessage).toHaveBeenCalledWith(adapter, expect.objectContaining({
+      text: '/status',
+      internalCommand: true,
+    }));
+  });
+
   it('does not resolve empty Feishu form submissions', async () => {
     const adapter = createAdapter();
     const { deps, resolve, cleanupQuestion } = createDeps();
@@ -143,6 +162,7 @@ describe('handleCallbackMessage form submissions', () => {
     const handled = await handleCallbackMessage(adapter, {
       channelType: 'feishu',
       chatId: 'chat-1',
+      scopeId: 'chat-1',
       userId: 'user-1',
       messageId: 'msg-card-1',
       callbackData: 'cmd:home',
@@ -156,6 +176,42 @@ describe('handleCallbackMessage form submissions', () => {
       replyInThread: true,
       replyTargetMessageId: 'msg-card-1',
       text: '/home',
+    }));
+  });
+
+  it('infers Feishu topic scope from an explicit stop session callback before bubble mapping exists', async () => {
+    const adapter = createAdapter();
+    const { deps } = createDeps();
+    deps.sdkEngine.getSessionForBubble.mockReturnValue(undefined);
+    deps.sdkEngine.getSessionContext.mockReturnValue({
+      channelType: 'feishu',
+      chatId: 'chat-1#thread:thread-1',
+      bindingSessionId: 'session-1',
+      workdir: '/tmp/project',
+      lastActiveAt: Date.now(),
+    });
+
+    const handled = await handleCallbackMessage(adapter, {
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      scopeId: 'chat-1',
+      userId: 'user-1',
+      messageId: 'msg-running-card',
+      callbackData: 'cmd:stop feishu:chat-1#thread:thread-1:session-1',
+    } as any, deps);
+
+    expect(handled).toBe(true);
+    expect(deps.sdkEngine.getSessionForBubble).not.toHaveBeenCalled();
+    expect(deps.sdkEngine.getSessionContext).toHaveBeenCalledWith(
+      'feishu:chat-1#thread:thread-1:session-1',
+    );
+    expect(deps.replayMessage).toHaveBeenCalledWith(adapter, expect.objectContaining({
+      chatId: 'chat-1',
+      scopeId: 'chat-1#thread:thread-1',
+      threadId: 'thread-1',
+      replyInThread: true,
+      replyTargetMessageId: 'msg-running-card',
+      text: '/stop feishu:chat-1#thread:thread-1:session-1',
     }));
   });
 });

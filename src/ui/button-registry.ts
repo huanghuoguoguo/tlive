@@ -10,7 +10,7 @@ export interface QuickButtonDefinition {
 
 export const QUICK_BUTTONS = {
   home: { labelKey: 'perm.btnHome', action: { kind: 'cmd', command: 'home' } },
-  sessions: { labelKey: 'home.btnSessions', action: { kind: 'cmd', command: 'sessions' } },
+  sessions: { labelKey: 'home.btnSessions', action: { kind: 'cmd', command: 'session' } },
   new: { labelKey: 'home.btnNew', action: { kind: 'cmd', command: 'new' } },
   help: { labelKey: 'home.btnHelp', action: { kind: 'cmd', command: 'help' } },
   perm: { labelKey: 'home.btnPermissions', action: { kind: 'cmd', command: 'perm' } },

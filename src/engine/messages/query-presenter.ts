@@ -7,6 +7,11 @@ import { buildProgressData } from './progress-builder.js';
 import type { Button } from '../../ui/types.js';
 import { t } from '../../i18n/index.js';
 import { withInboundReplyContext } from '../../channels/reply-context.js';
+import {
+  conversationSurface,
+  progressButtonsForSurface,
+  taskSummaryButtonsForSurface,
+} from '../conversations/surface-policy.js';
 
 /** Pass buttons through unchanged */
 function castButtons(buttons?: Button[]): Button[] | undefined {
@@ -19,6 +24,8 @@ interface QueryExecutionPresenterOptions {
   platformLimit: number;
   clearTyping: () => void;
   getMessageId: () => string | undefined;
+  sessionKey?: string;
+  onMessageId?: (messageId: string) => void;
 }
 
 export class QueryExecutionPresenter {
@@ -27,6 +34,9 @@ export class QueryExecutionPresenter {
   private platformLimit: number;
   private clearTyping: () => void;
   private getMessageId: () => string | undefined;
+  private sessionKey?: string;
+  private onMessageId?: (messageId: string) => void;
+  private surface: ReturnType<typeof conversationSurface>;
 
   constructor(options: QueryExecutionPresenterOptions) {
     this.adapter = options.adapter;
@@ -34,6 +44,12 @@ export class QueryExecutionPresenter {
     this.platformLimit = options.platformLimit;
     this.clearTyping = options.clearTyping;
     this.getMessageId = options.getMessageId;
+    this.sessionKey = options.sessionKey;
+    this.onMessageId = options.onMessageId;
+    this.surface = conversationSurface({
+      threadId: this.inbound.threadId,
+      scopeId: this.inbound.scopeId,
+    });
   }
 
   async flush(
@@ -49,7 +65,13 @@ export class QueryExecutionPresenter {
     let outMsg: RenderedMessage;
     if (state) {
       const locale = this.adapter.getLocale();
-      const progressData = buildProgressData(state, this.inbound.text || t(locale, 'format.continueTask'), castButtons(buttons), content);
+      const actionButtons = buttons ?? this.defaultProgressActionButtons(state);
+      const progressData = buildProgressData(
+        state,
+        this.inbound.text || t(locale, 'format.continueTask'),
+        castButtons(actionButtons),
+        content,
+      );
 
       if (state.phase === 'completed' && this.shouldSplitCompletedTrace(state)) {
         const traceMsg = this.adapter.format({
@@ -89,6 +111,7 @@ export class QueryExecutionPresenter {
     if (!isEdit) {
       const result = await this.adapter.send(outMsg);
       this.clearTyping();
+      if (result.messageId) this.onMessageId?.(result.messageId);
       return result.messageId;
     }
 
@@ -112,6 +135,15 @@ export class QueryExecutionPresenter {
   }
 
   async dispose(): Promise<void> {}
+
+  private defaultProgressActionButtons(state: MessageRendererState): Button[] | undefined {
+    return progressButtonsForSurface(
+      this.surface,
+      state.phase,
+      this.adapter.getLocale(),
+      this.sessionKey,
+    );
+  }
 
   private buildTaskSummary(state: {
     responseText: string;
@@ -138,6 +170,7 @@ export class QueryExecutionPresenter {
       permissionRequests: state.permissionRequests,
       hasError,
       footerLine: state.footerLine,
+      actionButtons: taskSummaryButtonsForSurface(this.surface, locale),
     };
   }
 

@@ -2,8 +2,9 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { FileAttachment, InboundMessage } from '../../channels/types.js';
+import { conversationScopeId } from '../../channels/conversation-context.js';
 import { getTliveRuntimeDir } from '../../core/path.js';
-import { chatKey as buildChatKey, messageScopeId } from '../../core/key.js';
+import { chatKey as buildChatKey } from '../../core/key.js';
 
 interface BufferedAttachments {
   attachments: FileAttachment[];
@@ -18,7 +19,7 @@ interface IngressCoordinatorOptions {
 
 /**
  * Owns low-level ingress state that would otherwise bloat BridgeManager:
- * - last active chat tracking for hook routing
+ * - last active chat tracking for automation routing
  * - attachment buffering/merge on multi-part IM messages
  * - long IM message coalescing with single-message pushback
  */
@@ -37,7 +38,7 @@ export class IngressCoordinator {
 
   constructor(options: IngressCoordinatorOptions = {}) {
     this.chatIdFile = options.chatIdFile ?? join(getTliveRuntimeDir(), 'chat-ids.json');
-    this.attachmentTtlMs = options.attachmentTtlMs ?? 60_000;
+    this.attachmentTtlMs = options.attachmentTtlMs ?? 10 * 60_000;
     this.persistDebounceMs = options.persistDebounceMs ?? 1000;
     this.loadPersistedChatIds();
   }
@@ -83,6 +84,11 @@ export class IngressCoordinator {
     this.schedulePersist();
   }
 
+  recordDeliveryTarget(msg: InboundMessage): void {
+    if (!msg.chatId) return;
+    this.recordChat(msg.channelType, msg.chatId);
+  }
+
   dispose(): void {
     if (this.persistTimer) {
       clearTimeout(this.persistTimer);
@@ -106,10 +112,15 @@ export class IngressCoordinator {
       this.coalescePushback.delete(adapter.channelType);
       return pushedBack;
     }
-    return adapter.consumeOne();
+
+    const next = await adapter.consumeOne();
+    return next;
   }
 
-  async coalesceMessages(adapter: BaseChannelAdapter, first: InboundMessage): Promise<InboundMessage> {
+  async coalesceMessages(
+    adapter: BaseChannelAdapter,
+    first: InboundMessage,
+  ): Promise<InboundMessage> {
     if (!first.text || first.callbackData) return first;
     if (first.text.length < IngressCoordinator.TG_MSG_LIMIT - 200) return first;
 
@@ -117,15 +128,17 @@ export class IngressCoordinator {
     const deadline = Date.now() + 500;
 
     while (Date.now() < deadline) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
       const next = await adapter.consumeOne();
       if (!next) continue;
 
-      if (next.userId === first.userId
-        && messageScopeId(next) === messageScopeId(first)
-        && next.text
-        && !next.callbackData
-        && !next.text.startsWith('/')) {
+      if (
+        next.userId === first.userId &&
+        conversationScopeId(next) === conversationScopeId(first) &&
+        next.text &&
+        !next.callbackData &&
+        !next.text.startsWith('/')
+      ) {
         parts.push(next.text);
         console.log(`[${adapter.channelType}] Coalesced message part (${next.text.length} chars)`);
       } else {
@@ -135,12 +148,14 @@ export class IngressCoordinator {
     }
 
     if (parts.length === 1) return first;
-    console.log(`[${adapter.channelType}] Merged ${parts.length} message parts (${parts.reduce((sum, part) => sum + part.length, 0)} chars total)`);
+    console.log(
+      `[${adapter.channelType}] Merged ${parts.length} message parts (${parts.reduce((sum, part) => sum + part.length, 0)} chars total)`,
+    );
     return { ...first, text: parts.join('\n') };
   }
 
   prepareAttachments(msg: InboundMessage): { handled: boolean; message: InboundMessage } {
-    const key = this.attachmentKey(msg.channelType, messageScopeId(msg));
+    const key = this.attachmentKey(msg.channelType, conversationScopeId(msg));
 
     if (msg.attachments?.length && !msg.text && !msg.callbackData) {
       const attachments = this.fitAttachmentBudget(msg.attachments);
@@ -149,7 +164,9 @@ export class IngressCoordinator {
           attachments,
           timestamp: Date.now(),
         });
-        console.log(`[${msg.channelType}] Buffered ${attachments.length} attachment(s), waiting for text`);
+        console.log(
+          `[${msg.channelType}] Buffered ${attachments.length} attachment(s), waiting for text`,
+        );
       }
       return { handled: true, message: msg };
     }
@@ -157,7 +174,9 @@ export class IngressCoordinator {
     if (msg.text && !msg.callbackData) {
       const pending = this.pendingAttachments.get(key);
       if (pending && Date.now() - pending.timestamp < this.attachmentTtlMs) {
-        console.log(`[${msg.channelType}] Merged ${pending.attachments.length} buffered attachment(s) with text`);
+        console.log(
+          `[${msg.channelType}] Merged ${pending.attachments.length} buffered attachment(s) with text`,
+        );
         const merged: InboundMessage = {
           ...msg,
           attachments: [...(msg.attachments || []), ...pending.attachments],
@@ -183,7 +202,7 @@ export class IngressCoordinator {
     }
 
     let budget = IngressCoordinator.MAX_TOTAL_ATTACHMENT_BYTES;
-    kept = kept.filter(attachment => {
+    kept = kept.filter((attachment) => {
       if (attachment.base64Data.length <= budget) {
         budget -= attachment.base64Data.length;
         return true;

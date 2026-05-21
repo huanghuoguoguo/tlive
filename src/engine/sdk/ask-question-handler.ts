@@ -10,7 +10,7 @@ import type { InteractionState } from '../state/interaction-state.js';
 import { truncate } from '../../core/string.js';
 import { generateId } from '../../core/id.js';
 import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../../core/timing.js';
-import { messageScopeId } from '../../core/key.js';
+import { conversationScopeId } from '../../channels/conversation-context.js';
 import { withInboundReplyContext } from '../../channels/reply-context.js';
 
 interface SDKAskQuestionHandlerContext {
@@ -52,7 +52,7 @@ export class SDKAskQuestionHandler {
     for (const q of questions) {
       const permId = generateId('askq');
       const isMulti = q.multiSelect;
-      interactionState.beginSdkQuestion(permId, [q], messageScopeId(msg));
+      interactionState.beginSdkQuestion(permId, [q], conversationScopeId(msg));
       if (isMulti) {
         permissions.storeQuestionData(permId, [q]);
       }

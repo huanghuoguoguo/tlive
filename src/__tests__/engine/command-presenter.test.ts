@@ -13,9 +13,24 @@ import {
 import { FeishuFormatter } from '../../channels/feishu/formatter.js';
 import { HELP_CATEGORIES } from '../../engine/commands/help-categories.js';
 
-describe('command presenter', () => {
-  const feishuFormatter = new FeishuFormatter('zh');
+const feishuFormatter = new FeishuFormatter('zh');
 
+function countFeishuTaggedElements(elements: any[]): number {
+  let total = 0;
+  const visit = (node: any): void => {
+    if (!node || typeof node !== 'object') return;
+    if (typeof node.tag === 'string') total += 1;
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) {
+        for (const child of value) visit(child);
+      }
+    }
+  };
+  for (const element of elements) visit(element);
+  return total;
+}
+
+describe('command presenter', () => {
   describe('presentStatus', () => {
     it('returns semantic message data', () => {
       const msg = presentStatus('chat-1', {
@@ -142,6 +157,63 @@ describe('command presenter', () => {
       expect(formatted.feishuHeader?.template).toBe('blue');
       expect(formatted.feishuElements?.length).toBeGreaterThan(0);
     });
+
+    it('keeps Feishu home card under the platform element limit', () => {
+      const msg = presentHome('chat-1', {
+        providers: {
+          defaultKind: 'claude',
+          available: [
+            { kind: 'claude', displayName: 'Claude', available: true, isDefault: true },
+            { kind: 'codex', displayName: 'Codex', available: true, isDefault: false },
+          ],
+          all: [],
+        },
+        workspace: { cwd: '/home/user/project' },
+        task: { active: true },
+        permission: { mode: 'on' },
+        bridge: { healthy: true, channels: ['feishu'] },
+        help: {
+          entries: Array.from({ length: 12 }, (_, index) => ({
+            cmd: `/cmd${index}`,
+            desc: `Command ${index}`,
+            category: HELP_CATEGORIES.session,
+          })),
+        },
+        recentProjects: Array.from({ length: 5 }, (_, index) => ({
+          name: `project-${index}`,
+          workdir: `~/project-${index}`,
+          fullWorkdir: `/home/user/project-${index}`,
+          isCurrent: index === 0,
+        })),
+        session: {
+          topics: Array.from({ length: 8 }, (_, index) => ({
+            index: index + 1,
+            sdkSessionId: `sdk-${index}`,
+            scopeId: `chat-1#thread:thread-${index}`,
+            threadId: `thread-${index}`,
+            cwd: `/repo/topic-${index}`,
+            title: `Topic ${index}`,
+            preview: `Preview ${index}`,
+            provider: index % 2 === 0 ? 'claude' : 'codex',
+            providerDisplayName: index % 2 === 0 ? 'Claude' : 'Codex',
+            updatedAt: '刚刚',
+            isCurrent: index === 0,
+            isActive: index === 1,
+          })),
+          recent: Array.from({ length: 10 }, (_, index) => ({
+            index: index + 1,
+            sdkSessionId: `recent-${index}`,
+            date: '1月1日 12:00',
+            cwd: `/repo/${index}`,
+            preview: `Recent task ${index}`,
+            isCurrent: false,
+          })),
+        },
+      });
+
+      const formatted = feishuFormatter.format(msg);
+      expect(countFeishuTaggedElements(formatted.feishuElements ?? [])).toBeLessThanOrEqual(45);
+    });
   });
 
   describe('presentPermissionStatus', () => {
@@ -193,6 +265,18 @@ describe('command presenter', () => {
         expect(msg.data.oldestQueuedAgeSeconds).toBeUndefined();
       }
     });
+
+    it('formats queue status explicitly for Feishu', () => {
+      const msg = presentQueueStatus('chat-1', {
+        sessionKey: 'feishu:chat-1:session-1',
+        depth: 1,
+        maxDepth: 4,
+        queuedMessages: [{ preview: 'queued prompt', timestamp: Date.now() - 60_000 }],
+      });
+      const formatted = feishuFormatter.format(msg);
+      expect(formatted.feishuHeader?.title).toBe('📥 Queue Status');
+      expect(JSON.stringify(formatted.feishuElements)).toContain('queued prompt');
+    });
   });
 
   describe('presentDiagnose', () => {
@@ -216,6 +300,21 @@ describe('command presenter', () => {
         expect(msg.data.queueUtilizationRatio).toBeUndefined();
         expect(msg.data.busiestSession).toBeUndefined();
       }
+    });
+
+    it('formats diagnose explicitly for Feishu', () => {
+      const msg = presentDiagnose('chat-1', {
+        activeSessions: 2,
+        idleSessions: 1,
+        totalBubbleMappings: 4,
+        queueStats: [{ sessionKey: 's1', depth: 3, maxDepth: 3 }],
+        totalQueuedMessages: 3,
+        processingChats: 1,
+        memoryUsage: '128MB',
+      });
+      const formatted = feishuFormatter.format(msg);
+      expect(formatted.feishuHeader?.title).toBe('🩺 Diagnose');
+      expect(JSON.stringify(formatted.feishuElements)).toContain('128MB');
     });
   });
 

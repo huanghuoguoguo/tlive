@@ -10,15 +10,26 @@
  * This module delegates session management to SessionManager and queue tracking to QueueManager.
  */
 
-import type { QueryControls, LiveSession, MessagePriority } from '../../providers/base.js';
-import type { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
-import type { ClaudeSettingSource } from '../../config.js';
-import type { EffortLevel } from '../../utils/types.js';
-import type { ManagedSessionSnapshot } from '../../formatting/message-types.js';
+import type {
+  AgentProvider,
+  QueryControls,
+  LiveSession,
+  MessagePriority,
+} from '../../providers/base.js';
+import type { AgentProviderKind } from '../../providers/kinds.js';
 import { InteractionState, type SdkQuestionState } from '../state/interaction-state.js';
-import { SessionManager, type ManagedSession, type SessionCleanupReason } from './session-manager.js';
+import {
+  SessionManager,
+  type ManagedSession,
+  type ManagedSessionCreateRequest,
+  type ManagedSessionSnapshot,
+  type SessionCleanupReason,
+  type SessionLifecycleHooks,
+} from './session-manager.js';
 import { QueueManager, type QueueStats } from './queue-manager.js';
 import { splitChatKey } from '../../core/key.js';
+import { randomBytes } from 'node:crypto';
+import type { DeliveryRoute, FileDeliveryRoute } from '../../channels/delivery-route.js';
 
 // Re-export for backward compatibility
 export type { SessionCleanupReason } from './session-manager.js';
@@ -30,7 +41,7 @@ export interface SendWithContextResult {
   mode: 'steer' | 'queue' | 'none';
   sessionKey?: string;
   /** Why sending failed when sent=false */
-  failureReason?: 'no_session' | 'reply_target_missing' | 'send_failed';
+  failureReason?: 'no_session' | 'reply_target_missing' | 'send_failed' | 'busy_unsupported';
   /** Queue position (1-based) when mode is 'queue', undefined otherwise */
   queuePosition?: number;
   /** Whether the queue was full (only set when sent is false and mode is 'queue') */
@@ -46,6 +57,7 @@ export interface ResolvedSessionTarget {
   bindingSessionId: string;
   workdir: string;
   sdkSessionId?: string;
+  provider?: AgentProviderKind;
   source: 'reply' | 'current';
 }
 
@@ -60,9 +72,11 @@ export class SDKEngine {
   private activeControlsBySession = new Map<string, QueryControls>();
   private activeControlsByChat = new Map<string, QueryControls>();
   private controlChatBySession = new Map<string, string>();
+  private fileDeliveryRoutes = new Map<string, { route: FileDeliveryRoute; createdAt: number }>();
 
   // SDK AskUserQuestion state — shared with routing / callbacks via InteractionState.
   private interactions = new InteractionState();
+  private static readonly FILE_DELIVERY_ROUTE_TTL_MS = 6 * 60 * 60 * 1000;
 
   /** Optional callback after an idle live session is pruned */
   onSessionPruned?: (sessionKey: string) => void;
@@ -79,6 +93,15 @@ export class SDKEngine {
     // Forward the session creation callback
     this.sessions.onSessionCreated = (sessionKey: string, workdir: string) => {
       this.onSessionCreated?.(sessionKey, workdir);
+    };
+  }
+
+  private sessionLifecycleHooks(): SessionLifecycleHooks {
+    return {
+      getQueueDepth: (sessionKey: string) => this.queues.getQueueDepth(sessionKey),
+      decrementQueueDepth: (sessionKey: string) => this.queues.decrementQueueDepth(sessionKey),
+      cleanupQueue: (sessionKey: string) => this.queues.cleanupQueueForSession(sessionKey),
+      cleanupControls: (sessionKey: string) => this.cleanupControlsForSession(sessionKey),
     };
   }
 
@@ -106,9 +129,16 @@ export class SDKEngine {
     bindingSessionId: string,
     workdir: string,
     sdkSessionId?: string,
-    opts?: { setAsCurrent?: boolean },
+    opts?: { setAsCurrent?: boolean; provider?: AgentProviderKind },
   ): string {
-    return this.sessions.registerSessionContext(channelType, chatId, bindingSessionId, workdir, sdkSessionId, opts);
+    return this.sessions.registerSessionContext(
+      channelType,
+      chatId,
+      bindingSessionId,
+      workdir,
+      sdkSessionId,
+      opts,
+    );
   }
 
   hasSessionContext(channelType: string, chatId: string, bindingSessionId: string): boolean {
@@ -156,7 +186,12 @@ export class SDKEngine {
   resolveSessionTarget(
     channelType: string,
     chatId: string,
-    binding: { sessionId: string; cwd?: string; sdkSessionId?: string },
+    binding: {
+      sessionId: string;
+      cwd?: string;
+      sdkSessionId?: string;
+      provider?: AgentProviderKind;
+    },
     defaultWorkdir: string,
     replyToMessageId?: string,
   ): { target?: ResolvedSessionTarget; failureReason?: SendWithContextResult['failureReason'] } {
@@ -175,6 +210,7 @@ export class SDKEngine {
           bindingSessionId: managed.bindingSessionId,
           workdir: managed.workdir,
           sdkSessionId: managed.sdkSessionId,
+          provider: managed.provider,
           source: 'reply',
         },
       };
@@ -187,7 +223,7 @@ export class SDKEngine {
       binding.sessionId,
       workdir,
       binding.sdkSessionId,
-      { setAsCurrent: true },
+      { setAsCurrent: true, provider: binding.provider },
     );
     return {
       target: {
@@ -195,6 +231,7 @@ export class SDKEngine {
         bindingSessionId: binding.sessionId,
         workdir,
         sdkSessionId: binding.sdkSessionId,
+        provider: binding.provider,
         source: 'current',
       },
     };
@@ -207,13 +244,7 @@ export class SDKEngine {
 
   /** Close a session (explicit cleanup). */
   closeSession(channelType: string, chatId: string, workdir?: string): void {
-    this.sessions.closeSession(
-      channelType,
-      chatId,
-      workdir,
-      (sessionKey: string) => this.queues.cleanupQueueForSession(sessionKey),
-      (sessionKey: string) => this.cleanupControlsForSession(sessionKey),
-    );
+    this.sessions.closeSession(channelType, chatId, workdir, this.sessionLifecycleHooks());
   }
 
   private cleanupControlsForSession(sessionKey: string): void {
@@ -224,10 +255,7 @@ export class SDKEngine {
 
     // Try to find fallback from the current default session
     const { channelType, chatId } = splitChatKey(chatKey);
-    const defaultSessionKey = this.sessions.getActiveSessionKey(
-      channelType,
-      chatId,
-    );
+    const defaultSessionKey = this.sessions.getActiveSessionKey(channelType, chatId);
     if (defaultSessionKey) {
       const defaultCtrl = this.activeControlsBySession.get(defaultSessionKey);
       if (defaultCtrl) {
@@ -243,14 +271,18 @@ export class SDKEngine {
    * Unified session cleanup with reason logging.
    * Cleanup removes reply-routing state; use resetSessionRuntime() to preserve resume metadata.
    */
-  cleanupSession(channelType: string, chatId: string, reason: SessionCleanupReason, workdir?: string): boolean {
+  cleanupSession(
+    channelType: string,
+    chatId: string,
+    reason: SessionCleanupReason,
+    workdir?: string,
+  ): boolean {
     return this.sessions.cleanupSession(
       channelType,
       chatId,
       reason,
       workdir,
-      (sessionKey: string) => this.queues.cleanupQueueForSession(sessionKey),
-      (sessionKey: string) => this.cleanupControlsForSession(sessionKey),
+      this.sessionLifecycleHooks(),
     );
   }
 
@@ -263,80 +295,16 @@ export class SDKEngine {
 
   /**
    * Get existing LiveSession or create a new one.
-   * Returns the session, or undefined if provider doesn't support LiveSession.
+   * Returns the session, or undefined if the registry cannot create one.
    */
   getOrCreateSession(
-    llm: ClaudeSDKProvider,
-    channelType: string,
-    chatId: string,
-    workdir: string,
-    options?: {
-      sessionId?: string;
-      effort?: EffortLevel;
-      model?: string;
-      settingSources?: ClaudeSettingSource[];
-      appendSystemPrompt?: string;
-      setAsCurrent?: boolean;
-    },
-  ): LiveSession | undefined;
-  getOrCreateSession(
-    llm: ClaudeSDKProvider,
-    channelType: string,
-    chatId: string,
-    bindingSessionId: string,
-    workdir: string,
-    options?: {
-      sessionId?: string;
-      effort?: EffortLevel;
-      model?: string;
-      settingSources?: ClaudeSettingSource[];
-      appendSystemPrompt?: string;
-      setAsCurrent?: boolean;
-    },
-  ): LiveSession | undefined;
-  getOrCreateSession(
-    llm: ClaudeSDKProvider,
-    channelType: string,
-    chatId: string,
-    bindingSessionIdOrWorkdir: string,
-    workdirOrOptions?: string | {
-      sessionId?: string;
-      effort?: EffortLevel;
-      model?: string;
-      settingSources?: ClaudeSettingSource[];
-      appendSystemPrompt?: string;
-      setAsCurrent?: boolean;
-    },
-    maybeOptions?: {
-      sessionId?: string;
-      effort?: EffortLevel;
-      model?: string;
-      settingSources?: ClaudeSettingSource[];
-      appendSystemPrompt?: string;
-      setAsCurrent?: boolean;
-    },
+    llm: AgentProvider,
+    request: Omit<ManagedSessionCreateRequest, 'hooks'>,
   ): LiveSession | undefined {
-    const actualBindingSessionId = typeof workdirOrOptions === 'string'
-      ? bindingSessionIdOrWorkdir
-      : bindingSessionIdOrWorkdir;
-    const actualWorkdir = typeof workdirOrOptions === 'string'
-      ? workdirOrOptions
-      : bindingSessionIdOrWorkdir;
-    const actualOptions = (typeof workdirOrOptions === 'string' ? maybeOptions : workdirOrOptions) ?? {};
-
-    return this.sessions.getOrCreateSession(
-      llm,
-      channelType,
-      chatId,
-      actualBindingSessionId,
-      actualWorkdir,
-      actualOptions,
-      (_sessionKey: string) => {},
-      (sessionKey: string) => this.queues.getQueueDepth(sessionKey),
-      (sessionKey: string) => this.queues.decrementQueueDepth(sessionKey),
-      (sessionKey: string) => this.queues.cleanupQueueForSession(sessionKey),
-      (sessionKey: string) => this.cleanupControlsForSession(sessionKey),
-    );
+    return this.sessions.getOrCreateSession(llm, {
+      ...request,
+      hooks: this.sessionLifecycleHooks(),
+    });
   }
 
   // ── Queue Depth Management (delegated) ──
@@ -429,11 +397,20 @@ export class SDKEngine {
   /** Check if a specific session can be steered (alive + turn active) */
   canSteerSession(sessionKey: string): boolean {
     const managed = this.sessions.getSessionContext(sessionKey);
-    return (managed?.session?.isAlive && managed.session.isTurnActive) ?? false;
+    return (
+      (managed?.session?.isAlive &&
+        managed.session.isTurnActive &&
+        this.supportsNativePriority(managed.session, 'now')) ??
+      false
+    );
   }
 
   /** Send message to a specific session with SDK native priority */
-  async sendToSession(sessionKey: string, text: string, priority: MessagePriority): Promise<boolean> {
+  async sendToSession(
+    sessionKey: string,
+    text: string,
+    priority: MessagePriority,
+  ): Promise<boolean> {
     const managed = this.sessions.getSessionContext(sessionKey);
     if (!managed?.session?.isAlive) return false;
     try {
@@ -497,6 +474,16 @@ export class SDKEngine {
       };
     }
 
+    const managed = this.sessions.getSessionContext(sessionKey);
+    if (managed?.session?.isTurnActive && !this.supportsNativePriority(managed.session, 'later')) {
+      return {
+        sent: false,
+        mode: 'none',
+        sessionKey,
+        failureReason: 'busy_unsupported',
+      };
+    }
+
     if (this.queues.isQueueFull(sessionKey)) {
       console.log(`[tlive:engine] Queue full for ${sessionKey}, rejecting message`);
       return {
@@ -524,6 +511,11 @@ export class SDKEngine {
     return { sent: false, mode: 'none', sessionKey, failureReason: 'send_failed' };
   }
 
+  private supportsNativePriority(session: LiveSession, priority: MessagePriority): boolean {
+    if (priority === 'now') return session.capabilities?.nativeSteer ?? true;
+    return session.capabilities?.nativeQueue ?? true;
+  }
+
   // ── Shared State (CallbackRouter, /stop) ──
 
   /** Expose question state for CallbackRouter */
@@ -546,10 +538,43 @@ export class SDKEngine {
     return this.activeControlsByChat.get(chatKey);
   }
 
+  /** Get active controls for a specific logical session. */
+  getControlsForSession(sessionKey: string): QueryControls | undefined {
+    return this.activeControlsBySession.get(sessionKey);
+  }
+
+  async interruptSession(sessionKey: string): Promise<boolean> {
+    const ctrl = this.activeControlsBySession.get(sessionKey);
+    if (!ctrl) return false;
+    this.cleanupControlsForSession(sessionKey);
+    await ctrl.interrupt();
+    return true;
+  }
+
+  async interruptChat(chatKey: string): Promise<boolean> {
+    const ctrl = this.activeControlsByChat.get(chatKey);
+    if (!ctrl) return false;
+    const sessionKey = [...this.controlChatBySession.entries()].find(
+      ([, key]) => key === chatKey,
+    )?.[0];
+    if (sessionKey) {
+      this.cleanupControlsForSession(sessionKey);
+    } else {
+      this.activeControlsByChat.delete(chatKey);
+    }
+    await ctrl.interrupt();
+    return true;
+  }
+
   /** Track controls per session while preserving chat-level compatibility. */
-  setControlsForChat(chatKey: string, controls: QueryControls | undefined, sessionKey?: string): void {
+  setControlsForChat(
+    chatKey: string,
+    controls: QueryControls | undefined,
+    sessionKey?: string,
+  ): void {
     const { channelType, chatId } = splitChatKey(chatKey);
-    const targetSessionKey = sessionKey ?? this.sessions.getActiveSessionKey(channelType, chatId) ?? chatKey;
+    const targetSessionKey =
+      sessionKey ?? this.sessions.getActiveSessionKey(channelType, chatId) ?? chatKey;
 
     if (controls) {
       this.activeControlsBySession.set(targetSessionKey, controls);
@@ -559,6 +584,27 @@ export class SDKEngine {
     }
 
     this.cleanupControlsForSession(targetSessionKey);
+  }
+
+  registerFileDeliveryRoute(sessionKey: string, route: DeliveryRoute, cwd: string): string {
+    this.pruneFileDeliveryRoutes();
+    const token = randomBytes(18).toString('base64url');
+    const fileRoute: FileDeliveryRoute = { ...route, cwd, sessionKey };
+    this.fileDeliveryRoutes.set(token, { route: fileRoute, createdAt: Date.now() });
+    return token;
+  }
+
+  resolveFileDeliveryToken(token: string): FileDeliveryRoute | undefined {
+    this.pruneFileDeliveryRoutes();
+    return this.fileDeliveryRoutes.get(token)?.route;
+  }
+
+  private pruneFileDeliveryRoutes(now = Date.now()): void {
+    for (const [token, entry] of this.fileDeliveryRoutes) {
+      if (now - entry.createdAt > SDKEngine.FILE_DELIVERY_ROUTE_TTL_MS) {
+        this.fileDeliveryRoutes.delete(token);
+      }
+    }
   }
 
   /** Track progress bubble messageId → sessionKey mapping */
@@ -587,11 +633,19 @@ export class SDKEngine {
 
   /** Get all managed sessions for a specific chat (for /home display) */
   getSessionsForChat(channelType: string, chatId: string): ManagedSessionSnapshot[] {
-    return this.sessions.getSessionsForChat(channelType, chatId, (sk) => this.queues.getQueueDepth(sk));
+    return this.sessions.getSessionsForChat(channelType, chatId, (sk) =>
+      this.queues.getQueueDepth(sk),
+    );
   }
 
   /** Get session registry snapshot for diagnostics */
-  getSessionRegistrySnapshot(): Array<{ sessionKey: string; workdir: string; isAlive: boolean; isTurnActive: boolean; lastActiveAt: number }> {
+  getSessionRegistrySnapshot(): Array<{
+    sessionKey: string;
+    workdir: string;
+    isAlive: boolean;
+    isTurnActive: boolean;
+    lastActiveAt: number;
+  }> {
     return this.sessions.getSessionRegistrySnapshot();
   }
 }

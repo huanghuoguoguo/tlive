@@ -10,7 +10,8 @@ import type { Stats } from 'node:fs';
 import { basename, extname, resolve } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AutomationBridge } from '../types/automation-bridge.js';
-import type { MediaAttachment } from '../../channels/media-types.js';
+import { applyDeliveryRoute, type DeliveryRoute } from '../../channels/delivery-route.js';
+import type { MediaAttachment } from '../../media/attachments.js';
 
 /** MIME type lookup by extension */
 const MIME_MAP: Record<string, string> = {
@@ -43,10 +44,16 @@ export interface FileSendRequest {
   file_path: string;
   /** Optional caption/description */
   caption?: string;
-  /** Target channel type (optional — defaults to last active) */
+  /** Explicit target channel type. Prefer routeToken for normal turn-scoped delivery. */
   channelType?: string;
-  /** Target chat ID (optional — defaults to last active) */
+  /** Explicit target chat ID. Prefer routeToken for normal turn-scoped delivery. */
   chatId?: string;
+  /** Platform message ID to reply to. Topic delivery should normally use routeToken. */
+  replyToMessageId?: string;
+  /** Whether to send as a topic/thread reply when supported */
+  replyInThread?: boolean;
+  /** Per-turn delivery token injected into the Claude prompt. */
+  routeToken?: string;
 }
 
 export interface FileSendResponse {
@@ -61,6 +68,11 @@ export interface FileSendApiOptions {
   defaultWorkdir: string;
 }
 
+interface ResolvedFileSendTarget {
+  route: DeliveryRoute;
+  cwd?: string;
+}
+
 /**
  * Core logic: read file and send as MediaAttachment.
  * Exported for testability.
@@ -68,8 +80,7 @@ export interface FileSendApiOptions {
 export async function sendFileToChat(
   filePath: string,
   caption: string | undefined,
-  channelType: string,
-  chatId: string,
+  route: DeliveryRoute,
   cwd: string,
   bridge: AutomationBridge,
 ): Promise<FileSendResponse> {
@@ -87,7 +98,10 @@ export async function sendFileToChat(
     return { success: false, error: `Not a file: ${filePath}` };
   }
   if (fileStat.size > MAX_FILE_SIZE) {
-    return { success: false, error: `File too large (${Math.round(fileStat.size / 1024 / 1024)}MB). Maximum is 20MB.` };
+    return {
+      success: false,
+      error: `File too large (${Math.round(fileStat.size / 1024 / 1024)}MB). Maximum is 20MB.`,
+    };
   }
   if (fileStat.size === 0) {
     return { success: false, error: 'File is empty' };
@@ -108,14 +122,14 @@ export async function sendFileToChat(
   };
 
   // Get adapter and send
-  const adapter = bridge.getAdapter(channelType);
+  const adapter = bridge.getAdapter(route.channelType);
   if (!adapter) {
-    return { success: false, error: `Channel '${channelType}' not available` };
+    return { success: false, error: `Channel '${route.channelType}' not available` };
   }
 
   try {
-    const outMsg = adapter.formatContent(chatId, caption || '');
-    (outMsg as any).media = media;
+    const outMsg = applyDeliveryRoute(adapter.formatContent(route.chatId, caption || ''), route);
+    outMsg.media = media;
     const result = await adapter.send(outMsg);
     if (result.success) {
       return { success: true, filename };
@@ -124,6 +138,35 @@ export async function sendFileToChat(
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+function requestToRoute(request: FileSendRequest): DeliveryRoute | undefined {
+  if (!request.channelType || !request.chatId) return undefined;
+  return {
+    channelType: request.channelType,
+    chatId: request.chatId,
+    scopeId: request.chatId,
+    replyToMessageId: request.replyToMessageId,
+    replyInThread: request.replyInThread,
+  };
+}
+
+function resolveFileSendTarget(
+  request: FileSendRequest,
+  bridge: AutomationBridge,
+): ResolvedFileSendTarget | { error: string } {
+  if (request.routeToken) {
+    const target = bridge.resolveFileDeliveryToken?.(request.routeToken);
+    if (!target) return { error: 'Invalid or expired routeToken' };
+    return { route: target, cwd: target.cwd };
+  }
+
+  const requestedRoute = requestToRoute(request);
+  if (requestedRoute) return { route: requestedRoute };
+
+  return {
+    error: 'Missing file delivery target. Include the current turn routeToken, or specify channelType and chatId explicitly.',
+  };
 }
 
 /**
@@ -180,34 +223,24 @@ export async function handleFileSendRequest(
     return;
   }
 
-  // Resolve target chat
-  let channelType = request.channelType;
-  let chatId = request.chatId;
-
-  if (!channelType || !chatId) {
-    // Default to last active chat
-    const adapters = options.bridge.getAdapters();
-    for (const adapter of adapters) {
-      const lastChat = options.bridge.getLastChatId(adapter.channelType);
-      if (lastChat) {
-        channelType = adapter.channelType;
-        chatId = lastChat;
-        break;
-      }
-    }
-  }
-
-  if (!channelType || !chatId) {
+  const target = resolveFileSendTarget(request, options.bridge);
+  if ('error' in target) {
     res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: false, error: 'No target chat available. Specify channelType and chatId, or start a conversation first.' }));
+    res.end(JSON.stringify({ success: false, error: target.error }));
     return;
   }
 
   // Resolve workdir from binding
-  const binding = await options.bridge.getBinding(channelType, chatId);
-  const cwd = binding?.cwd || options.defaultWorkdir;
+  const binding = await options.bridge.getBinding(target.route.channelType, target.route.scopeId);
+  const cwd = target.cwd || binding?.cwd || options.defaultWorkdir;
 
-  const result = await sendFileToChat(request.file_path, request.caption, channelType, chatId, cwd, options.bridge);
+  const result = await sendFileToChat(
+    request.file_path,
+    request.caption,
+    target.route,
+    cwd,
+    options.bridge,
+  );
 
   const status = result.success ? 200 : 400;
   res.writeHead(status, { 'Content-Type': 'application/json' });

@@ -1,12 +1,14 @@
-import type { ClaudeSDKProvider } from './providers/claude-sdk.js';
+import type { AgentProvider } from './providers/base.js';
 import type { BridgeStore } from './store/interface.js';
 import type { LiveSession } from './providers/base.js';
+import type { AgentProviderRegistry } from './providers/registry.js';
 
 export type { LiveSession };
 
 export interface BridgeContext {
   store: BridgeStore;
-  llm: ClaudeSDKProvider;
+  llm: AgentProvider;
+  providers?: AgentProviderRegistry;
   defaultWorkdir: string;
 }
 

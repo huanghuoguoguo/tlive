@@ -3,33 +3,38 @@ import type { InboundMessage, RenderedMessage } from '../../channels/types.js';
 import type { FormattableMessage } from '../../formatting/message-types.js';
 import type { AutomationBridge } from '../types/automation-bridge.js';
 import { getBridgeContext } from '../../context.js';
-import { loadConfig, type Config, type ClaudeSettingSource } from '../../config.js';
+import { loadConfig, type Config } from '../../config.js';
 import { WebhookServer } from '../automation/webhook.js';
-import { handleCallbackMessage } from '../messages/callback-dispatcher.js';
-import type { HookNotificationData } from '../messages/hook-notification.js';
+import {
+  buildFileSendSystemPrompt,
+  configureFileSendEnvironment,
+} from '../automation/file-send-prompt.js';
+import {
+  AutomationPromptInjector,
+  type AutomationPromptOptions,
+  type AutomationPromptResult,
+} from '../automation/prompt-injector.js';
 import type { BridgeStore } from '../../store/interface.js';
-import type { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
-import { generateRequestId, Logger, type LogContext } from '../../logger.js';
-import { truncate } from '../../core/string.js';
-import { areSettingSourcesEqual } from '../../engine/automation/utils.js';
-import { generateSessionId } from '../../core/id.js';
+import type { AgentProvider } from '../../providers/base.js';
+import type { AgentProviderRegistry } from '../../providers/registry.js';
 import {
   createBridgeComponents,
   type BridgeComponents,
   type BridgeFactoryDeps,
 } from '../bridge-factory.js';
-import { CommandRouter } from '../command-router.js';
-import { QueryOrchestrator } from './query.js';
 import type { PermissionCoordinator } from './permission.js';
 import type { ChannelRouter } from '../../utils/router.js';
 import type { SDKEngine } from '../sdk/engine.js';
 import type { IngressCoordinator } from './ingress.js';
 import type { SessionStateManager } from '../state/session-state.js';
-import { t, type Locale } from '../../i18n/index.js';
+import type { QueryOrchestrator } from './query.js';
+import { InboundDispatcher } from './inbound-dispatcher.js';
+import { AdapterLoopRunner } from './adapter-loop-runner.js';
 
 interface BridgeManagerDeps {
   store: BridgeStore;
-  llm: ClaudeSDKProvider;
+  llm: AgentProvider;
+  providers?: AgentProviderRegistry;
   defaultWorkdir: string;
   config?: Config;
 }
@@ -38,6 +43,9 @@ export class BridgeManager implements AutomationBridge {
   private adapters = new Map<string, BaseChannelAdapter>();
   private running = false;
   private components: BridgeComponents;
+  private inbound: InboundDispatcher;
+  private adapterLoop: AdapterLoopRunner;
+  private automationPrompts: AutomationPromptInjector;
   /** Webhook server for automation entry */
   private webhookServer: WebhookServer | null = null;
   /** Cleanup timer for SDK question data */
@@ -47,47 +55,50 @@ export class BridgeManager implements AutomationBridge {
     const config = deps?.config ?? loadConfig();
     const context = deps ?? getBridgeContext();
     const { store, llm, defaultWorkdir } = context;
+    const providers = deps?.providers ?? context.providers;
+    configureFileSendEnvironment({
+      enabled: config.webhook.enabled,
+      port: config.webhook.port,
+      token: config.webhook.token,
+    });
+    const appendSystemPrompt = buildFileSendSystemPrompt({
+      enabled: config.webhook.enabled,
+      port: config.webhook.port,
+      token: config.webhook.token,
+    });
 
     // Create all engine components via factory
-    const factoryDeps: BridgeFactoryDeps = { store, llm, defaultWorkdir, config };
-    this.components = createBridgeComponents(factoryDeps);
-
-    // Re-create CommandRouter with proper adapter getter
-    this.components.commands = new CommandRouter(
-      this.components.state,
-      this.components.workspace,
-      this.components.recentProjects,
-      () => this.adapters,
-      this.components.router,
+    const factoryDeps: BridgeFactoryDeps = {
       store,
+      llm,
+      providers,
       defaultWorkdir,
-      llm,
-      this.components.sdkEngine.getActiveControls(),
-      this.components.permissions,
-      config.claudeSettingSources,
-      this.components.sdkEngine,
-      this.components.projectsConfig,
-      this.components.topicSessions,
-    );
-
-    // Wire SDKEngine session creation → recent projects tracking
-    this.components.sdkEngine.onSessionCreated = (_sessionKey: string, workdir: string) => {
-      this.components.recentProjects.recordSession(workdir);
+      config,
+      getAdapters: () => this.adapters,
+      appendSystemPrompt,
     };
-
-    // Update query with appendSystemPrompt
-    this.components.query = new QueryOrchestrator({
-      engine: this.components.engine,
-      llm,
-      router: this.components.router,
+    this.components = createBridgeComponents(factoryDeps);
+    this.inbound = new InboundDispatcher({
       state: this.components.state,
+      ingress: this.components.ingress,
+      text: this.components.text,
       permissions: this.components.permissions,
       sdkEngine: this.components.sdkEngine,
-      store,
-      defaultWorkdir,
-      topicSessions: this.components.topicSessions,
-      defaultClaudeSettingSources: config.claudeSettingSources,
-      port: this.components.port,
+      commands: this.components.commands,
+      query: this.components.query,
+    });
+    this.adapterLoop = new AdapterLoopRunner({
+      ingress: this.components.ingress,
+      loop: this.components.loop,
+      handleInboundMessage: (adapter, msg, requestId) =>
+        this.handleInboundMessage(adapter, msg, requestId),
+    });
+    this.automationPrompts = new AutomationPromptInjector({
+      getAdapter: (channelType) => this.getAdapter(channelType),
+      router: this.components.router,
+      store: this.components.store,
+      ingress: this.components.ingress,
+      query: this.components.query,
     });
 
     // Initialize webhook server if enabled.
@@ -128,83 +139,17 @@ export class BridgeManager implements AutomationBridge {
     return this.components.sdkEngine.hasActiveSession(channelType, chatId, workdir);
   }
 
-  async injectAutomationPrompt(options: {
-    channelType: string;
-    chatId: string;
-    text: string;
-    requestId?: string;
-    messageId?: string;
-    userId?: string;
-    workdir?: string;
-    projectName?: string;
-    claudeSettingSources?: ClaudeSettingSource[];
-  }): Promise<{ sessionId?: string }> {
-    const adapter = this.getAdapter(options.channelType);
-    if (!adapter) {
-      throw new Error(`Channel '${options.channelType}' not available`);
-    }
-
-    const binding = await this.components.router.resolve(options.channelType, options.chatId);
-    const workdirChanged = options.workdir !== undefined && binding.cwd !== options.workdir;
-    const projectChanged =
-      options.projectName !== undefined && binding.projectName !== options.projectName;
-    const settingsChanged =
-      options.claudeSettingSources !== undefined &&
-      !areSettingSourcesEqual(binding.claudeSettingSources, options.claudeSettingSources);
-    const sessionContextChanged = workdirChanged || projectChanged || settingsChanged;
-
-    let bindingChanged = false;
-
-    if (options.workdir !== undefined && binding.cwd !== options.workdir) {
-      binding.cwd = options.workdir;
-      bindingChanged = true;
-    }
-    if (options.projectName !== undefined && binding.projectName !== options.projectName) {
-      binding.projectName = options.projectName;
-      bindingChanged = true;
-    }
-    if (options.claudeSettingSources !== undefined && settingsChanged) {
-      const nextSources = [...options.claudeSettingSources];
-      binding.claudeSettingSources = nextSources;
-      bindingChanged = true;
-    }
-
-    if (sessionContextChanged) {
-      binding.sessionId = generateSessionId();
-      binding.sdkSessionId = undefined;
-      bindingChanged = true;
-    }
-
-    if (bindingChanged) {
-      await this.components.store.saveBinding(binding);
-    }
-
-    this.components.ingress.recordChat(options.channelType, options.chatId);
-    await this.components.query.run(
-      adapter,
-      {
-        channelType: adapter.channelType,
-        chatId: options.chatId,
-        userId: options.userId ?? 'automation',
-        text: options.text,
-        messageId: options.messageId ?? `automation-${options.requestId || generateRequestId()}`,
-        attachments: [],
-      },
-      options.requestId,
-    );
-
-    const updatedBinding = await this.components.store.getBinding(
-      options.channelType,
-      options.chatId,
-    );
-    return {
-      sessionId: updatedBinding?.sdkSessionId ?? updatedBinding?.sessionId,
-    };
+  async injectAutomationPrompt(options: AutomationPromptOptions): Promise<AutomationPromptResult> {
+    return this.automationPrompts.inject(options);
   }
 
-  /** Get the last active chatId for a given channel type (for hook routing) */
+  /** Get the last active chatId for a given channel type. */
   getLastChatId(channelType: string): string {
     return this.components.ingress.getLastChatId(channelType);
+  }
+
+  resolveFileDeliveryToken(token: string) {
+    return this.components.sdkEngine.resolveFileDeliveryToken(token);
   }
 
   /** Broadcast a message to all active IM channels */
@@ -213,8 +158,7 @@ export class BridgeManager implements AutomationBridge {
       const chatId = this.getBroadcastTarget(adapter.channelType);
       if (!chatId) continue;
       const baseMsg = { chatId, ...msg } as RenderedMessage;
-      const preparedMsg = adapter.prepareBroadcast(baseMsg as any);
-      await adapter.send(preparedMsg);
+      await adapter.send(baseMsg);
     }
   }
 
@@ -229,19 +173,13 @@ export class BridgeManager implements AutomationBridge {
       const chatId = this.getBroadcastTarget(adapter.channelType);
       if (!chatId) continue;
       const outMsg = adapter.format({ ...msg, chatId } as FormattableMessage);
-      const preparedMsg = adapter.prepareBroadcast(outMsg as any);
-      await adapter.send(preparedMsg);
+      await adapter.send(outMsg);
     }
   }
 
   /** Get target chatId for broadcast messages */
   private getBroadcastTarget(channelType: string): string {
     return this.getLastChatId(channelType);
-  }
-
-  /** Delegate: track a hook message for reply routing */
-  trackHookMessage(messageId: string, sessionId: string): void {
-    this.components.permissions.trackHookMessage(messageId, sessionId);
   }
 
   /** Delegate: track a permission message for text-based approval */
@@ -259,14 +197,9 @@ export class BridgeManager implements AutomationBridge {
     );
   }
 
-  /** Delegate: store original permission card text */
-  storeHookPermissionText(hookId: string, text: string): void {
-    this.components.permissions.storeHookPermissionText(hookId, text);
-  }
-
   /** Delegate: store AskUserQuestion data */
   storeQuestionData(
-    hookId: string,
+    interactionId: string,
     questions: Array<{
       question: string;
       header: string;
@@ -275,7 +208,7 @@ export class BridgeManager implements AutomationBridge {
     }>,
     contextSuffix?: string,
   ): void {
-    this.components.permissions.storeQuestionData(hookId, questions, contextSuffix);
+    this.components.permissions.storeQuestionData(interactionId, questions, contextSuffix);
   }
 
   /** Get permissions coordinator for direct access */
@@ -364,74 +297,18 @@ export class BridgeManager implements AutomationBridge {
     }
   }
 
-  /** Send a hook notification to IM with [Local] prefix and track for reply routing */
-  async sendHookNotification(
-    adapter: BaseChannelAdapter,
-    chatId: string,
-    hook: HookNotificationData,
-    receiveIdType?: string,
-  ): Promise<void> {
-    await this.components.notifications.send(adapter, chatId, hook, receiveIdType);
-  }
-
   private async runAdapterLoop(adapter: BaseChannelAdapter): Promise<void> {
-    while (this.running) {
-      const msg = await this.components.ingress.getNextMessage(adapter);
-      if (!msg) {
-        await new Promise((r) => setTimeout(r, 100));
-        continue;
-      }
-      const requestId = generateRequestId();
-      const ctx: LogContext = { requestId, chatId: msg.chatId };
-      const textPreview = msg.text ? truncate(msg.text, 50) : '(callback)';
-      console.log(
-        `[${adapter.channelType}] ${ctx.requestId} RECV user=${msg.userId} chat=${msg.chatId.slice(-8)}: ${textPreview}`,
-      );
-      if (this.components.loop.isQuickMessage(adapter, msg)) {
-        try {
-          await this.handleInboundMessage(adapter, msg, requestId);
-        } catch (err) {
-          console.error(
-            `[${adapter.channelType}] ${ctx.requestId} ERROR: ${Logger.formatError(err)}`,
-          );
-          this.sendErrorNotification(adapter, msg.chatId, err, requestId);
-        }
-      } else {
-        await this.components.loop.dispatchSlowMessage({
-          adapter,
-          msg,
-          requestId,
-          coalesceMessage: (dispatchAdapter, dispatchMsg) =>
-            this.components.ingress.coalesceMessages(dispatchAdapter, dispatchMsg),
-          handleMessage: (dispatchAdapter, dispatchMsg, rid) =>
-            this.handleInboundMessage(dispatchAdapter, dispatchMsg, rid),
-          onError: (err, rid) => {
-            console.error(`[${adapter.channelType}] ${rid} ERROR: ${Logger.formatError(err)}`);
-            this.sendErrorNotification(adapter, msg.chatId, err, rid);
-          },
-        });
-      }
-    }
+    return this.adapterLoop.run(adapter, () => this.running);
   }
 
-  /** Send error notification to user's chat */
   private sendErrorNotification(
     adapter: BaseChannelAdapter,
     chatId: string | undefined,
     err: unknown,
     requestId?: string,
+    sourceMsg?: InboundMessage,
   ): void {
-    if (!chatId) return; // No chatId, can't send notification
-    const locale: Locale = 'zh';
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    const truncated = truncate(errorMsg, 200);
-    const ridText = requestId ? requestId : 'unknown';
-    adapter
-      .send({
-        chatId,
-        text: `${t(locale, 'error.title')}\n${t(locale, 'error.requestId')}: ${ridText}\n${truncated}`,
-      })
-      .catch(() => {}); // Ignore send failure
+    this.adapterLoop.sendErrorNotification(adapter, chatId, err, requestId, sourceMsg);
   }
 
   async handleInboundMessage(
@@ -439,82 +316,6 @@ export class BridgeManager implements AutomationBridge {
     msg: InboundMessage,
     requestId?: string,
   ): Promise<boolean> {
-    const ctx: LogContext = { requestId: requestId || generateRequestId(), chatId: msg.chatId };
-    const { state, ingress, text, permissions, sdkEngine, commands, query } = this.components;
-
-    // Menu events: fallback to user's last active chat
-    if (!msg.chatId && msg.userId) {
-      const userLastChat = state.getUserLastChat(msg.userId);
-      if (userLastChat && userLastChat.channelType === adapter.channelType) {
-        console.log(
-          `[${adapter.channelType}] ${ctx.requestId} MENU fallback to user's last chat ${userLastChat.chatId.slice(-8)}`,
-        );
-        msg = { ...msg, chatId: userLastChat.chatId };
-        ctx.chatId = msg.chatId;
-      } else {
-        console.warn(
-          `[${adapter.channelType}] ${ctx.requestId} MENU dropped: no recent chat for user ${msg.userId}`,
-        );
-        return false;
-      }
-    }
-
-    // Callback without chatId: fallback to last active chat for this channel
-    if (msg.callbackData && !msg.chatId) {
-      const fallbackChatId = ingress.getLastChatId(adapter.channelType);
-      if (fallbackChatId) {
-        console.warn(
-          `[${adapter.channelType}] ${ctx.requestId} CALLBACK fallback to last chat ${fallbackChatId.slice(-8)}`,
-        );
-        msg = { ...msg, chatId: fallbackChatId };
-        ctx.chatId = msg.chatId;
-      }
-    }
-
-    // Auth check
-    if (!adapter.isAuthorized(msg.userId, msg.chatId)) {
-      return false;
-    }
-
-    // Track user's last active chat (for menu fallback)
-    if (msg.chatId && msg.userId) {
-      state.setUserLastChat(msg.userId, adapter.channelType, msg.chatId);
-    }
-
-    // Track last active chatId per channel type
-    if (msg.chatId) {
-      ingress.recordChat(adapter.channelType, msg.chatId);
-    }
-
-    const attachmentResult = ingress.prepareAttachments(msg);
-    msg = attachmentResult.message;
-    if (attachmentResult.handled) {
-      return true;
-    }
-
-    if (await text.handle(adapter, msg)) {
-      return true;
-    }
-
-    // Callback data
-    if (msg.callbackData) {
-      return handleCallbackMessage(adapter, msg, {
-        permissions,
-        sdkEngine,
-        replayMessage: (replayAdapter, replayMsg) =>
-          this.handleInboundMessage(replayAdapter, replayMsg, ctx.requestId),
-      });
-    }
-
-    // Bridge commands
-    if (msg.text.startsWith('/')) {
-      const handled = await commands.handle(adapter, msg);
-      if (handled) {
-        console.log(`[bridge] ${ctx.requestId} CMD ${msg.text.split(' ')[0]}`);
-        return true;
-      }
-    }
-
-    return query.run(adapter, msg, ctx.requestId);
+    return this.inbound.handle(adapter, msg, requestId);
   }
 }

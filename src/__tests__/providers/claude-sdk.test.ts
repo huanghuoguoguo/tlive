@@ -248,5 +248,36 @@ describe('ClaudeSDKProvider', () => {
 
       await Promise.resolve();
     });
+
+    it('routes deferred tools to onDeferredTool in streamChat fallback', async () => {
+      const mockDeferredHandler = vi.fn().mockResolvedValue({
+        behavior: 'allow',
+        updatedInput: { accepted: true },
+      });
+
+      provider.streamChat({
+        prompt: 'test',
+        workingDirectory: '/tmp',
+        onDeferredTool: mockDeferredHandler,
+      });
+
+      const queryCall = vi.mocked(claudeAgentSdk.query).mock.calls.at(-1)?.[0] as any;
+      const result = await queryCall.options.canUseTool(
+        'EnterPlanMode',
+        { plan: 'review' },
+        { toolUseID: 'tool-1' },
+      );
+
+      expect(mockDeferredHandler).toHaveBeenCalledWith(
+        'EnterPlanMode',
+        { plan: 'review' },
+        undefined,
+      );
+      expect(result).toMatchObject({
+        behavior: 'allow',
+        updatedInput: { accepted: true },
+        toolUseID: 'tool-1',
+      });
+    });
   });
 });

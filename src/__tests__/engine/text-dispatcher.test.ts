@@ -43,9 +43,6 @@ describe('TextDispatcher', () => {
       parsePermissionText: vi.fn().mockReturnValue('allow'),
       tryResolveByText: vi.fn().mockReturnValue(true),
       pendingPermissionCount: vi.fn().mockReturnValue(0),
-      findHookPermission: vi.fn(),
-      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
-      isHookMessage: vi.fn().mockReturnValue(false),
       getGateway: vi.fn().mockReturnValue(gateway),
     } as any;
     const sdkEngine = {
@@ -88,9 +85,6 @@ describe('TextDispatcher', () => {
       parsePermissionText: vi.fn().mockReturnValue('deny'),
       tryResolveByText: vi.fn().mockReturnValue(true),
       pendingPermissionCount: vi.fn().mockReturnValue(0),
-      findHookPermission: vi.fn(),
-      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
-      isHookMessage: vi.fn().mockReturnValue(false),
       getGateway: vi.fn().mockReturnValue(gateway),
     } as any;
     const sdkEngine = {
@@ -137,9 +131,6 @@ describe('TextDispatcher', () => {
       parsePermissionText: vi.fn().mockReturnValue(null),
       tryResolveByText: vi.fn().mockReturnValue(false),
       pendingPermissionCount: vi.fn().mockReturnValue(0),
-      findHookPermission: vi.fn(),
-      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
-      isHookMessage: vi.fn().mockReturnValue(false),
       getGateway: vi.fn().mockReturnValue(gateway),
     } as any;
     const sdkEngine = {
@@ -193,53 +184,4 @@ describe('TextDispatcher', () => {
     expect(gateway.resolve).toHaveBeenCalledWith('askq-1', 'allow');
   });
 
-  it('shows warning for hook replies (feature removed with Go Core)', async () => {
-    const permissions = {
-      parsePermissionText: vi.fn().mockReturnValue(null),
-      tryResolveByText: vi.fn().mockReturnValue(false),
-      pendingPermissionCount: vi.fn().mockReturnValue(0),
-      findHookPermission: vi.fn(),
-      getLatestPendingQuestion: vi.fn().mockReturnValue(null),
-      isHookMessage: vi.fn().mockReturnValue(true),
-      getHookMessage: vi.fn().mockReturnValue({ sessionId: 'session-1', timestamp: Date.now() }),
-      getQuestionData: vi.fn().mockReturnValue(undefined),
-      storeQuestionData: vi.fn(),
-      trackPermissionMessage: vi.fn(),
-      resolveAskQuestion: vi.fn(),
-      resolveAskQuestionWithText: vi.fn(),
-      getGateway: vi.fn().mockReturnValue({
-        isPending: vi.fn().mockReturnValue(false),
-        resolve: vi.fn(),
-      }),
-    } as any;
-    const sdkEngine = {
-      getInteractionState: vi.fn().mockReturnValue({
-        findPendingSdkQuestion: vi.fn().mockReturnValue(null),
-        findPendingDeferredTool: vi.fn().mockReturnValue(null),
-        setSdkQuestionOptionAnswer: vi.fn(),
-        setSdkQuestionTextAnswer: vi.fn(),
-        getSdkQuestion: vi.fn().mockReturnValue(undefined),
-        getDeferredTool: vi.fn().mockReturnValue(undefined),
-        setDeferredToolInput: vi.fn(),
-        cleanupDeferredTool: vi.fn(),
-      }),
-      getQuestionState: vi.fn().mockReturnValue({
-        sdkQuestionData: new Map(),
-        sdkQuestionAnswers: new Map(),
-        sdkQuestionTextAnswers: new Map(),
-      }),
-    } as any;
-
-    const dispatcher = new TextDispatcher({
-      permissions,
-      sdkEngine,
-      state: new SessionStateManager(),
-    });
-    const adapter = createAdapter();
-
-    const handled = await dispatcher.handle(adapter, createMessage('send this', { replyToMessageId: 'hook-1' }));
-
-    expect(handled).toBe(true);
-    expect(adapter.send).toHaveBeenCalledWith(expect.objectContaining({ text: '⚠️ Hook reply feature no longer available' }));
-  });
 });

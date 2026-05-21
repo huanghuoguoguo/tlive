@@ -3,18 +3,34 @@
  * Based on Claude-to-IM-skill's implementation.
  */
 
-import { execSync } from 'node:child_process';
-import { existsSync, writeFileSync, mkdirSync, unlinkSync, readdirSync, statSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { existsSync, unlinkSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { ClaudeAdapter } from '../canonical/claude-adapter.js';
 import type { CanonicalEvent } from '../canonical/schema.js';
-import type { StreamChatParams, StreamChatResult, QueryControls, LiveSession, EffortLevel } from './base.js';
+import type {
+  AgentProvider,
+  AgentProviderCapabilities,
+  CreateSessionParams,
+  StreamChatParams,
+  StreamChatResult,
+  QueryControls,
+  LiveSession,
+} from './base.js';
 import { DEFAULT_CLAUDE_SETTING_SOURCES, type ClaudeSettingSource } from '../config.js';
 import { ClaudeLiveSession } from './claude-live-session.js';
-import { buildSubprocessEnv, type PermissionTimeoutCallback } from './claude-shared.js';
+import { preparePromptWithImages, type PermissionTimeoutCallback } from './claude-shared.js';
+import {
+  buildClaudeQueryOptions,
+  createClaudeQueryControls,
+  routeAskUserQuestionRequest,
+  routeDeferredToolRequest,
+  routePermissionRequest,
+  type ClaudeCanUseToolOptions,
+} from './claude-query-options.js';
+import { ClaudeEventLogger } from './claude-event-logger.js';
+import { checkClaudeCliVersion, findClaudeCli } from './cli-detection.js';
 
 // Re-export for backward compatibility
 export type { PermissionTimeoutCallback } from './claude-shared.js';
@@ -23,11 +39,58 @@ export type { PermissionTimeoutCallback } from './claude-shared.js';
 
 const CLI_AUTH_PATTERNS = [/not logged in/i, /please run \/login/i];
 const API_AUTH_PATTERNS = [/unauthorized/i, /invalid.*api.?key/i, /401\b/];
-const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
+
+const STREAM_CHAT_ALLOW_PERMISSIONS = [
+  'Read(*)',
+  'Glob(*)',
+  'Grep(*)',
+  'WebSearch(*)',
+  'WebFetch(*)',
+  'Agent(*)',
+  'Task(*)',
+  'TodoRead(*)',
+  'ToolSearch(*)',
+  'Bash(cat *)',
+  'Bash(head *)',
+  'Bash(tail *)',
+  'Bash(less *)',
+  'Bash(wc *)',
+  'Bash(ls *)',
+  'Bash(tree *)',
+  'Bash(find *)',
+  'Bash(grep *)',
+  'Bash(rg *)',
+  'Bash(ag *)',
+  'Bash(file *)',
+  'Bash(stat *)',
+  'Bash(du *)',
+  'Bash(df *)',
+  'Bash(which *)',
+  'Bash(type *)',
+  'Bash(whereis *)',
+  'Bash(echo *)',
+  'Bash(printf *)',
+  'Bash(date *)',
+  'Bash(pwd)',
+  'Bash(whoami)',
+  'Bash(uname *)',
+  'Bash(env)',
+  'Bash(git log *)',
+  'Bash(git status *)',
+  'Bash(git diff *)',
+  'Bash(git show *)',
+  'Bash(git blame *)',
+  'Bash(git branch *)',
+  'Bash(node -v *)',
+  'Bash(npm list *)',
+  'Bash(npx tsc *)',
+  'Bash(go version *)',
+  'Bash(go list *)',
+] as const;
 
 function classifyAuthError(text: string): 'cli' | 'api' | false {
-  if (CLI_AUTH_PATTERNS.some(re => re.test(text))) return 'cli';
-  if (API_AUTH_PATTERNS.some(re => re.test(text))) return 'api';
+  if (CLI_AUTH_PATTERNS.some((re) => re.test(text))) return 'cli';
+  if (API_AUTH_PATTERNS.some((re) => re.test(text))) return 'api';
   return false;
 }
 
@@ -52,54 +115,12 @@ function cleanupImageDir(): void {
         if (now - stat.mtimeMs > maxAge) {
           unlinkSync(filePath);
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
-  } catch { /* ignore cleanup errors */ }
-}
-
-// ── CLI discovery and version check ──
-
-function findClaudeCli(): string | undefined {
-  // Check CTI_CLAUDE_CODE_EXECUTABLE env var first
-  const fromEnv = process.env.CTI_CLAUDE_CODE_EXECUTABLE;
-  if (fromEnv) return fromEnv;
-
-  // Try `which claude` (or `where claude` on Windows)
-  const cmd = process.platform === 'win32' ? 'where claude' : 'which claude';
-  try {
-    const result = execSync(cmd, { encoding: 'utf-8', timeout: 5000 }).trim();
-    // `where` on Windows may return multiple lines; take the first
-    const found = result.split('\n')[0]?.trim();
-    if (!found) return undefined;
-
-    // On Windows, npm-installed Claude Code exposes a cmd/ps1 wrapper (no
-    // extension) that isn't a native binary. The SDK's query() tries to
-    // spawn it directly and gets ENOENT. Resolve to the actual cli.js
-    // inside the package so the SDK uses `node cli.js` instead.
-    if (process.platform === 'win32') {
-      const cliJs = join(dirname(found), 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
-      if (existsSync(cliJs)) return cliJs;
-    }
-
-    return found;
   } catch {
-    return undefined;
-  }
-}
-
-function checkCliVersion(cliPath: string): { ok: boolean; version?: string; error?: string } {
-  try {
-    // On Windows, .js files are associated with Windows Script Host, not Node.
-    // Prefix with "node" to avoid triggering wscript.exe.
-    const cmd = cliPath.endsWith('.js') ? `node "${cliPath}" --version` : `"${cliPath}" --version`;
-    const version = execSync(cmd, { encoding: 'utf-8', timeout: 10000 }).trim();
-    const match = version.match(/(\d+)\.\d+/);
-    if (!match || Number.parseInt(match[1], 10) < 2) {
-      return { ok: false, version, error: `Claude CLI ${version} too old (need >= 2.x)` };
-    }
-    return { ok: true, version };
-  } catch {
-    return { ok: false, error: 'Failed to run claude --version' };
+    /* ignore cleanup errors */
   }
 }
 
@@ -111,7 +132,19 @@ interface StreamState {
   lastAssistantText: string;
 }
 
-export class ClaudeSDKProvider {
+export class ClaudeSDKProvider implements AgentProvider {
+  readonly kind = 'claude' as const;
+  readonly displayName = 'Claude Code';
+  readonly capabilities: AgentProviderCapabilities = {
+    nativeSteer: true,
+    nativeQueue: true,
+    interactivePermissions: true,
+    askUserQuestion: true,
+    deferredTools: true,
+    sessionResume: true,
+    imageInputs: true,
+  };
+
   private cliPath: string | undefined;
   private defaultSettingSources: ClaudeSettingSource[];
 
@@ -126,9 +159,9 @@ export class ClaudeSDKProvider {
     // Preflight check
     this.cliPath = findClaudeCli();
     if (this.cliPath) {
-      const check = checkCliVersion(this.cliPath);
-      if (!check.ok) {
-        console.warn(`[claude-sdk] CLI preflight warning: ${check.error}`);
+      const check = checkClaudeCliVersion(this.cliPath);
+      if (!check.available) {
+        console.warn(`[claude-sdk] CLI preflight warning: ${check.reason}`);
       } else {
         console.log(`[claude-sdk] Using Claude CLI ${check.version} at ${this.cliPath}`);
       }
@@ -136,9 +169,10 @@ export class ClaudeSDKProvider {
       console.warn('[claude-sdk] Claude CLI not found — SDK will use default resolution');
     }
 
-    const srcLabel = this.defaultSettingSources.length > 0
-      ? this.defaultSettingSources.join(', ')
-      : 'none (isolation mode)';
+    const srcLabel =
+      this.defaultSettingSources.length > 0
+        ? this.defaultSettingSources.join(', ')
+        : 'none (isolation mode)';
     console.log(`[claude-sdk] Settings sources: ${srcLabel}`);
   }
 
@@ -146,14 +180,7 @@ export class ClaudeSDKProvider {
     return [...this.defaultSettingSources];
   }
 
-  createSession(params: {
-    workingDirectory: string;
-    sessionId?: string;
-    effort?: EffortLevel;
-    model?: string;
-    settingSources?: ClaudeSettingSource[];
-    appendSystemPrompt?: string;
-  }): LiveSession {
+  createSession(params: CreateSessionParams): LiveSession {
     return new ClaudeLiveSession({
       workingDirectory: params.workingDirectory,
       sessionId: params.sessionId,
@@ -182,135 +209,62 @@ export class ClaudeSDKProvider {
           };
 
           let stderrBuf = '';
-            // Track temp image files for cleanup
-            const imagePaths: string[] = [];
+          let imagePaths: string[] = [];
+          const eventLogger = new ClaudeEventLogger('claude-sdk');
 
           try {
-            // Save image attachments to temp files so Claude Code can read them
-            let prompt = params.prompt;
-            if (params.attachments?.length) {
-              const imgDir = join(tmpdir(), 'tlive-images');
-              mkdirSync(imgDir, { recursive: true });
-              for (const att of params.attachments) {
-                if (att.type === 'image') {
-                  const ext = att.mimeType === 'image/png' ? '.png' : att.mimeType === 'image/gif' ? '.gif' : '.jpg';
-                  const filePath = join(imgDir, `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}${ext}`);
-                  writeFileSync(filePath, Buffer.from(att.base64Data, 'base64'));
-                  imagePaths.push(filePath);
-                }
-              }
-              if (imagePaths.length > 0) {
-                const imageRefs = imagePaths.map(p => p).join('\n');
-                prompt = `[User sent ${imagePaths.length} image(s) — read them to see the content]\n${imageRefs}\n\n${prompt}`;
-              }
-            }
+            const prepared = preparePromptWithImages(
+              params.prompt,
+              params.attachments,
+              join(tmpdir(), 'tlive-images'),
+            );
+            const prompt = prepared.prompt;
+            imagePaths = prepared.imagePaths;
 
-            const queryOptions: Record<string, unknown> = {
+            const queryOptions = buildClaudeQueryOptions({
               cwd: params.workingDirectory,
-              model: params.model || undefined,
-              resume: params.sessionId || undefined,
-              permissionMode: params.permissionMode || undefined,
-              effort: params.effort || undefined,
-              // Required for stream_event partials, including thinking/text deltas.
-              includePartialMessages: true,
-              // Enable AI-generated progress summaries for subagents (~30s interval)
-              agentProgressSummaries: true,
-              // Enable prompt suggestions (predicted next user prompt after each turn)
-              promptSuggestions: true,
-              // Controls which Claude Code settings files to load for this turn.
-              // Default is TL_CLAUDE_SETTINGS or user,project,local.
-              // Empty array = full isolation (SDK default).
+              model: params.model,
+              resume: params.sessionId,
+              permissionMode: params.permissionMode,
+              effort: params.effort,
               settingSources,
-              // Use Claude Code's native permission rules for fine-grained control.
-              // Safe read-only tools + safe Bash patterns are pre-approved.
-              // Dangerous operations (write, delete, network) still trigger canUseTool.
-              // These are passed as flag settings (highest priority), so they override
-              // any permission rules from user's settings.json.
-              settings: {
-                permissions: {
-                  allow: [
-                    // Read-only tools — always safe
-                    'Read(*)', 'Glob(*)', 'Grep(*)', 'WebSearch(*)', 'WebFetch(*)',
-                    'Agent(*)', 'Task(*)', 'TodoRead(*)', 'ToolSearch(*)',
-                    // Safe Bash commands — read-only, no side effects
-                    'Bash(cat *)', 'Bash(head *)', 'Bash(tail *)', 'Bash(less *)',
-                    'Bash(wc *)', 'Bash(ls *)', 'Bash(tree *)', 'Bash(find *)',
-                    'Bash(grep *)', 'Bash(rg *)', 'Bash(ag *)',
-                    'Bash(file *)', 'Bash(stat *)', 'Bash(du *)', 'Bash(df *)',
-                    'Bash(which *)', 'Bash(type *)', 'Bash(whereis *)',
-                    'Bash(echo *)', 'Bash(printf *)', 'Bash(date *)',
-                    'Bash(pwd)', 'Bash(whoami)', 'Bash(uname *)', 'Bash(env)',
-                    'Bash(git log *)', 'Bash(git status *)', 'Bash(git diff *)',
-                    'Bash(git show *)', 'Bash(git blame *)', 'Bash(git branch *)',
-                    'Bash(node -v *)', 'Bash(npm list *)', 'Bash(npx tsc *)',
-                    'Bash(go version *)', 'Bash(go list *)',
-                  ],
-                },
-              },
-              env: buildSubprocessEnv(),
+              cliPath,
+              abortSignal: params.abortSignal,
+              allowPermissions: STREAM_CHAT_ALLOW_PERMISSIONS,
               stderr: (data: string) => {
                 stderrBuf += data;
                 if (stderrBuf.length > 4096) stderrBuf = stderrBuf.slice(-4096);
               },
-              abortController: params.abortSignal
-                ? Object.assign(new AbortController(), { signal: params.abortSignal })
-                : undefined,
               canUseTool: async (
                 toolName: string,
                 input: Record<string, unknown>,
-                options: { decisionReason?: string; title?: string; suggestions?: unknown[]; signal?: AbortSignal } = {},
-              ): Promise<PermissionResult> => {
-                // AskUserQuestion — route to dedicated handler
-                if (toolName === 'AskUserQuestion' && params.onAskUserQuestion) {
-                  const questions = (input as Record<string, unknown>).questions as Array<{
-                    question: string;
-                    header: string;
-                    options: Array<{ label: string; description?: string }>;
-                    multiSelect: boolean;
-                  }> ?? [];
-                  if (questions.length > 0) {
-                    try {
-                      const answers = await params.onAskUserQuestion(questions, options.signal);
-                      return {
-                        behavior: 'allow' as const,
-                        updatedInput: { questions: (input as Record<string, unknown>).questions, answers },
-                      };
-                    } catch {
-                      return { behavior: 'deny' as const, message: 'User did not answer' };
-                    }
-                  }
-                }
-                // If no handler (perm off) → auto-allow
-                if (!params.onPermissionRequest) {
-                  return { behavior: 'allow' as const, updatedInput: input };
-                }
-                // Already aborted by SDK (subagent stopped) → don't bother asking
-                if (options.signal?.aborted) {
-                  return { behavior: 'deny' as const, message: 'Cancelled by SDK' };
-                }
-                const reason = options.decisionReason || options.title || toolName;
-                console.log(`[claude-sdk] canUseTool: ${toolName} → asking user (${reason})`);
-                // Pass abort signal so handler can clean up gateway entry on cancel
-                const decision = await params.onPermissionRequest(toolName, input, reason, options.signal);
-                if (decision === 'allow') {
-                  return { behavior: 'allow' as const, updatedInput: input };
-                }
-                if (decision === 'allow_always') {
-                  // SDK API uses behavior:'allow' + updatedPermissions to persist the rule.
-                  // 'allow_always' is our internal concept, mapped to SDK's permission update mechanism.
-                  return {
-                    behavior: 'allow' as const,
-                    updatedInput: input,
-                    ...(options.suggestions ? { updatedPermissions: options.suggestions } : {}),
-                  } as PermissionResult;
-                }
-                return { behavior: 'deny' as const, message: 'Denied by user via IM' };
-              },
-            };
+                options: ClaudeCanUseToolOptions = {},
+              ) => {
+                const deferred = await routeDeferredToolRequest(
+                  toolName,
+                  input,
+                  options,
+                  params.onDeferredTool,
+                );
+                if (deferred) return deferred;
 
-            if (cliPath) {
-              queryOptions.pathToClaudeCodeExecutable = cliPath;
-            }
+                const answer = await routeAskUserQuestionRequest(
+                  toolName,
+                  input,
+                  options,
+                  params.onAskUserQuestion,
+                );
+                if (answer) return answer;
+
+                return routePermissionRequest({
+                  logPrefix: 'claude-sdk',
+                  toolName,
+                  input,
+                  options,
+                  handler: params.onPermissionRequest,
+                });
+              },
+            });
 
             const q = query({
               prompt: prompt as Parameters<typeof query>[0]['prompt'],
@@ -318,92 +272,58 @@ export class ClaudeSDKProvider {
             });
 
             // Expose query controls for interrupt/stopTask
-            controls = {
-              interrupt: async () => { await (q as any).interrupt?.(); },
-              stopTask: async (taskId: string) => { await (q as any).stopTask?.(taskId); },
-            };
+            controls = createClaudeQueryControls(q);
 
             const adapter = new ClaudeAdapter();
-            let pendingStreamEventCount = 0;
-            const pendingStreamEventSubtypes = new Map<string, number>();
-            const flushPendingStreamEventLog = () => {
-              if (pendingStreamEventCount === 0) {
-                return;
-              }
-              const subtypeSummary = [...pendingStreamEventSubtypes.entries()]
-                .filter(([_, count]) => count > 0)
-                .map(([subtype, count]) => subtype ? `${subtype}×${count}` : `plain×${count}`)
-                .join(', ');
-              const suffix = subtypeSummary && pendingStreamEventSubtypes.size > 1
-                ? ` (${subtypeSummary})`
-                : '';
-              console.log(`[claude-sdk] msg: stream_event ×${pendingStreamEventCount}${suffix}`);
-              pendingStreamEventCount = 0;
-              pendingStreamEventSubtypes.clear();
-            };
 
             for await (const msg of q) {
-              const sub = 'subtype' in msg ? `.${msg.subtype}` : '';
-              const turns = 'num_turns' in msg ? ` turns=${msg.num_turns}` : '';
-              if (msg.type === 'stream_event') {
-                pendingStreamEventCount++;
-                pendingStreamEventSubtypes.set(sub, (pendingStreamEventSubtypes.get(sub) ?? 0) + 1);
-              } else {
-                flushPendingStreamEventLog();
-                console.log(`[claude-sdk] msg: ${msg.type}${sub}${turns}`);
-              }
+              eventLogger.logSdkMessage(
+                msg as { type: string; subtype?: string; num_turns?: unknown },
+              );
 
               const events = adapter.mapMessage(msg as any);
-              if (DEBUG_EVENTS && events.length > 0) {
-                const summary = events.map((event) => {
-                  switch (event.kind) {
-                    case 'thinking_delta':
-                    case 'text_delta':
-                      return `${event.kind}:${event.text.length}`;
-                    case 'tool_start':
-                      return `tool_start:${event.name}`;
-                    case 'tool_result':
-                      return `tool_result:${event.toolUseId}:${event.content.length}`;
-                    case 'agent_start':
-                    case 'agent_progress':
-                      return `${event.kind}:${event.description}`;
-                    case 'agent_complete':
-                      return `agent_complete:${event.status}`;
-                    default:
-                      return event.kind;
-                  }
-                }).join(', ');
-                console.log(`[claude-sdk] mapped events: ${summary}`);
-              }
+              eventLogger.logMappedEvents(events);
               for (const event of events) {
                 controller.enqueue(event);
               }
 
               // Track state for error handling
               if (msg.type === 'result') state.hasReceivedResult = true;
-              if (events.some(e => e.kind === 'text_delta')) state.hasStreamedText = true;
+              if (events.some((e) => e.kind === 'text_delta')) state.hasStreamedText = true;
               for (const event of events) {
                 if (event.kind === 'text_delta') state.lastAssistantText += event.text;
               }
             }
 
-            flushPendingStreamEventLog();
-            console.log(`[claude-sdk] query ended. streamed=${state.hasStreamedText} text_len=${state.lastAssistantText.length}`);
+            eventLogger.flush();
+            console.log(
+              `[claude-sdk] query ended. streamed=${state.hasStreamedText} text_len=${state.lastAssistantText.length}`,
+            );
             controller.close();
           } catch (err) {
+            eventLogger.flush();
             const message = err instanceof Error ? err.message : String(err);
 
             // Check for auth errors first
-            const authType = classifyAuthError(message) || (stderrBuf ? classifyAuthError(stderrBuf) : false);
+            const authType =
+              classifyAuthError(message) || (stderrBuf ? classifyAuthError(stderrBuf) : false);
             if (authType === 'cli') {
-              console.error('[claude-sdk] Auth error: not logged in. Run `claude /login` to authenticate.');
-              controller.enqueue({ kind: 'error', message: 'Not logged in. Run `claude /login` to authenticate.' } as CanonicalEvent);
+              console.error(
+                '[claude-sdk] Auth error: not logged in. Run `claude /login` to authenticate.',
+              );
+              controller.enqueue({
+                kind: 'error',
+                message: 'Not logged in. Run `claude /login` to authenticate.',
+              } as CanonicalEvent);
               controller.close();
               return;
             }
             if (authType === 'api') {
               console.error('[claude-sdk] Auth error: invalid API key or unauthorized.');
-              controller.enqueue({ kind: 'error', message: 'Invalid API key or unauthorized. Check your credentials.' } as CanonicalEvent);
+              controller.enqueue({
+                kind: 'error',
+                message: 'Invalid API key or unauthorized. Check your credentials.',
+              } as CanonicalEvent);
               controller.close();
               return;
             }
@@ -423,7 +343,11 @@ export class ClaudeSDKProvider {
           } finally {
             // Clean up this query's temp image files
             for (const path of imagePaths) {
-              try { unlinkSync(path); } catch { /* ignore */ }
+              try {
+                unlinkSync(path);
+              } catch {
+                /* ignore */
+              }
             }
             // Periodically clean up old files in tlive-images dir
             cleanupImageDir();

@@ -25,5 +25,5 @@ export interface FeishuRenderedMessage {
   /** Use message.reply with reply_in_thread when replying. */
   replyInThread?: boolean;
   /** Media attachment */
-  media?: import('../media-types.js').MediaAttachment;
+  media?: import('../../media/attachments.js').MediaAttachment;
 }

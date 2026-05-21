@@ -5,8 +5,9 @@
 
 import type { Button } from './types.js';
 import type { Locale, TranslationKey } from '../i18n/index.js';
+import type { AgentProviderKind } from '../providers/kinds.js';
 import { t } from '../i18n/index.js';
-import { CALLBACK_PREFIXES } from '../core/callbacks.js';
+import { CALLBACK_PREFIXES, commandCallback } from '../core/callbacks.js';
 import {
   DEFAULT_DONE_BUTTONS,
   QUICK_BUTTONS,
@@ -42,8 +43,33 @@ export function navNew(locale: Locale): Button {
   return quickButton(locale, 'new', { row: 1 });
 }
 
+export interface NewSessionButtonProvider {
+  kind: AgentProviderKind;
+  displayName: string;
+  isDefault?: boolean;
+}
+
+function navNewForProvider(
+  locale: Locale,
+  provider: NewSessionButtonProvider,
+  row: number,
+): Button {
+  const label =
+    locale === 'zh' ? `🆕 新 ${provider.displayName} 会话` : `🆕 New ${provider.displayName}`;
+  return {
+    label,
+    callbackData: `${CALLBACK_PREFIXES.CMD}new ${provider.kind}`,
+    style: provider.isDefault ? 'primary' : 'default',
+    row,
+  };
+}
+
 function navHelp(locale: Locale): Button {
   return quickButton(locale, 'help', { row: 1 });
+}
+
+function navTopicHelp(locale: Locale): Button {
+  return quickButton(locale, 'help', { row: 0 });
 }
 
 function navSessionsList(locale: Locale): Button {
@@ -54,12 +80,22 @@ function navSessionsRecent(locale: Locale): Button {
   return quickButton(locale, 'sessions', { style: 'primary', row: 0 });
 }
 
-function navStop(locale: Locale): Button {
-  return { label: t(locale, 'progress.btnStop'), callbackData: `${CALLBACK_PREFIXES.CMD}stop`, style: 'danger', row: 0 };
+function navStop(locale: Locale, sessionKey?: string): Button {
+  return {
+    label: t(locale, 'progress.btnStop'),
+    callbackData: commandCallback('stop', sessionKey),
+    style: 'danger',
+    row: 0,
+  };
 }
 
 function navSettings(locale: Locale): Button {
-  return { label: t(locale, 'taskStart.btnSettings'), callbackData: `${CALLBACK_PREFIXES.CMD}home`, style: 'default', row: 0 };
+  return {
+    label: t(locale, 'taskStart.btnSettings'),
+    callbackData: `${CALLBACK_PREFIXES.CMD}home`,
+    style: 'default',
+    row: 0,
+  };
 }
 
 function navPerm(locale: Locale): Button {
@@ -73,7 +109,10 @@ function navQuick(locale: Locale, name: QuickButtonName, index: number): Button 
   });
 }
 
-function quickButtons(locale: Locale, names: readonly QuickButtonName[] = DEFAULT_DONE_BUTTONS): Button[] {
+function quickButtons(
+  locale: Locale,
+  names: readonly QuickButtonName[] = DEFAULT_DONE_BUTTONS,
+): Button[] {
   return names.map((name, index) => navQuick(locale, name, index));
 }
 
@@ -82,15 +121,39 @@ function quickButtons(locale: Locale, names: readonly QuickButtonName[] = DEFAUL
 // ---------------------------------------------------------------------------
 
 function permAllow(permId: string, locale: Locale): Button {
-  return { label: t(locale, 'perm.decisionAllow'), callbackData: `${CALLBACK_PREFIXES.PERM_ALLOW}${permId}`, style: 'primary', row: 0 };
+  return {
+    label: t(locale, 'perm.decisionAllow'),
+    callbackData: `${CALLBACK_PREFIXES.PERM_ALLOW}${permId}`,
+    style: 'primary',
+    row: 0,
+  };
 }
 
-function permAlwaysInSession(permId: string, locale: Locale): Button {
-  return { label: t(locale, 'perm.decisionAlwaysAllow'), callbackData: `${CALLBACK_PREFIXES.PERM_ALLOW_SESSION}${permId}`, style: 'default', row: 0 };
+function permAllowSameCommand(permId: string, locale: Locale): Button {
+  return {
+    label: t(locale, 'perm.decisionAllowSameCommand'),
+    callbackData: `${CALLBACK_PREFIXES.PERM_ALLOW_SAME}${permId}`,
+    style: 'default',
+    row: 0,
+  };
+}
+
+function permAllowAllInSession(permId: string, locale: Locale): Button {
+  return {
+    label: t(locale, 'perm.decisionAllowSessionAll'),
+    callbackData: `${CALLBACK_PREFIXES.PERM_ALLOW_ALL_SESSION}${permId}`,
+    style: 'default',
+    row: 1,
+  };
 }
 
 function permDeny(permId: string, locale: Locale): Button {
-  return { label: t(locale, 'perm.decisionDeny'), callbackData: `${CALLBACK_PREFIXES.PERM_DENY}${permId}`, style: 'danger', row: 1 };
+  return {
+    label: t(locale, 'perm.decisionDeny'),
+    callbackData: `${CALLBACK_PREFIXES.PERM_DENY}${permId}`,
+    style: 'danger',
+    row: 1,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -100,24 +163,49 @@ function permDeny(permId: string, locale: Locale): Button {
 export function permissionButtons(permId: string, locale: Locale): Button[] {
   return [
     permAllow(permId, locale),
-    permAlwaysInSession(permId, locale),
+    permAllowSameCommand(permId, locale),
+    permAllowAllInSession(permId, locale),
     permDeny(permId, locale),
   ];
 }
 
 export function deferredSubmit(permId: string, locale: Locale): Button {
-  return { label: t(locale, 'deferred.btnSubmit'), callbackData: `${CALLBACK_PREFIXES.DEFERRED_SUBMIT}${permId}`, style: 'primary', row: 0 };
+  return {
+    label: t(locale, 'deferred.btnSubmit'),
+    callbackData: `${CALLBACK_PREFIXES.DEFERRED_SUBMIT}${permId}`,
+    style: 'primary',
+    row: 0,
+  };
 }
 
 export function deferredSkip(permId: string, locale: Locale): Button {
-  return { label: t(locale, 'deferred.btnSkip'), callbackData: `${CALLBACK_PREFIXES.DEFERRED_SKIP}${permId}`, style: 'default', row: 0 };
+  return {
+    label: t(locale, 'deferred.btnSkip'),
+    callbackData: `${CALLBACK_PREFIXES.DEFERRED_SKIP}${permId}`,
+    style: 'default',
+    row: 0,
+  };
 }
 
-export function homeButtons(locale: Locale): Button[] {
+export function newSessionButtons(
+  locale: Locale,
+  providers: readonly NewSessionButtonProvider[] = [],
+  row = 1,
+): Button[] {
+  if (providers.length === 0) {
+    return [{ ...navNew(locale), row }];
+  }
+  return providers.map((provider) => navNewForProvider(locale, provider, row));
+}
+
+export function homeButtons(
+  locale: Locale,
+  providers: readonly NewSessionButtonProvider[] = [],
+): Button[] {
   return [
     navSessionsRecent(locale),
     navPerm(locale),
-    { ...navNew(locale), row: 1 },
+    ...newSessionButtons(locale, providers, 1),
     navHelp(locale),
   ];
 }
@@ -129,18 +217,12 @@ export function progressDoneButtons(
   return quickButtons(locale, names);
 }
 
-export function progressRunningButtons(locale: Locale): Button[] {
-  return [
-    navStop(locale),
-    navHelp(locale),
-  ];
+export function progressRunningButtons(locale: Locale, sessionKey?: string): Button[] {
+  return [navStop(locale, sessionKey)];
 }
 
 export function taskStartButtons(locale: Locale): Button[] {
-  return [
-    navSettings(locale),
-    { ...navNew(locale), row: 0 },
-  ];
+  return [navSettings(locale), { ...navNew(locale), row: 0 }];
 }
 
 export function taskSummaryButtons(
@@ -148,6 +230,10 @@ export function taskSummaryButtons(
   names: readonly QuickButtonName[] = DEFAULT_DONE_BUTTONS,
 ): Button[] {
   return quickButtons(locale, names);
+}
+
+export function topicDoneButtons(locale: Locale): Button[] {
+  return [navTopicHelp(locale)];
 }
 
 export function helpButtons(locale: Locale): Button[] {
@@ -158,8 +244,19 @@ export function helpButtons(locale: Locale): Button[] {
 }
 
 export function permStatusButtons(mode: 'on' | 'off', locale: Locale): Button[] {
-  const toggle: Button = mode === 'on'
-    ? { label: t(locale, 'perm.btnTurnOff'), callbackData: `${CALLBACK_PREFIXES.CMD}perm off`, style: 'danger', row: 0 }
-    : { label: t(locale, 'perm.btnTurnOn'), callbackData: `${CALLBACK_PREFIXES.CMD}perm on`, style: 'primary', row: 0 };
+  const toggle: Button =
+    mode === 'on'
+      ? {
+          label: t(locale, 'perm.btnTurnOff'),
+          callbackData: `${CALLBACK_PREFIXES.CMD}perm off`,
+          style: 'danger',
+          row: 0,
+        }
+      : {
+          label: t(locale, 'perm.btnTurnOn'),
+          callbackData: `${CALLBACK_PREFIXES.CMD}perm on`,
+          style: 'primary',
+          row: 0,
+        };
   return [toggle, navHome(locale)];
 }

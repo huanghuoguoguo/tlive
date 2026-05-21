@@ -1,6 +1,3 @@
-import type { BaseChannelAdapter } from '../../channels/base.js';
-import { truncate } from '../../core/string.js';
-
 interface QuestionData {
   questions: Array<{
     question: string;
@@ -13,23 +10,23 @@ interface QuestionData {
 }
 
 /**
- * Handles AskUserQuestion flow including multi-select toggles and resolution.
+ * Tracks AskUserQuestion multi-select state.
  *
  * Handles:
- * - hookQuestionData: Store AskUserQuestion data for answer resolution
- * - toggledSelections: Track multi-select toggled options per hookId
+ * - questionData: Store AskUserQuestion data for answer rendering and validation
+ * - toggledSelections: Track multi-select toggled options per interactionId
  */
 export class QuestionResolver {
   /** Store AskUserQuestion data for answer resolution */
-  private hookQuestionData = new Map<string, QuestionData>();
-  /** Track multi-select toggled options per hookId (key: hookId, value: Set of selected indices) */
+  private questionData = new Map<string, QuestionData>();
+  /** Track multi-select toggled options per interactionId */
   private toggledSelections = new Map<string, Set<number>>();
 
   // --- Question data storage ---
 
   /** Store AskUserQuestion data for later answer resolution */
   storeQuestionData(
-    hookId: string,
+    interactionId: string,
     questions: Array<{
       question: string;
       header: string;
@@ -38,201 +35,52 @@ export class QuestionResolver {
     }>,
     contextSuffix?: string,
   ): void {
-    this.hookQuestionData.set(hookId, { questions, ts: Date.now(), contextSuffix });
+    this.questionData.set(interactionId, { questions, ts: Date.now(), contextSuffix });
   }
 
   /** Get stored AskUserQuestion data (for option count validation) */
-  getQuestionData(hookId: string): QuestionData | undefined {
-    return this.hookQuestionData.get(hookId);
+  getQuestionData(interactionId: string): QuestionData | undefined {
+    return this.questionData.get(interactionId);
   }
 
-  /** Check if question data exists for a hookId */
-  hasQuestionData(hookId: string): boolean {
-    return this.hookQuestionData.has(hookId);
+  /** Check if question data exists for an interaction. */
+  hasQuestionData(interactionId: string): boolean {
+    return this.questionData.has(interactionId);
   }
 
-  /** Delete question data for a hookId */
-  deleteQuestionData(hookId: string): void {
-    this.hookQuestionData.delete(hookId);
+  /** Delete question data for an interaction. */
+  deleteQuestionData(interactionId: string): void {
+    this.questionData.delete(interactionId);
   }
 
   // --- Multi-select toggle ---
 
   /** Toggle a multi-select option. Returns the current selection set for re-rendering. */
-  toggleMultiSelectOption(hookId: string, optionIndex: number): Set<number> | null {
-    const questionData = this.hookQuestionData.get(hookId);
+  toggleMultiSelectOption(interactionId: string, optionIndex: number): Set<number> | null {
+    const questionData = this.questionData.get(interactionId);
     if (!questionData) return null;
     const q = questionData.questions[0];
     if (!q || optionIndex < 0 || optionIndex >= q.options.length) return null;
 
-    let selected = this.toggledSelections.get(hookId);
+    let selected = this.toggledSelections.get(interactionId);
     if (!selected) {
       selected = new Set();
-      this.toggledSelections.set(hookId, selected);
+      this.toggledSelections.set(interactionId, selected);
     }
     if (selected.has(optionIndex)) selected.delete(optionIndex);
     else selected.add(optionIndex);
     return selected;
   }
 
-  /** Get current toggled selections for a hookId */
-  getToggledSelections(hookId: string): Set<number> {
-    return this.toggledSelections.get(hookId) ?? new Set();
+  /** Get current toggled selections for an interaction. */
+  getToggledSelections(interactionId: string): Set<number> {
+    return this.toggledSelections.get(interactionId) ?? new Set();
   }
 
-  /** Clean up toggle state and question data for a hookId */
-  cleanupQuestion(hookId: string): void {
-    this.hookQuestionData.delete(hookId);
-    this.toggledSelections.delete(hookId);
-  }
-
-  // --- Resolution methods ---
-
-  /** Handle AskUserQuestion answer callback — resolve hook with selected answer */
-  async resolveAskQuestion(
-    hookId: string,
-    optionIndex: number,
-    sessionId: string,
-    messageId: string,
-    adapter: BaseChannelAdapter,
-    chatId: string,
-    hookResolver?: { isResolved: (id: string) => boolean; markResolved: (id: string) => void; trackHookMessage: (id: string, sid: string) => void },
-  ): Promise<boolean> {
-    if (hookResolver?.isResolved(hookId)) return true;
-    // Mark resolved immediately to prevent double-click races (async yields below)
-    hookResolver?.markResolved(hookId);
-
-    const questionData = this.hookQuestionData.get(hookId);
-    if (!questionData) {
-      await adapter.send({ chatId, text: '❌ Question data not found' });
-      return true;
-    }
-
-    const q = questionData.questions[0];
-    const selected = q.options[optionIndex];
-    if (!selected) {
-      await adapter.send({ chatId, text: `❌ Invalid option (1-${q.options.length})` });
-      return true;
-    }
-
-    const ctx = questionData.contextSuffix || '';
-    this.hookQuestionData.delete(hookId);
-    await adapter.editCardResolution(chatId, messageId, {
-      resolution: 'selected',
-      label: `✅ Selected: ${selected.label}`,
-      contextSuffix: ctx ? ` Terminal${ctx}` : undefined,
-    });
-    if (sessionId) {
-      hookResolver?.trackHookMessage(messageId, sessionId);
-    }
-    return true;
-  }
-
-  /** Submit multi-select: resolve hook with all toggled options */
-  async resolveMultiSelect(
-    hookId: string,
-    sessionId: string,
-    messageId: string,
-    adapter: BaseChannelAdapter,
-    chatId: string,
-    hookResolver?: { isResolved: (id: string) => boolean; markResolved: (id: string) => void; trackHookMessage: (id: string, sid: string) => void },
-  ): Promise<boolean> {
-    if (hookResolver?.isResolved(hookId)) return true;
-
-    const questionData = this.hookQuestionData.get(hookId);
-    if (!questionData) {
-      await adapter.send({ chatId, text: '❌ Question data not found' });
-      return true;
-    }
-    const selected = this.toggledSelections.get(hookId) ?? new Set<number>();
-    if (selected.size === 0) {
-      await adapter.send({ chatId, text: '⚠️ No options selected' });
-      return true;
-    }
-
-    hookResolver?.markResolved(hookId);
-    const q = questionData.questions[0];
-    // Join selected labels with comma (per Claude Code docs)
-    const selectedLabels = [...selected].sort((a, b) => a - b).map(i => q.options[i]?.label).filter(Boolean);
-
-    const ctx = questionData.contextSuffix || '';
-    this.hookQuestionData.delete(hookId);
-    this.toggledSelections.delete(hookId);
-    await adapter.editCardResolution(chatId, messageId, {
-      resolution: 'answered',
-      label: `✅ Selected: ${selectedLabels.join(', ')}`,
-      contextSuffix: ctx ? ` Terminal${ctx}` : undefined,
-    });
-    if (sessionId) {
-      hookResolver?.trackHookMessage(messageId, sessionId);
-    }
-    return true;
-  }
-
-  /** Handle AskUserQuestion skip — resolve hook with allow + empty answers.
-   *  Hook API has no "skip" concept: deny = hard error, allow + empty = graceful skip. */
-  async resolveAskQuestionSkip(
-    hookId: string,
-    sessionId: string,
-    messageId: string,
-    adapter: BaseChannelAdapter,
-    chatId: string,
-    hookResolver?: { isResolved: (id: string) => boolean; markResolved: (id: string) => void; trackHookMessage: (id: string, sid: string) => void },
-  ): Promise<boolean> {
-    if (hookResolver?.isResolved(hookId)) return true;
-
-    const questionData = this.hookQuestionData.get(hookId);
-    if (!questionData) {
-      await adapter.send({ chatId, text: '❌ Question data not found' });
-      return true;
-    }
-
-    hookResolver?.markResolved(hookId);
-
-    const ctx = questionData.contextSuffix || '';
-    this.hookQuestionData.delete(hookId);
-    await adapter.editCardResolution(chatId, messageId, {
-      resolution: 'skipped',
-      label: '⏭ Skipped',
-      contextSuffix: ctx ? ` Terminal${ctx}` : undefined,
-    });
-    if (sessionId) {
-      hookResolver?.trackHookMessage(messageId, sessionId);
-    }
-    return true;
-  }
-
-  /** Handle AskUserQuestion free text reply — resolve hook with text as answer */
-  async resolveAskQuestionWithText(
-    hookId: string,
-    text: string,
-    sessionId: string,
-    messageId: string,
-    adapter: BaseChannelAdapter,
-    chatId: string,
-    hookResolver?: { isResolved: (id: string) => boolean; markResolved: (id: string) => void; trackHookMessage: (id: string, sid: string) => void },
-  ): Promise<boolean> {
-    if (hookResolver?.isResolved(hookId)) return true;
-
-    const questionData = this.hookQuestionData.get(hookId);
-    if (!questionData) {
-      await adapter.send({ chatId, text: '❌ Question data not found' });
-      return true;
-    }
-
-    hookResolver?.markResolved(hookId);
-
-    const ctx = questionData.contextSuffix || '';
-    this.hookQuestionData.delete(hookId);
-    await adapter.editCardResolution(chatId, messageId, {
-      resolution: 'answered',
-      label: `✅ Answer: ${truncate(text, 50)}`,
-      contextSuffix: ctx ? ` Terminal${ctx}` : undefined,
-    });
-    if (sessionId) {
-      hookResolver?.trackHookMessage(messageId, sessionId);
-    }
-    return true;
+  /** Clean up toggle state and question data for an interaction. */
+  cleanupQuestion(interactionId: string): void {
+    this.questionData.delete(interactionId);
+    this.toggledSelections.delete(interactionId);
   }
 
   // --- Pruning ---
@@ -240,9 +88,9 @@ export class QuestionResolver {
   /** Clean up stale entries older than 1 hour */
   pruneStaleEntries(): void {
     const cutoff = Date.now() - 60 * 60 * 1000;
-    for (const [id, entry] of this.hookQuestionData) {
+    for (const [id, entry] of this.questionData) {
       if (entry.ts < cutoff) {
-        this.hookQuestionData.delete(id);
+        this.questionData.delete(id);
         this.toggledSelections.delete(id);
       }
     }

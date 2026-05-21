@@ -15,7 +15,7 @@ import type { ChannelBinding } from '../../store/interface.js';
 import { generateId } from '../../core/id.js';
 import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../../core/timing.js';
 import { permissionButtons } from '../../ui/buttons.js';
-import { messageScopeId } from '../../core/key.js';
+import { conversationScopeId } from '../../channels/conversation-context.js';
 
 interface SDKPermissionHandlerContext {
   adapter: BaseChannelAdapter;
@@ -50,7 +50,7 @@ export class SDKPermissionHandler {
     signal?: AbortSignal,
   ): Promise<'allow' | 'allow_always' | 'deny'> {
     const { msg, binding, permissions, state, renderer } = this.context;
-    const scopeId = messageScopeId(msg);
+    const scopeId = conversationScopeId(msg);
 
     // Check perm mode dynamically (so /perm off mid-query takes effect)
     const permMode = state.getPermMode(msg.channelType, scopeId, binding.sessionId);
@@ -89,7 +89,7 @@ export class SDKPermissionHandler {
 
     const inputStr = getToolCommand(toolName, toolInput) || JSON.stringify(toolInput, null, 2);
     permissions.notePermissionPending(chatKey, permId, binding.sessionId, toolName, inputStr);
-    const buttons: Button[] = permissionButtons(permId, 'en');
+    const buttons: Button[] = permissionButtons(permId, this.context.adapter.getLocale());
     renderer.onPermissionNeeded(toolName, inputStr, permId, buttons);
 
     const result = await permissions.getGateway().waitFor(permId, {
@@ -104,6 +104,12 @@ export class SDKPermissionHandler {
     renderer.onPermissionResolved(permId);
 
     permissions.clearPendingSdkPerm(chatKey);
+    if (result.grantScope === 'same_command') {
+      permissions.rememberSameCommandAllowance(binding.sessionId, toolName, toolInput);
+    }
+    if (result.grantScope === 'session_all' && binding.sessionId) {
+      state.setPermMode(msg.channelType, scopeId, binding.sessionId, 'off');
+    }
     if (result.behavior === 'allow_always') {
       permissions.rememberSessionAllowance(binding.sessionId, toolName, toolInput);
     }

@@ -1,6 +1,8 @@
+import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { sendFileToChat, type FileSendApiOptions } from '../../engine/automation/file-send-api.js';
+import { handleFileSendRequest, sendFileToChat } from '../../engine/automation/file-send-api.js';
 import type { BridgeManager } from '../../engine/coordinators/bridge-manager.js';
+import type { DeliveryRoute } from '../../channels/delivery-route.js';
 
 // Mock fs/promises
 vi.mock('node:fs/promises', () => ({
@@ -9,9 +11,36 @@ vi.mock('node:fs/promises', () => ({
 }));
 
 import { readFile, stat } from 'node:fs/promises';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 
 const mockStat = vi.mocked(stat);
 const mockReadFile = vi.mocked(readFile);
+
+function createJsonRequest(body: Record<string, unknown>): IncomingMessage {
+  const req = new EventEmitter() as IncomingMessage;
+  (req as any).method = 'POST';
+  process.nextTick(() => {
+    req.emit('data', Buffer.from(JSON.stringify(body)));
+    req.emit('end');
+  });
+  return req;
+}
+
+function createJsonResponse(): ServerResponse & { body?: string; statusCode?: number } {
+  const res = {
+    writableEnded: false,
+    writeHead: vi.fn((statusCode: number) => {
+      res.statusCode = statusCode;
+      return res;
+    }),
+    end: vi.fn((body?: string) => {
+      res.body = body;
+      res.writableEnded = true;
+      return res;
+    }),
+  } as unknown as ServerResponse & { body?: string; statusCode?: number; writableEnded: boolean };
+  return res;
+}
 
 function createMockBridge(overrides?: Partial<BridgeManager>): BridgeManager {
   return {
@@ -27,6 +56,15 @@ function createMockBridge(overrides?: Partial<BridgeManager>): BridgeManager {
   } as unknown as BridgeManager;
 }
 
+function route(overrides: Partial<DeliveryRoute> = {}): DeliveryRoute {
+  return {
+    channelType: 'feishu',
+    chatId: 'chat-1',
+    scopeId: 'chat-1',
+    ...overrides,
+  };
+}
+
 describe('sendFileToChat', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -36,7 +74,7 @@ describe('sendFileToChat', () => {
     mockStat.mockRejectedValue(new Error('ENOENT'));
 
     const bridge = createMockBridge();
-    const result = await sendFileToChat('/missing.png', undefined, 'feishu', 'chat-1', '/work', bridge);
+    const result = await sendFileToChat('/missing.png', undefined, route(), '/work', bridge);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('File not found');
@@ -46,7 +84,7 @@ describe('sendFileToChat', () => {
     mockStat.mockResolvedValue({ isFile: () => false, size: 100 } as any);
 
     const bridge = createMockBridge();
-    const result = await sendFileToChat('/somedir', undefined, 'feishu', 'chat-1', '/work', bridge);
+    const result = await sendFileToChat('/somedir', undefined, route(), '/work', bridge);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('Not a file');
@@ -56,7 +94,7 @@ describe('sendFileToChat', () => {
     mockStat.mockResolvedValue({ isFile: () => true, size: 25 * 1024 * 1024 } as any);
 
     const bridge = createMockBridge();
-    const result = await sendFileToChat('/big.zip', undefined, 'feishu', 'chat-1', '/work', bridge);
+    const result = await sendFileToChat('/big.zip', undefined, route(), '/work', bridge);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('too large');
@@ -66,7 +104,7 @@ describe('sendFileToChat', () => {
     mockStat.mockResolvedValue({ isFile: () => true, size: 0 } as any);
 
     const bridge = createMockBridge();
-    const result = await sendFileToChat('/empty.txt', undefined, 'feishu', 'chat-1', '/work', bridge);
+    const result = await sendFileToChat('/empty.txt', undefined, route(), '/work', bridge);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('empty');
@@ -77,7 +115,7 @@ describe('sendFileToChat', () => {
     mockReadFile.mockResolvedValue(Buffer.from('hello'));
 
     const bridge = createMockBridge({ getAdapter: vi.fn().mockReturnValue(null) as any });
-    const result = await sendFileToChat('/test.txt', undefined, 'feishu', 'chat-1', '/work', bridge);
+    const result = await sendFileToChat('/test.txt', undefined, route(), '/work', bridge);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("Channel 'feishu' not available");
@@ -97,7 +135,13 @@ describe('sendFileToChat', () => {
       }) as any,
     });
 
-    const result = await sendFileToChat('/work/output.png', 'Here is the chart', 'feishu', 'chat-1', '/work', bridge);
+    const result = await sendFileToChat(
+      '/work/output.png',
+      'Here is the chart',
+      route(),
+      '/work',
+      bridge,
+    );
 
     expect(result.success).toBe(true);
     expect(result.filename).toBe('output.png');
@@ -124,7 +168,7 @@ describe('sendFileToChat', () => {
       }) as any,
     });
 
-    const result = await sendFileToChat('report.pdf', undefined, 'feishu', 'chat-1', '/work', bridge);
+    const result = await sendFileToChat('report.pdf', undefined, route(), '/work', bridge);
 
     expect(result.success).toBe(true);
     expect(result.filename).toBe('report.pdf');
@@ -133,6 +177,38 @@ describe('sendFileToChat', () => {
         type: 'file',
         filename: 'report.pdf',
         mimeType: 'application/pdf',
+      }),
+    }));
+  });
+
+  it('preserves topic reply context when sending a file', async () => {
+    mockStat.mockResolvedValue({ isFile: () => true, size: 2048 } as any);
+    mockReadFile.mockResolvedValue(Buffer.from('text data'));
+
+    const mockSend = vi.fn().mockResolvedValue({ success: true });
+    const bridge = createMockBridge({
+      getAdapter: vi.fn().mockReturnValue({
+        channelType: 'feishu',
+        formatContent: vi.fn().mockReturnValue({ chatId: 'chat-1', text: '' }),
+        send: mockSend,
+      }) as any,
+    });
+
+    const result = await sendFileToChat(
+      'notes.txt',
+      undefined,
+      route({ replyToMessageId: 'msg-topic', replyInThread: true }),
+      '/work',
+      bridge,
+    );
+
+    expect(result.success).toBe(true);
+    expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({
+      replyToMessageId: 'msg-topic',
+      replyInThread: true,
+      media: expect.objectContaining({
+        type: 'file',
+        filename: 'notes.txt',
       }),
     }));
   });
@@ -150,7 +226,7 @@ describe('sendFileToChat', () => {
       }) as any,
     });
 
-    await sendFileToChat('output/chart.png', undefined, 'feishu', 'chat-1', '/my/project', bridge);
+    await sendFileToChat('output/chart.png', undefined, route(), '/my/project', bridge);
 
     // stat should be called with resolved path
     expect(mockStat).toHaveBeenCalledWith('/my/project/output/chart.png');
@@ -168,7 +244,7 @@ describe('sendFileToChat', () => {
       }) as any,
     });
 
-    const result = await sendFileToChat('/test.png', undefined, 'feishu', 'chat-1', '/work', bridge);
+    const result = await sendFileToChat('/test.png', undefined, route(), '/work', bridge);
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('Network timeout');
@@ -187,7 +263,7 @@ describe('sendFileToChat', () => {
       }) as any,
     });
 
-    await sendFileToChat('/test.txt', undefined, 'feishu', 'chat-1', '/work', bridge);
+    await sendFileToChat('/test.txt', undefined, route(), '/work', bridge);
 
     expect(mockFormatContent).toHaveBeenCalledWith('chat-1', '');
   });
@@ -205,7 +281,7 @@ describe('sendFileToChat', () => {
       }) as any,
     });
 
-    await sendFileToChat('/data.xyz', undefined, 'feishu', 'chat-1', '/work', bridge);
+    await sendFileToChat('/data.xyz', undefined, route(), '/work', bridge);
 
     expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({
       media: expect.objectContaining({
@@ -213,5 +289,77 @@ describe('sendFileToChat', () => {
         type: 'file',
       }),
     }));
+  });
+});
+
+describe('handleFileSendRequest', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('routes files by per-turn routeToken instead of the main chat fallback', async () => {
+    mockStat.mockResolvedValue({ isFile: () => true, size: 100 } as any);
+    mockReadFile.mockResolvedValue(Buffer.from('file contents'));
+
+    const mockSend = vi.fn().mockResolvedValue({ success: true });
+    const bridge = createMockBridge({
+      getAdapter: vi.fn().mockReturnValue({
+        channelType: 'feishu',
+        formatContent: vi.fn().mockReturnValue({ chatId: 'chat-1', text: '' }),
+        send: mockSend,
+      }) as any,
+      resolveFileDeliveryToken: vi.fn().mockReturnValue({
+        channelType: 'feishu',
+        chatId: 'chat-1',
+        scopeId: 'chat-1#thread:thread-1',
+        replyToMessageId: 'msg-topic',
+        replyInThread: true,
+        cwd: '/topic-work',
+        sessionKey: 'feishu:chat-1#thread:thread-1:session-1',
+      }) as any,
+      getBinding: vi.fn().mockResolvedValue({ cwd: '/wrong-main-workdir' }) as any,
+    });
+    const req = createJsonRequest({ file_path: 'out.txt', routeToken: 'route-token' });
+    const res = createJsonResponse();
+
+    await handleFileSendRequest(req, res, { bridge, defaultWorkdir: '/default' });
+
+    expect(bridge.resolveFileDeliveryToken).toHaveBeenCalledWith('route-token');
+    expect(bridge.getBinding).toHaveBeenCalledWith('feishu', 'chat-1#thread:thread-1');
+    expect(mockStat).toHaveBeenCalledWith('/topic-work/out.txt');
+    expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({
+      chatId: 'chat-1',
+      replyToMessageId: 'msg-topic',
+      replyInThread: true,
+      media: expect.objectContaining({ filename: 'out.txt' }),
+    }));
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body || '{}')).toMatchObject({ success: true, filename: 'out.txt' });
+  });
+
+  it('rejects ambiguous file sends instead of falling back to the last active chat', async () => {
+    const mockSend = vi.fn().mockResolvedValue({ success: true });
+    const bridge = createMockBridge({
+      getAdapter: vi.fn().mockReturnValue({
+        channelType: 'feishu',
+        formatContent: vi.fn().mockReturnValue({ chatId: 'main-chat', text: '' }),
+        send: mockSend,
+      }) as any,
+      getAdapters: vi.fn().mockReturnValue([{ channelType: 'feishu' }]) as any,
+      getLastChatId: vi.fn().mockReturnValue('main-chat') as any,
+    });
+    const req = createJsonRequest({ file_path: 'out.txt' });
+    const res = createJsonResponse();
+
+    await handleFileSendRequest(req, res, { bridge, defaultWorkdir: '/default' });
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body || '{}')).toMatchObject({
+      success: false,
+      error: expect.stringContaining('Missing file delivery target'),
+    });
+    expect(mockStat).not.toHaveBeenCalled();
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(bridge.getLastChatId).not.toHaveBeenCalled();
   });
 });

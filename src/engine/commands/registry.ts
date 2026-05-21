@@ -1,5 +1,6 @@
 import type { CommandHandler, HelpEntry } from './types.js';
 import { getHelpCategoryInfo } from './help-categories.js';
+import { publicQuickCommands } from './slash-policy.js';
 
 /** Registry for command handlers - implements open-closed principle */
 class CommandRegistry {
@@ -27,18 +28,14 @@ class CommandRegistry {
 
   /** Get set of quick commands for BridgeManager */
   getQuickCommands(): Set<string> {
-    return new Set(
-      [...this.handlers.values()]
-        .filter(h => h.quick)
-        .map(h => h.name.toLowerCase()),
-    );
+    return publicQuickCommands([...this.handlers.values()]);
   }
 
   /** Get help entries for /help output */
   getHelpEntries(): HelpEntry[] {
     return [...this.handlers.values()]
-      .filter(h => h.description)
-      .map(h => ({
+      .filter((h) => h.description)
+      .map((h) => ({
         cmd: h.name.slice(1),
         desc: h.description!,
         category: getHelpCategoryInfo(h.helpCategory),

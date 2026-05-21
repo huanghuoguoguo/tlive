@@ -3,10 +3,17 @@ import { join, resolve } from 'node:path';
 import type { ProjectConfig, ClaudeSettingSource } from './store/interface.js';
 import { expandTilde, getTliveHome } from './core/path.js';
 import { normalizeQuickButtonNames, type QuickButtonName } from './ui/button-registry.js';
+import type { AgentProviderKind } from './providers/kinds.js';
 
 export type { ClaudeSettingSource } from './store/interface.js';
 
 export const DEFAULT_CLAUDE_SETTING_SOURCES: ClaudeSettingSource[] = ['user', 'project', 'local'];
+
+export type ProviderKind = AgentProviderKind;
+export type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
+export type CodexApprovalPolicy = 'never' | 'on-request' | 'on-failure' | 'untrusted';
+export type CodexReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+export type CodexWebSearchMode = 'disabled' | 'cached' | 'live';
 
 /** Structure of projects.json configuration file */
 export interface ProjectsFileConfig {
@@ -32,10 +39,21 @@ export interface ProjectsValidationResult {
 export interface Config {
   port: number;
   token: string;
+  provider: ProviderKind;
   defaultWorkdir: string;
   defaultModel: string;
   /** Claude Code settings sources to load (default: ['user', 'project', 'local']) */
   claudeSettingSources: ClaudeSettingSource[];
+  codex: {
+    model: string;
+    codexPath: string;
+    sandboxMode: CodexSandboxMode;
+    approvalPolicy: CodexApprovalPolicy;
+    skipGitRepoCheck: boolean;
+    modelReasoningEffort?: CodexReasoningEffort;
+    networkAccessEnabled?: boolean;
+    webSearchMode?: CodexWebSearchMode;
+  };
   /** Webhook configuration for automation entry */
   webhook: {
     /** Enable webhook endpoint (default: false) */
@@ -221,6 +239,45 @@ function normalizeWebhookSessionStrategy(value: string | undefined): 'reject' | 
   return value === 'create' ? 'create' : 'reject';
 }
 
+function normalizeProvider(value: string | undefined): ProviderKind {
+  return value === 'codex' ? 'codex' : 'claude';
+}
+
+function normalizeCodexSandboxMode(value: string | undefined): CodexSandboxMode {
+  if (value === 'read-only' || value === 'danger-full-access') return value;
+  return 'workspace-write';
+}
+
+function normalizeCodexApprovalPolicy(value: string | undefined): CodexApprovalPolicy {
+  if (value === 'never' || value === 'on-failure' || value === 'untrusted') return value;
+  return 'on-request';
+}
+
+function normalizeCodexReasoningEffort(
+  value: string | undefined,
+): CodexReasoningEffort | undefined {
+  if (
+    value === 'minimal' ||
+    value === 'low' ||
+    value === 'medium' ||
+    value === 'high' ||
+    value === 'xhigh'
+  ) {
+    return value;
+  }
+  return undefined;
+}
+
+function normalizeCodexWebSearchMode(value: string | undefined): CodexWebSearchMode | undefined {
+  if (value === 'disabled' || value === 'cached' || value === 'live') return value;
+  return undefined;
+}
+
+function parseOptionalBoolean(value: string | undefined): boolean | undefined {
+  if (value === undefined || value === '') return undefined;
+  return value === 'true';
+}
+
 function loadEnvFile(path: string): Record<string, string> {
   try {
     const content = readFileSync(path, 'utf-8');
@@ -268,11 +325,22 @@ export function loadConfig(): Config {
   const config: Config = {
     port,
     token: get('TL_TOKEN'),
+    provider: normalizeProvider(get('TL_PROVIDER', 'claude')),
     claudeSettingSources: parseList(
       get('TL_CLAUDE_SETTINGS', DEFAULT_CLAUDE_SETTING_SOURCES.join(',')),
     ) as ClaudeSettingSource[],
     defaultWorkdir: get('TL_DEFAULT_WORKDIR', process.cwd()),
     defaultModel: get('TL_DEFAULT_MODEL'),
+    codex: {
+      model: get('TL_CODEX_MODEL', get('TL_DEFAULT_MODEL')),
+      codexPath: get('TL_CODEX_PATH'),
+      sandboxMode: normalizeCodexSandboxMode(get('TL_CODEX_SANDBOX_MODE', 'workspace-write')),
+      approvalPolicy: normalizeCodexApprovalPolicy(get('TL_CODEX_APPROVAL_POLICY', 'on-request')),
+      skipGitRepoCheck: get('TL_CODEX_SKIP_GIT_REPO_CHECK', 'false') === 'true',
+      modelReasoningEffort: normalizeCodexReasoningEffort(get('TL_CODEX_REASONING_EFFORT')),
+      networkAccessEnabled: parseOptionalBoolean(get('TL_CODEX_NETWORK_ACCESS')),
+      webSearchMode: normalizeCodexWebSearchMode(get('TL_CODEX_WEB_SEARCH')),
+    },
     webhook: {
       enabled: get('TL_WEBHOOK_ENABLED', 'false') === 'true',
       token: get('TL_WEBHOOK_TOKEN'),

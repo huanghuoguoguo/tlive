@@ -5,6 +5,11 @@ const mockMessageCreate = vi.fn();
 const mockMessageReply = vi.fn();
 const mockMessagePatch = vi.fn().mockResolvedValue({});
 const mockPinCreate = vi.fn().mockResolvedValue({});
+const mockImageCreate = vi.fn();
+const mockFileCreate = vi.fn();
+const mockV1MessageResourceGet = vi.fn().mockResolvedValue({ data: null });
+const mockMessageResourceGet = vi.fn().mockResolvedValue(null);
+const mockImageGet = vi.fn().mockResolvedValue(null);
 const eventHandlers = new Map<string, (...args: any[]) => any>();
 const mockEventHandler = vi.fn(async (event: any) => {
   const handler = eventHandlers.get('im.message.receive_v1');
@@ -23,9 +28,10 @@ vi.mock('@larksuiteoapi/node-sdk', () => {
       pin: {
         create: mockPinCreate,
       },
-      v1: { messageResource: { get: vi.fn().mockResolvedValue({ data: null }) } },
-      image: { get: vi.fn().mockResolvedValue(null) },
-      messageResource: { get: vi.fn().mockResolvedValue(null) },
+      file: { create: mockFileCreate },
+      v1: { messageResource: { get: mockV1MessageResourceGet } },
+      image: { create: mockImageCreate, get: mockImageGet },
+      messageResource: { get: mockMessageResourceGet },
     };
   });
 
@@ -70,6 +76,11 @@ describe('FeishuAdapter', () => {
     mockMessageReply.mockResolvedValue({ data: { message_id: 'msg-feishu-reply-1' } });
     mockMessagePatch.mockResolvedValue({});
     mockPinCreate.mockResolvedValue({});
+    mockImageCreate.mockResolvedValue({ image_key: 'img-uploaded' });
+    mockFileCreate.mockResolvedValue({ file_key: 'file-uploaded' });
+    mockV1MessageResourceGet.mockResolvedValue({ data: null });
+    mockMessageResourceGet.mockResolvedValue(null);
+    mockImageGet.mockResolvedValue(null);
     adapter = new FeishuAdapter({
       appId: 'cli_test123',
       appSecret: 'secret_abc',
@@ -197,6 +208,82 @@ describe('FeishuAdapter', () => {
       const call = mockMessageReply.mock.calls[0][0];
       expect(call.path.message_id).toBe('msg-topic-1');
       expect(call.data.reply_in_thread).toBe(true);
+      await adapter.stop();
+    });
+
+    it('sends uploaded files as Feishu file messages', async () => {
+      await adapter.start();
+      await adapter.send({
+        chatId: 'oc_chat123',
+        text: 'caption',
+        media: {
+          type: 'file',
+          filename: 'notes.txt',
+          mimeType: 'text/plain',
+          buffer: Buffer.from('hello'),
+        },
+      });
+
+      expect(mockFileCreate).toHaveBeenCalledWith({
+        data: {
+          file_type: 'stream',
+          file_name: 'notes.txt',
+          file: expect.any(Buffer),
+        },
+      });
+      expect(mockMessageCreate).toHaveBeenCalledWith({
+        params: { receive_id_type: 'chat_id' },
+        data: {
+          receive_id: 'oc_chat123',
+          msg_type: 'file',
+          content: JSON.stringify({ file_key: 'file-uploaded' }),
+        },
+      });
+      await adapter.stop();
+    });
+
+    it('accepts legacy nested upload key responses', async () => {
+      mockFileCreate.mockResolvedValueOnce({ data: { file_key: 'nested-file-key' } });
+      await adapter.start();
+
+      await adapter.send({
+        chatId: 'oc_chat123',
+        text: 'caption',
+        media: {
+          type: 'file',
+          filename: 'notes.txt',
+          mimeType: 'text/plain',
+          buffer: Buffer.from('hello'),
+        },
+      });
+
+      expect(mockMessageCreate).toHaveBeenCalledWith({
+        params: { receive_id_type: 'chat_id' },
+        data: {
+          receive_id: 'oc_chat123',
+          msg_type: 'file',
+          content: JSON.stringify({ file_key: 'nested-file-key' }),
+        },
+      });
+      await adapter.stop();
+    });
+
+    it('does not fall back to text when media delivery fails', async () => {
+      mockFileCreate.mockRejectedValueOnce(new Error('upload failed'));
+      await adapter.start();
+
+      await expect(adapter.send({
+        chatId: 'oc_chat123',
+        text: 'caption',
+        media: {
+          type: 'file',
+          filename: 'notes.txt',
+          mimeType: 'text/plain',
+          buffer: Buffer.from('hello'),
+        },
+      })).rejects.toThrow('upload failed');
+
+      expect(mockMessageCreate).not.toHaveBeenCalled();
       await adapter.stop();
     });
 
@@ -418,6 +505,135 @@ describe('FeishuAdapter', () => {
         replyTargetMessageId: 'msg_topic_reply',
       });
       expect(msg!.replyToMessageId).toBeUndefined();
+
+      await adapter.stop();
+    });
+
+    it('downloads image messages into attachments', async () => {
+      await adapter.start();
+      mockMessageResourceGet.mockResolvedValue(Buffer.from('fake-image'));
+
+      await mockEventHandler({
+        message: {
+          message_id: 'msg_image',
+          chat_id: 'chat_1',
+          message_type: 'image',
+          content: JSON.stringify({ image_key: 'img_key' }),
+        },
+        sender: { sender_id: { user_id: 'user_1' } },
+      });
+
+      const msg = await adapter.consumeOne();
+      expect(msg).toMatchObject({
+        text: '',
+        messageId: 'msg_image',
+      });
+      expect(msg?.attachments).toHaveLength(1);
+      expect(msg?.attachments?.[0]).toMatchObject({
+        type: 'image',
+        name: 'image.png',
+        mimeType: 'image/png',
+      });
+
+      await adapter.stop();
+    });
+
+    it('downloads file messages with filename and inferred mime type', async () => {
+      await adapter.start();
+      mockV1MessageResourceGet.mockResolvedValue({ data: Buffer.from('hello from file') });
+
+      await mockEventHandler({
+        message: {
+          message_id: 'msg_file',
+          chat_id: 'chat_1',
+          message_type: 'file',
+          content: JSON.stringify({ file_key: 'file_key', file_name: 'notes.txt' }),
+        },
+        sender: { sender_id: { user_id: 'user_1' } },
+      });
+
+      const msg = await adapter.consumeOne();
+      expect(msg).toMatchObject({
+        text: '',
+        messageId: 'msg_file',
+      });
+      expect(msg?.attachments).toHaveLength(1);
+      expect(msg?.attachments?.[0]).toMatchObject({
+        type: 'file',
+        name: 'notes.txt',
+        mimeType: 'text/plain',
+        base64Data: Buffer.from('hello from file').toString('base64'),
+      });
+
+      await adapter.stop();
+    });
+
+    it('handles rich post messages containing image and text in one bubble', async () => {
+      await adapter.start();
+      mockMessageResourceGet.mockResolvedValue(Buffer.from('rich-image'));
+
+      await mockEventHandler({
+        message: {
+          message_id: 'msg_post_image',
+          chat_id: 'chat_1',
+          message_type: 'post',
+          content: JSON.stringify({
+            content: [
+              [{ tag: 'img', image_key: 'img_key' }],
+              [{ tag: 'text', text: '你能访问这个图片内容吗，是什么？' }],
+            ],
+          }),
+        },
+        sender: { sender_id: { user_id: 'user_1' } },
+      });
+
+      const msg = await adapter.consumeOne();
+      expect(msg).toMatchObject({
+        text: '你能访问这个图片内容吗，是什么？',
+        messageId: 'msg_post_image',
+      });
+      expect(msg?.attachments).toHaveLength(1);
+      expect(msg?.attachments?.[0]).toMatchObject({
+        type: 'image',
+        name: 'image.png',
+        mimeType: 'image/png',
+        base64Data: Buffer.from('rich-image').toString('base64'),
+      });
+
+      await adapter.stop();
+    });
+
+    it('handles rich post messages containing file and text in one bubble', async () => {
+      await adapter.start();
+      mockV1MessageResourceGet.mockResolvedValue({ data: Buffer.from('rich file text') });
+
+      await mockEventHandler({
+        message: {
+          message_id: 'msg_post_file',
+          chat_id: 'chat_1',
+          message_type: 'post',
+          content: JSON.stringify({
+            content: [
+              [{ tag: 'file', file_key: 'file_key', file_name: 'rich.txt' }],
+              [{ tag: 'text', text: '读取一下这个文件内容' }],
+            ],
+          }),
+        },
+        sender: { sender_id: { user_id: 'user_1' } },
+      });
+
+      const msg = await adapter.consumeOne();
+      expect(msg).toMatchObject({
+        text: '读取一下这个文件内容',
+        messageId: 'msg_post_file',
+      });
+      expect(msg?.attachments).toHaveLength(1);
+      expect(msg?.attachments?.[0]).toMatchObject({
+        type: 'file',
+        name: 'rich.txt',
+        mimeType: 'text/plain',
+        base64Data: Buffer.from('rich file text').toString('base64'),
+      });
 
       await adapter.stop();
     });

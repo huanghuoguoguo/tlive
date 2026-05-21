@@ -26,7 +26,7 @@ describe('IngressCoordinator', () => {
     vi.useRealTimers();
   });
 
-  it('persists last chat ids for hook routing', () => {
+  it('persists last chat ids for automation routing', () => {
     vi.useFakeTimers();
     const chatIdFile = tempChatIdFile();
     if (existsSync(chatIdFile)) {
@@ -75,6 +75,91 @@ describe('IngressCoordinator', () => {
     expect(merged.handled).toBe(false);
     expect(merged.message.attachments).toHaveLength(1);
     expect(merged.message.attachments?.[0]?.name).toBe('diagram.png');
+
+    ingress.dispose();
+  });
+
+  it('records last chat from delivery targets without keeping an implicit file route', () => {
+    const ingress = new IngressCoordinator({ chatIdFile: tempChatIdFile() });
+
+    ingress.recordDeliveryTarget({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      scopeId: 'chat-1#thread:thread-1',
+      threadId: 'thread-1',
+      replyInThread: true,
+      replyTargetMessageId: 'msg-topic',
+      userId: 'user-1',
+      text: 'send it back',
+      messageId: 'msg-user',
+    });
+
+    expect(ingress.getLastChatId('feishu')).toBe('chat-1');
+
+    ingress.dispose();
+  });
+
+  it('does not auto-dispatch attachment-only messages without follow-up text', async () => {
+    vi.useFakeTimers();
+    const chatIdFile = tempChatIdFile();
+    const { adapter } = createAdapter();
+    const ingress = new IngressCoordinator({ chatIdFile });
+
+    const fileOnly = ingress.prepareAttachments({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      text: '',
+      messageId: 'msg-1',
+      attachments: [{
+        type: 'file',
+        name: 'notes.txt',
+        mimeType: 'text/plain',
+        base64Data: 'aGVsbG8=',
+      }],
+    });
+
+    expect(fileOnly.handled).toBe(true);
+    expect(await ingress.getNextMessage(adapter)).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await ingress.getNextMessage(adapter)).toBeNull();
+
+    ingress.dispose();
+  });
+
+  it('drops stale buffered attachments instead of merging them into much later text', () => {
+    vi.useFakeTimers();
+    const chatIdFile = tempChatIdFile();
+    const ingress = new IngressCoordinator({ chatIdFile, attachmentTtlMs: 1000 });
+
+    const fileOnly = ingress.prepareAttachments({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      text: '',
+      messageId: 'msg-1',
+      attachments: [{
+        type: 'file',
+        name: 'notes.txt',
+        mimeType: 'text/plain',
+        base64Data: 'aGVsbG8=',
+      }],
+    });
+
+    expect(fileOnly.handled).toBe(true);
+    vi.advanceTimersByTime(1001);
+
+    const textOnly = ingress.prepareAttachments({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      text: 'later question',
+      messageId: 'msg-2',
+    });
+
+    expect(textOnly.handled).toBe(false);
+    expect(textOnly.message.attachments).toBeUndefined();
 
     ingress.dispose();
   });

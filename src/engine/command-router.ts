@@ -4,8 +4,8 @@ import type { SessionStateManager } from './state/session-state.js';
 import type { WorkspaceStateManager } from './state/workspace-state.js';
 import type { RecentProjectsManager } from './state/recent-projects.js';
 import type { ChannelRouter } from '../utils/router.js';
-import type { QueryControls } from '../providers/base.js';
-import type { ClaudeSDKProvider } from '../providers/claude-sdk.js';
+import type { AgentProvider, QueryControls } from '../providers/base.js';
+import type { AgentProviderRegistry } from '../providers/registry.js';
 import type { SDKEngine, SessionCleanupReason } from './sdk/engine.js';
 import type { ProjectsValidationResult, ClaudeSettingSource } from '../config.js';
 import type { BridgeStore, ChannelBinding } from '../store/interface.js';
@@ -15,11 +15,14 @@ import type { PermissionCoordinator } from './coordinators/permission.js';
 import type { Locale } from '../i18n/index.js';
 import type { TopicSessionManager } from './state/topic-sessions.js';
 import { commandRegistry, registerAllCommands } from './commands/index.js';
+import { isPublicTextCommand } from './commands/slash-policy.js';
 import { DEFAULT_CLAUDE_SETTING_SOURCES } from '../config.js';
 import { findGitRoot } from '../utils/repo.js';
 import { generateSessionId } from '../core/id.js';
 import { HomePayloadBuilder } from './presenters/home-payload-builder.js';
-import { messageScopeId } from '../core/key.js';
+import { conversationScopeId } from '../channels/conversation-context.js';
+import { commandRejectionForSurface, conversationSurface } from './conversations/surface-policy.js';
+import { withInboundReplyContext } from '../channels/reply-context.js';
 
 // Register all commands on module load
 registerAllCommands();
@@ -37,7 +40,8 @@ export class CommandRouter {
     router: ChannelRouter,
     private store: BridgeStore,
     defaultWorkdir: string,
-    llm: ClaudeSDKProvider,
+    llm: AgentProvider,
+    providers: AgentProviderRegistry,
     activeControls: Map<string, QueryControls>,
     permissions: PermissionCoordinator,
     private defaultClaudeSettingSources: ClaudeSettingSource[] = DEFAULT_CLAUDE_SETTING_SOURCES,
@@ -47,8 +51,20 @@ export class CommandRouter {
   ) {
     this.projectsConfig = projectsConfig;
     this.services = {
-      store, router, state, workspace, recentProjects, permissions, sdkEngine, llm,
-      activeControls, defaultWorkdir, defaultClaudeSettingSources, getAdapters, topicSessions,
+      store,
+      router,
+      state,
+      workspace,
+      recentProjects,
+      permissions,
+      sdkEngine,
+      llm,
+      providers,
+      activeControls,
+      defaultWorkdir,
+      defaultClaudeSettingSources,
+      getAdapters,
+      topicSessions,
     };
     this.homePayloadBuilder = new HomePayloadBuilder({
       store,
@@ -59,6 +75,7 @@ export class CommandRouter {
       activeControls,
       getAdapters,
       defaultWorkdir,
+      providers,
       topicSessions,
     });
   }
@@ -78,7 +95,12 @@ export class CommandRouter {
   private getSettingsPreset(sources: ClaudeSettingSource[]): string {
     if (sources.length === 0) return 'isolated';
     if (sources.length === 1 && sources[0] === 'user') return 'user';
-    if (sources.length === 3 && sources[0] === 'user' && sources[1] === 'project' && sources[2] === 'local') {
+    if (
+      sources.length === 3 &&
+      sources[0] === 'user' &&
+      sources[1] === 'project' &&
+      sources[2] === 'local'
+    ) {
       return 'full';
     }
     return sources.join(',');
@@ -104,9 +126,10 @@ export class CommandRouter {
       binding?: ChannelBinding | null;
     } = {},
   ): Promise<{ hadActiveSession: boolean; binding: ChannelBinding | null }> {
-    const binding = opts.binding ?? await this.store.getBinding(channelType, chatId);
+    const binding = opts.binding ?? (await this.store.getBinding(channelType, chatId));
     const hadActiveSession = binding
-      ? (this.sdkEngine?.hasSessionContext?.(channelType, chatId, binding.sessionId) ?? false) || !!binding.sdkSessionId
+      ? (this.sdkEngine?.hasSessionContext?.(channelType, chatId, binding.sessionId) ?? false) ||
+        !!binding.sdkSessionId
       : false;
 
     if (binding) {
@@ -125,7 +148,11 @@ export class CommandRouter {
     return { hadActiveSession, binding };
   }
 
-  private async buildHomePayload(channelType: string, chatId: string, locale: Locale = 'zh'): Promise<HomeData> {
+  private async buildHomePayload(
+    channelType: string,
+    chatId: string,
+    locale: Locale = 'zh',
+  ): Promise<HomeData> {
     const data = await this.homePayloadBuilder.build(channelType, chatId, locale);
     // Add help entries from registry
     return {
@@ -141,21 +168,45 @@ export class CommandRouter {
   async handle(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
     const parts = msg.text.split(' ');
     const cmd = parts[0].toLowerCase();
+    const scopeId = conversationScopeId(msg);
 
     // Try registry dispatch
     const handler = commandRegistry.get(cmd);
     if (handler) {
+      if (!msg.internalCommand && !isPublicTextCommand(handler.name)) {
+        return false;
+      }
+      const surface = conversationSurface({ threadId: msg.threadId, scopeId });
+      const rejection = commandRejectionForSurface(cmd, surface);
+      if (rejection) {
+        await adapter.send(
+          withInboundReplyContext({ chatId: msg.chatId, text: rejection }, msg) as any,
+        );
+        return true;
+      }
+
       const locale = typeof adapter.getLocale === 'function' ? adapter.getLocale() : 'zh';
       const ctx = {
         adapter,
         msg,
-        scopeId: messageScopeId(msg),
+        scopeId,
+        surface,
         parts,
         services: this.services,
         helpers: this.buildHelpers(),
         locale,
       };
       return handler.execute(ctx);
+    }
+
+    if (msg.internalCommand) {
+      await adapter.send(
+        withInboundReplyContext(
+          { chatId: msg.chatId, text: `⚠️ 未知 TLive 命令: ${cmd}` },
+          msg,
+        ) as any,
+      );
+      return true;
     }
 
     // Unknown command

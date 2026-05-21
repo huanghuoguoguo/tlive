@@ -12,15 +12,26 @@ export class StopCommand extends BaseCommand {
   readonly helpExample = '/stop';
 
   async execute(ctx: CommandContext): Promise<boolean> {
-    const key = chatKey(ctx.msg.channelType, ctx.scopeId);
-    const ctrl = ctx.services.activeControls.get(key);
-    if (ctrl) {
-      ctx.services.activeControls.delete(key);
-      await ctrl.interrupt();
-      await this.send(ctx, presentStopResult(ctx.msg.chatId, true));
-    } else {
-      await this.send(ctx, presentStopResult(ctx.msg.chatId, false));
+    const explicitSessionKey = ctx.parts.slice(1).join(' ').trim();
+    if (explicitSessionKey && ctx.services.sdkEngine?.interruptSession) {
+      const interrupted = await ctx.services.sdkEngine.interruptSession(explicitSessionKey);
+      await this.send(ctx, presentStopResult(ctx.msg.chatId, interrupted));
+      return true;
     }
+
+    const key = chatKey(ctx.msg.channelType, ctx.scopeId);
+    const interrupted = ctx.services.sdkEngine?.interruptChat
+      ? await ctx.services.sdkEngine.interruptChat(key)
+      : await this.interruptLegacy(ctx, key);
+    await this.send(ctx, presentStopResult(ctx.msg.chatId, interrupted));
+    return true;
+  }
+
+  private async interruptLegacy(ctx: CommandContext, key: string): Promise<boolean> {
+    const ctrl = ctx.services.activeControls.get(key);
+    if (!ctrl) return false;
+    ctx.services.activeControls.delete(key);
+    await ctrl.interrupt();
     return true;
   }
 }

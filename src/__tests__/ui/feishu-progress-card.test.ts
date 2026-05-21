@@ -27,12 +27,12 @@ function createSessionsData(overrides: Partial<SessionsData> = {}): SessionsData
   };
 }
 
-/** Extract feishuElements from OutboundMessage */
+/** Extract Feishu card elements from a rendered message. */
 function getElements(msg: ReturnType<FeishuFormatter['formatProgress']>): any[] {
   return (msg as any).feishuElements ?? [];
 }
 
-/** Extract feishuHeader from OutboundMessage */
+/** Extract Feishu card header from a rendered message. */
 function getHeader(msg: ReturnType<FeishuFormatter['formatProgress']>): any {
   return (msg as any).feishuHeader;
 }
@@ -279,14 +279,14 @@ describe('FeishuFormatter.formatSessions', () => {
     const elementsRecent = getElements(msgRecent as any);
     const colSetsRecent = findByTag(elementsRecent, 'column_set');
     const toggleBtnRecent = colSetsRecent[0]?.columns?.[0]?.elements?.[0];
-    expect(toggleBtnRecent?.behaviors?.[0]?.value?.action).toBe('cmd:sessions --all');
+    expect(toggleBtnRecent?.behaviors?.[0]?.value?.action).toBe('cmd:session --all');
 
     // All mode → shows "最近会话" button
     const msgAll = formatter.formatSessions('chat1', createSessionsData({ showAll: true }));
     const elementsAll = getElements(msgAll as any);
     const colSetsAll = findByTag(elementsAll, 'column_set');
     const toggleBtnAll = colSetsAll[0]?.columns?.[0]?.elements?.[0];
-    expect(toggleBtnAll?.behaviors?.[0]?.value?.action).toBe('cmd:sessions');
+    expect(toggleBtnAll?.behaviors?.[0]?.value?.action).toBe('cmd:session');
   });
 
   it('form input at bottom for arbitrary session number', () => {
@@ -361,7 +361,7 @@ describe('FeishuFormatter.formatProgress', () => {
       const buttons = findButtons(getElements(msg));
       const actions = buttons.map(b => b.behaviors?.[0]?.value?.action).filter(Boolean);
 
-      expect(actions).toEqual(['cmd:home', 'cmd:sessions', 'cmd:new', 'cmd:help']);
+      expect(actions).toEqual(['cmd:home', 'cmd:session', 'cmd:new', 'cmd:help']);
     });
   });
 

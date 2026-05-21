@@ -3,7 +3,7 @@ import type { InboundMessage } from '../../channels/types.js';
 import type { PermissionCoordinator } from './permission.js';
 import type { SessionStateManager } from '../state/session-state.js';
 import type { SDKEngine, SendWithContextResult } from '../sdk/engine.js';
-import { messageScopeId } from '../../core/key.js';
+import { conversationScopeId } from '../../channels/conversation-context.js';
 import { withInboundReplyContext } from '../../channels/reply-context.js';
 
 interface MessageLoopCoordinatorOptions {
@@ -20,8 +20,12 @@ interface SlowMessageDispatchOptions {
   msg: InboundMessage;
   requestId?: string;
   coalesceMessage: (adapter: BaseChannelAdapter, msg: InboundMessage) => Promise<InboundMessage>;
-  handleMessage: (adapter: BaseChannelAdapter, msg: InboundMessage, requestId?: string) => Promise<unknown>;
-  onError: (err: unknown, requestId?: string) => void;
+  handleMessage: (
+    adapter: BaseChannelAdapter,
+    msg: InboundMessage,
+    requestId?: string,
+  ) => Promise<unknown>;
+  onError: (err: unknown, requestId: string | undefined, msg: InboundMessage) => void;
 }
 
 /**
@@ -33,14 +37,15 @@ interface SlowMessageDispatchOptions {
 export class MessageLoopCoordinator {
   constructor(private options: MessageLoopCoordinatorOptions) {}
 
-  isQuickMessage(adapter: BaseChannelAdapter, msg: InboundMessage): boolean {
-    const hasPendingQuestion = this.options.permissions.getLatestPendingQuestion(adapter.channelType) !== null
-      || this.options.hasPendingSdkQuestion(msg);
+  isQuickMessage(_adapter: BaseChannelAdapter, msg: InboundMessage): boolean {
+    const hasPendingQuestion = this.options.hasPendingSdkQuestion(msg);
 
-    return !!msg.callbackData
-      || (msg.text && this.options.quickCommands.has(msg.text.split(' ')[0].toLowerCase()))
-      || this.options.permissions.parsePermissionText(msg.text || '') !== null
-      || hasPendingQuestion;
+    return (
+      !!msg.callbackData ||
+      (msg.text && this.options.quickCommands.has(msg.text.split(' ')[0].toLowerCase())) ||
+      this.options.permissions.parsePermissionText(msg.text || '') !== null ||
+      hasPendingQuestion
+    );
   }
 
   async dispatchSlowMessage({
@@ -51,18 +56,23 @@ export class MessageLoopCoordinator {
     handleMessage,
     onError,
   }: SlowMessageDispatchOptions): Promise<void> {
-    const coalesced = await coalesceMessage(adapter, msg);
-    const processingKey = await this.options.resolveProcessingKey(coalesced);
+    let coalesced = msg;
+    try {
+      coalesced = await coalesceMessage(adapter, msg);
+      const processingKey = await this.options.resolveProcessingKey(coalesced);
 
-    if (this.options.state.isProcessing(processingKey)) {
-      await this.handleBusyChat(adapter, coalesced);
-      return;
+      if (this.options.state.isProcessing(processingKey)) {
+        await this.handleBusyChat(adapter, coalesced);
+        return;
+      }
+
+      this.options.state.setProcessing(processingKey, true);
+      handleMessage(adapter, coalesced, requestId)
+        .catch((err) => onError(err, requestId, coalesced))
+        .finally(() => this.options.state.setProcessing(processingKey, false));
+    } catch (err) {
+      onError(err, requestId, coalesced);
     }
-
-    this.options.state.setProcessing(processingKey, true);
-    handleMessage(adapter, coalesced, requestId)
-      .catch((err) => onError(err, requestId))
-      .finally(() => this.options.state.setProcessing(processingKey, false));
   }
 
   private async handleBusyChat(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<void> {
@@ -70,14 +80,16 @@ export class MessageLoopCoordinator {
 
     const result = await this.options.sdkEngine.sendWithContext(
       msg.channelType,
-      messageScopeId(msg),
+      conversationScopeId(msg),
       msg.text,
       msg.replyToMessageId,
     );
 
     const feedbackText = this.formatQueueFeedback(result);
     if (feedbackText) {
-      await adapter.send(withInboundReplyContext({ chatId: msg.chatId, text: feedbackText }, msg)).catch(() => {});
+      await adapter
+        .send(withInboundReplyContext({ chatId: msg.chatId, text: feedbackText }, msg))
+        .catch(() => {});
     }
   }
 
@@ -97,18 +109,21 @@ export class MessageLoopCoordinator {
         if (result.failureReason === 'send_failed') {
           return '⚠️ 会话注入失败，请稍后重试';
         }
+        if (result.failureReason === 'busy_unsupported') {
+          return '⚠️ 当前 provider 不支持执行中插入消息，请等待完成或使用 /stop';
+        }
         return '⚠️ 无活跃会话，请先开始任务';
       }
       if (result.queueFull) {
-        const maxDepth = result.maxQueueDepth
-          ?? (typeof this.options.sdkEngine.getMaxQueueDepth === 'function'
+        const maxDepth =
+          result.maxQueueDepth ??
+          (typeof this.options.sdkEngine.getMaxQueueDepth === 'function'
             ? this.options.sdkEngine.getMaxQueueDepth()
             : 3);
         const depth = result.queueDepth ?? maxDepth;
         return `⚠️ 排队已满（${depth}/${maxDepth}），请稍后再发`;
       }
-      // Send failed for other reason - no feedback needed
-      return null;
+      return '⚠️ 会话处理失败，请稍后重试';
     }
 
     if (result.mode === 'steer') {
@@ -116,8 +131,9 @@ export class MessageLoopCoordinator {
     }
 
     if (result.mode === 'queue' && result.queuePosition !== undefined) {
-      const maxDepth = result.maxQueueDepth
-        ?? (typeof this.options.sdkEngine.getMaxQueueDepth === 'function'
+      const maxDepth =
+        result.maxQueueDepth ??
+        (typeof this.options.sdkEngine.getMaxQueueDepth === 'function'
           ? this.options.sdkEngine.getMaxQueueDepth()
           : 3);
       return `📥 已排队（位置 ${result.queuePosition}/${maxDepth}），当前任务结束后继续处理`;

@@ -1,6 +1,2 @@
-import type { ChannelType } from './types.js';
-
-/** Platform message limits. */
-export const PLATFORM_LIMITS: Record<ChannelType, number> = {
-  feishu: 30000,
-};
+/** Feishu message/card practical rendering limit. */
+export const FEISHU_MESSAGE_LIMIT = 30000;

@@ -42,7 +42,7 @@ describe('TopicSessionManager', () => {
     });
   });
 
-  it('keeps one topic per Claude session id', () => {
+  it('keeps one topic per provider session id', () => {
     const manager = createManager();
     manager.upsert({
       channelType: 'feishu',
@@ -62,6 +62,30 @@ describe('TopicSessionManager', () => {
     expect(manager.findByScope('chat-1#thread:old')).toBeUndefined();
     expect(manager.findBySdkSessionId('sdk-1')?.scopeId).toBe('chat-1#thread:new');
     expect(manager.listRecent(10, { channelType: 'feishu', chatId: 'chat-1' })).toHaveLength(1);
+  });
+
+  it('keeps separate topics when different providers reuse the same session id', () => {
+    const manager = createManager();
+    manager.upsert({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      scopeId: 'chat-1#thread:claude',
+      threadId: 'claude',
+      sdkSessionId: 'same-id',
+      provider: 'claude',
+    });
+    manager.upsert({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      scopeId: 'chat-1#thread:codex',
+      threadId: 'codex',
+      sdkSessionId: 'same-id',
+      provider: 'codex',
+    });
+
+    expect(manager.findBySdkSession('claude', 'same-id')?.scopeId).toBe('chat-1#thread:claude');
+    expect(manager.findBySdkSession('codex', 'same-id')?.scopeId).toBe('chat-1#thread:codex');
+    expect(manager.listRecent(10, { channelType: 'feishu', chatId: 'chat-1' })).toHaveLength(2);
   });
 
   it('updates the last message anchor', () => {

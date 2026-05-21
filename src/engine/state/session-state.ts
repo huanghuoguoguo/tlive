@@ -1,4 +1,4 @@
-import type { SessionMode } from '../../canonical/types.js';
+import type { SessionMode } from './session-mode.js';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { chatKey } from '../../core/key.js';
@@ -13,7 +13,7 @@ interface PersistedState {
 
 /**
  * Manages per-chat session state: permission modes,
- * processing guards, activity tracking, and thread bindings.
+ * processing guards, activity tracking, and menu fallback state.
  *
  * Extracted from BridgeManager to keep session bookkeeping in one place.
  * Permission modes are persisted to disk so they survive restarts.
@@ -22,9 +22,11 @@ export class SessionStateManager {
   private modes = new Map<string, SessionMode>();
   private processingChats = new Map<string, number>();
   private lastActive = new Map<string, number>();
-  private sessionThreads = new Map<string, string>();
   /** User's last active chat: userId -> { channelType, chatId, timestamp } */
-  private userLastChats = new Map<string, { channelType: string; chatId: string; timestamp: number }>();
+  private userLastChats = new Map<
+    string,
+    { channelType: string; chatId: string; timestamp: number }
+  >();
   private persistPath: string | undefined;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly SAVE_DEBOUNCE_MS = 2000;
@@ -56,7 +58,12 @@ export class SessionStateManager {
     return mode.permissionMode === 'bypassPermissions' ? 'off' : 'on';
   }
 
-  setPermMode(channelType: string, chatId: string, sessionId: string | undefined, mode: 'on' | 'off'): void {
+  setPermMode(
+    channelType: string,
+    chatId: string,
+    sessionId: string | undefined,
+    mode: 'on' | 'off',
+  ): void {
     const key = this.permKey(channelType, chatId, sessionId);
     const current = this.modes.get(key) || this.defaultMode();
     current.permissionMode = mode === 'off' ? 'bypassPermissions' : 'default';
@@ -88,18 +95,6 @@ export class SessionStateManager {
     }
   }
 
-  getThread(channelType: string, chatId: string): string | undefined {
-    return this.sessionThreads.get(this.stateKey(channelType, chatId));
-  }
-
-  setThread(channelType: string, chatId: string, threadId: string): void {
-    this.sessionThreads.set(this.stateKey(channelType, chatId), threadId);
-  }
-
-  clearThread(channelType: string, chatId: string): void {
-    this.sessionThreads.delete(this.stateKey(channelType, chatId));
-  }
-
   /**
    * Get the last active timestamp for a chat.
    * Returns undefined if no activity recorded, or the timestamp in milliseconds.
@@ -127,7 +122,7 @@ export class SessionStateManager {
     const last = this.lastActive.get(key);
     const now = Date.now();
     this.lastActive.set(key, now);
-    if (last && (now - last) > 30 * 60 * 1000) return true;
+    if (last && now - last > 30 * 60 * 1000) return true;
     return false;
   }
 
@@ -160,7 +155,10 @@ export class SessionStateManager {
    * Returns undefined if no recent activity (or activity too old).
    * @param maxAgeMs Maximum age in milliseconds (default 24 hours)
    */
-  getUserLastChat(userId: string, maxAgeMs = 24 * 60 * 60 * 1000): { channelType: string; chatId: string } | undefined {
+  getUserLastChat(
+    userId: string,
+    maxAgeMs = 24 * 60 * 60 * 1000,
+  ): { channelType: string; chatId: string } | undefined {
     const last = this.userLastChats.get(userId);
     if (!last) return undefined;
     // Too old - don't use stale chat context
@@ -222,7 +220,10 @@ export class SessionStateManager {
       }
     }
     // Only persist recent user chats (<24 hours)
-    const userLastChats: Record<string, { channelType: string; chatId: string; timestamp: number }> = {};
+    const userLastChats: Record<
+      string,
+      { channelType: string; chatId: string; timestamp: number }
+    > = {};
     const now = Date.now();
     for (const [userId, lastChat] of this.userLastChats) {
       if (now - lastChat.timestamp < 24 * 60 * 60 * 1000) {

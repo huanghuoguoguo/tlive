@@ -1,10 +1,10 @@
 import type { BridgeStore } from '../store/interface.js';
-import type { ClaudeSDKProvider } from '../providers/claude-sdk.js';
+import type { AgentProvider } from '../providers/base.js';
+import { singleProviderRegistry, type AgentProviderRegistry } from '../providers/registry.js';
 import type { Config, ProjectsValidationResult } from '../config.js';
 import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';
 import { ChannelRouter } from '../utils/router.js';
-import { PermissionBroker } from '../permissions/broker.js';
 import { PendingPermissions } from '../permissions/gateway.js';
 import { SessionStateManager } from './state/session-state.js';
 import { WorkspaceStateManager } from './state/workspace-state.js';
@@ -18,42 +18,14 @@ import { MessageLoopCoordinator } from './coordinators/message-loop.js';
 import { TextDispatcher } from './messages/text-dispatcher.js';
 import { QueryOrchestrator } from './coordinators/query.js';
 import { ConversationEngine } from '../utils/conversation.js';
-import { HookNotificationDispatcher } from './messages/hook-notification.js';
 import { getTliveRuntimeDir } from '../core/path.js';
 import { loadProjectsConfig } from '../config.js';
-import { networkInterfaces } from 'node:os';
 import { commandRegistry } from './commands/index.js';
-import { messageScopeId } from '../core/key.js';
+import { conversationScopeId } from '../channels/conversation-context.js';
 
 /** Get quick commands from registry */
 function getQuickCommands(): Set<string> {
   return commandRegistry.getQuickCommands();
-}
-
-function isPrivateIPv4(ip: string): boolean {
-  const parts = ip.split('.').map(Number);
-  if (parts.length !== 4) return false;
-  if (parts[0] === 10) return true;
-  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-  if (parts[0] === 192 && parts[1] === 168) return true;
-  return false;
-}
-
-/** Detect a private LAN IP address for local bridge links. */
-function getLocalIP(): string {
-  try {
-    const ifaces = networkInterfaces();
-    for (const name of Object.keys(ifaces)) {
-      for (const info of ifaces[name] || []) {
-        if (info.family === 'IPv4' && !info.internal && isPrivateIPv4(info.address)) {
-          return info.address;
-        }
-      }
-    }
-  } catch {
-    // Some test/container environments can fail interface inspection.
-  }
-  return 'localhost';
 }
 
 /** All engine components created by BridgeFactory */
@@ -71,19 +43,20 @@ export interface BridgeComponents {
   text: TextDispatcher;
   query: QueryOrchestrator;
   commands: CommandRouter;
-  notifications: HookNotificationDispatcher;
   engine: ConversationEngine;
   port: number;
-  localUrl: string;
   projectsConfig: ProjectsValidationResult | undefined;
 }
 
 /** Dependencies needed to create BridgeComponents */
 export interface BridgeFactoryDeps {
   store: BridgeStore;
-  llm: ClaudeSDKProvider;
+  llm: AgentProvider;
+  providers?: AgentProviderRegistry;
   defaultWorkdir: string;
   config: Config;
+  getAdapters?: () => Map<string, BaseChannelAdapter>;
+  appendSystemPrompt?: string;
 }
 
 /**
@@ -95,10 +68,10 @@ export interface BridgeFactoryDeps {
  */
 export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponents {
   const { store, llm, defaultWorkdir, config } = deps;
+  const providers = deps.providers ?? singleProviderRegistry(llm);
+  const getAdapters = deps.getAdapters ?? (() => new Map<string, BaseChannelAdapter>());
   const runtimeDir = getTliveRuntimeDir();
-  const localUrl = `http://${getLocalIP()}:${config.port || 8080}`;
   const gateway = new PendingPermissions();
-  const broker = new PermissionBroker(gateway, localUrl);
   const port = config.port || 8080;
 
   const router = new ChannelRouter(store);
@@ -106,9 +79,12 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
   const workspace = new WorkspaceStateManager(runtimeDir);
   const recentProjects = new RecentProjectsManager(runtimeDir);
   const topicSessions = new TopicSessionManager(runtimeDir);
-  const permissions = new PermissionCoordinator(gateway, broker);
-  const engine = new ConversationEngine(store, llm);
+  const permissions = new PermissionCoordinator(gateway);
+  const engine = new ConversationEngine(store);
   const sdkEngine = new SDKEngine();
+  sdkEngine.onSessionCreated = (_sessionKey: string, workdir: string) => {
+    recentProjects.recordSession(workdir);
+  };
 
   const projectsConfig = loadProjectsConfig();
 
@@ -127,11 +103,13 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
     quickCommands: getQuickCommands(),
     hasPendingSdkQuestion: (msg: InboundMessage) => text.hasPendingSdkQuestion(msg),
     resolveProcessingKey: async (msg: InboundMessage) => {
-      const scopeId = messageScopeId(msg);
+      const scopeId = conversationScopeId(msg);
       const binding = await router.resolve(msg.channelType, scopeId);
       if (msg.replyToMessageId) {
-        return sdkEngine.getSessionForBubble(msg.replyToMessageId)
-          ?? sdkEngine.getSessionKeyForBinding(msg.channelType, scopeId, binding.sessionId);
+        return (
+          sdkEngine.getSessionForBubble(msg.replyToMessageId) ??
+          sdkEngine.getSessionKeyForBinding(msg.channelType, scopeId, binding.sessionId)
+        );
       }
       return sdkEngine.getSessionKeyForBinding(msg.channelType, scopeId, binding.sessionId);
     },
@@ -140,6 +118,7 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
   const query = new QueryOrchestrator({
     engine,
     llm,
+    providers,
     router,
     state,
     permissions,
@@ -149,18 +128,20 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
     topicSessions,
     defaultClaudeSettingSources: config.claudeSettingSources,
     port,
-    appendSystemPrompt: undefined, // Will be set by BridgeManager
+    appendSystemPrompt: deps.appendSystemPrompt,
+    onConversationMessageResolved: (msg) => ingress.recordDeliveryTarget(msg),
   });
 
   const commands = new CommandRouter(
     state,
     workspace,
     recentProjects,
-    () => new Map<string, BaseChannelAdapter>(), // Will be replaced by BridgeManager
+    getAdapters,
     router,
     store,
     defaultWorkdir,
     llm,
+    providers,
     sdkEngine.getActiveControls(),
     permissions,
     config.claudeSettingSources,
@@ -168,11 +149,6 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
     projectsConfig,
     topicSessions,
   );
-
-  const notifications = new HookNotificationDispatcher({
-    permissions,
-    buildTerminalUrl: (sessionId: string) => `http://${getLocalIP()}:${port}/terminal.html?id=${sessionId}`,
-  });
 
   return {
     store,
@@ -188,10 +164,8 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
     text,
     query,
     commands,
-    notifications,
     engine,
     port,
-    localUrl,
     projectsConfig,
   };
 }

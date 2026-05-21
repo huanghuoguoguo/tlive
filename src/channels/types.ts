@@ -1,8 +1,7 @@
 export const FEISHU_CHANNEL = 'feishu' as const;
 export type ChannelType = typeof FEISHU_CHANNEL;
 
-// Import FileAttachment for use in InboundMessage
-import type { FileAttachment } from './media-types.js';
+import type { FileAttachment } from '../media/attachments.js';
 
 export interface InboundMessage {
   channelType: ChannelType;
@@ -27,19 +26,17 @@ export interface InboundMessage {
   replyTargetMessageId?: string;
   /** Message id whose progress bubble maps back to a TLive session. */
   replyToMessageId?: string;
+  /** Internal replay from a TLive card action. User text commands do not set this. */
+  internalCommand?: boolean;
 }
 
-// Re-export media types from separate file to avoid circular imports
-export type { FileAttachment, MediaAttachment } from './media-types.js';
+export type { FileAttachment, MediaAttachment } from '../media/attachments.js';
 
 // --- Platform-specific rendered message types ---
 // Re-exported from platforms for convenience
 
 /** Union type for all platform-specific rendered messages */
 export type RenderedMessage = import('./feishu/types.js').FeishuRenderedMessage;
-
-/** Legacy type alias for backwards compatibility - will be removed */
-export type OutboundMessage = RenderedMessage;
 
 export interface SendResult {
   messageId: string;
@@ -57,7 +54,10 @@ export interface ThreadStartResult {
 export interface StreamingCardSession {
   start(initialText?: string): Promise<string>;
   update(fullText: string): Promise<void>;
-  close(options?: { finalText?: string; header?: { template: string; title: string } }): Promise<void>;
+  close(options?: {
+    finalText?: string;
+    header?: { template: string; title: string };
+  }): Promise<void>;
   /** Current message ID (for Feishu streaming cards) */
   currentMessageId?: string;
 }

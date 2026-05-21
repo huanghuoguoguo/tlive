@@ -31,7 +31,16 @@ export function threadIdFromScope(chatId: string, scopeId: string): string | und
   return scopeId.startsWith(prefix) ? scopeId.slice(prefix.length) : undefined;
 }
 
+/** Whether a logical scope id represents a platform topic/thread. */
+export function isThreadScopeId(scopeId?: string): boolean {
+  return !!scopeId?.includes(THREAD_SCOPE_SEPARATOR);
+}
+
 /** Resolve the logical scope id for an inbound message-like object. */
-export function messageScopeId(message: { chatId: string; threadId?: string; scopeId?: string }): string {
+export function messageScopeId(message: {
+  chatId: string;
+  threadId?: string;
+  scopeId?: string;
+}): string {
   return message.scopeId || chatScopeId(message.chatId, message.threadId);
 }

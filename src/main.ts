@@ -3,13 +3,24 @@ import { initBridgeContext } from './context.js';
 import { Logger } from './logger.js';
 import { JsonFileStore } from './store/json-file.js';
 import { ClaudeSDKProvider } from './providers/claude-sdk.js';
+import { createAgentProviderRegistry } from './providers/factory.js';
 import { BridgeManager } from './engine/coordinators/bridge-manager.js';
 import { FeishuAdapter } from './channels/feishu/adapter.js';
-import { checkForUpdates, getCurrentVersion, isVersionNotified, markVersionNotified } from './utils/version-checker.js';
+import {
+  checkForUpdates,
+  getCurrentVersion,
+  isVersionNotified,
+  markVersionNotified,
+} from './utils/version-checker.js';
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync, readFileSync, unlinkSync, existsSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { getTliveHome, getTliveRuntimeDir, readRestartRequest, deleteRestartRequest } from './core/path.js';
+import {
+  getTliveHome,
+  getTliveRuntimeDir,
+  readRestartRequest,
+  deleteRestartRequest,
+} from './core/path.js';
 
 // Cached config (loaded once at startup)
 let cachedConfig: ReturnType<typeof loadConfig> | null = null;
@@ -83,7 +94,9 @@ export function acquireSingletonLock(): void {
         process.kill(restartRequest.oldPid, 0);
         // Old process still alive, wait 100ms
         const end = Date.now() + 100;
-        while (Date.now() < end) { /* spin */ }
+        while (Date.now() < end) {
+          /* spin */
+        }
       } catch {
         // Old process exited
         break;
@@ -110,10 +123,16 @@ export function acquireSingletonLock(): void {
             // Brief wait for graceful shutdown
             const start = Date.now();
             while (Date.now() - start < 2000) {
-              try { process.kill(oldPid, 0); } catch { break; }
+              try {
+                process.kill(oldPid, 0);
+              } catch {
+                break;
+              }
               // busy-wait ~50ms
               const end = Date.now() + 50;
-              while (Date.now() < end) { /* spin */ }
+              while (Date.now() < end) {
+                /* spin */
+              }
             }
             // Force kill if still alive
             try {
@@ -143,7 +162,9 @@ export function acquireSingletonLock(): void {
       if (current === String(process.pid)) {
         unlinkSync(pidFile);
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
   process.on('exit', cleanPid);
 }
@@ -158,7 +179,7 @@ export async function main() {
 
   const logger = new Logger(
     join(tliveHome, 'logs', 'bridge.log'),
-    [config.token, config.feishu.appSecret].filter(Boolean)
+    [config.token, config.feishu.appSecret].filter(Boolean),
   );
   logger.installConsoleInterception();
 
@@ -177,21 +198,31 @@ export async function main() {
 
   // Initialize components
   const store = new JsonFileStore(join(tliveHome, 'data'));
-  const llm = new ClaudeSDKProvider(config.claudeSettingSources);
+  const providers = createAgentProviderRegistry(config);
+  const llm = providers.defaultProvider;
 
   // Initialize context
   initBridgeContext({
     store,
     llm,
+    providers,
     defaultWorkdir: config.defaultWorkdir,
   });
 
   // Start Bridge Manager with enabled IM adapters
-  const manager = new BridgeManager({ store, llm, defaultWorkdir: config.defaultWorkdir, config });
-  manager.registerAdapter(new FeishuAdapter(config.feishu, {
-    doneButtons: config.ui.doneButtons,
-    autoPinTopics: config.feishu.autoPinTopics,
-  }));
+  const manager = new BridgeManager({
+    store,
+    llm,
+    providers,
+    defaultWorkdir: config.defaultWorkdir,
+    config,
+  });
+  manager.registerAdapter(
+    new FeishuAdapter(config.feishu, {
+      doneButtons: config.ui.doneButtons,
+      autoPinTopics: config.feishu.autoPinTopics,
+    }),
+  );
   logger.info('Registered feishu adapter');
 
   await manager.start();
@@ -238,12 +269,15 @@ export async function main() {
         lastError: 'Failed to send upgrade result notification',
       });
     }
-    logger.info(`Upgrade result: ${success ? 'success' : 'failed'} (${previousVersion} → ${version})`);
+    logger.info(
+      `Upgrade result: ${success ? 'success' : 'failed'} (${previousVersion} → ${version})`,
+    );
   }
 
   // Wire permission timeout → IM notification
-  if (llm instanceof ClaudeSDKProvider) {
-    llm.onPermissionTimeout = (toolName: string, _toolUseId: string) => {
+  const claudeProvider = providers.get('claude');
+  if (claudeProvider instanceof ClaudeSDKProvider) {
+    claudeProvider.onPermissionTimeout = (toolName: string, _toolUseId: string) => {
       const text = `\u23f0 Permission timed out (5m)\nTool: ${toolName}\nAction: Denied by default`;
       manager.broadcastText(text).catch((err) => {
         logger.warn(`Failed to send timeout notification: ${err}`);
@@ -259,14 +293,16 @@ export async function main() {
       const info = await checkForUpdates();
       if (info?.hasUpdate && !isVersionNotified(info.latest)) {
         logger.info(`New version available: v${info.latest} (current: v${info.current})`);
-        await manager.broadcastFormatted({
-          type: 'versionUpdate',
-          data: {
-            current: info.current,
-            latest: info.latest,
-            publishedAt: info.publishedAt,
-          },
-        }).catch(() => {});
+        await manager
+          .broadcastFormatted({
+            type: 'versionUpdate',
+            data: {
+              current: info.current,
+              latest: info.latest,
+              publishedAt: info.publishedAt,
+            },
+          })
+          .catch(() => {});
         // Mark as notified after successful broadcast
         markVersionNotified(info.latest);
       }

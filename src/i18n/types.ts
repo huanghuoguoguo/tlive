@@ -51,6 +51,8 @@ export interface Translations {
   'perm.pendingApproval': string;
   'perm.lastDecision': string;
   'perm.decisionAllow': string;
+  'perm.decisionAllowSameCommand': string;
+  'perm.decisionAllowSessionAll': string;
   'perm.decisionAlwaysAllow': string;
   'perm.decisionDeny': string;
   'perm.decisionCancelled': string;
@@ -236,10 +238,6 @@ export interface Translations {
   'input.deny': string;
   'input.skipped': string;
   'input.submitted': string;
-  'input.hookDenied': string;
-  'input.hookAlwaysAllowed': string;
-  'input.hookAllowed': string;
-  'input.hookFailed': string;
 
   // --- recent projects ---
   'recentProjects.hint': string;

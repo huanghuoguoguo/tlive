@@ -7,8 +7,8 @@
  * - Session pruning: idle timeout detection and cleanup
  */
 
-import type { LiveSession } from '../../providers/base.js';
-import type { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
+import type { AgentProvider, LiveSession } from '../../providers/base.js';
+import type { AgentProviderKind } from '../../providers/kinds.js';
 import type { ClaudeSettingSource } from '../../config.js';
 import type { EffortLevel } from '../../utils/types.js';
 import { SESSION_STALE_THRESHOLD_MS } from '../../core/timing.js';
@@ -24,6 +24,7 @@ export interface ManagedSession {
   bindingSessionId: string;
   workdir: string;
   sdkSessionId?: string;
+  provider?: AgentProviderKind;
   lastActiveAt: number;
   session?: LiveSession;
 }
@@ -37,8 +38,34 @@ export interface ManagedSessionSnapshot {
   lastActiveAt: number;
   bindingSessionId: string;
   sdkSessionId?: string;
+  provider?: AgentProviderKind;
   isCurrent: boolean;
   queueDepth: number;
+}
+
+export interface ManagedSessionOptions {
+  sessionId?: string;
+  effort?: EffortLevel;
+  model?: string;
+  settingSources?: ClaudeSettingSource[];
+  appendSystemPrompt?: string;
+  setAsCurrent?: boolean;
+}
+
+export interface SessionLifecycleHooks {
+  getQueueDepth?: (sessionKey: string) => number;
+  decrementQueueDepth?: (sessionKey: string) => void;
+  cleanupQueue?: (sessionKey: string) => void;
+  cleanupControls?: (sessionKey: string) => void;
+}
+
+export interface ManagedSessionCreateRequest {
+  channelType: string;
+  chatId: string;
+  bindingSessionId: string;
+  workdir: string;
+  options?: ManagedSessionOptions;
+  hooks?: SessionLifecycleHooks;
 }
 
 /**
@@ -77,7 +104,11 @@ export class SessionManager {
   }
 
   /** Filter sessions matching a chat and optionally workdir. */
-  private *filterSessions(channelType: string, chatId: string, workdir?: string): Generator<[string, ManagedSession]> {
+  private *filterSessions(
+    channelType: string,
+    chatId: string,
+    workdir?: string,
+  ): Generator<[string, ManagedSession]> {
     const prefix = `${channelType}:${chatId}:`;
     for (const [key, managed] of this.registry) {
       if (!key.startsWith(prefix)) continue;
@@ -109,8 +140,13 @@ export class SessionManager {
         managed.session = undefined;
         continue;
       }
-      if (!managed.session.isTurnActive && (now - managed.lastActiveAt) > SessionManager.SESSION_IDLE_MS) {
-        console.log(`[tlive:engine] Pruning idle LiveSession: ${key} (idle ${Math.round((now - managed.lastActiveAt) / 60000)}m)`);
+      if (
+        !managed.session.isTurnActive &&
+        now - managed.lastActiveAt > SessionManager.SESSION_IDLE_MS
+      ) {
+        console.log(
+          `[tlive:engine] Pruning idle LiveSession: ${key} (idle ${Math.round((now - managed.lastActiveAt) / 60000)}m)`,
+        );
         this.closeLiveSession(key, 'close', { preserveContext: true, preserveBubbles: true });
         this.onSessionPruned?.(key);
       }
@@ -180,7 +216,7 @@ export class SessionManager {
     bindingSessionId: string,
     workdir: string,
     sdkSessionId?: string,
-    opts?: { setAsCurrent?: boolean },
+    opts?: { setAsCurrent?: boolean; provider?: AgentProviderKind },
   ): string {
     const key = this.sessionKey(channelType, chatId, bindingSessionId);
     const existing = this.registry.get(key);
@@ -189,6 +225,7 @@ export class SessionManager {
     if (existing) {
       existing.workdir = workdir;
       existing.sdkSessionId = sdkSessionId ?? existing.sdkSessionId;
+      existing.provider = opts?.provider ?? existing.provider;
       existing.lastActiveAt = now;
     } else {
       this.registry.set(key, {
@@ -197,6 +234,7 @@ export class SessionManager {
         bindingSessionId,
         workdir,
         sdkSessionId,
+        provider: opts?.provider,
         lastActiveAt: now,
       });
     }
@@ -268,7 +306,10 @@ export class SessionManager {
 
   /** Close a session runtime but keep logical context available for future resume. */
   resetSessionRuntime(sessionKey: string, reason: SessionCleanupReason): boolean {
-    return this.closeLiveSession(sessionKey, reason, { preserveContext: true, preserveBubbles: true });
+    return this.closeLiveSession(sessionKey, reason, {
+      preserveContext: true,
+      preserveBubbles: true,
+    });
   }
 
   /** Close a session (explicit cleanup). Delegates to cleanupSession. */
@@ -276,18 +317,16 @@ export class SessionManager {
     channelType: string,
     chatId: string,
     workdir?: string,
-    cleanupQueue?: (sessionKey: string) => void,
-    cleanupControls?: (sessionKey: string) => void,
+    hooks?: SessionLifecycleHooks,
   ): void {
-    this.cleanupSession(channelType, chatId, 'close', workdir, cleanupQueue, cleanupControls);
+    this.cleanupSession(channelType, chatId, 'close', workdir, hooks);
   }
 
   closeLiveSession(
     sessionKey: string,
     reason: SessionCleanupReason,
     opts: { preserveContext: boolean; preserveBubbles: boolean },
-    cleanupQueue?: (sessionKey: string) => void,
-    cleanupControls?: (sessionKey: string) => void,
+    hooks?: SessionLifecycleHooks,
   ): boolean {
     const managed = this.registry.get(sessionKey);
     if (!managed) return false;
@@ -296,8 +335,8 @@ export class SessionManager {
       managed.session.close();
     }
     managed.session = undefined;
-    cleanupQueue?.(sessionKey);
-    cleanupControls?.(sessionKey);
+    hooks?.cleanupQueue?.(sessionKey);
+    hooks?.cleanupControls?.(sessionKey);
 
     if (!opts.preserveContext) {
       this.registry.delete(sessionKey);
@@ -325,12 +364,17 @@ export class SessionManager {
     chatId: string,
     reason: SessionCleanupReason,
     workdir?: string,
-    cleanupQueue?: (sessionKey: string) => void,
-    cleanupControls?: (sessionKey: string) => void,
+    hooks?: SessionLifecycleHooks,
   ): boolean {
     let closed = false;
     for (const [key] of this.filterSessions(channelType, chatId, workdir)) {
-      closed = this.closeLiveSession(key, reason, { preserveContext: false, preserveBubbles: false }, cleanupQueue, cleanupControls) || closed;
+      closed =
+        this.closeLiveSession(
+          key,
+          reason,
+          { preserveContext: false, preserveBubbles: false },
+          hooks,
+        ) || closed;
     }
     return closed;
   }
@@ -350,138 +394,65 @@ export class SessionManager {
    * Returns the session, or undefined if provider doesn't support LiveSession.
    */
   getOrCreateSession(
-    llm: ClaudeSDKProvider,
-    channelType: string,
-    chatId: string,
-    workdir: string,
-    options?: {
-      sessionId?: string;
-      effort?: EffortLevel;
-      model?: string;
-      settingSources?: ClaudeSettingSource[];
-      appendSystemPrompt?: string;
-      setAsCurrent?: boolean;
-    },
-  ): LiveSession | undefined;
-  getOrCreateSession(
-    llm: ClaudeSDKProvider,
-    channelType: string,
-    chatId: string,
-    bindingSessionId: string,
-    workdir: string,
-    options?: {
-      sessionId?: string;
-      effort?: EffortLevel;
-      model?: string;
-      settingSources?: ClaudeSettingSource[];
-      appendSystemPrompt?: string;
-      setAsCurrent?: boolean;
-    },
-  ): LiveSession | undefined;
-  getOrCreateSession(
-    llm: ClaudeSDKProvider,
-    channelType: string,
-    chatId: string,
-    bindingSessionId: string,
-    workdir: string,
-    options?: {
-      sessionId?: string;
-      effort?: EffortLevel;
-      model?: string;
-      settingSources?: ClaudeSettingSource[];
-      appendSystemPrompt?: string;
-      setAsCurrent?: boolean;
-    },
-    onTurnComplete?: (sessionKey: string) => void,
-    getQueueDepth?: (sessionKey: string) => number,
-    decrementQueueDepth?: (sessionKey: string) => void,
-    cleanupQueue?: (sessionKey: string) => void,
-    cleanupControls?: (sessionKey: string) => void,
-  ): LiveSession | undefined;
-  getOrCreateSession(
-    llm: ClaudeSDKProvider,
-    channelType: string,
-    chatId: string,
-    bindingSessionIdOrWorkdir: string,
-    workdirOrOptions?: string | {
-      sessionId?: string;
-      effort?: EffortLevel;
-      model?: string;
-      settingSources?: ClaudeSettingSource[];
-      appendSystemPrompt?: string;
-      setAsCurrent?: boolean;
-    },
-    maybeOptions?: {
-      sessionId?: string;
-      effort?: EffortLevel;
-      model?: string;
-      settingSources?: ClaudeSettingSource[];
-      appendSystemPrompt?: string;
-      setAsCurrent?: boolean;
-    },
-    _onTurnComplete?: (sessionKey: string) => void,
-    getQueueDepth?: (sessionKey: string) => number,
-    decrementQueueDepth?: (sessionKey: string) => void,
-    cleanupQueue?: (sessionKey: string) => void,
-    cleanupControls?: (sessionKey: string) => void,
+    llm: AgentProvider,
+    request: ManagedSessionCreateRequest,
   ): LiveSession | undefined {
-    const actualBindingSessionId = typeof workdirOrOptions === 'string'
-      ? bindingSessionIdOrWorkdir
-      : bindingSessionIdOrWorkdir;
-    const actualWorkdir = typeof workdirOrOptions === 'string'
-      ? workdirOrOptions
-      : bindingSessionIdOrWorkdir;
-    const actualOptions = (typeof workdirOrOptions === 'string' ? maybeOptions : workdirOrOptions) ?? {};
+    const { channelType, chatId, bindingSessionId, workdir } = request;
+    const options = request.options ?? {};
+    const hooks = request.hooks ?? {};
 
-    const existingKey = this.sessionKey(channelType, chatId, actualBindingSessionId);
+    const existingKey = this.sessionKey(channelType, chatId, bindingSessionId);
     const previousManaged = this.registry.get(existingKey);
     const previousSdkSessionId = previousManaged?.sdkSessionId;
     const previousWorkdir = previousManaged?.workdir;
+    const previousProvider = previousManaged?.provider;
     const key = this.registerSessionContext(
       channelType,
       chatId,
-      actualBindingSessionId,
-      actualWorkdir,
-      actualOptions.sessionId,
-      { setAsCurrent: actualOptions.setAsCurrent !== false },
+      bindingSessionId,
+      workdir,
+      options.sessionId,
+      { setAsCurrent: options.setAsCurrent !== false, provider: llm.kind },
     );
     const managed = this.registry.get(key);
     if (!managed) return undefined;
 
     const existing = managed.session;
-    const sessionIdChanged = actualOptions.sessionId !== undefined
-      && actualOptions.sessionId !== previousSdkSessionId;
-    const workdirChanged = previousWorkdir !== undefined && previousWorkdir !== actualWorkdir;
+    const sessionIdChanged =
+      options.sessionId !== undefined && options.sessionId !== previousSdkSessionId;
+    const workdirChanged = previousWorkdir !== undefined && previousWorkdir !== workdir;
+    const providerChanged = previousProvider !== undefined && previousProvider !== llm.kind;
 
-    if (existing?.isAlive && !sessionIdChanged && !workdirChanged) {
+    if (existing?.isAlive && !sessionIdChanged && !workdirChanged && !providerChanged) {
       managed.lastActiveAt = Date.now();
       return existing;
     }
 
-    if (existing?.isAlive && (sessionIdChanged || workdirChanged)) {
+    if (existing?.isAlive && (sessionIdChanged || workdirChanged || providerChanged)) {
       existing.close();
       managed.session = undefined;
-      cleanupQueue?.(key);
-      cleanupControls?.(key);
+      hooks.cleanupQueue?.(key);
+      hooks.cleanupControls?.(key);
     }
 
     console.log(`[tlive:engine] Creating LiveSession for ${key}`);
     const session = llm.createSession({
-      workingDirectory: actualWorkdir,
-      sessionId: actualOptions.sessionId,
-      effort: actualOptions.effort,
-      model: actualOptions.model,
-      settingSources: actualOptions.settingSources,
-      appendSystemPrompt: actualOptions.appendSystemPrompt,
+      workingDirectory: workdir,
+      sessionId: options.sessionId,
+      effort: options.effort,
+      model: options.model,
+      settingSources: options.settingSources,
+      appendSystemPrompt: options.appendSystemPrompt,
     });
 
     managed.session = session;
-    managed.workdir = actualWorkdir;
-    managed.sdkSessionId = actualOptions.sessionId ?? managed.sdkSessionId;
+    managed.workdir = workdir;
+    managed.sdkSessionId = options.sessionId ?? managed.sdkSessionId;
+    managed.provider = llm.kind;
     managed.lastActiveAt = Date.now();
 
     // Notify callback for recent projects tracking
-    this.onSessionCreated?.(key, actualWorkdir);
+    this.onSessionCreated?.(key, workdir);
 
     session.setLifecycleCallbacks?.({
       onTurnComplete: () => {
@@ -489,8 +460,8 @@ export class SessionManager {
         if (current) {
           current.lastActiveAt = Date.now();
         }
-        if (getQueueDepth && decrementQueueDepth && getQueueDepth(key) > 0) {
-          decrementQueueDepth(key);
+        if (hooks.getQueueDepth && hooks.decrementQueueDepth && hooks.getQueueDepth(key) > 0) {
+          hooks.decrementQueueDepth(key);
         }
       },
     });
@@ -551,7 +522,16 @@ export class SessionManager {
   }
 
   /** Extract base snapshot fields from a managed session entry */
-  private _snapshotSession(key: string, managed: ManagedSession): { sessionKey: string; workdir: string; isAlive: boolean; isTurnActive: boolean; lastActiveAt: number } {
+  private _snapshotSession(
+    key: string,
+    managed: ManagedSession,
+  ): {
+    sessionKey: string;
+    workdir: string;
+    isAlive: boolean;
+    isTurnActive: boolean;
+    lastActiveAt: number;
+  } {
     return {
       sessionKey: key,
       workdir: managed.workdir,
@@ -562,7 +542,11 @@ export class SessionManager {
   }
 
   /** Get all managed sessions for a specific chat (for /home display) */
-  getSessionsForChat(channelType: string, chatId: string, getQueueDepth: (sessionKey: string) => number): ManagedSessionSnapshot[] {
+  getSessionsForChat(
+    channelType: string,
+    chatId: string,
+    getQueueDepth: (sessionKey: string) => number,
+  ): ManagedSessionSnapshot[] {
     const currentKey = this.activeSessionByChat.get(this.chatKey(channelType, chatId));
     const results: ManagedSessionSnapshot[] = [];
     for (const [key, managed] of this.registry) {
@@ -571,6 +555,7 @@ export class SessionManager {
           ...this._snapshotSession(key, managed),
           bindingSessionId: managed.bindingSessionId,
           sdkSessionId: managed.sdkSessionId,
+          provider: managed.provider,
           isCurrent: key === currentKey,
           queueDepth: getQueueDepth(key),
         });
@@ -585,7 +570,13 @@ export class SessionManager {
   }
 
   /** Get session registry snapshot for diagnostics */
-  getSessionRegistrySnapshot(): Array<{ sessionKey: string; workdir: string; isAlive: boolean; isTurnActive: boolean; lastActiveAt: number }> {
+  getSessionRegistrySnapshot(): Array<{
+    sessionKey: string;
+    workdir: string;
+    isAlive: boolean;
+    isTurnActive: boolean;
+    lastActiveAt: number;
+  }> {
     const snapshot = [];
     for (const [key, managed] of this.registry) {
       snapshot.push(this._snapshotSession(key, managed));

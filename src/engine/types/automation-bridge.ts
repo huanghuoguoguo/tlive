@@ -1,6 +1,15 @@
 import type { BaseChannelAdapter } from '../../channels/base.js';
+import type { DeliveryRoute } from '../../channels/delivery-route.js';
 import type { ChannelBinding } from '../../store/interface.js';
-import type { ClaudeSettingSource } from '../../config.js';
+import type {
+  AutomationPromptOptions,
+  AutomationPromptResult,
+} from '../automation/prompt-injector.js';
+
+export interface AutomationDeliveryTarget extends DeliveryRoute {
+  cwd?: string;
+  sessionKey?: string;
+}
 
 /**
  * Minimal interface for automation components such as WebhookServer.
@@ -14,21 +23,14 @@ export interface AutomationBridge {
   /** Get all registered adapters */
   getAdapters(): BaseChannelAdapter[];
 
-  /** Get the last active chatId for a channel type (for hook routing) */
+  /** Get the last active chatId for a channel type. */
   getLastChatId(channelType: string): string;
 
+  /** Resolve a per-turn file delivery token issued by the active query path. */
+  resolveFileDeliveryToken?(token: string): AutomationDeliveryTarget | undefined;
+
   /** Inject a prompt from automation webhooks */
-  injectAutomationPrompt(options: {
-    channelType: string;
-    chatId: string;
-    text: string;
-    requestId?: string;
-    messageId?: string;
-    userId?: string;
-    workdir?: string;
-    projectName?: string;
-    claudeSettingSources?: ClaudeSettingSource[];
-  }): Promise<{ sessionId?: string }>;
+  injectAutomationPrompt(options: AutomationPromptOptions): Promise<AutomationPromptResult>;
 
   /** Check if there's an active session for a channel/chat */
   hasActiveSession(channelType: string, chatId: string, workdir?: string): boolean;

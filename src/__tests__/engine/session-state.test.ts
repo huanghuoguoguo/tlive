@@ -54,23 +54,6 @@ describe('SessionStateManager', () => {
     });
   });
 
-  describe('threads', () => {
-    it('defaults to undefined', () => {
-      expect(state.getThread('feishu', '1')).toBeUndefined();
-    });
-
-    it('set and get', () => {
-      state.setThread('feishu', '1', 'thread-abc');
-      expect(state.getThread('feishu', '1')).toBe('thread-abc');
-    });
-
-    it('clear removes the thread', () => {
-      state.setThread('feishu', '1', 'thread-abc');
-      state.clearThread('feishu', '1');
-      expect(state.getThread('feishu', '1')).toBeUndefined();
-    });
-  });
-
   describe('SessionMode', () => {
     it('returns full SessionMode with defaults', () => {
       const mode = state.getSessionMode('feishu', '1');

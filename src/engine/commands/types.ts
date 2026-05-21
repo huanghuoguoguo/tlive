@@ -1,8 +1,8 @@
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage } from '../../channels/types.js';
 import type { BridgeStore, ChannelBinding } from '../../store/interface.js';
-import type { QueryControls } from '../../providers/base.js';
-import type { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
+import type { AgentProvider, QueryControls } from '../../providers/base.js';
+import type { AgentProviderRegistry } from '../../providers/registry.js';
 import type { SessionStateManager } from '../state/session-state.js';
 import type { WorkspaceStateManager } from '../state/workspace-state.js';
 import type { RecentProjectsManager } from '../state/recent-projects.js';
@@ -14,6 +14,7 @@ import type { HelpCommandEntry, HomeData } from '../../formatting/message-types.
 import type { Locale } from '../../i18n/index.js';
 import type { HelpCategoryId } from './help-categories.js';
 import type { TopicSessionManager } from '../state/topic-sessions.js';
+import type { ConversationSurface } from '../conversations/surface-policy.js';
 
 /** Router helpers - encapsulates complex internal operations */
 export interface RouterHelpers {
@@ -50,7 +51,8 @@ export interface CommandServices {
   recentProjects: RecentProjectsManager;
   permissions: PermissionCoordinator;
   sdkEngine?: SDKEngine;
-  llm: ClaudeSDKProvider;
+  llm: AgentProvider;
+  providers: AgentProviderRegistry;
   activeControls: Map<string, QueryControls>;
   defaultWorkdir: string;
   defaultClaudeSettingSources: ClaudeSettingSource[];
@@ -64,6 +66,8 @@ export interface CommandContext {
   msg: InboundMessage;
   /** Logical state/session scope. For Feishu topics this is chat_id + thread_id. */
   scopeId: string;
+  /** Product surface for command rules: main-chat workbench or topic conversation. */
+  surface: ConversationSurface;
   parts: string[];
   services: CommandServices;
   /** Router helpers for complex operations */

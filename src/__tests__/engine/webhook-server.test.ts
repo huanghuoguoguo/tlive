@@ -180,36 +180,124 @@ describe('WebhookServer', () => {
   });
 
   describe('token validation', () => {
+    function createResponse() {
+      return {
+        writeHead: vi.fn(),
+        end: vi.fn(),
+      };
+    }
+
     it('rejects request without authorization header', async () => {
-      // Note: This test would require actually starting the server and making HTTP requests
-      // For simplicity, we're just testing the logic conceptually
-      expect(true).toBe(true);
+      server = new WebhookServer({
+        token: 'test-token',
+        port: 9999,
+        path: '/webhook',
+        bridge: mockBridge as BridgeManager,
+        sessionStrategy: 'reject',
+      });
+      const res = createResponse();
+
+      await (server as any).handleRequest({
+        url: '/webhook',
+        method: 'POST',
+        headers: {},
+        socket: { remoteAddress: '127.0.0.1' },
+      }, res);
+
+      expect(res.writeHead).toHaveBeenCalledWith(401, { 'Content-Type': 'application/json' });
+      expect(JSON.parse(vi.mocked(res.end).mock.calls[0][0] as string)).toMatchObject({
+        success: false,
+        error: 'Missing or invalid Authorization header',
+      });
     });
 
     it('rejects request with wrong token', async () => {
-      expect(true).toBe(true);
+      server = new WebhookServer({
+        token: 'test-token',
+        port: 9999,
+        path: '/webhook',
+        bridge: mockBridge as BridgeManager,
+        sessionStrategy: 'reject',
+      });
+      const res = createResponse();
+
+      await (server as any).handleRequest({
+        url: '/webhook',
+        method: 'POST',
+        headers: { authorization: 'Bearer wrong-token' },
+        socket: { remoteAddress: '127.0.0.1' },
+      }, res);
+
+      expect(res.writeHead).toHaveBeenCalledWith(403, { 'Content-Type': 'application/json' });
+      expect(JSON.parse(vi.mocked(res.end).mock.calls[0][0] as string)).toMatchObject({
+        success: false,
+        error: 'Invalid token',
+      });
     });
 
     it('accepts request with correct token', async () => {
-      expect(true).toBe(true);
+      server = new WebhookServer({
+        token: 'test-token',
+        port: 9999,
+        path: '/webhook',
+        bridge: mockBridge as BridgeManager,
+        sessionStrategy: 'reject',
+      });
+      const res = createResponse();
+
+      await (server as any).handleRequest({
+        url: '/missing',
+        method: 'GET',
+        headers: { authorization: 'Bearer test-token' },
+        socket: { remoteAddress: '127.0.0.1' },
+      }, res);
+
+      expect(res.writeHead).toHaveBeenCalledWith(404, { 'Content-Type': 'application/json' });
+      expect(JSON.parse(vi.mocked(res.end).mock.calls[0][0] as string)).toMatchObject({
+        success: false,
+        error: 'Not found',
+      });
     });
   });
 
   describe('request validation', () => {
-    it('requires prompt field', async () => {
-      expect(true).toBe(true);
+    beforeEach(() => {
+      server = new WebhookServer({
+        token: 'test-token',
+        port: 9999,
+        path: '/webhook',
+        bridge: mockBridge as BridgeManager,
+        sessionStrategy: 'reject',
+      });
     });
 
-    it('rejects prompt longer than 10000 characters', async () => {
-      expect(true).toBe(true);
+    it('requires prompt field', () => {
+      expect((server as any).validateRequest({ event: 'test' })).toBe(
+        'Missing required field: prompt',
+      );
     });
 
-    it('validates payload size limit', async () => {
-      expect(true).toBe(true);
+    it('rejects prompt longer than 10000 characters', () => {
+      expect((server as any).validateRequest({
+        event: 'test',
+        prompt: 'x'.repeat(10001),
+      })).toBe('Prompt too long (max 10000 characters)');
     });
 
-    it('validates payload field count limit', async () => {
-      expect(true).toBe(true);
+    it('validates payload size limit', () => {
+      expect((server as any).validateRequest({
+        event: 'test',
+        prompt: 'Hello',
+        payload: { data: 'x'.repeat(4097) },
+      })).toBe('Payload too large (max 4096 characters)');
+    });
+
+    it('validates payload field count limit', () => {
+      expect((server as any).validateRequest({
+        event: 'test',
+        prompt: 'Hello',
+        payload: Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`k${i}`, i])),
+      })).toBe('Payload has too many fields (max 20)');
     });
   });
 
@@ -276,29 +364,155 @@ describe('WebhookServer', () => {
   });
 
   describe('project routing', () => {
-    it('resolves route with explicit channelType and chatId', () => {
-      // Test that explicit routing takes priority
-      expect(true).toBe(true);
+    it('resolves route with explicit channelType and chatId', async () => {
+      server = new WebhookServer({
+        token: 'test-token',
+        port: 9999,
+        path: '/webhook',
+        bridge: mockBridge as BridgeManager,
+        sessionStrategy: 'reject',
+      });
+      vi.mocked(mockBridge.getBinding!).mockResolvedValue({
+        channelType: 'feishu',
+        chatId: 'chat-explicit',
+        sessionId: 'binding-1',
+        cwd: '/repo/explicit',
+        projectName: 'explicit-project',
+        claudeSettingSources: ['user', 'project'],
+        createdAt: '',
+      } as any);
+
+      const route = await (server as any).resolveRoute({
+        event: 'test',
+        prompt: 'Hello',
+        channelType: 'feishu',
+        chatId: 'chat-explicit',
+      });
+
+      expect(route).toEqual({
+        channelType: 'feishu',
+        chatId: 'chat-explicit',
+        workdir: '/repo/explicit',
+        projectName: 'explicit-project',
+        claudeSettingSources: ['user', 'project'],
+      });
     });
 
-    it('resolves route with projectName using webhookDefaultChat', () => {
-      // Test project routing with configured default chat
-      expect(true).toBe(true);
+    it('resolves route with projectName using webhookDefaultChat', async () => {
+      const projects: ProjectConfig[] = [
+        {
+          name: 'project-a',
+          workdir: '/repo/a',
+          claudeSettingSources: ['user'],
+          webhookDefaultChat: { channelType: 'feishu', chatId: 'chat-a' },
+        },
+      ];
+      server = new WebhookServer({
+        token: 'test-token',
+        port: 9999,
+        path: '/webhook',
+        bridge: mockBridge as BridgeManager,
+        sessionStrategy: 'reject',
+        projects,
+      });
+
+      const route = await (server as any).resolveRoute({
+        event: 'test',
+        prompt: 'Hello',
+        projectName: 'project-a',
+      });
+
+      expect(route).toEqual({
+        channelType: 'feishu',
+        chatId: 'chat-a',
+        workdir: '/repo/a',
+        projectName: 'project-a',
+        claudeSettingSources: ['user'],
+      });
     });
 
-    it('resolves route with projectName using last active chat', () => {
-      // Test project routing fallback to last active chat
-      expect(true).toBe(true);
+    it('resolves route with projectName using last active chat', async () => {
+      const projects: ProjectConfig[] = [
+        {
+          name: 'project-b',
+          workdir: '/repo/b',
+          claudeSettingSources: ['user', 'local'],
+        },
+      ];
+      server = new WebhookServer({
+        token: 'test-token',
+        port: 9999,
+        path: '/webhook',
+        bridge: mockBridge as BridgeManager,
+        sessionStrategy: 'reject',
+        projects,
+      });
+
+      const route = await (server as any).resolveRoute({
+        event: 'test',
+        prompt: 'Hello',
+        projectName: 'project-b',
+      });
+
+      expect(route).toEqual({
+        channelType: 'feishu',
+        chatId: 'chat-123',
+        workdir: '/repo/b',
+        projectName: 'project-b',
+        claudeSettingSources: ['user', 'local'],
+      });
+      expect(mockBridge.getLastChatId).toHaveBeenCalledWith('feishu');
     });
 
-    it('returns null for invalid projectName', () => {
-      // Test error handling for non-existent project
-      expect(true).toBe(true);
+    it('returns null for invalid projectName', async () => {
+      server = new WebhookServer({
+        token: 'test-token',
+        port: 9999,
+        path: '/webhook',
+        bridge: mockBridge as BridgeManager,
+        sessionStrategy: 'reject',
+        projects: [{ name: 'project-a', workdir: '/repo/a' }],
+      });
+
+      const route = await (server as any).resolveRoute({
+        event: 'test',
+        prompt: 'Hello',
+        projectName: 'missing',
+      });
+
+      expect(route).toBeNull();
     });
 
-    it('uses defaultProject when no target specified', () => {
-      // Test fallback to default project configuration
-      expect(true).toBe(true);
+    it('uses defaultProject when no target specified', async () => {
+      const projects: ProjectConfig[] = [
+        {
+          name: 'default',
+          workdir: '/repo/default',
+          webhookDefaultChat: { channelType: 'feishu', chatId: 'chat-default' },
+        },
+      ];
+      server = new WebhookServer({
+        token: 'test-token',
+        port: 9999,
+        path: '/webhook',
+        bridge: mockBridge as BridgeManager,
+        sessionStrategy: 'reject',
+        projects,
+        defaultProject: 'default',
+      });
+
+      const route = await (server as any).resolveRoute({
+        event: 'test',
+        prompt: 'Hello',
+      });
+
+      expect(route).toEqual({
+        channelType: 'feishu',
+        chatId: 'chat-default',
+        workdir: '/repo/default',
+        projectName: 'default',
+        claudeSettingSources: undefined,
+      });
     });
 
     it('resolves route from sessionId before chat coordinates', async () => {

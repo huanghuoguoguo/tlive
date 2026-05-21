@@ -1,29 +1,42 @@
 import type { CanonicalEvent } from '../canonical/schema.js';
-import type { FileAttachment, PermissionRequestHandler, QueryControls } from '../canonical/types.js';
 import type { ClaudeSettingSource } from '../config.js';
 import type { EffortLevel } from '../utils/types.js';
+import type { AgentProviderKind } from './kinds.js';
+import type {
+  AskUserQuestionHandler,
+  DeferredToolHandler,
+  FileAttachment,
+  PermissionRequestHandler,
+  QueryControls,
+} from './types.js';
 
-export type { FileAttachment, PermissionRequestHandler, QueryControls };
+export type {
+  AskUserQuestionHandler,
+  DeferredToolHandler,
+  FileAttachment,
+  PermissionRequestHandler,
+  QueryControls,
+};
 
 export type { EffortLevel };
+export type { AgentProviderKind };
 
-/** AskUserQuestion handler type (with preview support) */
-export type AskUserQuestionHandler = (
-  questions: Array<{
-    question: string;
-    header: string;
-    options: Array<{ label: string; description?: string; preview?: string }>;
-    multiSelect: boolean;
-  }>,
-  signal?: AbortSignal,
-) => Promise<Record<string, string>>;
-
-/** Deferred tool handler type — for EnterPlanMode, EnterWorktree, etc. */
-export type DeferredToolHandler = (
-  toolName: string,
-  toolInput: Record<string, unknown>,
-  signal?: AbortSignal,
-) => Promise<{ behavior: 'allow' | 'deny'; updatedInput?: Record<string, unknown>; message?: string }>;
+export interface AgentProviderCapabilities {
+  /** Provider can inject text into a running turn. */
+  nativeSteer: boolean;
+  /** Provider can enqueue follow-up messages inside its own runtime. */
+  nativeQueue: boolean;
+  /** Provider exposes per-tool interactive permission callbacks. */
+  interactivePermissions: boolean;
+  /** Provider exposes AskUserQuestion-style callbacks. */
+  askUserQuestion: boolean;
+  /** Provider exposes deferred tool callbacks such as EnterPlanMode. */
+  deferredTools: boolean;
+  /** Provider supports resuming a previous SDK/runtime conversation id. */
+  sessionResume: boolean;
+  /** Provider accepts image attachments as native inputs. */
+  imageInputs: boolean;
+}
 
 export interface StreamChatParams {
   prompt: string;
@@ -37,10 +50,21 @@ export interface StreamChatParams {
   onPermissionRequest?: PermissionRequestHandler;
   /** Handler for AskUserQuestion tool — returns user's answer */
   onAskUserQuestion?: AskUserQuestionHandler;
+  /** Deferred tool handler for EnterPlanMode, EnterWorktree, etc. */
+  onDeferredTool?: DeferredToolHandler;
   /** Controls Claude's thinking depth */
   effort?: EffortLevel;
   /** Claude Code settings sources for this turn */
   settingSources?: ClaudeSettingSource[];
+}
+
+export interface CreateSessionParams {
+  workingDirectory: string;
+  sessionId?: string;
+  effort?: EffortLevel;
+  model?: string;
+  settingSources?: ClaudeSettingSource[];
+  appendSystemPrompt?: string;
 }
 
 export interface StreamChatResult {
@@ -70,6 +94,7 @@ export type MessagePriority = 'now' | 'next' | 'later';
  * across multiple turns. Each startTurn() yields a new user message into the generator.
  */
 export interface LiveSession {
+  readonly capabilities?: Pick<AgentProviderCapabilities, 'nativeSteer' | 'nativeQueue'>;
   /** Start a new turn (user message → agent response). Returns per-turn event stream. */
   startTurn(prompt: string, params?: TurnParams): StreamChatResult;
   /** Inject text into active turn. No-op if no turn is active. */
@@ -86,4 +111,12 @@ export interface LiveSession {
   readonly isAlive: boolean;
   /** Whether a turn is currently in progress */
   readonly isTurnActive: boolean;
+}
+
+export interface AgentProvider {
+  readonly kind: AgentProviderKind;
+  readonly displayName: string;
+  readonly capabilities: AgentProviderCapabilities;
+  createSession(params: CreateSessionParams): LiveSession;
+  streamChat(params: StreamChatParams): StreamChatResult;
 }

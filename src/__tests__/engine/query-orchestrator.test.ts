@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import { initBridgeContext } from '../../context.js';
 import { QueryOrchestrator } from '../../engine/coordinators/query.js';
@@ -57,6 +60,8 @@ describe('QueryOrchestrator', () => {
     createdAt: '2026-01-01T00:00:00Z',
   };
   let mockStore: any;
+  const previousTliveHome = process.env.TLIVE_HOME;
+  let tliveHome = '';
 
   beforeEach(() => {
     mockStore = {
@@ -75,6 +80,18 @@ describe('QueryOrchestrator', () => {
       store: mockStore,
       llm: {} as any,
     });
+  });
+
+  afterEach(() => {
+    if (tliveHome) {
+      rmSync(tliveHome, { recursive: true, force: true });
+      tliveHome = '';
+    }
+    if (previousTliveHome === undefined) {
+      delete process.env.TLIVE_HOME;
+    } else {
+      process.env.TLIVE_HOME = previousTliveHome;
+    }
   });
 
   it('persists sdk session id and marks the query as done', async () => {
@@ -123,6 +140,7 @@ describe('QueryOrchestrator', () => {
       }),
       setControlsForChat: vi.fn(),
       setActiveMessageId: vi.fn(),
+      registerFileDeliveryRoute: vi.fn().mockReturnValue('route-token'),
       closeSession: vi.fn(),
       getOrCreateSession: vi.fn().mockReturnValue(undefined),
     } as any;
@@ -154,6 +172,169 @@ describe('QueryOrchestrator', () => {
     expect(adapter.sendTyping).toHaveBeenCalledWith('chat-1');
     expect(adapter.addReaction).toHaveBeenCalledWith('chat-1', 'msg-1', expect.any(String));
     expect(JSON.stringify((adapter.send as any).mock.calls[0][0])).toContain('hello');
+  });
+
+  it('renders backend errors as failed turns instead of marking them done', async () => {
+    const state = new SessionStateManager();
+    const engine = {
+      processMessage: vi.fn().mockImplementation(async (params) => {
+        await params.onError?.('backend exploded');
+      }),
+    } as any;
+    const router = {
+      resolve: vi.fn().mockResolvedValue({ ...binding }),
+      rebind: vi.fn(),
+    } as any;
+    const permissions = {
+      clearSessionWhitelist: vi.fn(),
+      getGateway: vi.fn().mockReturnValue({
+        waitFor: vi.fn(),
+        resolve: vi.fn(),
+      }),
+      setPendingSdkPerm: vi.fn(),
+      clearPendingSdkPerm: vi.fn(),
+      notePermissionPending: vi.fn(),
+      notePermissionResolved: vi.fn(),
+      clearPendingPermissionSnapshot: vi.fn(),
+      isToolAllowed: vi.fn().mockReturnValue(false),
+      rememberSessionAllowance: vi.fn(),
+      storeQuestionData: vi.fn(),
+      trackPermissionMessage: vi.fn(),
+    } as any;
+    const sdkEngine = {
+      getInteractionState: vi.fn().mockReturnValue({
+        beginSdkQuestion: vi.fn(),
+        cleanupSdkQuestion: vi.fn(),
+        consumeSdkQuestionAnswer: vi.fn().mockReturnValue({}),
+      }),
+      setControlsForChat: vi.fn(),
+      setActiveMessageId: vi.fn(),
+      registerFileDeliveryRoute: vi.fn().mockReturnValue('route-token'),
+      getOrCreateSession: vi.fn().mockReturnValue(undefined),
+    } as any;
+    const adapter = createAdapter();
+
+    const orchestrator = new QueryOrchestrator({
+      engine,
+      llm: {} as any,
+      router,
+      state,
+      permissions,
+      sdkEngine,
+      store: mockStore,
+      defaultWorkdir: '/tmp/project',
+      defaultClaudeSettingSources: ['user', 'project', 'local'],
+      port: 8080,
+    });
+
+    await orchestrator.run(adapter, {
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      text: 'hello',
+      messageId: 'msg-1',
+    });
+
+    expect(JSON.stringify((adapter.send as any).mock.calls[0][0])).toContain('backend exploded');
+    expect(adapter.addReaction).toHaveBeenCalledWith('chat-1', 'msg-1', '😱');
+    expect(adapter.addReaction).not.toHaveBeenCalledWith('chat-1', 'msg-1', '👍');
+  });
+
+  it('prepares file attachments before starting a live Claude turn', async () => {
+    tliveHome = join(tmpdir(), `tlive-query-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    process.env.TLIVE_HOME = tliveHome;
+    const state = new SessionStateManager();
+    const engine = {
+      processMessage: vi.fn().mockResolvedValue({ text: '' }),
+    } as any;
+    const router = {
+      resolve: vi.fn().mockResolvedValue({ ...binding }),
+      rebind: vi.fn(),
+    } as any;
+    const permissions = {
+      clearSessionWhitelist: vi.fn(),
+      getGateway: vi.fn().mockReturnValue({
+        waitFor: vi.fn(),
+        resolve: vi.fn(),
+      }),
+      setPendingSdkPerm: vi.fn(),
+      clearPendingSdkPerm: vi.fn(),
+      notePermissionPending: vi.fn(),
+      notePermissionResolved: vi.fn(),
+      clearPendingPermissionSnapshot: vi.fn(),
+      isToolAllowed: vi.fn().mockReturnValue(false),
+      rememberSessionAllowance: vi.fn(),
+      storeQuestionData: vi.fn(),
+      trackPermissionMessage: vi.fn(),
+    } as any;
+    const startTurn = vi.fn().mockReturnValue({
+      stream: new ReadableStream({ start: controller => controller.close() }),
+    });
+    const sdkEngine = {
+      getInteractionState: vi.fn().mockReturnValue({
+        beginSdkQuestion: vi.fn(),
+        cleanupSdkQuestion: vi.fn(),
+        consumeSdkQuestionAnswer: vi.fn().mockReturnValue({}),
+      }),
+      getQuestionState: vi.fn().mockReturnValue({
+        sdkQuestionData: new Map(),
+        sdkQuestionAnswers: new Map(),
+        sdkQuestionTextAnswers: new Map(),
+      }),
+      setControlsForChat: vi.fn(),
+      setActiveMessageId: vi.fn(),
+      registerFileDeliveryRoute: vi.fn().mockReturnValue('route-token'),
+      closeSession: vi.fn(),
+      getOrCreateSession: vi.fn().mockReturnValue({ startTurn }),
+    } as any;
+    const adapter = createAdapter();
+
+    const orchestrator = new QueryOrchestrator({
+      engine,
+      llm: {} as any,
+      router,
+      state,
+      permissions,
+      sdkEngine,
+      store: mockStore,
+      defaultWorkdir: '/tmp/project',
+      defaultClaudeSettingSources: ['user', 'project', 'local'],
+      port: 8080,
+    });
+
+    await orchestrator.run(adapter, {
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      text: 'please inspect',
+      messageId: 'msg-1',
+      attachments: [
+        {
+          type: 'file',
+          name: 'report.pdf',
+          mimeType: 'application/pdf',
+          base64Data: Buffer.from('pdf body').toString('base64'),
+        },
+        {
+          type: 'image',
+          name: 'photo.png',
+          mimeType: 'image/png',
+          base64Data: Buffer.from('png body').toString('base64'),
+        },
+      ],
+    });
+
+    expect(startTurn).toHaveBeenCalledOnce();
+    expect(startTurn.mock.calls[0][0]).toContain('report.pdf');
+    expect(startTurn.mock.calls[0][0]).toContain('Path: `');
+    expect(startTurn.mock.calls[0][1].attachments).toEqual([
+      expect.objectContaining({ type: 'image', name: 'photo.png' }),
+    ]);
+    expect(engine.processMessage).toHaveBeenCalledWith(expect.objectContaining({
+      text: expect.stringContaining('report.pdf'),
+      attachments: [expect.objectContaining({ type: 'image', name: 'photo.png' })],
+      streamResult: expect.any(Object),
+    }));
   });
 
   it('uses the Feishu topic scope for session routing while sending to the real chat', async () => {
@@ -194,6 +375,7 @@ describe('QueryOrchestrator', () => {
       }),
       setControlsForChat: vi.fn(),
       setActiveMessageId: vi.fn(),
+      registerFileDeliveryRoute: vi.fn().mockReturnValue('route-token'),
       getOrCreateSession: vi.fn().mockReturnValue(undefined),
     } as any;
     const adapter = createAdapter();
@@ -226,11 +408,12 @@ describe('QueryOrchestrator', () => {
     expect(mockStore.getBinding).toHaveBeenCalledWith('feishu', scopeId);
     expect(sdkEngine.getOrCreateSession).toHaveBeenCalledWith(
       expect.anything(),
-      'feishu',
-      scopeId,
-      topicBinding.sessionId,
-      '/tmp/project',
-      expect.any(Object),
+      expect.objectContaining({
+        channelType: 'feishu',
+        chatId: scopeId,
+        bindingSessionId: topicBinding.sessionId,
+        workdir: '/tmp/project',
+      }),
     );
     expect((adapter.send as any).mock.calls[0][0]).toMatchObject({
       chatId: 'chat-1',
@@ -281,6 +464,7 @@ describe('QueryOrchestrator', () => {
       }),
       setControlsForChat: vi.fn(),
       setActiveMessageId: vi.fn(),
+      registerFileDeliveryRoute: vi.fn().mockReturnValue('route-token'),
       getOrCreateSession: vi.fn().mockReturnValue(undefined),
     } as any;
     const adapter = createAdapter();
@@ -288,6 +472,7 @@ describe('QueryOrchestrator', () => {
       threadId: 'thread-auto',
       messageId: 'msg-topic-start',
     });
+    const onConversationMessageResolved = vi.fn();
 
     const orchestrator = new QueryOrchestrator({
       engine,
@@ -300,6 +485,7 @@ describe('QueryOrchestrator', () => {
       defaultWorkdir: '/tmp/project',
       defaultClaudeSettingSources: ['user', 'project', 'local'],
       port: 8080,
+      onConversationMessageResolved,
     });
 
     await orchestrator.run(adapter, {
@@ -318,17 +504,25 @@ describe('QueryOrchestrator', () => {
     expect(router.resolve).toHaveBeenCalledWith('feishu', scopeId);
     expect(sdkEngine.getOrCreateSession).toHaveBeenCalledWith(
       expect.anything(),
-      'feishu',
-      scopeId,
-      topicBinding.sessionId,
-      '/tmp/project',
-      expect.any(Object),
+      expect.objectContaining({
+        channelType: 'feishu',
+        chatId: scopeId,
+        bindingSessionId: topicBinding.sessionId,
+        workdir: '/tmp/project',
+      }),
     );
     expect((adapter.send as any).mock.calls[0][0]).toMatchObject({
       chatId: 'chat-1',
       replyToMessageId: 'msg-topic-start',
       replyInThread: true,
     });
+    expect(onConversationMessageResolved).toHaveBeenCalledWith(expect.objectContaining({
+      chatId: 'chat-1',
+      scopeId,
+      threadId: 'thread-auto',
+      replyTargetMessageId: 'msg-topic-start',
+      replyInThread: true,
+    }));
   });
 
   it('splits Feishu completion into trace edit plus a separate result bubble', async () => {
@@ -379,6 +573,7 @@ describe('QueryOrchestrator', () => {
       }),
       setControlsForChat: vi.fn(),
       setActiveMessageId: vi.fn(),
+      registerFileDeliveryRoute: vi.fn().mockReturnValue('route-token'),
       closeSession: vi.fn(),
       getOrCreateSession: vi.fn().mockReturnValue(undefined),
     } as any;
@@ -461,6 +656,7 @@ describe('QueryOrchestrator', () => {
       }),
       setControlsForChat: vi.fn(),
       setActiveMessageId: vi.fn(),
+      registerFileDeliveryRoute: vi.fn().mockReturnValue('route-token'),
       closeSession: vi.fn(),
       getOrCreateSession: vi.fn().mockReturnValue(undefined),
     } as any;
@@ -546,6 +742,7 @@ describe('QueryOrchestrator', () => {
       }),
       setControlsForChat: vi.fn(),
       setActiveMessageId: vi.fn(),
+      registerFileDeliveryRoute: vi.fn().mockReturnValue('route-token'),
       closeSession: vi.fn(),
       getOrCreateSession: vi.fn().mockReturnValue(undefined),
     } as any;
@@ -639,6 +836,7 @@ describe('QueryOrchestrator', () => {
       }),
       setControlsForChat: vi.fn(),
       setActiveMessageId: vi.fn(),
+      registerFileDeliveryRoute: vi.fn().mockReturnValue('route-token'),
       closeSession: vi.fn(),
       getOrCreateSession: vi.fn().mockReturnValue(undefined),
     } as any;
@@ -764,6 +962,7 @@ describe('QueryOrchestrator', () => {
       }),
       setControlsForChat: vi.fn(),
       setActiveMessageId: vi.fn(),
+      registerFileDeliveryRoute: vi.fn().mockReturnValue('route-token'),
       closeSession: vi.fn(),
       getOrCreateSession: vi.fn().mockReturnValue(undefined),
     } as any;
@@ -842,6 +1041,7 @@ describe('QueryOrchestrator', () => {
       }),
       setControlsForChat: vi.fn(),
       setActiveMessageId: vi.fn(),
+      registerFileDeliveryRoute: vi.fn().mockReturnValue('route-token'),
       closeSession: vi.fn(),
       getOrCreateSession: vi.fn().mockReturnValue(undefined),
     } as any;
@@ -869,11 +1069,13 @@ describe('QueryOrchestrator', () => {
 
     expect(sdkEngine.getOrCreateSession).toHaveBeenCalledWith(
       expect.anything(),
-      'feishu',
-      'chat-1',
-      'session-1',
-      '/tmp/project',
-      expect.objectContaining({ settingSources: ['user'] }),
+      expect.objectContaining({
+        channelType: 'feishu',
+        chatId: 'chat-1',
+        bindingSessionId: 'session-1',
+        workdir: '/tmp/project',
+        options: expect.objectContaining({ settingSources: ['user'] }),
+      }),
     );
   });
 

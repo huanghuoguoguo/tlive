@@ -7,6 +7,7 @@ import {
   taskStartButtons,
   taskSummaryButtons,
   helpButtons,
+  topicDoneButtons,
   permStatusButtons,
   navNew,
   deferredSubmit,
@@ -16,19 +17,25 @@ import type { Locale } from '../../i18n/index.js';
 
 describe('ui/buttons', () => {
   describe('permissionButtons', () => {
-    it('creates three permission buttons (allow, always, deny)', () => {
+    it('creates four permission buttons (once, same command, session all, deny)', () => {
       const buttons = permissionButtons('perm-123', 'en');
 
-      expect(buttons).toHaveLength(3);
+      expect(buttons).toHaveLength(4);
       expect(buttons[0].style).toBe('primary');
-      expect(buttons[2].style).toBe('danger');
+      expect(buttons[3].style).toBe('danger');
+      expect(buttons.map(b => b.callbackData)).toEqual([
+        'perm:allow:perm-123',
+        'perm:allow_same:perm-123',
+        'perm:allow_all_session:perm-123',
+        'perm:deny:perm-123',
+      ]);
     });
 
     it('includes permission ID in callbackData', () => {
       const buttons = permissionButtons('perm-456', 'en');
 
       expect(buttons[0].callbackData).toContain('perm-456');
-      expect(buttons[2].callbackData).toContain('perm-456');
+      expect(buttons[3].callbackData).toContain('perm-456');
     });
 
     it('uses zh locale labels', () => {
@@ -47,10 +54,10 @@ describe('ui/buttons', () => {
       expect(buttons.length).toBeGreaterThan(0);
     });
 
-    it('includes sessions and new buttons', () => {
+    it('includes session and new buttons', () => {
       const buttons = homeButtons('en');
 
-      const hasSessions = buttons.some(b => b.callbackData.includes('sessions'));
+      const hasSessions = buttons.some(b => b.callbackData === 'cmd:session');
       const hasNew = buttons.some(b => b.callbackData.includes('new'));
       expect(hasSessions || hasNew).toBe(true);
     });
@@ -68,7 +75,7 @@ describe('ui/buttons', () => {
       const buttons = progressDoneButtons('en', ['home', 'sessions', 'new', 'help']);
 
       const hasHome = buttons.some(b => b.callbackData.includes('home'));
-      const hasSessions = buttons.some(b => b.callbackData.includes('sessions'));
+      const hasSessions = buttons.some(b => b.callbackData === 'cmd:session');
       const hasNew = buttons.some(b => b.callbackData.includes('new'));
       const hasHelp = buttons.some(b => b.callbackData.includes('help'));
       expect(hasHome).toBe(true);
@@ -85,11 +92,20 @@ describe('ui/buttons', () => {
       expect(buttons.length).toBeGreaterThan(0);
     });
 
-    it('includes stop button', () => {
+    it('shows only the stop button', () => {
       const buttons = progressRunningButtons('en');
 
       const hasStop = buttons.some(b => b.callbackData.includes('stop'));
+      const hasHelp = buttons.some(b => b.callbackData.includes('help'));
       expect(hasStop).toBe(true);
+      expect(hasHelp).toBe(false);
+      expect(buttons).toHaveLength(1);
+    });
+
+    it('can bind stop button to a specific session key', () => {
+      const buttons = progressRunningButtons('en', 'feishu:chat#thread:t1:session-1');
+
+      expect(buttons[0].callbackData).toBe('cmd:stop feishu:chat#thread:t1:session-1');
     });
   });
 
@@ -120,6 +136,15 @@ describe('ui/buttons', () => {
 
       const hasHome = buttons.some(b => b.callbackData.includes('home'));
       expect(hasHome).toBe(true);
+    });
+  });
+
+  describe('topicDoneButtons', () => {
+    it('shows only help inside topic completion cards', () => {
+      const buttons = topicDoneButtons('en');
+
+      expect(buttons).toHaveLength(1);
+      expect(buttons[0].callbackData).toBe('cmd:help');
     });
   });
 

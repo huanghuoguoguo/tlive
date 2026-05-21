@@ -30,6 +30,23 @@ function createMockProvider(sessions: Record<string, LiveSession> = {}): ClaudeS
   } as unknown as ClaudeSDKProvider;
 }
 
+const DEFAULT_SESSION_ID = 'session-1';
+const DEFAULT_SESSION_KEY = `feishu:chat-1:${DEFAULT_SESSION_ID}`;
+
+function createEngineSession(
+  engine: SDKEngine,
+  provider: ClaudeSDKProvider,
+  options?: Parameters<SDKEngine['getOrCreateSession']>[1]['options'],
+): LiveSession | undefined {
+  return engine.getOrCreateSession(provider, {
+    channelType: 'feishu',
+    chatId: 'chat-1',
+    bindingSessionId: DEFAULT_SESSION_ID,
+    workdir: '/workdir',
+    options,
+  });
+}
+
 describe('SDKEngine', () => {
   let engine: SDKEngine;
 
@@ -69,7 +86,7 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession(true, true);
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
+      createEngineSession(engine, mockProvider);
 
       const result = await engine.sendWithContext('feishu', 'chat-1', 'reply message', 'missing-bubble');
       expect(result).toMatchObject({
@@ -85,7 +102,7 @@ describe('SDKEngine', () => {
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
       // Create session first
-      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
+      createEngineSession(engine, mockProvider);
 
       const result = await engine.sendWithContext('feishu', 'chat-1', 'queued message');
 
@@ -94,7 +111,7 @@ describe('SDKEngine', () => {
       expect(result.queuePosition).toBe(1);
       expect(result.queueDepth).toBe(1);
       expect(result.maxQueueDepth).toBe(3);
-      expect(result.sessionKey).toBe('feishu:chat-1:/workdir');
+      expect(result.sessionKey).toBe(DEFAULT_SESSION_KEY);
       expect(mockSession.sendWithPriority).toHaveBeenCalledWith('queued message', 'later');
     });
 
@@ -102,7 +119,7 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession(true, false);
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
+      createEngineSession(engine, mockProvider);
 
       const result1 = await engine.sendWithContext('feishu', 'chat-1', 'message 1');
       const result2 = await engine.sendWithContext('feishu', 'chat-1', 'message 2');
@@ -117,7 +134,7 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession(true, false);
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
+      createEngineSession(engine, mockProvider);
 
       // Fill the queue
       await engine.sendWithContext('feishu', 'chat-1', 'message 1');
@@ -138,7 +155,7 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession(true, true);
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
+      createEngineSession(engine, mockProvider);
 
       const result = await engine.sendWithContext('feishu', 'chat-1', 'steer message');
 
@@ -148,19 +165,39 @@ describe('SDKEngine', () => {
       expect(mockSession.sendWithPriority).toHaveBeenCalledWith('steer message', 'now');
     });
 
+    it('rejects active-turn injection when provider has no native steer or queue', async () => {
+      const mockSession = {
+        ...createMockSession(true, true),
+        capabilities: { nativeSteer: false, nativeQueue: false },
+      } as LiveSession;
+      const mockProvider = createMockProvider({ '/workdir': mockSession });
+
+      createEngineSession(engine, mockProvider);
+
+      const result = await engine.sendWithContext('feishu', 'chat-1', 'follow-up');
+
+      expect(result).toMatchObject({
+        sent: false,
+        mode: 'none',
+        failureReason: 'busy_unsupported',
+        sessionKey: DEFAULT_SESSION_KEY,
+      });
+      expect(mockSession.sendWithPriority).not.toHaveBeenCalled();
+    });
+
     it('returns send_failed when steering cannot be injected', async () => {
       const mockSession = createMockSession(true, true);
       vi.mocked(mockSession.sendWithPriority).mockRejectedValueOnce(new Error('boom'));
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
+      createEngineSession(engine, mockProvider);
 
       const result = await engine.sendWithContext('feishu', 'chat-1', 'steer message');
       expect(result).toMatchObject({
         sent: false,
         mode: 'none',
         failureReason: 'send_failed',
-        sessionKey: 'feishu:chat-1:/workdir',
+        sessionKey: DEFAULT_SESSION_KEY,
       });
     });
 
@@ -168,12 +205,12 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession(true, true);
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
+      createEngineSession(engine, mockProvider);
 
       await engine.sendWithContext('feishu', 'chat-1', 'steer 1');
       await engine.sendWithContext('feishu', 'chat-1', 'steer 2');
 
-      const sessionKey = 'feishu:chat-1:/workdir';
+      const sessionKey = DEFAULT_SESSION_KEY;
       expect(engine.getQueueDepth(sessionKey)).toBe(0);
     });
 
@@ -181,10 +218,10 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession(true, false);
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
+      createEngineSession(engine, mockProvider);
       await engine.sendWithContext('feishu', 'chat-1', 'queued');
 
-      const sessionKey = 'feishu:chat-1:/workdir';
+      const sessionKey = DEFAULT_SESSION_KEY;
       expect(engine.getQueueDepth(sessionKey)).toBe(1);
 
       engine.closeSession('feishu', 'chat-1', '/workdir');
@@ -195,26 +232,26 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession(true, false);
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
+      createEngineSession(engine, mockProvider);
       await engine.sendWithContext('feishu', 'chat-1', 'queued');
 
       engine.closeSession('feishu', 'chat-1'); // Close all sessions for chat
-      expect(engine.getQueueDepth('feishu:chat-1:/workdir')).toBe(0);
+      expect(engine.getQueueDepth(DEFAULT_SESSION_KEY)).toBe(0);
     });
 
     it('decrements queue depth as queued turns are consumed', async () => {
       const mockSession = createMockSession(true, false) as LiveSession & { __triggerTurnComplete: () => void };
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
+      createEngineSession(engine, mockProvider);
       await engine.sendWithContext('feishu', 'chat-1', 'message 1');
       await engine.sendWithContext('feishu', 'chat-1', 'message 2');
 
       mockSession.__triggerTurnComplete();
-      expect(engine.getQueueDepth('feishu:chat-1:/workdir')).toBe(1);
+      expect(engine.getQueueDepth(DEFAULT_SESSION_KEY)).toBe(1);
 
       mockSession.__triggerTurnComplete();
-      expect(engine.getQueueDepth('feishu:chat-1:/workdir')).toBe(0);
+      expect(engine.getQueueDepth(DEFAULT_SESSION_KEY)).toBe(0);
     });
   });
 
@@ -223,7 +260,7 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession();
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      const session = engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
+      const session = createEngineSession(engine, mockProvider);
 
       expect(session).toBeDefined();
       expect(mockProvider.createSession).toHaveBeenCalled();
@@ -233,8 +270,8 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession(true, false);
       const mockProvider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
-      engine.getOrCreateSession(mockProvider, 'feishu', 'chat-1', '/workdir');
+      createEngineSession(engine, mockProvider);
+      createEngineSession(engine, mockProvider);
 
       expect(mockProvider.createSession).toHaveBeenCalledTimes(1);
     });
@@ -244,13 +281,14 @@ describe('SDKEngine', () => {
       const secondSession = createMockSession(true, false);
       const provider = {
         streamChat: vi.fn().mockReturnValue({ stream: new ReadableStream() }),
-        createSession: vi.fn()
+        createSession: vi
+          .fn()
           .mockReturnValueOnce(firstSession)
           .mockReturnValueOnce(secondSession),
       } as unknown as ClaudeSDKProvider;
 
-      engine.getOrCreateSession(provider, 'feishu', 'chat-1', 'session-1', '/workdir');
-      const recreated = engine.getOrCreateSession(provider, 'feishu', 'chat-1', 'session-1', '/workdir', {
+      createEngineSession(engine, provider);
+      const recreated = createEngineSession(engine, provider, {
         sessionId: 'sdk-existing',
       });
 
@@ -266,12 +304,13 @@ describe('SDKEngine', () => {
       const secondSession = createMockSession(true, false);
       const provider = {
         streamChat: vi.fn().mockReturnValue({ stream: new ReadableStream() }),
-        createSession: vi.fn()
+        createSession: vi
+          .fn()
           .mockReturnValueOnce(firstSession)
           .mockReturnValueOnce(secondSession),
       } as unknown as ClaudeSDKProvider;
 
-      engine.getOrCreateSession(provider, 'feishu', 'chat-1', 'session-1', '/workdir');
+      createEngineSession(engine, provider);
       engine.setActiveMessageId('feishu:chat-1', 'bubble-1', 'feishu:chat-1:session-1');
 
       engine.resetSessionRuntime('feishu:chat-1:session-1', 'expire');
@@ -279,7 +318,7 @@ describe('SDKEngine', () => {
       expect(engine.getSessionForBubble('bubble-1')).toBe('feishu:chat-1:session-1');
       expect(engine.hasActiveSession('feishu', 'chat-1', '/workdir')).toBe(false);
 
-      const recreated = engine.getOrCreateSession(provider, 'feishu', 'chat-1', 'session-1', '/workdir');
+      const recreated = createEngineSession(engine, provider);
       expect(recreated).toBe(secondSession);
       expect(provider.createSession).toHaveBeenCalledTimes(2);
     });
@@ -288,7 +327,7 @@ describe('SDKEngine', () => {
       const mockSession = createMockSession(true, false);
       const provider = createMockProvider({ '/workdir': mockSession });
 
-      engine.getOrCreateSession(provider, 'feishu', 'chat-1', 'session-1', '/workdir');
+      createEngineSession(engine, provider);
       engine.setActiveMessageId('feishu:chat-1', 'bubble-1', 'feishu:chat-1:session-1');
       await engine.sendWithContext('feishu', 'chat-1', 'queued before move');
 

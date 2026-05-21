@@ -1,10 +1,9 @@
 import { commandRegistry } from './registry.js';
 import { StatusCommand } from './status.js';
 import { NewCommand } from './new.js';
-import { HomeCommand } from './home.js';
+import { HomeCommand, TliveCommand } from './home.js';
 import { PermCommand } from './perm.js';
 import { StopCommand } from './stop.js';
-import { HooksCommand } from './hooks.js';
 import { ContinueSessionCommand, SessionCommand } from './session.js';
 import { CdCommand } from './cd.js';
 import { PwdCommand } from './pwd.js';
@@ -22,10 +21,10 @@ import { DoctorCommand } from './doctor.js';
 export function registerAllCommands(): void {
   commandRegistry.register(new StatusCommand());
   commandRegistry.register(new NewCommand());
+  commandRegistry.register(new TliveCommand());
   commandRegistry.register(new HomeCommand());
   commandRegistry.register(new PermCommand());
   commandRegistry.register(new StopCommand());
-  commandRegistry.register(new HooksCommand());
   commandRegistry.register(new SessionCommand());
   commandRegistry.register(new ContinueSessionCommand());
   commandRegistry.register(new CdCommand());

@@ -1,58 +1,40 @@
-import type { BridgeStore, ChannelBinding } from '../../store/interface.js';
+import type { BridgeStore } from '../../store/interface.js';
 import type { SessionStateManager } from '../state/session-state.js';
 import type { WorkspaceStateManager } from '../state/workspace-state.js';
 import type { SDKEngine } from '../sdk/engine.js';
 import type { PermissionCoordinator } from '../coordinators/permission.js';
-import type { HomeData } from '../../formatting/message-types.js';
-import type { ScannedSession } from '../../providers/session-scanner.js';
+import type { HomeData, HomeProviderEntry } from '../../formatting/message-types.js';
 import type { QueryControls } from '../../providers/base.js';
+import type { AgentProviderRegistry } from '../../providers/registry.js';
+import { agentSessionKey } from '../../providers/kinds.js';
+import { historyProviderKinds } from '../../providers/history.js';
 import type { Locale } from '../../i18n/index.js';
 import type { TopicSessionManager } from '../state/topic-sessions.js';
 import type { BaseChannelAdapter } from '../../channels/base.js';
-import { scanClaudeSessions, readSessionTranscriptPreview } from '../../providers/session-scanner.js';
+import { scanAgentSessions } from '../../providers/session-scanner.js';
 import { shortPath } from '../../core/path.js';
-import { formatSize, formatSessionDate, formatRelativeTime } from '../../formatting/session-format.js';
-import { SESSION_STALE_THRESHOLD_MS } from '../../core/timing.js';
-import { THREAD_SCOPE_SEPARATOR, splitChatKey } from '../../core/key.js';
-import { basename } from 'node:path';
+import { formatRelativeTime } from '../../formatting/session-format.js';
+import {
+  buildActiveSdkSessionBindings,
+  buildHomeSessionEntries,
+  buildRecentProjects,
+  buildTopicEntries,
+  hasActiveTaskInConversation,
+} from './home-model.js';
 
-type BoundInfo = { channelType: string; chatId: string; isActive: boolean };
-
-/** Shared mapping for scanned sessions (used by both recentSessions and allSessions) */
-function mapScannedSession(
-  session: ScannedSession,
-  index: number,
-  opts: {
-    binding: ChannelBinding | null | undefined;
-    activeSdkSessionBindings: Map<string, BoundInfo>;
-    channelType: string;
-    chatId: string;
-    topicSessions?: TopicSessionManager;
-    now: number;
-    locale: Locale;
-    boundFilter: (boundInfo: BoundInfo | undefined, sdkSessionId: string) => BoundInfo | undefined;
-  },
-) {
-  const boundInfo = opts.activeSdkSessionBindings.get(session.sdkSessionId);
-  const boundToActiveSession = opts.boundFilter(boundInfo, session.sdkSessionId);
-  const topic = opts.topicSessions?.findBySdkSessionId(session.sdkSessionId);
+function homeProviderEntry(provider: {
+  kind: HomeProviderEntry['kind'];
+  displayName: string;
+  available: boolean;
+  isDefault: boolean;
+  reason?: string;
+}): HomeProviderEntry {
   return {
-    index: index + 1,
-    sdkSessionId: session.sdkSessionId,
-    date: formatSessionDate(session.mtime, opts.locale),
-    cwd: shortPath(session.cwd),
-    size: formatSize(session.size),
-    preview: session.preview,
-    transcript: readSessionTranscriptPreview(session, 4),
-    isCurrent: opts.binding?.sdkSessionId === session.sdkSessionId,
-    topic: topic ? {
-      scopeId: topic.scopeId,
-      threadId: topic.threadId,
-      updatedAt: formatRelativeTime(new Date(topic.updatedAt).getTime(), opts.locale),
-      isActive: opts.activeSdkSessionBindings.get(session.sdkSessionId)?.isActive ?? false,
-    } : undefined,
-    boundToActiveSession,
-    isStale: (opts.now - session.mtime) > SESSION_STALE_THRESHOLD_MS,
+    kind: provider.kind,
+    displayName: provider.displayName,
+    available: provider.available,
+    isDefault: provider.isDefault,
+    reason: provider.reason,
   };
 }
 
@@ -65,6 +47,7 @@ export interface HomePayloadBuilderDeps {
   activeControls: Map<string, QueryControls>;
   getAdapters: () => Map<string, BaseChannelAdapter>;
   defaultWorkdir: string;
+  providers: AgentProviderRegistry;
   topicSessions?: TopicSessionManager;
 }
 
@@ -76,50 +59,44 @@ export class HomePayloadBuilder {
   constructor(private deps: HomePayloadBuilderDeps) {}
 
   async build(channelType: string, chatId: string, locale: Locale = 'zh'): Promise<HomeData> {
-    const { store, state, workspace, sdkEngine, permissions, activeControls, getAdapters, defaultWorkdir } = this.deps;
+    const {
+      store,
+      state,
+      workspace,
+      sdkEngine,
+      permissions,
+      activeControls,
+      getAdapters,
+      defaultWorkdir,
+      providers,
+    } = this.deps;
     const topicSessions = this.deps.topicSessions;
     const binding = await store.getBinding(channelType, chatId);
     const currentCwd = binding?.cwd || defaultWorkdir;
     const chatKey = state.stateKey(channelType, chatId);
     const now = Date.now();
-    const scopeSepIndex = chatId.indexOf(THREAD_SCOPE_SEPARATOR);
-    const isTopicScope = scopeSepIndex >= 0;
-    const realChatId = isTopicScope ? chatId.slice(0, scopeSepIndex) : chatId;
-    const topicId = isTopicScope ? chatId.slice(scopeSepIndex + THREAD_SCOPE_SEPARATOR.length) : undefined;
+    const sessionProviders = historyProviderKinds(providers);
 
-    // Scan recent sessions (current workspace) and all sessions (global)
-    const recentSessions = scanClaudeSessions(10, currentCwd);
-    const allSessions = scanClaudeSessions(10, undefined);
-
-    // Get all bindings to check which sdkSessions are bound to active bridge sessions
+    const recentSessions = scanAgentSessions(10, currentCwd, sessionProviders);
+    const allSessions = scanAgentSessions(10, undefined, sessionProviders);
+    const allSessionsGlobal = scanAgentSessions(50, undefined, sessionProviders);
     const allBindings = await store.listBindings();
-
-    // Build map: sdkSessionId -> binding that owns it (if active)
-    const activeSdkSessionBindings = new Map<string, BoundInfo>();
-    for (const b of allBindings) {
-      if (b.sdkSessionId) {
-        const bChatKey = state.stateKey(b.channelType, b.chatId);
-        const isActive = activeControls.has(bChatKey);
-        activeSdkSessionBindings.set(b.sdkSessionId, {
-          channelType: b.channelType,
-          chatId: b.chatId,
-          isActive,
-        });
-      }
-    }
-    const hasActiveTaskInScope = activeControls.has(chatKey);
-    const hasActiveTaskInChat = isTopicScope
-      ? hasActiveTaskInScope
-      : [...activeControls.keys()].some(key => {
-        const parsed = splitChatKey(key);
-        return parsed.channelType === channelType
-          && (parsed.chatId === chatId || parsed.chatId.startsWith(`${chatId}${THREAD_SCOPE_SEPARATOR}`));
-      });
+    const activeSdkSessionBindings = buildActiveSdkSessionBindings(
+      allBindings,
+      activeControls,
+      state.stateKey.bind(state),
+    );
+    const hasActiveTaskInChat = hasActiveTaskInConversation(
+      channelType,
+      chatId,
+      activeControls,
+      state.stateKey.bind(state),
+    );
 
     const permStatus = permissions.getPermissionStatus(chatKey, binding?.sessionId);
     const adapters = getAdapters();
     const activeChannels = Array.from(adapters.keys());
-    const channelInfo = Array.from(adapters.values()).map(adapter => ({
+    const channelInfo = Array.from(adapters.values()).map((adapter) => ({
       type: adapter.channelType,
       ...adapter.getBotInfo(),
     }));
@@ -130,80 +107,31 @@ export class HomePayloadBuilder {
       ? sdkEngine?.getSessionKeyForBinding?.(channelType, chatId, binding.sessionId)
       : sdkEngine?.getActiveSessionKey(channelType, chatId);
     const queueInfo = currentSessionKey ? sdkEngine?.getQueueInfo(currentSessionKey) : undefined;
-    const sessionStale = currentSessionKey ? sdkEngine?.isSessionStale(currentSessionKey) ?? false : false;
+    const sessionStale = currentSessionKey
+      ? (sdkEngine?.isSessionStale(currentSessionKey) ?? false)
+      : false;
 
-    // Current bridge session info
-    const currentBridgeSession = binding ? {
-      sessionId: binding.sessionId,
-      sdkSessionId: binding.sdkSessionId,
-      cwd: shortPath(binding.cwd || currentCwd),
-      isActive: hasActiveTaskInScope,
-      queueDepth: queueInfo?.depth,
-      lastActiveAt: lastActiveTime ? formatRelativeTime(lastActiveTime, locale) : undefined,
-    } : undefined;
-
-    // Managed sessions in SDKEngine for this chat
-    const rawManagedSessions = isTopicScope ? sdkEngine?.getSessionsForChat(channelType, chatId) ?? [] : [];
-    const managedSessions = rawManagedSessions.map(s => ({ ...s, workdir: shortPath(s.workdir) }));
-
-    // Ensure current binding always appears in managedSessions (it may not be in registry yet if no query was sent)
-    if (binding && !managedSessions.some(s => s.bindingSessionId === binding.sessionId)) {
-      managedSessions.unshift({
-        sessionKey: `${channelType}:${chatId}:${binding.sessionId}`,
-        bindingSessionId: binding.sessionId,
-        workdir: shortPath(binding.cwd || currentCwd),
-        sdkSessionId: binding.sdkSessionId,
-        isAlive: false,
-        isTurnActive: false,
-        lastActiveAt: Date.now(),
-        isCurrent: true,
-        queueDepth: 0,
-      });
-    }
-
-    // Recent projects from scanned sessions (unique workdirs)
-    const allSessionsGlobal = scanClaudeSessions(50, undefined);
-    const uniqueWorkdirs: Map<string, { count: number; lastMtime: number }> = new Map();
-    for (const session of allSessionsGlobal) {
-      const existing = uniqueWorkdirs.get(session.cwd);
-      if (existing) {
-        existing.count++;
-        existing.lastMtime = Math.max(existing.lastMtime, session.mtime);
-      } else {
-        uniqueWorkdirs.set(session.cwd, { count: 1, lastMtime: session.mtime });
-      }
-    }
-
-    // Sort by last activity time, take top 5
-    const sortedWorkdirs = Array.from(uniqueWorkdirs.entries())
-      .sort((a, b) => b[1].lastMtime - a[1].lastMtime)
-      .slice(0, 5);
-
-    const recentProjects = sortedWorkdirs.map(([workdir]) => ({
-      name: basename(workdir),
-      workdir: shortPath(workdir),
-      fullWorkdir: workdir,
-      isCurrent: workdir === currentCwd,
-    }));
-    const topicEntries = topicSessions?.listRecent(8, { channelType, chatId: realChatId })
-      .map((record, index) => ({
-        index: index + 1,
-        sdkSessionId: record.sdkSessionId,
-        scopeId: record.scopeId,
-        threadId: record.threadId,
-        cwd: shortPath(record.cwd || currentCwd),
-        title: record.title || record.preview || 'Claude 会话',
-        preview: record.preview || record.title || 'Claude 会话',
-        updatedAt: formatRelativeTime(new Date(record.updatedAt).getTime(), locale),
-        isCurrent: chatId === record.scopeId || (!!binding?.sdkSessionId && binding.sdkSessionId === record.sdkSessionId),
-        isActive: activeControls.has(state.stateKey(record.channelType, record.scopeId)),
-      })) ?? [];
+    const topicEntries = buildTopicEntries({
+      topicSessions,
+      channelType,
+      chatId,
+      currentCwd,
+      binding,
+      activeControls,
+      stateKey: state.stateKey.bind(state),
+      locale,
+      providerDisplayName: (kind) =>
+        kind ? (providers.descriptor(kind)?.displayName ?? kind) : undefined,
+    });
 
     return {
+      providers: {
+        defaultKind: providers.defaultProviderKind,
+        available: providers.availableForNewSession().map(homeProviderEntry),
+        all: providers.list().map(homeProviderEntry),
+      },
       workspace: {
         cwd: shortPath(currentCwd),
-        scope: isTopicScope ? 'topic' : 'workbench',
-        topicId,
         binding: workspaceBinding ? shortPath(workspaceBinding) : undefined,
         project: projectName,
       },
@@ -211,27 +139,42 @@ export class HomePayloadBuilder {
         active: hasActiveTaskInChat,
       },
       session: {
-        current: isTopicScope ? currentBridgeSession : undefined,
-        managed: managedSessions.length > 0 ? managedSessions : undefined,
         topics: topicEntries.length > 0 ? topicEntries : undefined,
-        recent: recentSessions.map((session, index) =>
-          mapScannedSession(session, index, {
-            binding, activeSdkSessionBindings, channelType, chatId, topicSessions, now, locale,
-            boundFilter: (bi) =>
-              (bi && !bi.isActive && bi.channelType === channelType && bi.chatId === chatId)
-                ? undefined
-                : bi?.isActive ? bi : undefined,
-          }),
-        ),
-        all: allSessions.map((session, index) =>
-          mapScannedSession(session, index, {
-            binding, activeSdkSessionBindings, channelType, chatId, topicSessions, now, locale,
-            boundFilter: (bi, sdkSessionId) =>
-              bi?.isActive
-                && !(bi.channelType === channelType && bi.chatId === chatId && binding?.sdkSessionId === sdkSessionId)
-              ? bi : undefined,
-          }),
-        ),
+        recent: buildHomeSessionEntries(recentSessions, {
+          binding,
+          activeSdkSessionBindings,
+          channelType,
+          chatId,
+          topicSessions,
+          now,
+          locale,
+          boundFilter: (bi) =>
+            bi && !bi.isActive && bi.channelType === channelType && bi.chatId === chatId
+              ? undefined
+              : bi?.isActive
+                ? bi
+                : undefined,
+        }),
+        all: buildHomeSessionEntries(allSessions, {
+          binding,
+          activeSdkSessionBindings,
+          channelType,
+          chatId,
+          topicSessions,
+          now,
+          locale,
+          boundFilter: (bi, session) =>
+            bi?.isActive &&
+            !(
+              bi.channelType === channelType &&
+              bi.chatId === chatId &&
+              binding?.sdkSessionId &&
+              agentSessionKey(binding.provider, binding.sdkSessionId) ===
+                agentSessionKey(session.provider, session.sdkSessionId)
+            )
+              ? bi
+              : undefined,
+        }),
         stale: sessionStale,
         lastActiveAt: lastActiveTime ? formatRelativeTime(lastActiveTime, locale) : undefined,
       },
@@ -248,10 +191,10 @@ export class HomePayloadBuilder {
         queueInfo,
       },
       help: {
-        entries: [],  // Will be populated by CommandRouter if needed
+        entries: [], // Will be populated by CommandRouter if needed
         recentSummary: recentSessions[0]?.preview,
       },
-      recentProjects,
+      recentProjects: buildRecentProjects(allSessionsGlobal, currentCwd),
     };
   }
 }

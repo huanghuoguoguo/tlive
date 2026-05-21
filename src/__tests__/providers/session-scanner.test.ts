@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   scanClaudeSessions,
+  scanCodexSessions,
   invalidateSessionCache,
   readSessionTranscriptPreview,
   type ScannedSession,
@@ -234,6 +235,105 @@ describe('session-scanner', () => {
     });
   });
 
+  describe('scanCodexSessions', () => {
+    it('scans Codex SDK threads and ignores host Codex CLI rollouts', () => {
+      const sdkId = '019e4b16-a370-7ee0-b14a-ee20923bef5b';
+      const cliId = '019e4b16-a370-7ee0-b14a-ee20923bef5c';
+      const sdkFile = `rollout-2026-05-21T23-10-35-${sdkId}.jsonl`;
+      const cliFile = `rollout-2026-05-21T23-10-35-${cliId}.jsonl`;
+      const sdkPath = `/home/testuser/.codex/sessions/2026/05/21/${sdkFile}`;
+      const cliPath = `/home/testuser/.codex/sessions/2026/05/21/${cliFile}`;
+      const contents = new Map<string, string>([
+        [
+          sdkPath,
+          [
+            JSON.stringify({
+              type: 'session_meta',
+              payload: { id: sdkId, cwd: '/repo/codex', originator: 'codex_sdk_ts' },
+            }),
+            JSON.stringify({
+              type: 'response_item',
+              payload: {
+                type: 'message',
+                role: 'user',
+                content: [{ type: 'input_text', text: 'codex prompt text' }],
+              },
+            }),
+            JSON.stringify({
+              type: 'response_item',
+              payload: {
+                type: 'message',
+                role: 'assistant',
+                content: [{ type: 'output_text', text: 'codex response' }],
+              },
+            }),
+          ].join('\n'),
+        ],
+        [
+          cliPath,
+          JSON.stringify({
+            type: 'session_meta',
+            payload: { id: cliId, cwd: '/repo/cli', originator: 'codex_tui' },
+          }),
+        ],
+      ]);
+      const openPaths = new Map<number, string>();
+      let nextFd = 10;
+
+      mockReaddir.mockImplementation(((path: fs.PathLike) => {
+        const pathStr = String(path);
+        if (pathStr.endsWith('/.codex/sessions')) {
+          return [{ name: '2026', isDirectory: () => true } as fs.Dirent];
+        }
+        if (pathStr.endsWith('/.codex/sessions/2026')) {
+          return [{ name: '05', isDirectory: () => true } as fs.Dirent];
+        }
+        if (pathStr.endsWith('/.codex/sessions/2026/05')) {
+          return [{ name: '21', isDirectory: () => true } as fs.Dirent];
+        }
+        if (pathStr.endsWith('/.codex/sessions/2026/05/21')) {
+          return [
+            { name: sdkFile, isDirectory: () => false } as fs.Dirent,
+            { name: cliFile, isDirectory: () => false } as fs.Dirent,
+          ];
+        }
+        throw new Error('ENOENT');
+      }) as unknown as typeof fs.readdirSync);
+
+      mockStat.mockImplementation(((path: fs.PathLike) => {
+        const content = contents.get(String(path)) ?? '';
+        return { mtimeMs: String(path) === sdkPath ? 2000 : 1000, size: Buffer.byteLength(content) } as fs.Stats;
+      }) as unknown as typeof fs.statSync);
+
+      vi.mocked(fs.openSync).mockImplementation(((path: fs.PathLike) => {
+        const fd = nextFd++;
+        openPaths.set(fd, String(path));
+        return fd;
+      }) as unknown as typeof fs.openSync);
+      mockRead.mockImplementation(((fd: number, buffer: ArrayBufferView, offset: number, length: number, position: number) => {
+        const content = contents.get(openPaths.get(fd) ?? '') ?? '';
+        const chunk = Buffer.from(content).subarray(position, position + length);
+        const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer as Uint8Array);
+        chunk.copy(buf, offset);
+        return chunk.length;
+      }) as unknown as typeof fs.readSync);
+
+      const sessions = scanCodexSessions();
+
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]).toMatchObject({
+        provider: 'codex',
+        sdkSessionId: sdkId,
+        cwd: '/repo/codex',
+        preview: 'codex prompt text',
+      });
+      expect(readSessionTranscriptPreview(sessions[0], 2)).toEqual([
+        { role: 'user', text: 'codex prompt text', timestamp: undefined },
+        { role: 'assistant', text: 'codex response', timestamp: undefined },
+      ]);
+    });
+  });
+
   describe('readSessionTranscriptPreview', () => {
     it('returns empty array on file read error', () => {
       mockStat.mockImplementation((() => {
@@ -241,6 +341,8 @@ describe('session-scanner', () => {
       }) as unknown as typeof fs.statSync);
 
       const session: ScannedSession = {
+        provider: 'claude',
+        providerDisplayName: 'Claude',
         sdkSessionId: 'test',
         projectDir: 'test',
         filePath: '/nonexistent',
@@ -272,6 +374,8 @@ describe('session-scanner', () => {
       }) as unknown as typeof fs.readSync);
 
       const session: ScannedSession = {
+        provider: 'claude',
+        providerDisplayName: 'Claude',
         sdkSessionId: 'test',
         projectDir: 'test',
         filePath: '/test.jsonl',
@@ -301,6 +405,8 @@ describe('session-scanner', () => {
       }) as unknown as typeof fs.readSync);
 
       const session: ScannedSession = {
+        provider: 'claude',
+        providerDisplayName: 'Claude',
         sdkSessionId: 'test',
         projectDir: 'test',
         filePath: '/test',

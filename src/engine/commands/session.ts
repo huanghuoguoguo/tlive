@@ -1,21 +1,23 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
+import { presentSessions, presentSessionDetail, presentNoSessions } from '../messages/presenter.js';
 import {
-  presentSessions,
-  presentSessionDetail,
-  presentNoSessions,
-} from '../messages/presenter.js';
-import {
-  scanClaudeSessions,
+  scanAgentSessions,
   readSessionTranscriptPreview,
 } from '../../providers/session-scanner.js';
+import {
+  normalizeAgentProviderKind,
+  sameAgentSession,
+  type AgentProviderKind,
+} from '../../providers/kinds.js';
+import { historyProviderKinds } from '../../providers/history.js';
 import { shortPath } from '../../core/path.js';
 import { generateSessionId } from '../../core/id.js';
 import { isSameRepoRoot } from '../../utils/repo.js';
 import { FLAGS, hasFlag, getNonFlagArg } from '../../core/args.js';
 import { SESSION_STALE_THRESHOLD_MS } from '../../core/timing.js';
 import { formatSize, formatSessionDate } from '../../formatting/session-format.js';
-import { parseSessionIndex } from './session-parser.js';
+import { parseSessionIndex, scanSessionsForContext } from './session-parser.js';
 import { chatKey, chatScopeId } from '../../core/key.js';
 import { truncate } from '../../core/string.js';
 import { withInboundReplyContext } from '../../channels/reply-context.js';
@@ -25,34 +27,88 @@ import type { ScannedSession } from '../../providers/session-scanner.js';
 /** Verbose flag for session detail view */
 const VERBOSE_FLAG = { long: '--verbose', short: '-v' };
 
-type ClaudeSessionTarget = Pick<ScannedSession, 'sdkSessionId' | 'cwd' | 'preview'>;
+type AgentSessionTarget = Pick<
+  ScannedSession,
+  'provider' | 'providerDisplayName' | 'sdkSessionId' | 'cwd' | 'preview'
+>;
 
-function buildTopicTitle(target: ClaudeSessionTarget): string {
-  const preview = target.preview.replace(/\s+/g, ' ').trim();
-  return truncate(preview || `Claude 会话 ${target.sdkSessionId.slice(0, 8)}`, 120);
+function providerDisplayName(ctx: CommandContext, provider: AgentProviderKind | undefined): string {
+  const normalized = normalizeAgentProviderKind(provider);
+  return ctx.services.providers.descriptor(normalized)?.displayName ?? normalized;
 }
 
-function buildThreadIntro(target: ClaudeSessionTarget): string {
-  return `💬 已连接 Claude 会话 \`${target.sdkSessionId.slice(0, 8)}\` · ${shortPath(target.cwd)}\n\n请在本话题内继续发送消息。`;
+function parseContinueToken(
+  token: string,
+  ctx: CommandContext,
+): { provider?: AgentProviderKind; sdkSessionId: string } {
+  const separator = token.indexOf(':');
+  if (separator > 0) {
+    const maybeProvider = token.slice(0, separator);
+    if (ctx.services.providers.isKnown(maybeProvider)) {
+      return {
+        provider: maybeProvider,
+        sdkSessionId: token.slice(separator + 1),
+      };
+    }
+  }
+  return { sdkSessionId: token };
+}
+
+function buildTopicTitle(target: AgentSessionTarget): string {
+  const preview = target.preview.replace(/\s+/g, ' ').trim();
+  return truncate(
+    preview || `${target.providerDisplayName} 会话 ${target.sdkSessionId.slice(0, 8)}`,
+    120,
+  );
+}
+
+function buildThreadIntro(target: AgentSessionTarget): string {
+  return `💬 已连接 ${target.providerDisplayName} 会话 \`${target.sdkSessionId.slice(0, 8)}\` · ${shortPath(target.cwd)}\n\n请在本话题内继续发送消息。`;
 }
 
 async function sendPlain(ctx: CommandContext, text: string): Promise<void> {
   await ctx.adapter.send(withInboundReplyContext({ chatId: ctx.msg.chatId, text }, ctx.msg) as any);
 }
 
+async function sendSessionIndexError(
+  ctx: CommandContext,
+  idx: number,
+  error: string,
+): Promise<void> {
+  await ctx.adapter.send(
+    withInboundReplyContext(
+      {
+        chatId: ctx.msg.chatId,
+        text:
+          error === 'invalid_index'
+            ? '请输入有效的会话编号。使用 /session 查看列表。'
+            : `会话 #${idx} 不存在。使用 /session 查看列表。`,
+      },
+      ctx.msg,
+    ) as any,
+  );
+}
+
 async function ensureTopicBinding(
   ctx: CommandContext,
   record: TopicSessionRecord,
-  target: ClaudeSessionTarget,
+  target: AgentSessionTarget,
 ): Promise<void> {
   const existing = await ctx.services.store.getBinding(record.channelType, record.scopeId);
-  const source = existing ?? await ctx.services.store.getBinding(ctx.msg.channelType, ctx.scopeId);
-  await ctx.services.router.rebind(record.channelType, record.scopeId, existing?.sessionId ?? generateSessionId(), {
-    sdkSessionId: target.sdkSessionId,
-    cwd: target.cwd,
-    claudeSettingSources: existing?.claudeSettingSources ?? source?.claudeSettingSources,
-    projectName: existing?.projectName ?? source?.projectName,
-  });
+  const source =
+    existing ?? (await ctx.services.store.getBinding(ctx.msg.channelType, ctx.scopeId));
+  await ctx.services.router.rebind(
+    record.channelType,
+    record.scopeId,
+    existing?.sessionId ?? generateSessionId(),
+    {
+      sdkSessionId: target.sdkSessionId,
+      provider: target.provider,
+      cwd: target.cwd,
+      claudeSettingSources: existing?.claudeSettingSources ?? source?.claudeSettingSources,
+      projectName: existing?.projectName ?? source?.projectName,
+    },
+  );
   ctx.services.workspace.pushHistory(record.channelType, record.scopeId, target.cwd);
   ctx.helpers.updateWorkspaceBindingFromPath(record.channelType, record.scopeId, target.cwd);
 }
@@ -60,10 +116,10 @@ async function ensureTopicBinding(
 async function notifyExistingTopic(
   ctx: CommandContext,
   record: TopicSessionRecord,
-  target: ClaudeSessionTarget,
+  target: AgentSessionTarget,
 ): Promise<void> {
   const sdkShort = target.sdkSessionId.slice(0, 8);
-  const text = `▶️ 已回到 Claude 会话 \`${sdkShort}\`\n\n请在本话题内发送消息继续。`;
+  const text = `▶️ 已回到 ${target.providerDisplayName} 会话 \`${sdkShort}\`\n\n请在本话题内发送消息继续。`;
   const outMsg = ctx.adapter.formatContent(record.chatId, text);
   const replyTarget = record.lastMessageId ?? record.rootMessageId;
   if (!replyTarget) {
@@ -79,6 +135,7 @@ async function notifyExistingTopic(
   ctx.services.topicSessions?.upsert({
     ...record,
     sdkSessionId: target.sdkSessionId,
+    provider: target.provider,
     cwd: target.cwd,
     title: record.title || target.preview,
     preview: target.preview,
@@ -86,13 +143,13 @@ async function notifyExistingTopic(
   });
 }
 
-async function continueClaudeSession(
+async function continueAgentSession(
   ctx: CommandContext,
-  target: ClaudeSessionTarget,
+  target: AgentSessionTarget,
   idxLabel?: string,
 ): Promise<boolean> {
   const topicSessions = ctx.services.topicSessions;
-  const existingTopic = topicSessions?.findBySdkSessionId(target.sdkSessionId);
+  const existingTopic = topicSessions?.findBySdkSession(target.provider, target.sdkSessionId);
   if (existingTopic) {
     await ensureTopicBinding(ctx, existingTopic, target);
     await notifyExistingTopic(ctx, existingTopic, target);
@@ -100,45 +157,28 @@ async function continueClaudeSession(
   }
 
   const currentBinding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.scopeId);
-  const bindingId = currentBinding?.sessionId ?? generateSessionId();
-
-  if (ctx.msg.threadId) {
-    await ctx.services.router.rebind(ctx.msg.channelType, ctx.scopeId, bindingId, {
-      sdkSessionId: target.sdkSessionId,
-      cwd: target.cwd,
-      claudeSettingSources: currentBinding?.claudeSettingSources,
-      projectName: currentBinding?.projectName,
-    });
-    ctx.services.workspace.pushHistory(ctx.msg.channelType, ctx.scopeId, target.cwd);
-    ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, ctx.scopeId, target.cwd);
-    topicSessions?.upsert({
-      channelType: ctx.msg.channelType,
-      chatId: ctx.msg.chatId,
-      scopeId: ctx.scopeId,
-      threadId: ctx.msg.threadId,
-      rootMessageId: ctx.msg.threadRootMessageId ?? ctx.msg.replyTargetMessageId,
-      lastMessageId: ctx.msg.replyTargetMessageId ?? ctx.msg.messageId,
-      sdkSessionId: target.sdkSessionId,
-      cwd: target.cwd,
-      title: target.preview,
-      preview: target.preview,
-    });
-    await sendPlain(ctx, `✅ 已将本话题绑定到 Claude 会话 ${target.sdkSessionId.slice(0, 8)}，可以直接继续对话。`);
-    return true;
-  }
 
   const startThreadWithTitle = (ctx.adapter as any).startThreadWithTitle;
   const startThread = (ctx.adapter as any).startThreadFromMessage;
   const topicTitle = buildTopicTitle(target);
   const introText = buildThreadIntro(target);
-  if ((typeof startThreadWithTitle === 'function' || typeof startThread === 'function') && ctx.msg.messageId) {
-    const started = typeof startThreadWithTitle === 'function'
-      ? await startThreadWithTitle.call(ctx.adapter, ctx.msg.chatId, topicTitle, introText).catch(() => null)
-      : await startThread.call(ctx.adapter, ctx.msg.chatId, ctx.msg.messageId, introText).catch(() => null);
+  if (
+    (typeof startThreadWithTitle === 'function' || typeof startThread === 'function') &&
+    ctx.msg.messageId
+  ) {
+    const started =
+      typeof startThreadWithTitle === 'function'
+        ? await startThreadWithTitle
+            .call(ctx.adapter, ctx.msg.chatId, topicTitle, introText)
+            .catch(() => null)
+        : await startThread
+            .call(ctx.adapter, ctx.msg.chatId, ctx.msg.messageId, introText)
+            .catch(() => null);
     if (started?.threadId && started?.messageId) {
       const scopeId = chatScopeId(ctx.msg.chatId, started.threadId);
       await ctx.services.router.rebind(ctx.msg.channelType, scopeId, generateSessionId(), {
         sdkSessionId: target.sdkSessionId,
+        provider: target.provider,
         cwd: target.cwd,
         claudeSettingSources: currentBinding?.claudeSettingSources,
         projectName: currentBinding?.projectName,
@@ -153,6 +193,7 @@ async function continueClaudeSession(
         rootMessageId: started.rootMessageId ?? started.messageId,
         lastMessageId: started.messageId,
         sdkSessionId: target.sdkSessionId,
+        provider: target.provider,
         cwd: target.cwd,
         title: topicTitle,
         preview: target.preview,
@@ -161,16 +202,23 @@ async function continueClaudeSession(
     }
   }
 
-  const switchedRepo = !isSameRepoRoot(currentBinding?.cwd || ctx.services.defaultWorkdir, target.cwd);
+  const switchedRepo = !isSameRepoRoot(
+    currentBinding?.cwd || ctx.services.defaultWorkdir,
+    target.cwd,
+  );
   await ctx.services.router.rebind(ctx.msg.channelType, ctx.scopeId, generateSessionId(), {
     sdkSessionId: target.sdkSessionId,
+    provider: target.provider,
     cwd: target.cwd,
     claudeSettingSources: currentBinding?.claudeSettingSources,
     projectName: switchedRepo ? undefined : currentBinding?.projectName,
   });
   ctx.services.workspace.pushHistory(ctx.msg.channelType, ctx.scopeId, target.cwd);
   ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, ctx.scopeId, target.cwd);
-  await sendPlain(ctx, `✅ 已切换到 Claude 会话${idxLabel ? ` #${idxLabel}` : ''}：${shortPath(target.cwd)}\n${target.preview}`);
+  await sendPlain(
+    ctx,
+    `✅ 已切换到 ${target.providerDisplayName} 会话${idxLabel ? ` #${idxLabel}` : ''}：${shortPath(target.cwd)}\n${target.preview}`,
+  );
   return true;
 }
 
@@ -179,7 +227,7 @@ export class SessionCommand extends BaseCommand {
   readonly quick = true;
   readonly helpCategory = 'session' as const;
   readonly description = '会话管理';
-  readonly helpDesc = `列出或切换 Claude Code 会话。
+  readonly helpDesc = `列出或切换 Agent 会话。
 无参数时列出当前工作区的会话。
 使用 -a 列出所有项目的会话。
 指定编号切换到对应会话。
@@ -211,15 +259,14 @@ export class SessionCommand extends BaseCommand {
   /** List available sessions */
   private async listSessions(ctx: CommandContext, showAll: boolean): Promise<boolean> {
     const scopeId = ctx.scopeId;
-    const binding = await ctx.services.store.getBinding(ctx.msg.channelType, scopeId);
-    const currentCwd = binding?.cwd || ctx.services.defaultWorkdir;
-
-    const sessions = scanClaudeSessions(10, showAll ? undefined : currentCwd);
+    const { binding, currentCwd, sessions } = await scanSessionsForContext(ctx, showAll);
     const currentSdkId = binding?.sdkSessionId;
     const workspaceBinding = ctx.services.workspace.getBinding(ctx.msg.channelType, scopeId);
 
     if (sessions.length === 0) {
-      const hint = showAll ? '' : ` in ${shortPath(currentCwd)}\nUse /session -a to see all projects.`;
+      const hint = showAll
+        ? ''
+        : ` in ${shortPath(currentCwd)}\nUse /session -a to see all projects.`;
       await this.send(ctx, presentNoSessions(ctx.msg.chatId, hint));
       return true;
     }
@@ -227,21 +274,26 @@ export class SessionCommand extends BaseCommand {
     const now = Date.now();
     const sessionData = sessions.map((s, i) => ({
       index: i + 1,
+      provider: s.provider,
+      providerDisplayName: s.providerDisplayName,
       date: formatSessionDate(s.mtime, ctx.locale),
       cwd: shortPath(s.cwd),
       size: formatSize(s.size),
       preview: s.preview,
-      isCurrent: currentSdkId === s.sdkSessionId,
-      isStale: (now - s.mtime) > SESSION_STALE_THRESHOLD_MS,
+      isCurrent: sameAgentSession(binding?.provider, currentSdkId, s.provider, s.sdkSessionId),
+      isStale: now - s.mtime > SESSION_STALE_THRESHOLD_MS,
     }));
 
     const filterHint = showAll ? ' (all projects)' : ` (${shortPath(currentCwd)})`;
-    await this.send(ctx, presentSessions(ctx.msg.chatId, {
-      workspaceBinding: workspaceBinding ? shortPath(workspaceBinding) : undefined,
-      sessions: sessionData,
-      filterHint,
-      showAll,
-    }));
+    await this.send(
+      ctx,
+      presentSessions(ctx.msg.chatId, {
+        workspaceBinding: workspaceBinding ? shortPath(workspaceBinding) : undefined,
+        sessions: sessionData,
+        filterHint,
+        showAll,
+      }),
+    );
     return true;
   }
 
@@ -250,21 +302,20 @@ export class SessionCommand extends BaseCommand {
     const result = await parseSessionIndex(ctx);
 
     if (!result.ok) {
-      if (result.error === 'invalid_index') {
-        await this.send(ctx, { chatId: ctx.msg.chatId, text: '请输入有效的会话编号。使用 /session 查看列表。' });
-      } else {
-        await this.send(ctx, { chatId: ctx.msg.chatId, text: `会话 #${idx} 不存在。使用 /session 查看列表。` });
-      }
+      await sendSessionIndexError(ctx, idx, result.error);
       return true;
     }
 
     const { target } = result;
-    const existingTopic = ctx.services.topicSessions?.findBySdkSessionId(target.sdkSessionId);
+    const existingTopic = ctx.services.topicSessions?.findBySdkSession(
+      target.provider,
+      target.sdkSessionId,
+    );
 
     // Check if target sdkSession is bound to another active bridge session
     const allBindings = await ctx.services.store.listBindings();
     for (const b of allBindings) {
-      if (b.sdkSessionId === target.sdkSessionId) {
+      if (sameAgentSession(b.provider, b.sdkSessionId, target.provider, target.sdkSessionId)) {
         const bChatKey = chatKey(b.channelType, b.chatId);
         const isActive = ctx.services.activeControls?.has(bChatKey) ?? false;
         if (b.channelType === ctx.msg.channelType && b.chatId === ctx.scopeId) {
@@ -284,7 +335,7 @@ export class SessionCommand extends BaseCommand {
       }
     }
 
-    return continueClaudeSession(ctx, target, String(idx));
+    return continueAgentSession(ctx, target, String(idx));
   }
 
   /** Show detailed session info */
@@ -292,33 +343,34 @@ export class SessionCommand extends BaseCommand {
     const result = await parseSessionIndex(ctx);
 
     if (!result.ok) {
-      if (result.error === 'invalid_index') {
-        await this.send(ctx, { chatId: ctx.msg.chatId, text: '请输入有效的会话编号。使用 /session 查看列表。' });
-      } else {
-        await this.send(ctx, { chatId: ctx.msg.chatId, text: `会话 #${idx} 不存在。使用 /session 查看列表。` });
-      }
+      await sendSessionIndexError(ctx, idx, result.error);
       return true;
     }
 
     const { target } = result;
-    const transcript = readSessionTranscriptPreview(target, 4).map(item => ({
+    const transcript = readSessionTranscriptPreview(target, 4).map((item) => ({
       role: item.role,
       text: item.text,
     }));
 
-    await this.send(ctx, presentSessionDetail(ctx.msg.chatId, {
-      index: idx,
-      cwd: shortPath(target.cwd),
-      preview: target.preview,
-      date: formatSessionDate(target.mtime, ctx.locale),
-      size: formatSize(target.size),
-      transcript,
-    }));
+    await this.send(
+      ctx,
+      presentSessionDetail(ctx.msg.chatId, {
+        index: idx,
+        provider: target.provider,
+        providerDisplayName: target.providerDisplayName,
+        cwd: shortPath(target.cwd),
+        preview: target.preview,
+        date: formatSessionDate(target.mtime, ctx.locale),
+        size: formatSize(target.size),
+        transcript,
+      }),
+    );
     return true;
   }
 }
 
-/** Hidden callback command: continue a Claude session by sdkSessionId. */
+/** Hidden callback command: continue an agent session by provider/session id. */
 export class ContinueSessionCommand extends BaseCommand {
   readonly name = '/continue';
   readonly quick = true;
@@ -326,23 +378,43 @@ export class ContinueSessionCommand extends BaseCommand {
   readonly description = undefined;
 
   async execute(ctx: CommandContext): Promise<boolean> {
-    const sdkSessionId = ctx.parts[1]?.trim();
-    if (!sdkSessionId) {
-      await sendPlain(ctx, '⚠️ 用法: /continue <sdkSessionId>');
+    const token = ctx.parts[1]?.trim();
+    if (!token) {
+      await sendPlain(ctx, '⚠️ 用法: /continue <provider>:<sdkSessionId>');
       return true;
     }
 
-    const target = scanClaudeSessions(50, undefined).find(s => s.sdkSessionId === sdkSessionId);
-    const topic = ctx.services.topicSessions?.findBySdkSessionId(sdkSessionId);
+    const parsed = parseContinueToken(token, ctx);
+    const target = scanAgentSessions(
+      50,
+      undefined,
+      historyProviderKinds(ctx.services.providers),
+    ).find(
+      (s) =>
+        s.sdkSessionId === parsed.sdkSessionId &&
+        (!parsed.provider || s.provider === parsed.provider),
+    );
+    const topic = parsed.provider
+      ? ctx.services.topicSessions?.findBySdkSession(parsed.provider, parsed.sdkSessionId)
+      : ctx.services.topicSessions?.findBySdkSessionId(parsed.sdkSessionId);
+    const provider = normalizeAgentProviderKind(
+      target?.provider ?? parsed.provider ?? topic?.provider,
+    );
+    const displayName = target?.providerDisplayName ?? providerDisplayName(ctx, provider);
     if (!target && !topic) {
-      await sendPlain(ctx, '⚠️ 未找到该 Claude 会话，可能已被清理。');
+      await sendPlain(ctx, `⚠️ 未找到该 ${displayName} 会话，可能已被清理。`);
       return true;
     }
 
-    return continueClaudeSession(ctx, target ?? {
-      sdkSessionId,
-      cwd: topic?.cwd || ctx.services.defaultWorkdir,
-      preview: topic?.preview || topic?.title || 'Claude 会话',
-    });
+    return continueAgentSession(
+      ctx,
+      target ?? {
+        provider,
+        providerDisplayName: displayName,
+        sdkSessionId: parsed.sdkSessionId,
+        cwd: topic?.cwd || ctx.services.defaultWorkdir,
+        preview: topic?.preview || topic?.title || `${displayName} 会话`,
+      },
+    );
   }
 }

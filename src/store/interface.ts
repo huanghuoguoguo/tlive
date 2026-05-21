@@ -1,4 +1,6 @@
 /** Claude settings source types */
+import type { AgentProviderKind } from '../providers/kinds.js';
+
 export type ClaudeSettingSource = 'user' | 'project' | 'local';
 
 /** Webhook default chat configuration */
@@ -24,9 +26,10 @@ export interface ProjectConfig {
 export interface ChannelBinding {
   channelType: string;
   chatId: string;
-  sessionId: string;           // internal key (used for locks, dedup)
-  sdkSessionId?: string;       // Claude SDK session UUID (for resume)
-  cwd?: string;                // current working directory for this chat
+  sessionId: string; // internal key (used for locks, dedup)
+  sdkSessionId?: string; // Claude SDK session UUID (for resume)
+  provider?: AgentProviderKind; // agent runtime for this logical session
+  cwd?: string; // current working directory for this chat
   claudeSettingSources?: ClaudeSettingSource[]; // per-chat Claude settings override
   /** Project binding (optional, for multi-project support) */
   projectName?: string;

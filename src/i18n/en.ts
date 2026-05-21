@@ -48,7 +48,9 @@ export const en: Translations = {
   'perm.remembered': 'Remembered in this session',
   'perm.pendingApproval': 'Pending approval',
   'perm.lastDecision': 'Last decision',
-  'perm.decisionAllow': 'Allowed once',
+  'perm.decisionAllow': 'Allow once',
+  'perm.decisionAllowSameCommand': 'Allow same command',
+  'perm.decisionAllowSessionAll': 'Allow all in session',
   'perm.decisionAlwaysAllow': 'Always allow in session',
   'perm.decisionDeny': 'Denied',
   'perm.decisionCancelled': 'Cancelled',
@@ -236,10 +238,6 @@ export const en: Translations = {
   'input.deny': 'deny',
   'input.skipped': '⏭ Skipped',
   'input.submitted': '✅ Input submitted:',
-  'input.hookDenied': '❌ Denied',
-  'input.hookAlwaysAllowed': '📌 Always allowed',
-  'input.hookAllowed': '✅ Allowed',
-  'input.hookFailed': '❌ Failed:',
 
   // --- recent projects ---
   'recentProjects.hint': '💡 Use /cd <path> to switch directory',

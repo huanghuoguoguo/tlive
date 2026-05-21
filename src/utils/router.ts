@@ -2,6 +2,7 @@ import type { ClaudeSettingSource } from '../config.js';
 import type { BridgeStore } from '../store/interface.js';
 import type { ChannelBinding } from '../store/interface.js';
 import { generateSessionId } from '../core/id.js';
+import type { AgentProviderKind } from '../providers/kinds.js';
 
 export class ChannelRouter {
   constructor(private store: BridgeStore) {}
@@ -27,6 +28,7 @@ export class ChannelRouter {
     sessionId: string,
     opts?: {
       sdkSessionId?: string;
+      provider?: AgentProviderKind;
       cwd?: string;
       claudeSettingSources?: ClaudeSettingSource[];
       projectName?: string;
@@ -37,6 +39,7 @@ export class ChannelRouter {
       chatId,
       sessionId,
       sdkSessionId: opts?.sdkSessionId,
+      provider: opts?.provider,
       cwd: opts?.cwd,
       claudeSettingSources: opts?.claudeSettingSources,
       projectName: opts?.projectName,

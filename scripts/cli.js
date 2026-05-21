@@ -221,9 +221,10 @@ async function waitForBridgeHealthy(expectedVersion, startedAfterMs, timeoutMs =
     const status = readStatusFile();
     const statusReadyAt = status?.readyAt ? Date.parse(status.readyAt) : 0;
     const statusIsFresh = Number.isFinite(statusReadyAt) && statusReadyAt >= startedAfterMs - 1000;
+    const pidMatches = Number(status?.pid) === pid;
     const versionMatches = !expectedVersion || status?.version === expectedVersion;
     const hasFeishu = Array.isArray(status?.channels) && status.channels.includes('feishu');
-    if (statusIsFresh && versionMatches && hasFeishu) {
+    if (statusIsFresh && pidMatches && versionMatches && hasFeishu) {
       return { pid, status };
     }
 
@@ -280,14 +281,74 @@ function isProcessRunning(pid) {
   }
 }
 
+function findBridgePidFromProcessList() {
+  if (isWindows) {
+    try {
+      const escapedEntry = BRIDGE_ENTRY.replace(/'/g, "''");
+      const script = [
+        `$target = '${escapedEntry}'`,
+        'Get-CimInstance Win32_Process',
+        `| Where-Object { $_.ProcessId -ne ${process.pid} -and $_.CommandLine -and $_.CommandLine.Contains($target) }`,
+        '| Select-Object -First 1 -ExpandProperty ProcessId',
+      ].join(' ');
+      const result = spawnSync('powershell.exe', ['-NoProfile', '-Command', script], {
+        encoding: 'utf-8',
+        timeout: 5000,
+      });
+      if (result.status !== 0) return null;
+      const pid = Number.parseInt(result.stdout.trim().split(/\s+/)[0] || '', 10);
+      return Number.isFinite(pid) && pid > 0 && isProcessRunning(pid) ? pid : null;
+    } catch {
+      return null;
+    }
+  }
+
+  try {
+    const result = spawnSync('ps', ['-eo', 'pid=,args='], {
+      encoding: 'utf-8',
+      timeout: 5000,
+    });
+    if (result.status !== 0) return null;
+    for (const line of result.stdout.split('\n')) {
+      const match = line.trim().match(/^(\d+)\s+(.+)$/);
+      if (!match) continue;
+      const pid = Number.parseInt(match[1], 10);
+      const commandLine = match[2];
+      if (pid === process.pid) continue;
+      if (!commandLine.includes(BRIDGE_ENTRY)) continue;
+      if (isProcessRunning(pid)) return pid;
+    }
+  } catch {}
+
+  return null;
+}
+
 /** Read bridge.pid and return PID if alive, else null */
 function getBridgePid() {
-  if (!existsSync(BRIDGE_PID)) return null;
   try {
-    const pid = parseInt(readFileSync(BRIDGE_PID, 'utf-8').trim(), 10);
-    if (isNaN(pid)) return null;
-    return isProcessRunning(pid) ? pid : null;
-  } catch { return null; }
+    if (existsSync(BRIDGE_PID)) {
+      const pid = parseInt(readFileSync(BRIDGE_PID, 'utf-8').trim(), 10);
+      if (!Number.isNaN(pid) && isProcessRunning(pid)) return pid;
+    }
+  } catch {}
+
+  const status = readStatusFile();
+  const statusPid = Number(status?.pid);
+  if (!status?.exitedAt && Number.isFinite(statusPid) && statusPid > 0 && isProcessRunning(statusPid)) {
+    ensureDirs();
+    writeFileSync(BRIDGE_PID, String(statusPid));
+    return statusPid;
+  }
+
+  const discoveredPid = findBridgePidFromProcessList();
+  if (discoveredPid) {
+    ensureDirs();
+    writeFileSync(BRIDGE_PID, String(discoveredPid));
+    return discoveredPid;
+  }
+
+  try { unlinkSync(BRIDGE_PID); } catch {}
+  return null;
 }
 
 /** Ensure runtime and log directories exist */
@@ -344,6 +405,20 @@ async function daemonStop() {
   } else {
     console.log('Bridge is not running.');
   }
+}
+
+async function daemonRestart() {
+  const wasRunning = await stopBridgeIfRunning();
+  if (wasRunning) {
+    console.log('Bridge stopped.');
+  } else {
+    console.log('Bridge is not running; starting it now.');
+  }
+
+  const startedAfterMs = Date.now();
+  daemonStart();
+  const health = await waitForBridgeHealthy(getVersion(), startedAfterMs, 30000);
+  console.log(`Bridge healthy (PID ${health.pid}, version ${health.status.version})`);
 }
 
 async function daemonStatus() {
@@ -549,6 +624,7 @@ Setup (one-time):
 Service Management:
   tlive start                Start Feishu Bridge for Claude Code
   tlive stop                 Stop IM Bridge daemon
+  tlive restart              Restart IM Bridge daemon
   tlive status               Show Bridge status
   tlive logs [N]             Show last N log lines (default: 50)
   tlive doctor               Run diagnostic checks
@@ -570,7 +646,7 @@ In Claude Code (AI-guided):
   /tlive doctor              Diagnose issues + suggest fixes
 `;
 
-const NODE_COMMANDS = new Set(['setup', 'start', 'stop', 'status', 'logs', 'hooks', 'doctor', 'version', 'update', 'upgrade']);
+const NODE_COMMANDS = new Set(['setup', 'start', 'stop', 'restart', 'status', 'logs', 'doctor', 'version', 'update', 'upgrade']);
 const CORE_COMMANDS = new Set(['install']);
 
 function run(cmd, opts = {}) {
@@ -627,6 +703,15 @@ switch (command) {
     await daemonStop();
     break;
 
+  case 'restart':
+    try {
+      await daemonRestart();
+    } catch (err) {
+      console.error(`Failed to restart bridge: ${err.message || err}`);
+      process.exit(1);
+    }
+    break;
+
   case 'status':
     await daemonStatus();
     break;
@@ -634,23 +719,6 @@ switch (command) {
   case 'logs':
     daemonLogs(parseInt(args[0], 10) || 50);
     break;
-
-  case 'hooks': {
-    const hooksSub = args[0];
-    const pauseFile = join(TLIVE_HOME, 'hooks-paused');
-    if (hooksSub === 'pause') {
-      mkdirSync(TLIVE_HOME, { recursive: true });
-      writeFileSync(pauseFile, '');
-      console.log('Hooks paused — all permissions auto-allowed, no notifications.');
-    } else if (hooksSub === 'resume') {
-      try { unlinkSync(pauseFile); } catch {}
-      console.log('Hooks resumed — permissions forwarded to IM.');
-    } else {
-      const paused = existsSync(pauseFile);
-      console.log(`Hooks: ${paused ? '⏸ paused (auto-allow)' : '▶ active'}`);
-    }
-    break;
-  }
 
   case 'doctor':
     await runDoctor();
@@ -915,7 +983,7 @@ switch (command) {
 
   default: {
     // Check for typos of known commands before failing
-    const known = ['setup', 'start', 'stop', 'status', 'logs', 'hooks', 'doctor', 'install', 'help', 'version', 'update', 'upgrade'];
+    const known = ['setup', 'start', 'stop', 'restart', 'status', 'logs', 'doctor', 'install', 'help', 'version', 'update', 'upgrade'];
     const similar = known.find(k => {
       if (Math.abs(k.length - command.length) > 2) return false;
       let diff = 0;

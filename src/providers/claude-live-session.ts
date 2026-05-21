@@ -13,18 +13,30 @@
  */
 
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { ClaudeAdapter } from '../canonical/claude-adapter.js';
 import type { CanonicalEvent } from '../canonical/schema.js';
 import type {
-  LiveSession, StreamChatResult, QueryControls, TurnParams,
-  PermissionRequestHandler, AskUserQuestionHandler, DeferredToolHandler, EffortLevel,
+  LiveSession,
+  StreamChatResult,
+  QueryControls,
+  TurnParams,
+  PermissionRequestHandler,
+  AskUserQuestionHandler,
+  DeferredToolHandler,
+  EffortLevel,
 } from './base.js';
 import type { ClaudeSettingSource } from '../config.js';
 import type { PermissionTimeoutCallback } from './claude-shared.js';
-import { buildSubprocessEnv, preparePromptWithImages, SAFE_PERMISSIONS } from './claude-shared.js';
-import { DEFERRED_TOOLS, type DeferredToolName } from '../engine/sdk/deferred-tool-handler.js';
-const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
+import { preparePromptWithImages } from './claude-shared.js';
+import {
+  buildClaudeQueryOptions,
+  createClaudeQueryControls,
+  routeAskUserQuestionRequest,
+  routeDeferredToolRequest,
+  routePermissionRequest,
+  type ClaudeCanUseToolOptions,
+} from './claude-query-options.js';
+import { ClaudeEventLogger } from './claude-event-logger.js';
 
 export interface ClaudeLiveSessionOptions {
   workingDirectory: string;
@@ -39,13 +51,14 @@ export interface ClaudeLiveSessionOptions {
 }
 
 export class ClaudeLiveSession implements LiveSession {
+  readonly capabilities = { nativeSteer: true, nativeQueue: true };
+
   private _query: ReturnType<typeof query> | null = null;
   private adapter = new ClaudeAdapter();
   private _isAlive = true;
   private _isTurnActive = false;
   private currentTurnController: ReadableStreamDefaultController<CanonicalEvent> | null = null;
-  private pendingStreamEventCount = 0;
-  private pendingStreamEventSubtypes = new Map<string, number>();
+  private eventLogger = new ClaudeEventLogger('tlive:session');
 
   // Message generator coordination
   private messageWaiter: ((msg: string | null) => void) | null = null;
@@ -64,15 +77,27 @@ export class ClaudeLiveSession implements LiveSession {
     this.initQuery();
   }
 
-  get isAlive(): boolean { return this._isAlive; }
-  get isTurnActive(): boolean { return this._isTurnActive; }
+  get isAlive(): boolean {
+    return this._isAlive;
+  }
+  get isTurnActive(): boolean {
+    return this._isTurnActive;
+  }
 
   setLifecycleCallbacks(callbacks: { onTurnComplete?: () => void }): void {
     this.lifecycleCallbacks = callbacks;
   }
 
   private initQuery(): void {
-    const { workingDirectory, sessionId, cliPath, settingSources, effort, model, appendSystemPrompt } = this.options;
+    const {
+      workingDirectory,
+      sessionId,
+      cliPath,
+      settingSources,
+      effort,
+      model,
+      appendSystemPrompt,
+    } = this.options;
     const self = this;
 
     // AsyncGenerator that feeds user messages to the query
@@ -84,24 +109,15 @@ export class ClaudeLiveSession implements LiveSession {
       }
     }
 
-    const queryOptions: Record<string, unknown> = {
+    const queryOptions = buildClaudeQueryOptions({
       cwd: workingDirectory,
-      model: model || undefined,
-      resume: sessionId || undefined,
-      effort: effort || undefined,
-      // Required for stream_event partials, including thinking/text deltas.
-      includePartialMessages: true,
-      // Enable hook lifecycle events (hook_started, hook_progress, hook_response)
-      includeHookEvents: true,
-      agentProgressSummaries: true,
-      promptSuggestions: true,
-      toolConfig: { askUserQuestion: { previewFormat: 'markdown' } },
+      model,
+      resume: sessionId,
+      effort,
       settingSources,
-      settings: { permissions: { allow: SAFE_PERMISSIONS } },
-      env: buildSubprocessEnv(),
-      ...(appendSystemPrompt ? {
-        systemPrompt: { type: 'preset', preset: 'claude_code', append: appendSystemPrompt },
-      } : {}),
+      appendSystemPrompt,
+      cliPath,
+      toolConfig: { askUserQuestion: { previewFormat: 'markdown' } },
       stderr: (data: string) => {
         const trimmed = data.length > 200 ? data.slice(-200) : data;
         console.log(`[tlive:session] stderr: ${trimmed}`);
@@ -109,62 +125,34 @@ export class ClaudeLiveSession implements LiveSession {
       canUseTool: async (
         toolName: string,
         input: Record<string, unknown>,
-        cbOptions: { decisionReason?: string; title?: string; suggestions?: unknown[]; signal?: AbortSignal; blockedPath?: string; toolUseID?: string; agentID?: string } = {},
-      ): Promise<PermissionResult> => {
-        // Deferred tools (EnterPlanMode, EnterWorktree) — route to per-turn handler
-        if (DEFERRED_TOOLS.includes(toolName as DeferredToolName) && self.turnDeferredToolHandler) {
-          try {
-            const result = await self.turnDeferredToolHandler(toolName, input, cbOptions.signal);
-            if (result.behavior === 'allow') {
-              return { behavior: 'allow' as const, updatedInput: result.updatedInput ?? input, toolUseID: cbOptions.toolUseID };
-            }
-            return { behavior: 'deny' as const, message: result.message ?? 'User denied', toolUseID: cbOptions.toolUseID };
-          } catch {
-            return { behavior: 'deny' as const, message: 'User cancelled' };
-          }
-        }
+        cbOptions: ClaudeCanUseToolOptions = {},
+      ) => {
+        const deferred = await routeDeferredToolRequest(
+          toolName,
+          input,
+          cbOptions,
+          self.turnDeferredToolHandler,
+        );
+        if (deferred) return deferred;
 
-        // AskUserQuestion — route to per-turn handler
-        if (toolName === 'AskUserQuestion' && self.turnAskQuestionHandler) {
-          const questions = (input as Record<string, unknown>).questions as Array<{
-            question: string; header: string;
-            options: Array<{ label: string; description?: string; preview?: string }>;
-            multiSelect: boolean;
-          }> ?? [];
-          if (questions.length > 0) {
-            try {
-              const answers = await self.turnAskQuestionHandler(questions);
-              return { behavior: 'allow' as const, updatedInput: { questions: (input as Record<string, unknown>).questions, answers } };
-            } catch {
-              return { behavior: 'deny' as const, message: 'User did not answer' };
-            }
-          }
-        }
-        // Permission handler — route to per-turn handler
-        if (!self.turnPermissionHandler) {
-          return { behavior: 'allow' as const, updatedInput: input };
-        }
-        const reason = cbOptions.blockedPath
-          ? `${cbOptions.decisionReason || toolName} (${cbOptions.blockedPath})`
-          : (cbOptions.decisionReason || cbOptions.title || toolName);
-        console.log(`[tlive:session] canUseTool: ${toolName} → asking user (${reason})`);
-        const decision = await self.turnPermissionHandler(toolName, input, reason);
-        if (decision === 'allow') {
-          return { behavior: 'allow' as const, updatedInput: input, toolUseID: cbOptions.toolUseID };
-        }
-        if (decision === 'allow_always') {
-          return {
-            behavior: 'allow' as const, updatedInput: input, toolUseID: cbOptions.toolUseID,
-            ...(cbOptions.suggestions ? { updatedPermissions: cbOptions.suggestions } : {}),
-          } as PermissionResult;
-        }
-        return { behavior: 'deny' as const, message: 'Denied by user via IM', toolUseID: cbOptions.toolUseID };
+        const answer = await routeAskUserQuestionRequest(
+          toolName,
+          input,
+          cbOptions,
+          self.turnAskQuestionHandler,
+        );
+        if (answer) return answer;
+
+        return routePermissionRequest({
+          logPrefix: 'tlive:session',
+          toolName,
+          input,
+          options: cbOptions,
+          handler: self.turnPermissionHandler,
+          includeBlockedPath: true,
+        });
       },
-    };
-
-    if (cliPath) {
-      queryOptions.pathToClaudeCodeExecutable = cliPath;
-    }
+    });
 
     this._query = query({
       prompt: generatePrompt() as any,
@@ -172,11 +160,7 @@ export class ClaudeLiveSession implements LiveSession {
     });
 
     // Extract controls from the query object
-    const q = this._query;
-    this.queryControls = {
-      interrupt: async () => { await (q as any).interrupt?.(); },
-      stopTask: async (taskId: string) => { await (q as any).stopTask?.(taskId); },
-    };
+    this.queryControls = createClaudeQueryControls(this._query);
 
     // Start background consumer
     this.consumeInBackground();
@@ -187,30 +171,10 @@ export class ClaudeLiveSession implements LiveSession {
     try {
       for await (const msg of this._query) {
         if (!this._isAlive) break;
-        this.logSdkMessage(msg as { type: string; subtype?: string });
+        this.eventLogger.logSdkMessage(msg as { type: string; subtype?: string });
 
         const events = this.adapter.mapMessage(msg as any);
-        if (DEBUG_EVENTS && events.length > 0) {
-          const summary = events.map((event) => {
-            switch (event.kind) {
-              case 'thinking_delta':
-              case 'text_delta':
-                return `${event.kind}:${event.text.length}`;
-              case 'tool_start':
-                return `tool_start:${event.name}`;
-              case 'tool_result':
-                return `tool_result:${event.toolUseId}:${event.content.length}`;
-              case 'agent_start':
-              case 'agent_progress':
-                return `${event.kind}:${event.description}`;
-              case 'agent_complete':
-                return `agent_complete:${event.status}`;
-              default:
-                return event.kind;
-            }
-          }).join(', ');
-          console.log(`[tlive:session] mapped events: ${summary}`);
-        }
+        this.eventLogger.logMappedEvents(events);
         for (const event of events) {
           if (!this._isAlive) break;
           this.currentTurnController?.enqueue(event);
@@ -220,7 +184,9 @@ export class ClaudeLiveSession implements LiveSession {
             this._isTurnActive = false;
             try {
               this.currentTurnController?.close();
-            } catch { /* already closed */ }
+            } catch {
+              /* already closed */
+            }
             this.currentTurnController = null;
             this.lifecycleCallbacks.onTurnComplete?.();
             // Reset adapter state between turns to prevent hiddenToolUseIds leak
@@ -229,7 +195,7 @@ export class ClaudeLiveSession implements LiveSession {
         }
       }
     } catch (err) {
-      this.flushPendingStreamEventLog();
+      this.eventLogger.flush();
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[tlive:session] query ended with error: ${message}`);
       this.adapter.reset();
@@ -238,10 +204,12 @@ export class ClaudeLiveSession implements LiveSession {
         try {
           this.currentTurnController.enqueue({ kind: 'error', message } as CanonicalEvent);
           this.currentTurnController.close();
-        } catch { /* controller may already be closed */ }
+        } catch {
+          /* controller may already be closed */
+        }
       }
     } finally {
-      this.flushPendingStreamEventLog();
+      this.eventLogger.flush();
       this._isAlive = false;
       this._isTurnActive = false;
       this.currentTurnController = null;
@@ -253,7 +221,11 @@ export class ClaudeLiveSession implements LiveSession {
 
     // Guard: close previous turn if still active (shouldn't happen with proper locking)
     if (this._isTurnActive && this.currentTurnController) {
-      try { this.currentTurnController.close(); } catch { /* already closed */ }
+      try {
+        this.currentTurnController.close();
+      } catch {
+        /* already closed */
+      }
       this._isTurnActive = false;
       this.currentTurnController = null;
     }
@@ -310,7 +282,7 @@ export class ClaudeLiveSession implements LiveSession {
   }
 
   close(): void {
-    this.flushPendingStreamEventLog();
+    this.eventLogger.flush();
     this._isAlive = false;
     this._isTurnActive = false;
     // Signal generator to stop
@@ -319,9 +291,17 @@ export class ClaudeLiveSession implements LiveSession {
       this.messageWaiter = null;
     }
     // Close the query process
-    try { (this._query as any)?.close?.(); } catch { /* ignore */ }
+    try {
+      (this._query as any)?.close?.();
+    } catch {
+      /* ignore */
+    }
     // Close any active turn stream
-    try { this.currentTurnController?.close(); } catch { /* ignore */ }
+    try {
+      this.currentTurnController?.close();
+    } catch {
+      /* ignore */
+    }
     this.currentTurnController = null;
   }
 
@@ -343,34 +323,8 @@ export class ClaudeLiveSession implements LiveSession {
     if (!this._isAlive) {
       return Promise.resolve(null);
     }
-    return new Promise(resolve => { this.messageWaiter = resolve; });
-  }
-
-  private logSdkMessage(msg: { type: string; subtype?: string }): void {
-    const subtype = msg.subtype ? `.${msg.subtype}` : '';
-    if (msg.type === 'stream_event') {
-      this.pendingStreamEventCount++;
-      const key = subtype;
-      this.pendingStreamEventSubtypes.set(key, (this.pendingStreamEventSubtypes.get(key) ?? 0) + 1);
-      return;
-    }
-    this.flushPendingStreamEventLog();
-    console.log(`[tlive:session] msg: ${msg.type}${subtype}`);
-  }
-
-  private flushPendingStreamEventLog(): void {
-    if (this.pendingStreamEventCount === 0) {
-      return;
-    }
-    const subtypeSummary = [...this.pendingStreamEventSubtypes.entries()]
-      .filter(([_, count]) => count > 0)
-      .map(([subtype, count]) => subtype ? `${subtype}×${count}` : `plain×${count}`)
-      .join(', ');
-    const suffix = subtypeSummary && this.pendingStreamEventSubtypes.size > 1
-      ? ` (${subtypeSummary})`
-      : '';
-    console.log(`[tlive:session] msg: stream_event ×${this.pendingStreamEventCount}${suffix}`);
-    this.pendingStreamEventCount = 0;
-    this.pendingStreamEventSubtypes.clear();
+    return new Promise((resolve) => {
+      this.messageWaiter = resolve;
+    });
   }
 }

@@ -65,9 +65,7 @@ jobs:
           )
 
           for optional in \
-            .claude/skills/tlive \
-            .claude/skills/tlive-cron \
-            .claude/skills/tlive-troubleshoot; do
+            .claude/skills/tlive; do
             if [[ -e "$optional" ]]; then
               FILES+=("$optional")
             fi

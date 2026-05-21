@@ -5,6 +5,7 @@ import type { MessageRenderer } from '../messages/renderer.js';
 import type { CostTracker } from '../cost-tracker.js';
 import type { DeferredToolHandler } from '../../providers/base.js';
 import type { LogContext } from '../../logger.js';
+import type { ClaudeSettingSource } from '../../config.js';
 
 /**
  * Context for query execution, encapsulating all parameters.
@@ -34,5 +35,3 @@ export class QueryContext {
     return this.binding.claudeSettingSources ?? defaultSources;
   }
 }
-
-import type { ClaudeSettingSource } from '../../config.js';

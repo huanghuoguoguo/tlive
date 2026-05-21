@@ -1,9 +1,8 @@
-import type { PendingPermissions } from '../../permissions/gateway.js';
-import type { PermissionBroker } from '../../permissions/broker.js';
-import type { BaseChannelAdapter } from '../../channels/base.js';
-import type { PermissionDecision as TextPermissionDecision } from '../../ui/policy.js';
+import type {
+  PendingPermissions,
+  PermissionDecision as TextPermissionDecision,
+} from '../../permissions/gateway.js';
 import { SdkPermTracker } from './sdk-perm-tracker.js';
-import { HookResolver } from './hook-resolver.js';
 import { QuestionResolver } from './question-resolver.js';
 import { SessionWhitelist } from './session-whitelist.js';
 
@@ -14,36 +13,28 @@ type PermissionDecision = TextPermissionDecision | 'cancelled';
  *
  * This is now a facade that delegates to specialized sub-components:
  * - SdkPermTracker: SDK permission tracking + text-based approval
- * - HookResolver: Hook deduplication + callback resolution
- * - QuestionResolver: AskUserQuestion + multi-select toggle
+ * - QuestionResolver: AskUserQuestion multi-select state
  * - SessionWhitelist: Dynamic tool/Bash prefix whitelist
  *
- * All public method signatures remain unchanged for backward compatibility.
+ * The public surface is intentionally limited to the active SDK permission,
+ * question, and session-whitelist flows.
  */
 export class PermissionCoordinator {
   private sdkTracker: SdkPermTracker;
-  private hookResolver: HookResolver;
   private questionResolver: QuestionResolver;
   private whitelist: SessionWhitelist;
-  private broker: PermissionBroker;
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(gateway: PendingPermissions, broker: PermissionBroker) {
+  constructor(gateway: PendingPermissions) {
     this.sdkTracker = new SdkPermTracker(gateway);
-    this.hookResolver = new HookResolver();
     this.questionResolver = new QuestionResolver();
     this.whitelist = new SessionWhitelist();
-    this.broker = broker;
   }
 
   // --- Sub-component accessors (for fine-grained access) ---
 
   get sdk(): SdkPermTracker {
     return this.sdkTracker;
-  }
-
-  get hooks(): HookResolver {
-    return this.hookResolver;
   }
 
   get questions(): QuestionResolver {
@@ -54,14 +45,10 @@ export class PermissionCoordinator {
     return this.whitelist;
   }
 
-  // --- Gateway/Broker access (preserved for backward compatibility) ---
+  // --- Gateway access ---
 
   getGateway(): PendingPermissions {
     return this.sdkTracker.getGateway();
-  }
-
-  getBroker(): PermissionBroker {
-    return this.broker;
   }
 
   // --- SDK permission tracking (delegated to SdkPermTracker) ---
@@ -126,44 +113,16 @@ export class PermissionCoordinator {
     return this.sdkTracker.tryResolveByText(chatKey, decision);
   }
 
-  // --- Hook message tracking (delegated to HookResolver) ---
-
-  trackHookMessage(messageId: string, sessionId: string): void {
-    this.hookResolver.trackHookMessage(messageId, sessionId);
-  }
-
-  isHookMessage(messageId: string): boolean {
-    return this.hookResolver.isHookMessage(messageId);
-  }
-
-  getHookMessage(messageId: string): { sessionId: string; timestamp: number } | undefined {
-    return this.hookResolver.getHookMessage(messageId);
-  }
-
   // --- Permission message tracking (delegated to SdkPermTracker) ---
 
   trackPermissionMessage(messageId: string, permissionId: string, sessionId: string, channelType: string): void {
     this.sdkTracker.trackPermissionMessage(messageId, permissionId, sessionId, channelType);
   }
 
-  getLatestPendingQuestion(channelType: string): { hookId: string; sessionId: string; messageId: string } | null {
-    const latest = this.sdkTracker.getLatestPermission().get(channelType);
-    if (!latest) return null;
-    // Check if this permission has question data (i.e., it's an AskUserQuestion)
-    if (!this.questionResolver.hasQuestionData(latest.permissionId)) return null;
-    // Check not already resolved
-    if (this.hookResolver.isResolved(latest.permissionId)) return null;
-    return {
-      hookId: latest.permissionId,
-      sessionId: latest.sessionId,
-      messageId: latest.messageId,
-    };
-  }
-
   // --- Question data (delegated to QuestionResolver) ---
 
   storeQuestionData(
-    hookId: string,
+    interactionId: string,
     questions: Array<{
       question: string;
       header: string;
@@ -172,10 +131,10 @@ export class PermissionCoordinator {
     }>,
     contextSuffix?: string,
   ): void {
-    this.questionResolver.storeQuestionData(hookId, questions, contextSuffix);
+    this.questionResolver.storeQuestionData(interactionId, questions, contextSuffix);
   }
 
-  getQuestionData(hookId: string): {
+  getQuestionData(interactionId: string): {
     questions: Array<{
       question: string;
       header: string;
@@ -183,11 +142,7 @@ export class PermissionCoordinator {
       multiSelect: boolean;
     }>;
   } | undefined {
-    return this.questionResolver.getQuestionData(hookId);
-  }
-
-  storeHookPermissionText(hookId: string, text: string): void {
-    this.hookResolver.storeHookPermissionText(hookId, text);
+    return this.questionResolver.getQuestionData(interactionId);
   }
 
   // --- Pruning (delegates to all sub-components) ---
@@ -206,148 +161,19 @@ export class PermissionCoordinator {
 
   pruneStaleEntries(): void {
     this.sdkTracker.pruneStaleEntries();
-    this.hookResolver.pruneStaleEntries();
     this.questionResolver.pruneStaleEntries();
   }
 
-  // --- Hook permission resolution (delegated to SdkPermTracker + HookResolver) ---
-
-  findHookPermission(
-    replyToMessageId: string | undefined,
-    channelType: string,
-  ): { permissionId: string; sessionId: string; timestamp: number } | undefined {
-    return this.sdkTracker.findHookPermission(replyToMessageId, channelType);
+  toggleMultiSelectOption(interactionId: string, optionIndex: number): Set<number> | null {
+    return this.questionResolver.toggleMultiSelectOption(interactionId, optionIndex);
   }
 
-  pendingPermissionCount(): number {
-    return this.sdkTracker.pendingPermissionCount();
+  getToggledSelections(interactionId: string): Set<number> {
+    return this.questionResolver.getToggledSelections(interactionId);
   }
 
-  async resolveHookPermission(permissionId: string, decision: string, channelType: string): Promise<void> {
-    await this.hookResolver.resolveHookPermission(permissionId, decision, channelType, {
-      getPermissionMessages: () => this.sdkTracker.getPermissionMessages(),
-      getLatestPermission: () => this.sdkTracker.getLatestPermission(),
-      deletePermissionMessage: (id: string) => this.sdkTracker.getPermissionMessages().delete(id),
-      deleteLatestPermission: (ct: string) => this.sdkTracker.getLatestPermission().delete(ct),
-    });
-  }
-
-  // --- Hook callback resolution (delegated to HookResolver) ---
-
-  async resolveHookCallback(
-    hookId: string,
-    decision: string,
-    sessionId: string,
-    messageId: string,
-    adapter: BaseChannelAdapter,
-    chatId: string,
-  ): Promise<boolean> {
-    return this.hookResolver.resolveHookCallback(hookId, decision, sessionId, messageId, adapter, chatId, {
-      hasQuestionData: (id: string) => this.questionResolver.hasQuestionData(id),
-      deleteQuestionData: (id: string) => this.questionResolver.deleteQuestionData(id),
-    });
-  }
-
-  // --- AskUserQuestion resolution (delegated to QuestionResolver) ---
-
-  async resolveAskQuestion(
-    hookId: string,
-    optionIndex: number,
-    sessionId: string,
-    messageId: string,
-    adapter: BaseChannelAdapter,
-    chatId: string,
-  ): Promise<boolean> {
-    return this.questionResolver.resolveAskQuestion(
-      hookId,
-      optionIndex,
-      sessionId,
-      messageId,
-      adapter,
-      chatId,
-      {
-        isResolved: (id: string) => this.hookResolver.isResolved(id),
-        markResolved: (id: string) => this.hookResolver.markResolved(id),
-        trackHookMessage: (id: string, sid: string) => this.hookResolver.trackHookMessage(id, sid),
-      },
-    );
-  }
-
-  toggleMultiSelectOption(hookId: string, optionIndex: number): Set<number> | null {
-    return this.questionResolver.toggleMultiSelectOption(hookId, optionIndex);
-  }
-
-  getToggledSelections(hookId: string): Set<number> {
-    return this.questionResolver.getToggledSelections(hookId);
-  }
-
-  cleanupQuestion(hookId: string): void {
-    this.questionResolver.cleanupQuestion(hookId);
-  }
-
-  async resolveMultiSelect(
-    hookId: string,
-    sessionId: string,
-    messageId: string,
-    adapter: BaseChannelAdapter,
-    chatId: string,
-  ): Promise<boolean> {
-    return this.questionResolver.resolveMultiSelect(
-      hookId,
-      sessionId,
-      messageId,
-      adapter,
-      chatId,
-      {
-        isResolved: (id: string) => this.hookResolver.isResolved(id),
-        markResolved: (id: string) => this.hookResolver.markResolved(id),
-        trackHookMessage: (id: string, sid: string) => this.hookResolver.trackHookMessage(id, sid),
-      },
-    );
-  }
-
-  async resolveAskQuestionSkip(
-    hookId: string,
-    sessionId: string,
-    messageId: string,
-    adapter: BaseChannelAdapter,
-    chatId: string,
-  ): Promise<boolean> {
-    return this.questionResolver.resolveAskQuestionSkip(
-      hookId,
-      sessionId,
-      messageId,
-      adapter,
-      chatId,
-      {
-        isResolved: (id: string) => this.hookResolver.isResolved(id),
-        markResolved: (id: string) => this.hookResolver.markResolved(id),
-        trackHookMessage: (id: string, sid: string) => this.hookResolver.trackHookMessage(id, sid),
-      },
-    );
-  }
-
-  async resolveAskQuestionWithText(
-    hookId: string,
-    text: string,
-    sessionId: string,
-    messageId: string,
-    adapter: BaseChannelAdapter,
-    chatId: string,
-  ): Promise<boolean> {
-    return this.questionResolver.resolveAskQuestionWithText(
-      hookId,
-      text,
-      sessionId,
-      messageId,
-      adapter,
-      chatId,
-      {
-        isResolved: (id: string) => this.hookResolver.isResolved(id),
-        markResolved: (id: string) => this.hookResolver.markResolved(id),
-        trackHookMessage: (id: string, sid: string) => this.hookResolver.trackHookMessage(id, sid),
-      },
-    );
+  cleanupQuestion(interactionId: string): void {
+    this.questionResolver.cleanupQuestion(interactionId);
   }
 
   // --- Dynamic session whitelist (delegated to SessionWhitelist) ---
@@ -372,6 +198,14 @@ export class PermissionCoordinator {
     this.whitelist.rememberSessionAllowance(sessionId, toolName, toolInput);
   }
 
+  rememberSameCommandAllowance(
+    sessionId: string | undefined,
+    toolName: string,
+    toolInput: Record<string, unknown>,
+  ): void {
+    this.whitelist.rememberSameCommandAllowance(sessionId, toolName, toolInput);
+  }
+
   extractBashPrefix(command: string): string {
     return this.whitelist.extractBashPrefix(command);
   }
@@ -380,9 +214,9 @@ export class PermissionCoordinator {
     this.whitelist.clearSessionWhitelist(sessionId);
   }
 
-  // --- Broker callback delegation ---
+  // --- Permission button callback resolution ---
 
-  handleBrokerCallback(callbackData: string): boolean {
-    return this.broker.handlePermissionCallback(callbackData);
+  handlePermissionCallback(callbackData: string): boolean {
+    return this.sdkTracker.getGateway().resolveCallback(callbackData);
   }
 }

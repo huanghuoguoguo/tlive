@@ -9,9 +9,12 @@ import type {
 import type { CardResolutionData, FormattableMessage } from '../formatting/message-types.js';
 import type { MessageFormatter } from '../formatting/message-formatter.js';
 import type { Button } from '../ui/types.js';
-import type { ProgressPhase, ProgressTraceStats, PermissionDecision } from '../ui/policy.js';
-import type { ChannelPolicy } from '../ui/channel-policy.js';
-import { DEFAULT_CHANNEL_POLICY } from '../ui/channel-policy.js';
+import type {
+  ChannelPolicy,
+  PermissionDecision,
+  ProgressPhase,
+  ProgressTraceStats,
+} from './policy.js';
 import type { BridgeError } from './errors.js';
 import { classifyDefaultError } from './errors.js';
 
@@ -69,32 +72,10 @@ export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = Ren
     return false;
   }
 
-  // --- Capability checks ---
-
-  /** Whether this platform supports pairing flow (requestPairing method). */
-  supportsPairing(): boolean {
-    return false;
-  }
-
-  /** Whether this platform supports streaming responses (streaming cards). */
-  supportsStreaming(): boolean {
-    return false;
-  }
-
   // --- Policy support ---
 
-  /** Platform behavior policy. */
-  protected policy: ChannelPolicy = DEFAULT_CHANNEL_POLICY;
-
-  /** Set the policy for this adapter. */
-  setPolicy(policy: ChannelPolicy): void {
-    this.policy = policy;
-  }
-
-  /** Get the policy for this adapter. */
-  getPolicy(): ChannelPolicy {
-    return this.policy;
-  }
+  /** Platform behavior policy. Concrete adapters must make this explicit. */
+  protected abstract readonly policy: ChannelPolicy;
 
   /** Whether this platform should render a progress update for the given phase. */
   shouldRenderProgressPhase(phase: ProgressPhase): boolean {
@@ -128,21 +109,10 @@ export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = Ren
     return this.policy.format.formatCodeOutput(text);
   }
 
-  /** Send code output (bash command result, etc.) using platform-appropriate formatting. */
-  async sendCodeOutput(chatId: string, text: string): Promise<SendResult> {
-    const formatted = this.formatCodeOutput(text);
-    return this.send({ chatId, text: formatted } as TRendered);
-  }
-
   // --- Formatting support ---
 
   /** Platform-specific message formatter. Override in subclass. */
   protected formatter!: MessageFormatter<TRendered>;
-
-  /** Set the formatter for this adapter */
-  setFormatter(formatter: MessageFormatter<TRendered>): void {
-    this.formatter = formatter;
-  }
 
   /** Get the locale for this adapter */
   getLocale(): 'en' | 'zh' {
@@ -184,17 +154,6 @@ export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = Ren
    */
   classifyError(err: unknown): BridgeError {
     return classifyDefaultError(err);
-  }
-
-  // --- Broadcast preparation (OCP: platform-specific broadcast handling) ---
-
-  /**
-   * Prepare a message for broadcast on this platform.
-   * Override to add platform-specific fields (e.g., Feishu's receiveIdType).
-   * Default implementation returns the message unchanged.
-   */
-  prepareBroadcast(msg: TRendered): TRendered {
-    return msg;
   }
 
   // --- Bot info (for status display) ---

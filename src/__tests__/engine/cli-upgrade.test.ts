@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -126,5 +126,49 @@ describe('CLI upgrade flow', () => {
       version: '0.13.5',
       previousVersion: '0.13.4',
     });
+  });
+
+  it('restarts the bridge daemon', async () => {
+    const tliveHome = join(tmpRoot, 'home');
+    const runtimeDir = join(tliveHome, 'runtime');
+    const appDir = join(tmpRoot, 'app');
+    mkdirSync(runtimeDir, { recursive: true });
+    mkdirSync(appDir, { recursive: true });
+
+    writePackage(appDir, '0.13.6');
+    copyCli(appDir);
+    writeBridgeEntry(appDir, '0.13.6');
+
+    const baseEnv = {
+      ...process.env,
+      TLIVE_HOME: tliveHome,
+    };
+    const startResult = spawnSync(process.execPath, [join(appDir, 'scripts', 'cli.js'), 'start'], {
+      encoding: 'utf-8',
+      timeout: 10000,
+      env: baseEnv,
+    });
+    expect(startResult.status, `${startResult.stdout}\n${startResult.stderr}`).toBe(0);
+    const oldPid = Number(readFileSync(join(runtimeDir, 'bridge.pid'), 'utf-8'));
+    processesToKill.push(oldPid);
+    unlinkSync(join(runtimeDir, 'bridge.pid'));
+
+    const result = spawnSync(process.execPath, [join(appDir, 'scripts', 'cli.js'), 'restart'], {
+      encoding: 'utf-8',
+      timeout: 45000,
+      env: baseEnv,
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain('Bridge stopped.');
+    expect(result.stdout).toContain('Bridge healthy');
+    expect(isRunning(oldPid)).toBe(false);
+
+    const status = JSON.parse(readFileSync(join(runtimeDir, 'status.json'), 'utf-8'));
+    expect(status.version).toBe('0.13.6');
+    expect(status.channels).toEqual(['feishu']);
+    expect(status.pid).not.toBe(oldPid);
+    expect(isRunning(status.pid)).toBe(true);
+    processesToKill.push(status.pid);
   });
 });

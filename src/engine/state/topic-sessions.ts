@@ -1,5 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import type { AgentProviderKind } from '../../providers/kinds.js';
+import { normalizeAgentProviderKind } from '../../providers/kinds.js';
 
 export interface TopicSessionRecord {
   channelType: string;
@@ -11,6 +13,7 @@ export interface TopicSessionRecord {
   rootMessageId?: string;
   lastMessageId?: string;
   sdkSessionId?: string;
+  provider?: AgentProviderKind;
   cwd?: string;
   title?: string;
   preview?: string;
@@ -18,14 +21,14 @@ export interface TopicSessionRecord {
   updatedAt: string;
 }
 
-export type TopicSessionUpsert = Partial<Pick<TopicSessionRecord, 'createdAt' | 'updatedAt'>>
-  & Omit<TopicSessionRecord, 'createdAt' | 'updatedAt'>;
+export type TopicSessionUpsert = Partial<Pick<TopicSessionRecord, 'createdAt' | 'updatedAt'>> &
+  Omit<TopicSessionRecord, 'createdAt' | 'updatedAt'>;
 
 /**
- * Persistent index from Claude Code sessions to Feishu topics.
+ * Persistent index from agent sessions to Feishu topics.
  *
  * ChannelBinding remains the internal runtime binding, but this index is the
- * user-facing conversation map: one Claude session should continue in one topic.
+ * user-facing conversation map: one provider session should continue in one topic.
  */
 export class TopicSessionManager {
   private records = new Map<string, TopicSessionRecord>();
@@ -41,8 +44,13 @@ export class TopicSessionManager {
   upsert(input: TopicSessionUpsert): TopicSessionRecord {
     const now = new Date().toISOString();
     if (input.sdkSessionId) {
+      const inputProvider = normalizeAgentProviderKind(input.provider);
       for (const [scopeId, record] of this.records) {
-        if (scopeId !== input.scopeId && record.sdkSessionId === input.sdkSessionId) {
+        if (
+          scopeId !== input.scopeId &&
+          record.sdkSessionId === input.sdkSessionId &&
+          normalizeAgentProviderKind(record.provider) === inputProvider
+        ) {
           this.records.delete(scopeId);
         }
       }
@@ -72,13 +80,30 @@ export class TopicSessionManager {
     return undefined;
   }
 
+  findBySdkSession(
+    provider: AgentProviderKind | undefined,
+    sdkSessionId: string | undefined,
+  ): TopicSessionRecord | undefined {
+    if (!sdkSessionId) return undefined;
+    const expectedProvider = normalizeAgentProviderKind(provider);
+    for (const record of this.records.values()) {
+      if (
+        record.sdkSessionId === sdkSessionId &&
+        normalizeAgentProviderKind(record.provider) === expectedProvider
+      ) {
+        return record;
+      }
+    }
+    return undefined;
+  }
+
   listRecent(
     limit = 10,
     opts: { channelType?: string; chatId?: string } = {},
   ): TopicSessionRecord[] {
     return [...this.records.values()]
-      .filter(record => !opts.channelType || record.channelType === opts.channelType)
-      .filter(record => !opts.chatId || record.chatId === opts.chatId)
+      .filter((record) => !opts.channelType || record.channelType === opts.channelType)
+      .filter((record) => !opts.chatId || record.chatId === opts.chatId)
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
       .slice(0, limit);
   }
@@ -95,13 +120,15 @@ export class TopicSessionManager {
   private loadPersisted(): void {
     if (!this.persistPath) return;
     try {
-      const data: Record<string, TopicSessionRecord> = JSON.parse(readFileSync(this.persistPath, 'utf-8'));
+      const data: Record<string, TopicSessionRecord> = JSON.parse(
+        readFileSync(this.persistPath, 'utf-8'),
+      );
       for (const [scopeId, record] of Object.entries(data)) {
         if (
-          record
-          && typeof record.chatId === 'string'
-          && typeof record.scopeId === 'string'
-          && typeof record.threadId === 'string'
+          record &&
+          typeof record.chatId === 'string' &&
+          typeof record.scopeId === 'string' &&
+          typeof record.threadId === 'string'
         ) {
           this.records.set(scopeId, record);
         }
