@@ -241,15 +241,6 @@ export interface Translations {
   'input.hookAllowed': string;
   'input.hookFailed': string;
 
-  // --- push notification ---
-  'push.title': string;
-  'push.workdir': string;
-  'push.project': string;
-  'push.session': string;
-  'push.preview': string;
-  'push.continueHint': string;
-  'push.fallbackHint': string;
-
   // --- recent projects ---
   'recentProjects.hint': string;
 

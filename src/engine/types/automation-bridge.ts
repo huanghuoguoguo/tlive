@@ -3,7 +3,7 @@ import type { ChannelBinding } from '../../store/interface.js';
 import type { ClaudeSettingSource } from '../../config.js';
 
 /**
- * Minimal interface for automation components (WebhookServer, CronScheduler).
+ * Minimal interface for automation components such as WebhookServer.
  * This interface allows automation systems to interact with the bridge
  * without depending on the full BridgeManager implementation.
  */
@@ -17,7 +17,7 @@ export interface AutomationBridge {
   /** Get the last active chatId for a channel type (for hook routing) */
   getLastChatId(channelType: string): string;
 
-  /** Inject a prompt from automation (webhook/cron) */
+  /** Inject a prompt from automation webhooks */
   injectAutomationPrompt(options: {
     channelType: string;
     chatId: string;
@@ -38,14 +38,4 @@ export interface AutomationBridge {
 
   /** Get binding by session ID */
   getBindingBySessionId(sessionId: string): Promise<ChannelBinding | null>;
-
-  /** Push session context to mobile IM */
-  pushToMobile(options: {
-    channelType: string;
-    chatId: string;
-    workdir: string;
-    projectName?: string;
-    message?: string;
-    preview?: string;
-  }): Promise<{ success: boolean; sessionId?: string; error?: string }>;
 }

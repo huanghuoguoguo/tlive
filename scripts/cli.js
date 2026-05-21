@@ -833,6 +833,14 @@ switch (command) {
       const globalSkillsDir = join(homedir(), '.claude', 'skills');
       mkdirSync(globalSkillsDir, { recursive: true });
 
+      for (const retiredSkill of ['tlive-cron']) {
+        const retiredSkillDest = join(globalSkillsDir, retiredSkill);
+        if (existsSync(retiredSkillDest)) {
+          rmSync(retiredSkillDest, { recursive: true, force: true });
+          console.log(`Removed retired skill: ${retiredSkillDest}`);
+        }
+      }
+
       try {
         const entries = readdirSync(bundledSkillsDir, { withFileTypes: true });
         for (const entry of entries) {

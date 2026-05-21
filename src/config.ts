@@ -55,15 +55,6 @@ export interface Config {
     /** Maximum accepted webhook requests per minute from the same source (0 disables) */
     rateLimitPerMinute: number;
   };
-  /** Cron scheduler configuration for scheduled tasks (Phase 3) */
-  cron: {
-    /** Enable cron scheduler (default: false) */
-    enabled: boolean;
-    /** Default timezone for cron jobs (not implemented in Phase 3) */
-    timezone?: string;
-    /** Maximum concurrent job executions (default: 3) */
-    maxConcurrency: number;
-  };
   /** Exec configuration — LIMITED shell exec for automation (Phase 3 design only).
    *
    * SECURITY WARNING: Exec is disabled by default and should remain disabled
@@ -95,13 +86,6 @@ export interface Config {
     /** Pin newly-created topic entry messages to the chat Pin list. */
     autoPinTopics: boolean;
   };
-  /** Push configuration for /tlive:push command */
-  push: {
-    /** Default channel for push notifications. Only feishu is supported. */
-    defaultChannel: string;
-    /** Default chat ID for push notifications */
-    defaultChat: string;
-  };
   /** UI configuration for generated cards */
   ui: {
     /** Buttons shown on completed/failed task cards and task summary cards. */
@@ -110,7 +94,10 @@ export interface Config {
 }
 
 /** Validate a single project config */
-function validateProjectConfig(project: ProjectConfig, index: number): { valid: boolean; name: string; reason?: string } {
+function validateProjectConfig(
+  project: ProjectConfig,
+  index: number,
+): { valid: boolean; name: string; reason?: string } {
   // Check name
   if (!project.name || typeof project.name !== 'string') {
     return { valid: false, name: `project-${index}`, reason: 'missing or invalid name' };
@@ -126,17 +113,29 @@ function validateProjectConfig(project: ProjectConfig, index: number): { valid: 
 
   // Check if workdir exists
   if (!existsSync(resolvedWorkdir)) {
-    return { valid: false, name: project.name, reason: `workdir does not exist: ${resolvedWorkdir}` };
+    return {
+      valid: false,
+      name: project.name,
+      reason: `workdir does not exist: ${resolvedWorkdir}`,
+    };
   }
 
   // Check if workdir is a directory
   try {
     const stats = statSync(resolvedWorkdir);
     if (!stats.isDirectory()) {
-      return { valid: false, name: project.name, reason: `workdir is not a directory: ${resolvedWorkdir}` };
+      return {
+        valid: false,
+        name: project.name,
+        reason: `workdir is not a directory: ${resolvedWorkdir}`,
+      };
     }
   } catch {
-    return { valid: false, name: project.name, reason: `cannot access workdir: ${resolvedWorkdir}` };
+    return {
+      valid: false,
+      name: project.name,
+      reason: `cannot access workdir: ${resolvedWorkdir}`,
+    };
   }
 
   return { valid: true, name: project.name };
@@ -189,7 +188,7 @@ export function loadProjectsConfig(): ProjectsValidationResult | undefined {
     }
 
     // Verify default project exists in valid list
-    if (defaultProject && !valid.some(p => p.name === defaultProject)) {
+    if (defaultProject && !valid.some((p) => p.name === defaultProject)) {
       // Default project is invalid or missing, use first valid
       if (valid.length > 0) {
         defaultProject = valid[0].name;
@@ -205,12 +204,10 @@ export function loadProjectsConfig(): ProjectsValidationResult | undefined {
 
 function parseList(value: string | undefined): string[] {
   if (!value?.trim()) return [];
-  return value.split(',').map(s => s.trim()).filter(Boolean);
-}
-
-function parsePositiveInt(value: string | undefined, defaultValue: number): number {
-  const parsed = Number.parseInt(value ?? '', 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue;
+  return value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 function normalizeWebhookPath(path: string): string {
@@ -236,8 +233,10 @@ function loadEnvFile(path: string): Record<string, string> {
       const key = trimmed.slice(0, eqIndex).trim();
       let value = trimmed.slice(eqIndex + 1).trim();
       // Remove surrounding quotes
-      if ((value.startsWith('"') && value.endsWith('"')) ||
-          (value.startsWith("'") && value.endsWith("'"))) {
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
         value = value.slice(1, -1);
       }
       env[key] = value;
@@ -279,14 +278,14 @@ export function loadConfig(): Config {
       token: get('TL_WEBHOOK_TOKEN'),
       port: parseInt(get('TL_WEBHOOK_PORT', '8081'), 10),
       path: normalizeWebhookPath(get('TL_WEBHOOK_PATH', '/webhook')),
-      sessionStrategy: normalizeWebhookSessionStrategy(get('TL_WEBHOOK_SESSION_STRATEGY', 'reject')),
+      sessionStrategy: normalizeWebhookSessionStrategy(
+        get('TL_WEBHOOK_SESSION_STRATEGY', 'reject'),
+      ),
       callbackUrl: get('TL_WEBHOOK_CALLBACK_URL') || undefined,
-      rateLimitPerMinute: Math.max(0, Number.parseInt(get('TL_WEBHOOK_RATE_LIMIT_PER_MINUTE', '30'), 10) || 0),
-    },
-    cron: {
-      enabled: get('TL_CRON_ENABLED', 'true') === 'true',
-      timezone: get('TL_CRON_TIMEZONE') || undefined,
-      maxConcurrency: parsePositiveInt(get('TL_CRON_MAX_CONCURRENCY', '3'), 3),
+      rateLimitPerMinute: Math.max(
+        0,
+        Number.parseInt(get('TL_WEBHOOK_RATE_LIMIT_PER_MINUTE', '30'), 10) || 0,
+      ),
     },
     exec: {
       // IMPORTANT: Exec is disabled by default and not implemented in Phase 3
@@ -305,10 +304,6 @@ export function loadConfig(): Config {
       allowedUsers: parseList(get('TL_FS_ALLOWED_USERS')),
       autoPinTopics: get('TL_FS_AUTO_PIN_TOPIC', 'true') !== 'false',
     },
-    push: {
-      defaultChannel: get('TL_PUSH_DEFAULT_CHANNEL', 'feishu'),
-      defaultChat: get('TL_PUSH_DEFAULT_CHAT'),
-    },
     ui: {
       doneButtons: normalizeQuickButtonNames(get('TL_DONE_BUTTONS', 'home')),
     },
@@ -320,11 +315,6 @@ export function loadConfig(): Config {
   }
 
   validateFeishuConfig(config);
-
-  // Validate push config
-  if (config.push.defaultChannel && config.push.defaultChannel !== 'feishu') {
-    throw new Error(`Config error: TL_PUSH_DEFAULT_CHANNEL '${config.push.defaultChannel}' is not supported (only 'feishu')`);
-  }
 
   return config;
 }

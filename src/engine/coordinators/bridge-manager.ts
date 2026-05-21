@@ -5,10 +5,7 @@ import type { AutomationBridge } from '../types/automation-bridge.js';
 import { getBridgeContext } from '../../context.js';
 import { loadConfig, type Config, type ClaudeSettingSource } from '../../config.js';
 import { WebhookServer } from '../automation/webhook.js';
-import { CronScheduler } from '../automation/cron.js';
-import { buildCronSystemPrompt } from '../automation/cron-system-prompt.js';
 import { handleCallbackMessage } from '../messages/callback-dispatcher.js';
-import { getTliveRuntimeDir } from '../../core/path.js';
 import type { HookNotificationData } from '../messages/hook-notification.js';
 import type { BridgeStore } from '../../store/interface.js';
 import type { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
@@ -16,7 +13,11 @@ import { generateRequestId, Logger, type LogContext } from '../../logger.js';
 import { truncate } from '../../core/string.js';
 import { areSettingSourcesEqual } from '../../engine/automation/utils.js';
 import { generateSessionId } from '../../core/id.js';
-import { createBridgeComponents, type BridgeComponents, type BridgeFactoryDeps } from '../bridge-factory.js';
+import {
+  createBridgeComponents,
+  type BridgeComponents,
+  type BridgeFactoryDeps,
+} from '../bridge-factory.js';
 import { CommandRouter } from '../command-router.js';
 import { QueryOrchestrator } from './query.js';
 import type { PermissionCoordinator } from './permission.js';
@@ -39,15 +40,8 @@ export class BridgeManager implements AutomationBridge {
   private components: BridgeComponents;
   /** Webhook server for automation entry */
   private webhookServer: WebhookServer | null = null;
-  /** Cron scheduler for scheduled tasks */
-  private cronScheduler: CronScheduler | null = null;
   /** Cleanup timer for SDK question data */
   private sdkQuestionCleanupTimer: ReturnType<typeof setInterval> | null = null;
-
-  /** Get the cron scheduler instance (null if disabled) */
-  getCronScheduler(): CronScheduler | null {
-    return this.cronScheduler;
-  }
 
   constructor(deps?: BridgeManagerDeps) {
     const config = deps?.config ?? loadConfig();
@@ -94,21 +88,9 @@ export class BridgeManager implements AutomationBridge {
       topicSessions: this.components.topicSessions,
       defaultClaudeSettingSources: config.claudeSettingSources,
       port: this.components.port,
-      appendSystemPrompt: this.buildAppendSystemPrompt(config),
     });
 
-    // Initialize cron scheduler if enabled
-    if (config.cron.enabled) {
-      this.cronScheduler = new CronScheduler({
-        runtimeDir: getTliveRuntimeDir(),
-        bridge: this,
-        enabled: config.cron.enabled,
-        maxConcurrency: config.cron.maxConcurrency,
-        projects: this.components.projectsConfig?.valid,
-      });
-    }
-
-    // Initialize webhook server if enabled (after cron scheduler so we can pass it)
+    // Initialize webhook server if enabled.
     if (config.webhook.enabled && config.webhook.token) {
       this.webhookServer = new WebhookServer({
         token: config.webhook.token,
@@ -121,13 +103,10 @@ export class BridgeManager implements AutomationBridge {
         projects: this.components.projectsConfig?.valid,
         defaultProject: this.components.projectsConfig?.defaultProject,
         defaultWorkdir,
-        cronScheduler: this.cronScheduler,
-        pushConfig: config.push,
       });
     }
   }
 
-  
   /** Returns all active adapters */
   getAdapters(): BaseChannelAdapter[] {
     return Array.from(this.adapters.values());
@@ -167,9 +146,11 @@ export class BridgeManager implements AutomationBridge {
 
     const binding = await this.components.router.resolve(options.channelType, options.chatId);
     const workdirChanged = options.workdir !== undefined && binding.cwd !== options.workdir;
-    const projectChanged = options.projectName !== undefined && binding.projectName !== options.projectName;
-    const settingsChanged = options.claudeSettingSources !== undefined
-      && !areSettingSourcesEqual(binding.claudeSettingSources, options.claudeSettingSources);
+    const projectChanged =
+      options.projectName !== undefined && binding.projectName !== options.projectName;
+    const settingsChanged =
+      options.claudeSettingSources !== undefined &&
+      !areSettingSourcesEqual(binding.claudeSettingSources, options.claudeSettingSources);
     const sessionContextChanged = workdirChanged || projectChanged || settingsChanged;
 
     let bindingChanged = false;
@@ -199,16 +180,23 @@ export class BridgeManager implements AutomationBridge {
     }
 
     this.components.ingress.recordChat(options.channelType, options.chatId);
-    await this.components.query.run(adapter, {
-      channelType: adapter.channelType,
-      chatId: options.chatId,
-      userId: options.userId ?? 'automation',
-      text: options.text,
-      messageId: options.messageId ?? `automation-${options.requestId || generateRequestId()}`,
-      attachments: [],
-    }, options.requestId);
+    await this.components.query.run(
+      adapter,
+      {
+        channelType: adapter.channelType,
+        chatId: options.chatId,
+        userId: options.userId ?? 'automation',
+        text: options.text,
+        messageId: options.messageId ?? `automation-${options.requestId || generateRequestId()}`,
+        attachments: [],
+      },
+      options.requestId,
+    );
 
-    const updatedBinding = await this.components.store.getBinding(options.channelType, options.chatId);
+    const updatedBinding = await this.components.store.getBinding(
+      options.channelType,
+      options.chatId,
+    );
     return {
       sessionId: updatedBinding?.sdkSessionId ?? updatedBinding?.sessionId,
     };
@@ -251,75 +239,24 @@ export class BridgeManager implements AutomationBridge {
     return this.getLastChatId(channelType);
   }
 
-  /** Push session context to mobile IM for continuing on phone */
-  async pushToMobile(options: {
-    channelType: string;
-    chatId: string;
-    workdir: string;
-    projectName?: string;
-    message?: string;
-    preview?: string;
-  }): Promise<{ success: boolean; sessionId?: string; error?: string }> {
-    const adapter = this.getAdapter(options.channelType);
-    if (!adapter) {
-      return { success: false, error: `Channel '${options.channelType}' not available` };
-    }
-
-    // Get binding to retrieve session info
-    const binding = await this.components.store.getBinding(options.channelType, options.chatId);
-    const locale: Locale = 'zh'; // Default to zh for push notifications
-    const sessionIdShort = binding?.sdkSessionId?.slice(-8) ?? binding?.sessionId?.slice(-8) ?? 'unknown';
-
-    // Format push notification message
-    const lines = [
-      t(locale, 'push.title'),
-      '',
-      `${t(locale, 'push.workdir')}: ${options.workdir}`,
-    ];
-    if (options.projectName) {
-      lines.push(`${t(locale, 'push.project')}: ${options.projectName}`);
-    }
-    lines.push(`${t(locale, 'push.session')}: ${sessionIdShort}`);
-
-    // Add preview if provided
-    if (options.preview) {
-      lines.push('');
-      lines.push(`💬 ${t(locale, 'push.preview')}:`);
-      lines.push(options.preview);
-    }
-
-    lines.push('');
-    lines.push(t(locale, 'push.continueHint'));
-
-    const pushText = lines.join('\n');
-
-    try {
-      await adapter.send({
-        chatId: options.chatId,
-        text: pushText,
-      });
-
-      // Return session ID from binding for resuming on mobile
-      return {
-        success: true,
-        sessionId: binding?.sdkSessionId ?? binding?.sessionId,
-      };
-    } catch (err) {
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : String(err),
-      };
-    }
-  }
-
   /** Delegate: track a hook message for reply routing */
   trackHookMessage(messageId: string, sessionId: string): void {
     this.components.permissions.trackHookMessage(messageId, sessionId);
   }
 
   /** Delegate: track a permission message for text-based approval */
-  trackPermissionMessage(messageId: string, permissionId: string, sessionId: string, channelType: string): void {
-    this.components.permissions.trackPermissionMessage(messageId, permissionId, sessionId, channelType);
+  trackPermissionMessage(
+    messageId: string,
+    permissionId: string,
+    sessionId: string,
+    channelType: string,
+  ): void {
+    this.components.permissions.trackPermissionMessage(
+      messageId,
+      permissionId,
+      sessionId,
+      channelType,
+    );
   }
 
   /** Delegate: store original permission card text */
@@ -328,7 +265,16 @@ export class BridgeManager implements AutomationBridge {
   }
 
   /** Delegate: store AskUserQuestion data */
-  storeQuestionData(hookId: string, questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }>, contextSuffix?: string): void {
+  storeQuestionData(
+    hookId: string,
+    questions: Array<{
+      question: string;
+      header: string;
+      options: Array<{ label: string; description?: string }>;
+      multiSelect: boolean;
+    }>,
+    contextSuffix?: string,
+  ): void {
     this.components.permissions.storeQuestionData(hookId, questions, contextSuffix);
   }
 
@@ -375,24 +321,28 @@ export class BridgeManager implements AutomationBridge {
     this.running = true;
     for (const [type, adapter] of this.adapters) {
       const err = adapter.validateConfig();
-      if (err) { console.warn(`Skipping ${type}: ${err}`); this.adapters.delete(type); continue; }
+      if (err) {
+        console.warn(`Skipping ${type}: ${err}`);
+        this.adapters.delete(type);
+        continue;
+      }
       await adapter.start();
       this.runAdapterLoop(adapter);
     }
     this.components.permissions.startPruning();
     this.components.sdkEngine.startSessionPruning();
-    this.sdkQuestionCleanupTimer = setInterval(() => {
-      const interactionState = this.components.sdkEngine.getInteractionState();
-      const gateway = this.components.permissions.getGateway();
-      interactionState.pruneResolvedSdkQuestions(gateway);
-      interactionState.pruneResolvedDeferredTools(gateway);
-      this.components.ingress.pruneStaleState();
-    }, 5 * 60 * 1000);
+    this.sdkQuestionCleanupTimer = setInterval(
+      () => {
+        const interactionState = this.components.sdkEngine.getInteractionState();
+        const gateway = this.components.permissions.getGateway();
+        interactionState.pruneResolvedSdkQuestions(gateway);
+        interactionState.pruneResolvedDeferredTools(gateway);
+        this.components.ingress.pruneStaleState();
+      },
+      5 * 60 * 1000,
+    );
     if (this.webhookServer) {
       this.webhookServer.start();
-    }
-    if (this.cronScheduler) {
-      this.cronScheduler.start();
     }
   }
 
@@ -409,44 +359,41 @@ export class BridgeManager implements AutomationBridge {
     if (this.webhookServer) {
       this.webhookServer.stop();
     }
-    if (this.cronScheduler) {
-      this.cronScheduler.stop();
-    }
     for (const adapter of this.adapters.values()) {
       await adapter.stop();
     }
   }
 
   /** Send a hook notification to IM with [Local] prefix and track for reply routing */
-  async sendHookNotification(adapter: BaseChannelAdapter, chatId: string, hook: HookNotificationData, receiveIdType?: string): Promise<void> {
+  async sendHookNotification(
+    adapter: BaseChannelAdapter,
+    chatId: string,
+    hook: HookNotificationData,
+    receiveIdType?: string,
+  ): Promise<void> {
     await this.components.notifications.send(adapter, chatId, hook, receiveIdType);
-  }
-
-  /** Build appendSystemPrompt for agent sessions based on enabled features */
-  private buildAppendSystemPrompt(config: Config): string | undefined {
-    const parts: string[] = [];
-
-    // Cron management prompt (only when both webhook and cron are enabled)
-    if (config.cron.enabled && config.webhook.enabled && config.webhook.token) {
-      parts.push(buildCronSystemPrompt(config.webhook.port, config.webhook.token));
-    }
-
-    return parts.length > 0 ? parts.join('\n\n') : undefined;
   }
 
   private async runAdapterLoop(adapter: BaseChannelAdapter): Promise<void> {
     while (this.running) {
       const msg = await this.components.ingress.getNextMessage(adapter);
-      if (!msg) { await new Promise(r => setTimeout(r, 100)); continue; }
+      if (!msg) {
+        await new Promise((r) => setTimeout(r, 100));
+        continue;
+      }
       const requestId = generateRequestId();
       const ctx: LogContext = { requestId, chatId: msg.chatId };
       const textPreview = msg.text ? truncate(msg.text, 50) : '(callback)';
-      console.log(`[${adapter.channelType}] ${ctx.requestId} RECV user=${msg.userId} chat=${msg.chatId.slice(-8)}: ${textPreview}`);
+      console.log(
+        `[${adapter.channelType}] ${ctx.requestId} RECV user=${msg.userId} chat=${msg.chatId.slice(-8)}: ${textPreview}`,
+      );
       if (this.components.loop.isQuickMessage(adapter, msg)) {
         try {
           await this.handleInboundMessage(adapter, msg, requestId);
         } catch (err) {
-          console.error(`[${adapter.channelType}] ${ctx.requestId} ERROR: ${Logger.formatError(err)}`);
+          console.error(
+            `[${adapter.channelType}] ${ctx.requestId} ERROR: ${Logger.formatError(err)}`,
+          );
           this.sendErrorNotification(adapter, msg.chatId, err, requestId);
         }
       } else {
@@ -454,8 +401,10 @@ export class BridgeManager implements AutomationBridge {
           adapter,
           msg,
           requestId,
-          coalesceMessage: (dispatchAdapter, dispatchMsg) => this.components.ingress.coalesceMessages(dispatchAdapter, dispatchMsg),
-          handleMessage: (dispatchAdapter, dispatchMsg, rid) => this.handleInboundMessage(dispatchAdapter, dispatchMsg, rid),
+          coalesceMessage: (dispatchAdapter, dispatchMsg) =>
+            this.components.ingress.coalesceMessages(dispatchAdapter, dispatchMsg),
+          handleMessage: (dispatchAdapter, dispatchMsg, rid) =>
+            this.handleInboundMessage(dispatchAdapter, dispatchMsg, rid),
           onError: (err, rid) => {
             console.error(`[${adapter.channelType}] ${rid} ERROR: ${Logger.formatError(err)}`);
             this.sendErrorNotification(adapter, msg.chatId, err, rid);
@@ -466,19 +415,30 @@ export class BridgeManager implements AutomationBridge {
   }
 
   /** Send error notification to user's chat */
-  private sendErrorNotification(adapter: BaseChannelAdapter, chatId: string | undefined, err: unknown, requestId?: string): void {
+  private sendErrorNotification(
+    adapter: BaseChannelAdapter,
+    chatId: string | undefined,
+    err: unknown,
+    requestId?: string,
+  ): void {
     if (!chatId) return; // No chatId, can't send notification
     const locale: Locale = 'zh';
     const errorMsg = err instanceof Error ? err.message : String(err);
     const truncated = truncate(errorMsg, 200);
     const ridText = requestId ? requestId : 'unknown';
-    adapter.send({
-      chatId,
-      text: `${t(locale, 'error.title')}\n${t(locale, 'error.requestId')}: ${ridText}\n${truncated}`,
-    }).catch(() => {}); // Ignore send failure
+    adapter
+      .send({
+        chatId,
+        text: `${t(locale, 'error.title')}\n${t(locale, 'error.requestId')}: ${ridText}\n${truncated}`,
+      })
+      .catch(() => {}); // Ignore send failure
   }
 
-  async handleInboundMessage(adapter: BaseChannelAdapter, msg: InboundMessage, requestId?: string): Promise<boolean> {
+  async handleInboundMessage(
+    adapter: BaseChannelAdapter,
+    msg: InboundMessage,
+    requestId?: string,
+  ): Promise<boolean> {
     const ctx: LogContext = { requestId: requestId || generateRequestId(), chatId: msg.chatId };
     const { state, ingress, text, permissions, sdkEngine, commands, query } = this.components;
 
@@ -486,11 +446,15 @@ export class BridgeManager implements AutomationBridge {
     if (!msg.chatId && msg.userId) {
       const userLastChat = state.getUserLastChat(msg.userId);
       if (userLastChat && userLastChat.channelType === adapter.channelType) {
-        console.log(`[${adapter.channelType}] ${ctx.requestId} MENU fallback to user's last chat ${userLastChat.chatId.slice(-8)}`);
+        console.log(
+          `[${adapter.channelType}] ${ctx.requestId} MENU fallback to user's last chat ${userLastChat.chatId.slice(-8)}`,
+        );
         msg = { ...msg, chatId: userLastChat.chatId };
         ctx.chatId = msg.chatId;
       } else {
-        console.warn(`[${adapter.channelType}] ${ctx.requestId} MENU dropped: no recent chat for user ${msg.userId}`);
+        console.warn(
+          `[${adapter.channelType}] ${ctx.requestId} MENU dropped: no recent chat for user ${msg.userId}`,
+        );
         return false;
       }
     }
@@ -499,7 +463,9 @@ export class BridgeManager implements AutomationBridge {
     if (msg.callbackData && !msg.chatId) {
       const fallbackChatId = ingress.getLastChatId(adapter.channelType);
       if (fallbackChatId) {
-        console.warn(`[${adapter.channelType}] ${ctx.requestId} CALLBACK fallback to last chat ${fallbackChatId.slice(-8)}`);
+        console.warn(
+          `[${adapter.channelType}] ${ctx.requestId} CALLBACK fallback to last chat ${fallbackChatId.slice(-8)}`,
+        );
         msg = { ...msg, chatId: fallbackChatId };
         ctx.chatId = msg.chatId;
       }
@@ -535,7 +501,8 @@ export class BridgeManager implements AutomationBridge {
       return handleCallbackMessage(adapter, msg, {
         permissions,
         sdkEngine,
-        replayMessage: (replayAdapter, replayMsg) => this.handleInboundMessage(replayAdapter, replayMsg, ctx.requestId),
+        replayMessage: (replayAdapter, replayMsg) =>
+          this.handleInboundMessage(replayAdapter, replayMsg, ctx.requestId),
       });
     }
 

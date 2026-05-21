@@ -13,12 +13,9 @@
 
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AutomationBridge } from '../types/automation-bridge.js';
-import type { CronScheduler } from './cron.js';
 import type { ProjectConfig } from '../../store/interface.js';
 import { generateRequestId, Logger } from '../../logger.js';
-import { isCronApiRequest, handleCronApiRequest } from './cron-api.js';
 import { handleFileSendRequest } from './file-send-api.js';
-import { handlePushRequest } from './push-handler.js';
 
 /** Webhook request body */
 export interface WebhookRequest {
@@ -105,10 +102,6 @@ export interface WebhookServerOptions {
   defaultProject?: string;
   /** Default working directory for file path resolution */
   defaultWorkdir?: string;
-  /** Cron scheduler for API requests (optional) */
-  cronScheduler?: CronScheduler | null;
-  /** Push configuration for /api/push endpoint */
-  pushConfig?: { defaultChannel: string; defaultChat: string };
 }
 
 /**
@@ -189,7 +182,9 @@ export class WebhookServer {
     }
 
     const windowStart = now - 60_000;
-    const recent = (this.recentRequestsBySource.get(sourceKey) ?? []).filter(timestamp => timestamp > windowStart);
+    const recent = (this.recentRequestsBySource.get(sourceKey) ?? []).filter(
+      (timestamp) => timestamp > windowStart,
+    );
     if (recent.length === 0) {
       this.recentRequestsBySource.delete(sourceKey);
     }
@@ -209,7 +204,9 @@ export class WebhookServer {
   start(): void {
     this.server = createServer((req, res) => this.handleRequest(req, res));
     this.server.listen(this.options.port, () => {
-      console.log(`[webhook] Server listening on port ${this.options.port}, path: ${this.options.path}, strategy: ${this.options.sessionStrategy}`);
+      console.log(
+        `[webhook] Server listening on port ${this.options.port}, path: ${this.options.path}, strategy: ${this.options.sessionStrategy}`,
+      );
     });
   }
 
@@ -233,7 +230,13 @@ export class WebhookServer {
     if (!authHeader?.startsWith('Bearer ')) {
       console.warn(`[webhook] ${requestId} 401 Missing or invalid Authorization header`);
       res.writeHead(401, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: false, error: 'Missing or invalid Authorization header', requestId }));
+      res.end(
+        JSON.stringify({
+          success: false,
+          error: 'Missing or invalid Authorization header',
+          requestId,
+        }),
+      );
       return;
     }
 
@@ -245,26 +248,11 @@ export class WebhookServer {
       return;
     }
 
-    // Route cron API requests
-    if (isCronApiRequest(url)) {
-      await handleCronApiRequest(req, res, this.options.cronScheduler ?? null);
-      return;
-    }
-
     // Route: /api/files/send
     if (url === '/api/files/send') {
       await handleFileSendRequest(req, res, {
         bridge: this.options.bridge,
         defaultWorkdir: this.getDefaultWorkdir(),
-      });
-      return;
-    }
-
-    // Route: /api/push
-    if (url === '/api/push') {
-      await handlePushRequest(req, res, {
-        bridge: this.options.bridge,
-        pushConfig: this.options.pushConfig || { defaultChannel: '', defaultChat: '' },
       });
       return;
     }
@@ -298,7 +286,9 @@ export class WebhookServer {
         bodyTooLarge = true;
         console.warn(`[webhook] ${requestId} 400 Body too large (${bodySize} bytes)`);
         res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, error: 'Request body too large (max 64KB)', requestId }));
+        res.end(
+          JSON.stringify({ success: false, error: 'Request body too large (max 64KB)', requestId }),
+        );
         return;
       }
       body += chunk.toString();
@@ -322,7 +312,8 @@ export class WebhookServer {
         // Route the request to target chat
         const routeResult = await this.resolveRoute(request);
         if (!routeResult) {
-          const errorMsg = 'No valid target: specify channelType+chatId, projectName, or configure defaultProject';
+          const errorMsg =
+            'No valid target: specify channelType+chatId, projectName, or configure defaultProject';
           console.warn(`[webhook] ${requestId} ROUTE_FAILED: ${errorMsg}`);
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ success: false, error: errorMsg, requestId }));
@@ -331,29 +322,37 @@ export class WebhookServer {
 
         // Inject payload into prompt
         const injectedPrompt = injectPayload(request.prompt, request.payload);
-        console.log(`[webhook] ${requestId} INJECT event=${request.event} prompt="${injectedPrompt.slice(0, 50)}${injectedPrompt.length > 50 ? '...' : ''}"`);
+        console.log(
+          `[webhook] ${requestId} INJECT event=${request.event} prompt="${injectedPrompt.slice(0, 50)}${injectedPrompt.length > 50 ? '...' : ''}"`,
+        );
 
         // Deliver the prompt with resolved route
         const result = await this.deliverPrompt(request, routeResult, injectedPrompt, requestId);
 
         if (result.success) {
-          console.log(`[webhook] ${requestId} SUCCESS sessionId=${result.sessionId?.slice(-4) || '?'}`);
+          console.log(
+            `[webhook] ${requestId} SUCCESS sessionId=${result.sessionId?.slice(-4) || '?'}`,
+          );
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            success: true,
-            message: 'Prompt delivered',
-            sessionId: result.sessionId,
-            requestId,
-            route: routeResult,
-          }));
+          res.end(
+            JSON.stringify({
+              success: true,
+              message: 'Prompt delivered',
+              sessionId: result.sessionId,
+              requestId,
+              route: routeResult,
+            }),
+          );
         } else {
           console.warn(`[webhook] ${requestId} FAILED: ${result.error}`);
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            success: false,
-            error: result.error,
-            requestId,
-          }));
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: result.error,
+              requestId,
+            }),
+          );
         }
 
         // Send callback notification if configured
@@ -456,7 +455,7 @@ export class WebhookServer {
 
     // Priority 2: Explicit projectName
     if (request.projectName) {
-      const project = this.options.projects?.find(p => p.name === request.projectName);
+      const project = this.options.projects?.find((p) => p.name === request.projectName);
       if (!project) {
         console.warn(`[webhook] Project '${request.projectName}' not found`);
         return null;
@@ -474,10 +473,14 @@ export class WebhookServer {
       }
 
       // Fallback: find the last active chat for the configured Feishu adapter.
-      for (const channelType of this.options.bridge.getAdapters().map(adapter => adapter.channelType)) {
+      for (const channelType of this.options.bridge
+        .getAdapters()
+        .map((adapter) => adapter.channelType)) {
         const lastChatId = this.options.bridge.getLastChatId(channelType);
         if (lastChatId) {
-          console.log(`[webhook] Project '${request.projectName}' using last active chat: ${channelType}:${lastChatId.slice(-8)}`);
+          console.log(
+            `[webhook] Project '${request.projectName}' using last active chat: ${channelType}:${lastChatId.slice(-8)}`,
+          );
           return {
             channelType,
             chatId: lastChatId,
@@ -488,13 +491,17 @@ export class WebhookServer {
         }
       }
 
-      console.warn(`[webhook] Project '${request.projectName}' has no webhookDefaultChat and no recent chats`);
+      console.warn(
+        `[webhook] Project '${request.projectName}' has no webhookDefaultChat and no recent chats`,
+      );
       return null;
     }
 
     // Priority 3: Default project
     if (this.options.defaultProject && this.options.projects) {
-      const defaultProject = this.options.projects.find(p => p.name === this.options.defaultProject);
+      const defaultProject = this.options.projects.find(
+        (p) => p.name === this.options.defaultProject,
+      );
       if (defaultProject?.webhookDefaultChat) {
         return {
           channelType: defaultProject.webhookDefaultChat.channelType,
@@ -522,7 +529,11 @@ export class WebhookServer {
     // Get the adapter for this channel
     const adapter = this.options.bridge.getAdapter(channelType);
     if (!adapter) {
-      const enabledChannels = this.options.bridge.getAdapters().map(a => a.channelType).join(', ') || 'none';
+      const enabledChannels =
+        this.options.bridge
+          .getAdapters()
+          .map((a) => a.channelType)
+          .join(', ') || 'none';
       return {
         success: false,
         error: `Channel '${channelType}' not available. Enabled channels: ${enabledChannels}`,

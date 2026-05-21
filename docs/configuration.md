@@ -56,13 +56,6 @@ TL_WEBHOOK_TOKEN=
 TL_WEBHOOK_PORT=8081
 TL_WEBHOOK_PATH=/webhook
 TL_WEBHOOK_SESSION_STRATEGY=reject
-
-TL_CRON_ENABLED=true
-TL_CRON_MAX_CONCURRENCY=3
-
-# Optional explicit push target; channel is always feishu.
-TL_PUSH_DEFAULT_CHANNEL=feishu
-TL_PUSH_DEFAULT_CHAT=
 ```
 
 ## Security

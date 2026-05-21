@@ -46,11 +46,6 @@ describe('loadConfig', () => {
     expect(config.feishu.autoPinTopics).toBe(false);
   });
 
-  it('defaults push target to feishu', () => {
-    const config = loadConfig();
-    expect(config.push.defaultChannel).toBe('feishu');
-  });
-
   it('defaults done card buttons to home only', () => {
     const config = loadConfig();
     expect(config.ui.doneButtons).toEqual(['home']);
@@ -77,12 +72,10 @@ describe('loadConfig', () => {
     process.env.TL_WEBHOOK_PATH = 'hook/';
     process.env.TL_WEBHOOK_SESSION_STRATEGY = 'invalid';
     process.env.TL_WEBHOOK_RATE_LIMIT_PER_MINUTE = '15';
-    process.env.TL_CRON_MAX_CONCURRENCY = '0';
 
     const config = loadConfig();
     expect(config.webhook.path).toBe('/hook');
     expect(config.webhook.sessionStrategy).toBe('reject');
     expect(config.webhook.rateLimitPerMinute).toBe(15);
-    expect(config.cron.maxConcurrency).toBe(3);
   });
 });

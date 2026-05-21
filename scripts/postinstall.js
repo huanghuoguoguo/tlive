@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // postinstall: copy reference docs to ~/.tlive/docs/
-import { mkdirSync, existsSync, copyFileSync } from 'node:fs';
+import { mkdirSync, existsSync, copyFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
@@ -31,9 +31,21 @@ function copyReferenceDocs() {
   console.log(`Reference docs installed to ${docsDir}`);
 }
 
+function removeRetiredSkills() {
+  const retiredSkills = ['tlive-cron'];
+  for (const skill of retiredSkills) {
+    const skillDir = join(homedir(), '.claude', 'skills', skill);
+    if (existsSync(skillDir)) {
+      rmSync(skillDir, { recursive: true, force: true });
+      console.log(`Removed retired Claude Code skill: ${skillDir}`);
+    }
+  }
+}
+
 async function main() {
   console.log('Setting up TLive...');
   copyReferenceDocs();
+  removeRetiredSkills();
   console.log('\nTLive setup complete.');
   console.log('Next steps:');
   console.log('  1. tlive setup              — configure Feishu/Lark');

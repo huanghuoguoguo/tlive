@@ -2,14 +2,13 @@
 name: tlive
 description: |
   Feishu/Lark bridge for Claude Code.
-  Use for: configuring Feishu credentials, checking bridge status, pushing the
-  current Claude Code session to Feishu, reading logs, and diagnosing
-  Feishu/Claude Code bridge issues.
-  Trigger phrases: "tlive", "Feishu bridge", "飞书桥接", "手机继续",
-  "推送到手机", "连接飞书", "诊断", "查看日志", "配置".
+  Use for: configuring Feishu credentials, checking bridge status, reading logs,
+  and diagnosing Feishu/Claude Code bridge issues.
+  Trigger phrases: "tlive", "Feishu bridge", "飞书桥接", "连接飞书",
+  "诊断", "查看日志", "配置".
   Do NOT use for: opening a new Claude conversation, starting a new chat session,
   building unrelated bots, generic webhook integrations, or non-tlive coding tasks.
-argument-hint: "setup | status | logs [N] | reconfigure | doctor | push"
+argument-hint: "setup | status | logs [N] | reconfigure | doctor"
 allowed-tools:
   - Bash
   - Read
@@ -41,7 +40,6 @@ TLive has one supported channel and one runtime:
 | `logs`, `logs 200`, `查看日志` | logs |
 | `reconfigure`, `修改配置`, `换 app`, `改密钥` | reconfigure |
 | `doctor`, `diagnose`, `诊断`, `挂了`, `没反应了` | doctor |
-| `push`, `推送`, `推送到手机`, `切换到手机` | push |
 
 Use `status` when the user only wants to know whether the bridge is running.
 Use `doctor` when the user reports a symptom or asks what is broken.
@@ -102,26 +100,6 @@ Extract an optional line count. Default to 50.
 tlive logs [N]
 ```
 
-### push
-
-Push the current Claude Code session to Feishu so the user can continue from
-their phone.
-
-1. Get the current working directory.
-2. Build a short project/session preview from the current context.
-3. Read `TL_WEBHOOK_TOKEN` from `~/.tlive/config.env`.
-4. Call the local push API:
-
-```bash
-curl -s -X POST http://localhost:8081/api/push \
-  -H "Authorization: Bearer <TL_WEBHOOK_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{"workdir":"<cwd>","projectName":"<project>","preview":"<summary>"}'
-```
-
-If the request fails because the bridge is not reachable, report that the bridge
-is not reachable and show `tlive status` as the next diagnostic command.
-
 ### doctor
 
 Run:
@@ -143,7 +121,6 @@ TLive — Control Claude Code from Feishu
 In Claude Code:
   /tlive               Show this help
   /tlive setup         Configure Feishu credentials
-  /tlive push          Push current session to Feishu
   /tlive reconfigure   Modify config
   /tlive status        Show status
   /tlive logs [N]      Show logs

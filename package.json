@@ -13,7 +13,6 @@
     "scripts/preuninstall.js",
     "dist/",
     ".claude/skills/tlive/",
-    ".claude/skills/tlive-cron/",
     ".claude/skills/tlive-troubleshoot/",
     "config.env.example"
   ],

@@ -163,7 +163,8 @@ export const en: Translations = {
   'multiSelect.hint': '💬 Tap options to toggle, then Submit',
 
   // --- text-dispatcher ---
-  'dispatcher.multiPermHint': '⚠️ Multiple permissions pending — reply to the specific permission message',
+  'dispatcher.multiPermHint':
+    '⚠️ Multiple permissions pending — reply to the specific permission message',
 
   // --- progress ---
   'progress.starting': '⏳ Starting',
@@ -221,7 +222,8 @@ export const en: Translations = {
   'format.statusTotal': 'Total',
   'format.queueEmpty': 'Queue is empty',
   'format.flushErrorTitle': 'Message send failed',
-  'format.flushErrorHint': 'Possible cause: content exceeds platform limits (e.g., table rows, message length).',
+  'format.flushErrorHint':
+    'Possible cause: content exceeds platform limits (e.g., table rows, message length).',
 
   // --- adapter ---
   'adapter.submitted': 'Submitted',
@@ -238,15 +240,6 @@ export const en: Translations = {
   'input.hookAlwaysAllowed': '📌 Always allowed',
   'input.hookAllowed': '✅ Allowed',
   'input.hookFailed': '❌ Failed:',
-
-  // --- push notification ---
-  'push.title': '📱 Session Sync',
-  'push.workdir': 'Working directory',
-  'push.project': 'Project',
-  'push.session': 'Session',
-  'push.preview': 'Recent conversation',
-  'push.continueHint': 'Continue on your phone ↓',
-  'push.fallbackHint': '(auto-selected last active chat)',
 
   // --- recent projects ---
   'recentProjects.hint': '💡 Use /cd <path> to switch directory',

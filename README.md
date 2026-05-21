@@ -25,7 +25,7 @@ The project no longer carries Telegram, QQ Bot, Codex, or generic provider/chann
 - AskUserQuestion and deferred tool interactions in Feishu cards
 - Claude Code session scanning and resume from `~/.claude/projects/`
 - Per-chat working directory with `/cd`, `/pwd`, `/new`, and `/sessions`
-- Automation hooks for push, webhook, and cron workflows
+- Automation webhook hooks for external prompt injection
 
 ## Install
 
