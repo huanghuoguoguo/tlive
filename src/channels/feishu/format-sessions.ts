@@ -30,7 +30,7 @@ export function buildSessionsElements(data: SessionsData, locale: Locale): Feish
 
   for (const s of data.sessions) {
     const marker = s.isCurrent ? t(locale, 'sessions.currentMarker') : '';
-    const providerLabel = s.providerDisplayName ?? 'Claude';
+    const providerLabel = s.providerDisplayName ?? 'Agent';
     const cwdDisplay = showAll ? `**${t(locale, 'sessions.labelDirectory')}**\n\`${s.cwd}\`\n` : '';
     const headerText = `${s.index}. ${providerLabel} · ${s.date} · ${truncate(s.preview, 35)}${marker}`;
     const panelContent: FeishuCardElement[] = [
@@ -86,7 +86,7 @@ export function buildSessionDetailElements(
   locale: Locale,
 ): FeishuCardElement[] {
   const elements: FeishuCardElement[] = [
-    mdElement(`**引擎**\n${data.providerDisplayName ?? 'Claude'}`),
+    mdElement(`**引擎**\n${data.providerDisplayName ?? 'Agent'}`),
     mdElement(`**${t(locale, 'sessions.labelDirectory')}**\n\`${data.cwd}\``),
     mdElement(`**${t(locale, 'sessions.labelTime')}**\n${data.date}`),
     mdElement(`**${t(locale, 'sessions.labelSize')}**\n${data.size}`),

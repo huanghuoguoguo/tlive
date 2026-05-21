@@ -131,7 +131,7 @@ export interface HomeData {
     active: boolean;
   };
   session: {
-    /** Recent Feishu topics bound to Claude Code sessions. */
+    /** Recent Feishu topics bound to agent runtime sessions. */
     topics?: HomeTopicEntry[];
     /** Recent sessions in current workspace */
     recent?: HomeSessionEntry[];
@@ -330,7 +330,7 @@ export interface TaskSummaryData {
   changedFiles: number;
   permissionRequests: number;
   hasError: boolean;
-  /** Footer line with model, cwd, sessionId (e.g., '[claude-sonnet] │ ~/workspace │ #ea22') */
+  /** Footer line with model, cwd, sessionId. */
   footerLine?: string;
   /** Context-specific action buttons. Topic summaries should not show workbench/session controls. */
   actionButtons?: Button[];

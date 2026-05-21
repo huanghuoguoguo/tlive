@@ -1,5 +1,5 @@
 import type { AgentProvider } from './base.js';
-import type { AgentProviderKind } from './kinds.js';
+import { DEFAULT_AGENT_PROVIDER_KIND, type AgentProviderKind } from './kinds.js';
 
 export interface AgentProviderDescriptor {
   kind: AgentProviderKind;
@@ -46,6 +46,10 @@ export class AgentProviderRegistry {
     return [...this.descriptors.values()];
   }
 
+  configuredProviders(): AgentProvider[] {
+    return [...this.providers.values()];
+  }
+
   availableForNewSession(): AgentProviderDescriptor[] {
     const available = this.list().filter((provider) => provider.available);
     if (available.length > 0) return available;
@@ -63,10 +67,10 @@ export class AgentProviderRegistry {
 }
 
 export function singleProviderRegistry(provider: AgentProvider): AgentProviderRegistry {
-  const kind = provider.kind ?? 'claude';
+  const kind = provider.kind ?? DEFAULT_AGENT_PROVIDER_KIND;
   const descriptor: AgentProviderDescriptor = {
     kind,
-    displayName: kind === 'claude' ? 'Claude' : provider.displayName,
+    displayName: provider.displayName,
     available: true,
     isDefault: true,
   };

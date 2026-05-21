@@ -35,6 +35,12 @@ function createMockContext(overrides?: Partial<CommandContext>): CommandContext 
       activeControls: new Map(),
       defaultWorkdir: '/tmp',
       recentProjects: {} as any,
+      providers: {
+        list: vi.fn().mockReturnValue([
+          { kind: 'claude', displayName: 'Claude', available: true, isDefault: true, version: '2.0.0' },
+          { kind: 'codex', displayName: 'Codex', available: false, isDefault: false, reason: 'Not found' },
+        ]),
+      } as any,
     },
     helpers: {} as any,
     locale: 'zh',
@@ -129,13 +135,14 @@ describe('DoctorCommand', () => {
     expect(formatUptime(3661)).toBe('1h 1m');
   });
 
-  it('checks Claude CLI version', async () => {
+  it('includes provider status', async () => {
     const ctx = createMockContext();
     await command.execute(ctx);
 
     const send = ctx.adapter.send as ReturnType<typeof vi.fn>;
     const sentMsg = send.mock.calls[0][0];
-    // Claude CLI check result should be present (either version or not found)
-    expect(sentMsg.text).toContain('Claude CLI');
+    expect(sentMsg.text).toContain('执行引擎');
+    expect(sentMsg.text).toContain('Claude');
+    expect(sentMsg.text).toContain('Codex');
   });
 });

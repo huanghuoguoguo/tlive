@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  buildSubprocessEnv,
-  preparePromptWithImages,
-  SAFE_PERMISSIONS,
-} from '../../providers/claude-shared.js';
+import { buildSubprocessEnv, SAFE_PERMISSIONS } from '../../providers/claude-shared.js';
+import { preparePromptWithImages } from '../../providers/prompt-media.js';
 import type { FileAttachment } from '../../providers/base.js';
 import * as fs from 'node:fs';
 
@@ -14,8 +11,8 @@ vi.mock('node:fs', () => ({
   existsSync: vi.fn().mockReturnValue(true),
 }));
 
-// Mock utils/path
-vi.mock('../../utils/path.js', () => ({
+// Mock core/path
+vi.mock('../../core/path.js', () => ({
   getTliveHome: vi.fn().mockReturnValue('/tmp/tlive-home'),
 }));
 

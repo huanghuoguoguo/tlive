@@ -18,7 +18,20 @@ describe('loadConfig', () => {
   it('uses defaults when no env vars set', () => {
     const config = loadConfig();
     expect(config.port).toBe(8080);
-    expect(config.claudeSettingSources).toEqual(['user', 'project', 'local']);
+    expect(config.agentSettingSources).toEqual(['user', 'project', 'local']);
+  });
+
+  it('accepts legacy TL_CLAUDE_SETTINGS as an alias for agent settings', () => {
+    process.env.TL_CLAUDE_SETTINGS = 'user';
+    const config = loadConfig();
+    expect(config.agentSettingSources).toEqual(['user']);
+  });
+
+  it('prefers TL_AGENT_SETTINGS over legacy TL_CLAUDE_SETTINGS', () => {
+    process.env.TL_CLAUDE_SETTINGS = 'user';
+    process.env.TL_AGENT_SETTINGS = 'user,local';
+    const config = loadConfig();
+    expect(config.agentSettingSources).toEqual(['user', 'local']);
   });
 
   it('loads from env vars', () => {

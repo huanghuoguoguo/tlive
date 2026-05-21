@@ -97,7 +97,7 @@ Fix the login bug in auth.ts
 
 ## 设置
 
-Claude Code 设置会按当前会话的工作目录加载：
+Agent 设置会按当前会话的工作目录加载：
 
 | 优先级 | 来源 | 路径 |
 |--------|------|------|
@@ -108,8 +108,10 @@ Claude Code 设置会按当前会话的工作目录加载：
 配置方式：
 
 ```env
-TL_CLAUDE_SETTINGS=user,project,local
+TL_AGENT_SETTINGS=user,project,local
 ```
+
+已有的 `TL_CLAUDE_SETTINGS` 配置仍会作为别名读取。
 
 ## 文档
 

@@ -11,7 +11,7 @@ function createDeps(bindingOverrides: Record<string, unknown> = {}) {
     sdkSessionId: 'sdk-1',
     cwd: '/repo/old',
     projectName: 'old',
-    claudeSettingSources: ['user'],
+    agentSettingSources: ['user'],
     createdAt: '',
     ...bindingOverrides,
   };
@@ -51,12 +51,12 @@ describe('AutomationPromptInjector', () => {
       requestId: 'req-1',
       workdir: '/repo/new',
       projectName: 'new',
-      claudeSettingSources: ['user', 'project'],
+      settingSources: ['user', 'project'],
     });
 
     expect(binding.cwd).toBe('/repo/new');
     expect(binding.projectName).toBe('new');
-    expect(binding.claudeSettingSources).toEqual(['user', 'project']);
+    expect(binding.agentSettingSources).toEqual(['user', 'project']);
     expect(binding.sessionId).not.toBe('session-1');
     expect(binding.sdkSessionId).toBeUndefined();
     expect(deps.store.saveBinding).toHaveBeenCalledWith(binding);
@@ -86,7 +86,7 @@ describe('AutomationPromptInjector', () => {
       text: 'ping',
       workdir: '/repo/old',
       projectName: 'old',
-      claudeSettingSources: ['user'],
+      settingSources: ['user'],
     });
 
     expect(binding.sessionId).toBe('session-1');
@@ -111,4 +111,3 @@ describe('AutomationPromptInjector', () => {
     expect(deps.query.run).not.toHaveBeenCalled();
   });
 });
-

@@ -17,8 +17,8 @@ export class NewCommand extends BaseCommand {
   readonly quick = true;
   readonly helpCategory = 'session' as const;
   readonly description = '新建会话';
-  readonly helpDesc = '在工作台中新建一个话题会话；可用 /new claude 或 /new codex 选择执行引擎。';
-  readonly helpExample = '/new claude · /new codex';
+  readonly helpDesc = '在工作台中新建一个话题会话；可用 /new <engine> 选择执行引擎。';
+  readonly helpExample = '/new <engine>';
 
   async execute(ctx: CommandContext): Promise<boolean> {
     const scopeId = ctx.scopeId;
@@ -43,7 +43,7 @@ export class NewCommand extends BaseCommand {
     await ctx.services.router.rebind(ctx.msg.channelType, scopeId, newSessionId, {
       provider: providerChoice.kind,
       cwd: previousBinding?.cwd,
-      claudeSettingSources: previousBinding?.claudeSettingSources,
+      agentSettingSources: previousBinding?.agentSettingSources,
       projectName: previousBinding?.projectName,
     });
 
@@ -73,9 +73,14 @@ export class NewCommand extends BaseCommand {
       ctx.services.providers.defaultProviderKind;
     const kind = requested || previousBinding?.provider || defaultKind;
     if (!ctx.services.providers.isKnown(kind)) {
+      const availableKinds =
+        ctx.services.providers
+          .availableForNewSession()
+          .map((provider) => provider.kind)
+          .join(' / ') || 'none';
       await this.send(ctx, {
         chatId: ctx.msg.chatId,
-        text: `⚠️ 不支持的会话类型: ${requested}。可用: claude / codex`,
+        text: `⚠️ 不支持的会话类型: ${requested}。可用: ${availableKinds}`,
       });
       return null;
     }
@@ -131,7 +136,7 @@ export class NewCommand extends BaseCommand {
     await ctx.services.router.rebind(ctx.msg.channelType, topicScopeId, newSessionId, {
       provider: providerChoice.kind,
       cwd,
-      claudeSettingSources: previousBinding?.claudeSettingSources,
+      agentSettingSources: previousBinding?.agentSettingSources,
       projectName: previousBinding?.projectName,
     });
     ctx.services.workspace.pushHistory(ctx.msg.channelType, topicScopeId, cwd);

@@ -35,7 +35,7 @@ export interface WebhookRequest {
   projectName?: string;
   /** Event name for display (e.g., 'git:commit', 'ci:failed') */
   event: string;
-  /** Prompt to send to Claude - supports {key} template variables from payload */
+  /** Prompt to send to the agent - supports {key} template variables from payload. */
   prompt: string;
   /** Optional payload data for template injection */
   payload?: Record<string, unknown>;

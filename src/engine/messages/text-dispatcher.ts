@@ -23,7 +23,7 @@ type PendingDeferredTool = {
 };
 
 /**
- * Handles text-driven control flows before a message reaches the main Claude turn:
+ * Handles text-driven control flows before a message reaches the main provider turn:
  * - plain-text permission approvals
  * - AskUserQuestion numeric/text answers
  * - Deferred tool input (EnterPlanMode, EnterWorktree, etc.)

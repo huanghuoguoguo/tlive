@@ -52,7 +52,7 @@ export interface FileSendRequest {
   replyToMessageId?: string;
   /** Whether to send as a topic/thread reply when supported */
   replyInThread?: boolean;
-  /** Per-turn delivery token injected into the Claude prompt. */
+  /** Per-turn delivery token injected into the agent prompt. */
   routeToken?: string;
 }
 

@@ -32,15 +32,17 @@ TL_FS_ALLOWED_USERS=ou_xxx,xxx
 
 See [Feishu Setup Guide](setup-feishu.md).
 
-## Claude Code Settings
+## Agent Settings
 
 ```env
 # Settings sources loaded by default for new chats
 # user    = ~/.claude/settings.json
 # project = .claude/settings.json + CLAUDE.md + MCP + skills
 # local   = .claude/settings.local.json
-TL_CLAUDE_SETTINGS=user,project,local
+TL_AGENT_SETTINGS=user,project,local
 ```
+
+Existing `TL_CLAUDE_SETTINGS` configs are still accepted as an alias.
 
 Use `/settings user|full|isolated` to override Claude settings for the current chat only:
 

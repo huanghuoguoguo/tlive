@@ -8,7 +8,7 @@ import type {
   ApprovalMode,
 } from '@openai/codex-sdk';
 import { Codex } from '@openai/codex-sdk';
-import { CodexAdapter } from '../canonical/codex-adapter.js';
+import { CodexAdapter } from './codex-adapter.js';
 import type { CanonicalEvent } from '../canonical/schema.js';
 import type {
   CreateSessionParams,
@@ -19,7 +19,7 @@ import type {
   StreamChatResult,
   TurnParams,
 } from './base.js';
-import { preparePromptWithImages } from './claude-shared.js';
+import { preparePromptWithImages } from './prompt-media.js';
 
 export interface CodexRuntimeOptions {
   codexPath?: string;

@@ -7,7 +7,7 @@ import type { ChannelRouter } from '../utils/router.js';
 import type { AgentProvider, QueryControls } from '../providers/base.js';
 import type { AgentProviderRegistry } from '../providers/registry.js';
 import type { SDKEngine, SessionCleanupReason } from './sdk/engine.js';
-import type { ProjectsValidationResult, ClaudeSettingSource } from '../config.js';
+import type { ProjectsValidationResult, AgentSettingSource } from '../config.js';
 import type { BridgeStore, ChannelBinding } from '../store/interface.js';
 import type { HomeData } from '../formatting/message-types.js';
 import type { RouterHelpers, CommandServices } from './commands/types.js';
@@ -16,7 +16,7 @@ import type { Locale } from '../i18n/index.js';
 import type { TopicSessionManager } from './state/topic-sessions.js';
 import { commandRegistry, registerAllCommands } from './commands/index.js';
 import { isPublicTextCommand } from './commands/slash-policy.js';
-import { DEFAULT_CLAUDE_SETTING_SOURCES } from '../config.js';
+import { DEFAULT_AGENT_SETTING_SOURCES } from '../config.js';
 import { findGitRoot } from '../utils/repo.js';
 import { generateSessionId } from '../core/id.js';
 import { HomePayloadBuilder } from './presenters/home-payload-builder.js';
@@ -44,7 +44,7 @@ export class CommandRouter {
     providers: AgentProviderRegistry,
     activeControls: Map<string, QueryControls>,
     permissions: PermissionCoordinator,
-    private defaultClaudeSettingSources: ClaudeSettingSource[] = DEFAULT_CLAUDE_SETTING_SOURCES,
+    private defaultAgentSettingSources: AgentSettingSource[] = DEFAULT_AGENT_SETTING_SOURCES,
     private sdkEngine?: SDKEngine,
     projectsConfig?: ProjectsValidationResult,
     topicSessions?: TopicSessionManager,
@@ -62,7 +62,7 @@ export class CommandRouter {
       providers,
       activeControls,
       defaultWorkdir,
-      defaultClaudeSettingSources,
+      defaultAgentSettingSources,
       getAdapters,
       topicSessions,
     };
@@ -88,11 +88,11 @@ export class CommandRouter {
       updateWorkspaceBindingFromPath: this.updateWorkspaceBindingFromPath.bind(this),
       getSettingsPreset: this.getSettingsPreset.bind(this),
       projectsConfig: this.projectsConfig ?? null,
-      defaultClaudeSettingSources: this.defaultClaudeSettingSources,
+      defaultAgentSettingSources: this.defaultAgentSettingSources,
     };
   }
 
-  private getSettingsPreset(sources: ClaudeSettingSource[]): string {
+  private getSettingsPreset(sources: AgentSettingSource[]): string {
     if (sources.length === 0) return 'isolated';
     if (sources.length === 1 && sources[0] === 'user') return 'user';
     if (

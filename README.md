@@ -95,7 +95,7 @@ Common commands:
 
 ## Settings
 
-Claude Code settings are loaded per conversation from the session working directory:
+Agent settings are loaded per conversation from the session working directory:
 
 | Priority | Source | Path |
 |----------|--------|------|
@@ -106,8 +106,10 @@ Claude Code settings are loaded per conversation from the session working direct
 Configure with:
 
 ```env
-TL_CLAUDE_SETTINGS=user,project,local
+TL_AGENT_SETTINGS=user,project,local
 ```
+
+Existing `TL_CLAUDE_SETTINGS` configs are still accepted as an alias.
 
 ## Documentation
 

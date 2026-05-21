@@ -1,6 +1,6 @@
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage } from '../../channels/types.js';
-import type { ClaudeSettingSource } from '../../config.js';
+import type { AgentSettingSource } from '../../config.js';
 import { generateSessionId } from '../../core/id.js';
 import { generateRequestId } from '../../logger.js';
 import type { BridgeStore } from '../../store/interface.js';
@@ -18,7 +18,7 @@ export interface AutomationPromptOptions {
   userId?: string;
   workdir?: string;
   projectName?: string;
-  claudeSettingSources?: ClaudeSettingSource[];
+  settingSources?: AgentSettingSource[];
 }
 
 export interface AutomationPromptResult {
@@ -53,8 +53,8 @@ export class AutomationPromptInjector {
     const projectChanged =
       options.projectName !== undefined && binding.projectName !== options.projectName;
     const settingsChanged =
-      options.claudeSettingSources !== undefined &&
-      !areSettingSourcesEqual(binding.claudeSettingSources, options.claudeSettingSources);
+      options.settingSources !== undefined &&
+      !areSettingSourcesEqual(binding.agentSettingSources, options.settingSources);
     const sessionContextChanged = workdirChanged || projectChanged || settingsChanged;
 
     let bindingChanged = false;
@@ -67,8 +67,8 @@ export class AutomationPromptInjector {
       binding.projectName = options.projectName;
       bindingChanged = true;
     }
-    if (options.claudeSettingSources !== undefined && settingsChanged) {
-      binding.claudeSettingSources = [...options.claudeSettingSources];
+    if (options.settingSources !== undefined && settingsChanged) {
+      binding.agentSettingSources = [...options.settingSources];
       bindingChanged = true;
     }
 
@@ -109,4 +109,3 @@ export class AutomationPromptInjector {
     };
   }
 }
-

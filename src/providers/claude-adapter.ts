@@ -6,7 +6,7 @@
  * for dedup, and hidden tool IDs for filtering.
  */
 
-import { canonicalEventSchema, type CanonicalEvent } from './schema.js';
+import { canonicalEventSchema, type CanonicalEvent } from '../canonical/schema.js';
 
 // SDK types are loose — we define the shapes we actually consume.
 export interface SDKMessage {

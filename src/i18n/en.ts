@@ -255,7 +255,7 @@ export const en: Translations = {
   'doctor.config': 'Config',
   'doctor.configFound': 'Configured',
   'doctor.configMissing': 'Not found',
-  'doctor.claudeCli': 'Claude CLI',
+  'doctor.providers': 'Providers',
   'doctor.notFound': 'Not installed',
   'doctor.channels': 'Channels',
   'doctor.connected': 'Connected',

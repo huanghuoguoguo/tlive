@@ -253,7 +253,7 @@ export const zh: Translations = {
   'doctor.config': '配置文件',
   'doctor.configFound': '已配置',
   'doctor.configMissing': '未找到',
-  'doctor.claudeCli': 'Claude CLI',
+  'doctor.providers': '执行引擎',
   'doctor.notFound': '未安装',
   'doctor.channels': '通道状态',
   'doctor.connected': '已连接',

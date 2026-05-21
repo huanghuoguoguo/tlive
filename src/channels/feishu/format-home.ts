@@ -62,7 +62,7 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
       const status = topic.isActive ? '⏳ 执行中' : '✅ 可继续';
       const currentMark = topic.isCurrent ? ' ◀' : '';
       const sdkShort = topic.sdkSessionId ? topic.sdkSessionId.slice(0, 8) : '-';
-      const providerLabel = topic.providerDisplayName ?? 'Claude';
+      const providerLabel = topic.providerDisplayName ?? 'Agent';
       topicPanelElements.push(
         mdPanel(
           `**${topic.index}. ${status} ${truncate(topic.title, 36)}${currentMark}**\n${providerLabel} \`${sdkShort}\` · \`${topic.cwd}\` · ${topic.updatedAt}\n${truncate(topic.preview, 90)}`,
@@ -73,7 +73,7 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
           ...buildButtons([
             {
               label: '继续',
-              callbackData: `cmd:continue ${topic.provider ?? 'claude'}:${topic.sdkSessionId}`,
+              callbackData: `cmd:continue ${topic.provider ? `${topic.provider}:` : ''}${topic.sdkSessionId}`,
               style: topic.isCurrent ? 'default' : 'primary',
               row: 0,
             },

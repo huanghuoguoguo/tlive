@@ -2,7 +2,7 @@ import type { KnipConfig } from 'knip';
 
 const config: KnipConfig = {
   entry: [
-    'src/setup-wizard.ts',
+    'src/providers/claude-setup-wizard.ts',
     'src/channels/feishu/adapter.ts',
   ],
   project: ['src/**/*.ts'],

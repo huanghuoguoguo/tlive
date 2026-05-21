@@ -39,7 +39,7 @@ export function createAgentProviderRegistry(config: Config): AgentProviderRegist
 
   const providers = new Map<AgentProviderKind, AgentProvider>();
   if (claude.available || config.provider === 'claude') {
-    providers.set('claude', new ClaudeSDKProvider(config.claudeSettingSources));
+    providers.set('claude', new ClaudeSDKProvider(config.agentSettingSources));
   }
   if (codex.available || config.provider === 'codex') {
     providers.set(

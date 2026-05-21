@@ -1,13 +1,13 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import type { ProjectConfig, ClaudeSettingSource } from './store/interface.js';
+import type { ProjectConfig, AgentSettingSource } from './store/interface.js';
 import { expandTilde, getTliveHome } from './core/path.js';
 import { normalizeQuickButtonNames, type QuickButtonName } from './ui/button-registry.js';
-import type { AgentProviderKind } from './providers/kinds.js';
+import { DEFAULT_AGENT_PROVIDER_KIND, type AgentProviderKind } from './providers/kinds.js';
 
-export type { ClaudeSettingSource } from './store/interface.js';
+export type { AgentSettingSource } from './store/interface.js';
 
-export const DEFAULT_CLAUDE_SETTING_SOURCES: ClaudeSettingSource[] = ['user', 'project', 'local'];
+export const DEFAULT_AGENT_SETTING_SOURCES: AgentSettingSource[] = ['user', 'project', 'local'];
 
 export type ProviderKind = AgentProviderKind;
 export type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
@@ -30,11 +30,7 @@ export interface ProjectsValidationResult {
   defaultProject: string;
 }
 
-/** Which Claude Code filesystem settings to load in bridge mode.
- *  - 'user'    → ~/.claude/settings.json (auth, model overrides)
- *  - 'project' → .claude/settings.json + CLAUDE.md (project rules, MCP, skills)
- *  - 'local'   → .claude/settings.local.json (developer overrides)
- *  Default: ['user', 'project', 'local'] — global config plus project context. */
+/** Which filesystem settings to load for providers that support setting sources. */
 
 export interface Config {
   port: number;
@@ -42,8 +38,8 @@ export interface Config {
   provider: ProviderKind;
   defaultWorkdir: string;
   defaultModel: string;
-  /** Claude Code settings sources to load (default: ['user', 'project', 'local']) */
-  claudeSettingSources: ClaudeSettingSource[];
+  /** Provider settings sources to load (default: ['user', 'project', 'local']) */
+  agentSettingSources: AgentSettingSource[];
   codex: {
     model: string;
     codexPath: string;
@@ -240,7 +236,7 @@ function normalizeWebhookSessionStrategy(value: string | undefined): 'reject' | 
 }
 
 function normalizeProvider(value: string | undefined): ProviderKind {
-  return value === 'codex' ? 'codex' : 'claude';
+  return value === 'codex' ? 'codex' : DEFAULT_AGENT_PROVIDER_KIND;
 }
 
 function normalizeCodexSandboxMode(value: string | undefined): CodexSandboxMode {
@@ -325,10 +321,10 @@ export function loadConfig(): Config {
   const config: Config = {
     port,
     token: get('TL_TOKEN'),
-    provider: normalizeProvider(get('TL_PROVIDER', 'claude')),
-    claudeSettingSources: parseList(
-      get('TL_CLAUDE_SETTINGS', DEFAULT_CLAUDE_SETTING_SOURCES.join(',')),
-    ) as ClaudeSettingSource[],
+    provider: normalizeProvider(get('TL_PROVIDER', DEFAULT_AGENT_PROVIDER_KIND)),
+    agentSettingSources: parseList(
+      get('TL_AGENT_SETTINGS', get('TL_CLAUDE_SETTINGS', DEFAULT_AGENT_SETTING_SOURCES.join(','))),
+    ) as AgentSettingSource[],
     defaultWorkdir: get('TL_DEFAULT_WORKDIR', process.cwd()),
     defaultModel: get('TL_DEFAULT_MODEL'),
     codex: {

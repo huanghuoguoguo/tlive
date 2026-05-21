@@ -13,7 +13,7 @@
  */
 
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import { ClaudeAdapter } from '../canonical/claude-adapter.js';
+import { ClaudeAdapter } from './claude-adapter.js';
 import type { CanonicalEvent } from '../canonical/schema.js';
 import type {
   LiveSession,
@@ -24,10 +24,10 @@ import type {
   AskUserQuestionHandler,
   DeferredToolHandler,
   EffortLevel,
+  PermissionTimeoutCallback,
 } from './base.js';
-import type { ClaudeSettingSource } from '../config.js';
-import type { PermissionTimeoutCallback } from './claude-shared.js';
-import { preparePromptWithImages } from './claude-shared.js';
+import type { AgentSettingSource } from '../config.js';
+import { preparePromptWithImages } from './prompt-media.js';
 import {
   buildClaudeQueryOptions,
   createClaudeQueryControls,
@@ -42,7 +42,7 @@ export interface ClaudeLiveSessionOptions {
   workingDirectory: string;
   sessionId?: string;
   cliPath?: string;
-  settingSources: ClaudeSettingSource[];
+  settingSources: AgentSettingSource[];
   onPermissionTimeout?: PermissionTimeoutCallback;
   effort?: EffortLevel;
   model?: string;

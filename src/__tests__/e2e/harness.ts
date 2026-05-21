@@ -295,7 +295,7 @@ function testConfig(root: string): Config {
     provider: 'claude',
     defaultWorkdir: root,
     defaultModel: '',
-    claudeSettingSources: ['user', 'project', 'local'],
+    agentSettingSources: ['user', 'project', 'local'],
     codex: {
       model: '',
       codexPath: '',

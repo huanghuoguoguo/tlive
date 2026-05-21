@@ -33,3 +33,6 @@ export interface QueryControls {
   interrupt(): Promise<void>;
   stopTask(taskId: string): Promise<void>;
 }
+
+/** Called when a provider-side permission request times out. */
+export type PermissionTimeoutCallback = (toolName: string, toolUseId: string) => void;

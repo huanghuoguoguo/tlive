@@ -8,7 +8,7 @@ import type { PermissionCoordinator } from './permission.js';
 import type { SDKEngine } from '../sdk/engine.js';
 import { shortPath } from '../../core/path.js';
 import type { BridgeStore, ChannelBinding } from '../../store/interface.js';
-import type { ClaudeSettingSource } from '../../config.js';
+import type { AgentSettingSource } from '../../config.js';
 import type { TopicSessionManager } from '../state/topic-sessions.js';
 import { Logger, type LogContext } from '../../logger.js';
 import type { AgentProvider } from '../../providers/base.js';
@@ -34,14 +34,14 @@ interface QueryOrchestratorOptions {
   store: BridgeStore;
   defaultWorkdir: string;
   topicSessions?: TopicSessionManager;
-  defaultClaudeSettingSources: ClaudeSettingSource[];
+  defaultAgentSettingSources: AgentSettingSource[];
   port: number;
   appendSystemPrompt?: string;
   onConversationMessageResolved?: (msg: InboundMessage) => void;
 }
 
 /**
- * Executes the full Claude query lifecycle for one inbound message:
+ * Executes the full provider query lifecycle for one inbound message:
  * binding/session rotation, renderer + typing lifecycle, SDK permission callbacks,
  * and final reaction/cleanup handling.
  */
@@ -67,7 +67,7 @@ export class QueryOrchestrator {
       sdkEngine: options.sdkEngine,
       store: options.store,
       defaultWorkdir: options.defaultWorkdir,
-      defaultClaudeSettingSources: options.defaultClaudeSettingSources,
+      defaultAgentSettingSources: options.defaultAgentSettingSources,
       appendSystemPrompt: options.appendSystemPrompt,
       onSdkSessionId: (query, id) => {
         this.recordTopicSession(query.msg, query.binding, { sdkSessionId: id });

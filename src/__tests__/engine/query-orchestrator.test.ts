@@ -156,7 +156,7 @@ describe('QueryOrchestrator', () => {
       sdkEngine,
       store: mockStore,
       defaultWorkdir: '/tmp/project',
-      defaultClaudeSettingSources: ['user', 'project', 'local'],
+      defaultAgentSettingSources: ['user', 'project', 'local'],
       port: 8080,
     });
 
@@ -223,7 +223,7 @@ describe('QueryOrchestrator', () => {
       sdkEngine,
       store: mockStore,
       defaultWorkdir: '/tmp/project',
-      defaultClaudeSettingSources: ['user', 'project', 'local'],
+      defaultAgentSettingSources: ['user', 'project', 'local'],
       port: 8080,
     });
 
@@ -298,7 +298,7 @@ describe('QueryOrchestrator', () => {
       sdkEngine,
       store: mockStore,
       defaultWorkdir: '/tmp/project',
-      defaultClaudeSettingSources: ['user', 'project', 'local'],
+      defaultAgentSettingSources: ['user', 'project', 'local'],
       port: 8080,
     });
 
@@ -389,7 +389,7 @@ describe('QueryOrchestrator', () => {
       sdkEngine,
       store: mockStore,
       defaultWorkdir: '/tmp/project',
-      defaultClaudeSettingSources: ['user', 'project', 'local'],
+      defaultAgentSettingSources: ['user', 'project', 'local'],
       port: 8080,
     });
 
@@ -483,7 +483,7 @@ describe('QueryOrchestrator', () => {
       sdkEngine,
       store: mockStore,
       defaultWorkdir: '/tmp/project',
-      defaultClaudeSettingSources: ['user', 'project', 'local'],
+      defaultAgentSettingSources: ['user', 'project', 'local'],
       port: 8080,
       onConversationMessageResolved,
     });
@@ -589,7 +589,7 @@ describe('QueryOrchestrator', () => {
       sdkEngine,
       store: mockStore,
       defaultWorkdir: '/tmp/project',
-      defaultClaudeSettingSources: ['user', 'project', 'local'],
+      defaultAgentSettingSources: ['user', 'project', 'local'],
       port: 8080,
     });
 
@@ -672,7 +672,7 @@ describe('QueryOrchestrator', () => {
       sdkEngine,
       store: mockStore,
       defaultWorkdir: '/tmp/project',
-      defaultClaudeSettingSources: ['user', 'project', 'local'],
+      defaultAgentSettingSources: ['user', 'project', 'local'],
       port: 8080,
     });
 
@@ -756,7 +756,7 @@ describe('QueryOrchestrator', () => {
       sdkEngine,
       store: mockStore,
       defaultWorkdir: '/tmp/project',
-      defaultClaudeSettingSources: ['user', 'project', 'local'],
+      defaultAgentSettingSources: ['user', 'project', 'local'],
       port: 8080,
     });
 
@@ -850,7 +850,7 @@ describe('QueryOrchestrator', () => {
       sdkEngine,
       store: mockStore,
       defaultWorkdir: '/tmp/project',
-      defaultClaudeSettingSources: ['user', 'project', 'local'],
+      defaultAgentSettingSources: ['user', 'project', 'local'],
       port: 8080,
     });
 
@@ -977,7 +977,7 @@ describe('QueryOrchestrator', () => {
       sdkEngine,
       store: mockStore,
       defaultWorkdir: '/tmp/project',
-      defaultClaudeSettingSources: ['user', 'project', 'local'],
+      defaultAgentSettingSources: ['user', 'project', 'local'],
       port: 8080,
     });
 
@@ -999,7 +999,7 @@ describe('QueryOrchestrator', () => {
   });
 
   it('uses binding setting sources instead of the default fallback', async () => {
-    mockStore.getBinding.mockResolvedValue({ ...binding, claudeSettingSources: ['user'] });
+    mockStore.getBinding.mockResolvedValue({ ...binding, agentSettingSources: ['user'] });
     const state = new SessionStateManager();
     const engine = {
       processMessage: vi.fn().mockImplementation(async (params) => {
@@ -1012,7 +1012,7 @@ describe('QueryOrchestrator', () => {
       }),
     } as any;
     const router = {
-      resolve: vi.fn().mockResolvedValue({ ...binding, claudeSettingSources: ['user'] }),
+      resolve: vi.fn().mockResolvedValue({ ...binding, agentSettingSources: ['user'] }),
       rebind: vi.fn(),
     } as any;
     const permissions = {
@@ -1055,7 +1055,7 @@ describe('QueryOrchestrator', () => {
       sdkEngine,
       store: mockStore,
       defaultWorkdir: '/tmp/project',
-      defaultClaudeSettingSources: ['user', 'project', 'local'],
+      defaultAgentSettingSources: ['user', 'project', 'local'],
       port: 8080,
     });
 

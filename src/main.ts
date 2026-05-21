@@ -2,7 +2,6 @@ import { loadConfig } from './config.js';
 import { initBridgeContext } from './context.js';
 import { Logger } from './logger.js';
 import { JsonFileStore } from './store/json-file.js';
-import { ClaudeSDKProvider } from './providers/claude-sdk.js';
 import { createAgentProviderRegistry } from './providers/factory.js';
 import { BridgeManager } from './engine/coordinators/bridge-manager.js';
 import { FeishuAdapter } from './channels/feishu/adapter.js';
@@ -274,10 +273,10 @@ export async function main() {
     );
   }
 
-  // Wire permission timeout → IM notification
-  const claudeProvider = providers.get('claude');
-  if (claudeProvider instanceof ClaudeSDKProvider) {
-    claudeProvider.onPermissionTimeout = (toolName: string, _toolUseId: string) => {
+  // Wire provider permission timeout → IM notification.
+  for (const provider of providers.configuredProviders()) {
+    if (!provider.capabilities.interactivePermissions) continue;
+    provider.onPermissionTimeout = (toolName: string, _toolUseId: string) => {
       const text = `\u23f0 Permission timed out (5m)\nTool: ${toolName}\nAction: Denied by default`;
       manager.broadcastText(text).catch((err) => {
         logger.warn(`Failed to send timeout notification: ${err}`);

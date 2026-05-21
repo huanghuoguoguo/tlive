@@ -33,9 +33,8 @@ function formatModelBreakdown(modelUsage?: Record<string, ModelUsageEntry>): str
   if (!modelUsage) return null;
   const entries = Object.entries(modelUsage).filter(([, u]) => u.costUSD && u.costUSD > 0);
   if (entries.length <= 1) return null;
-  // Short model names: "claude-sonnet-4-20250514" → "sonnet-4"
   return entries.map(([model, u]) => {
-    const short = model.replace(/^claude-/, '').replace(/-\d{8}$/, '');
+    const short = model.replace(/-\d{8}$/, '');
     return `${short} $${u.costUSD!.toFixed(2)}`;
   }).join(' + ');
 }

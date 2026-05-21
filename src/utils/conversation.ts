@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import type { BridgeStore } from '../store/interface.js';
-import type { ClaudeSettingSource } from '../config.js';
+import type { AgentSettingSource } from '../config.js';
 import type {
   FileAttachment,
   PermissionRequestHandler,
@@ -107,9 +107,7 @@ export function preparePromptWithFileAttachments(
         parts.push(`\n[File: ${att.name} (${mimeType})]${pathLine}\n\`\`\`\n${decoded}\n\`\`\``);
       }
     } else {
-      parts.push(
-        `\n[Attached file: ${att.name} (${mimeType}) — saved for Claude to inspect]${pathLine}`,
-      );
+      parts.push(`\n[Attached file: ${att.name} (${mimeType}) — saved for agent to inspect]${pathLine}`);
     }
   }
 
@@ -191,8 +189,8 @@ interface ProcessMessageParams {
   effort?: EffortLevel;
   /** Override model for this query */
   model?: string;
-  /** Claude settings sources for this query */
-  settingSources?: ClaudeSettingSource[];
+  /** Provider settings sources for this query. */
+  settingSources?: AgentSettingSource[];
   /** Pre-built stream from LiveSession.startTurn() — skips llm.streamChat() */
   streamResult?: StreamChatResult;
 }

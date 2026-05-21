@@ -2,7 +2,7 @@ import type { InboundMessage } from '../../channels/types.js';
 import { withInboundReplyContext } from '../../channels/reply-context.js';
 import { conversationScopeId } from '../../channels/conversation-context.js';
 import { truncate } from '../../core/string.js';
-import type { ClaudeSettingSource } from '../../config.js';
+import type { AgentSettingSource } from '../../config.js';
 import type { BridgeStore } from '../../store/interface.js';
 import type { ConversationEngine } from '../../utils/conversation.js';
 import { preparePromptWithFileAttachments } from '../../utils/conversation.js';
@@ -26,13 +26,13 @@ export interface QueryTurnRunnerOptions {
   sdkEngine: SDKEngine;
   store: BridgeStore;
   defaultWorkdir: string;
-  defaultClaudeSettingSources: ClaudeSettingSource[];
+  defaultAgentSettingSources: AgentSettingSource[];
   appendSystemPrompt?: string;
   onSdkSessionId?: (query: QueryContext, sdkSessionId: string) => void | Promise<void>;
 }
 
 /**
- * Runs one Claude turn and maps provider events into renderer calls.
+ * Runs one provider turn and maps provider events into renderer calls.
  *
  * QueryOrchestrator owns conversation resolution and retry policy; this class owns
  * provider/session execution for a single resolved turn.
@@ -53,7 +53,7 @@ export class QueryTurnRunner {
       ctx,
     } = query;
     const workdir = query.getWorkdir(this.options.defaultWorkdir);
-    const settingSources = query.getSettingSources(this.options.defaultClaudeSettingSources);
+    const settingSources = query.getSettingSources(this.options.defaultAgentSettingSources);
     const scopeId = conversationScopeId(msg);
     const chatKey = this.options.state.stateKey(msg.channelType, scopeId);
     const imageAttachments = msg.attachments?.filter((a) => a.type === 'image');

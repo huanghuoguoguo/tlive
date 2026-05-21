@@ -17,6 +17,7 @@ export class CodexSDKProvider implements AgentProvider {
     interactivePermissions: false,
     askUserQuestion: false,
     deferredTools: false,
+    settingSources: false,
     sessionResume: true,
     imageInputs: true,
   };
@@ -32,7 +33,8 @@ export class CodexSDKProvider implements AgentProvider {
       ...this.runtimeOptions,
       ...params,
       model: params.model ?? this.runtimeOptions.model,
-      modelReasoningEffort: this.runtimeOptions.modelReasoningEffort ?? codexEffort(params.effort),
+      modelReasoningEffort:
+        this.runtimeOptions.modelReasoningEffort ?? toCodexReasoningEffort(params.effort),
     });
   }
 
@@ -51,7 +53,9 @@ export class CodexSDKProvider implements AgentProvider {
   }
 }
 
-function codexEffort(effort: EffortLevel | undefined): CodexRuntimeOptions['modelReasoningEffort'] {
+export function toCodexReasoningEffort(
+  effort: EffortLevel | undefined,
+): CodexRuntimeOptions['modelReasoningEffort'] {
   if (effort === 'max') return 'xhigh';
   return effort;
 }

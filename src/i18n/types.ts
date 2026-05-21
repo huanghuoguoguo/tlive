@@ -255,7 +255,7 @@ export interface Translations {
   'doctor.config': string;
   'doctor.configFound': string;
   'doctor.configMissing': string;
-  'doctor.claudeCli': string;
+  'doctor.providers': string;
   'doctor.notFound': string;
   'doctor.channels': string;
   'doctor.connected': string;

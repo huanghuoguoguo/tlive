@@ -1,9 +1,11 @@
 export type AgentProviderKind = 'claude' | 'codex';
 
+export const DEFAULT_AGENT_PROVIDER_KIND: AgentProviderKind = 'claude';
+
 export function normalizeAgentProviderKind(
   provider: AgentProviderKind | undefined,
 ): AgentProviderKind {
-  return provider ?? 'claude';
+  return provider ?? DEFAULT_AGENT_PROVIDER_KIND;
 }
 
 export function agentSessionKey(

@@ -1,4 +1,4 @@
-import type { ProjectConfig } from '../../store/interface.js';
+import type { AgentSettingSource, ProjectConfig } from '../../store/interface.js';
 import type { AutomationBridge } from '../types/automation-bridge.js';
 import type { WebhookRequest } from './webhook.js';
 
@@ -7,7 +7,7 @@ export interface ResolvedWebhookRoute {
   chatId: string;
   workdir?: string;
   projectName?: string;
-  claudeSettingSources?: ProjectConfig['claudeSettingSources'];
+  settingSources?: AgentSettingSource[];
 }
 
 export interface WebhookRouteResolverOptions {
@@ -56,7 +56,7 @@ export class WebhookRouteResolver {
       chatId: binding.chatId,
       workdir: binding.cwd,
       projectName: binding.projectName,
-      claudeSettingSources: binding.claudeSettingSources,
+      settingSources: binding.agentSettingSources,
     };
   }
 
@@ -70,7 +70,7 @@ export class WebhookRouteResolver {
       chatId,
       workdir: binding?.cwd,
       projectName: binding?.projectName,
-      claudeSettingSources: binding?.claudeSettingSources,
+      settingSources: binding?.agentSettingSources,
     };
   }
 
@@ -87,7 +87,7 @@ export class WebhookRouteResolver {
         chatId: project.webhookDefaultChat.chatId,
         workdir: project.workdir,
         projectName: project.name,
-        claudeSettingSources: project.claudeSettingSources,
+        settingSources: project.agentSettingSources,
       };
     }
 
@@ -102,7 +102,7 @@ export class WebhookRouteResolver {
           chatId: lastChatId,
           workdir: project.workdir,
           projectName: project.name,
-          claudeSettingSources: project.claudeSettingSources,
+          settingSources: project.agentSettingSources,
         };
       }
     }
@@ -124,8 +124,7 @@ export class WebhookRouteResolver {
       chatId: defaultProject.webhookDefaultChat.chatId,
       workdir: defaultProject.workdir,
       projectName: defaultProject.name,
-      claudeSettingSources: defaultProject.claudeSettingSources,
+      settingSources: defaultProject.agentSettingSources,
     };
   }
 }
-

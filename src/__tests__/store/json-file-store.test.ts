@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { JsonFileStore } from '../../store/json-file.js';
-import type { ClaudeSettingSource } from '../../config.js';
+import type { AgentSettingSource } from '../../config.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -39,14 +39,14 @@ describe('JsonFileStore', () => {
       sessionId: 's1',
       sdkSessionId: 'uuid-1',
       cwd: '/home/test',
-      claudeSettingSources: ['user', 'project'] as ClaudeSettingSource[],
+      agentSettingSources: ['user', 'project'] as AgentSettingSource[],
       createdAt: '',
     };
     await store.saveBinding(binding);
     const got = await store.getBinding('feishu', '123');
     expect(got?.sdkSessionId).toBe('uuid-1');
     expect(got?.cwd).toBe('/home/test');
-    expect(got?.claudeSettingSources).toEqual(['user', 'project']);
+    expect(got?.agentSettingSources).toEqual(['user', 'project']);
   });
 
   // Dedup

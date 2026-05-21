@@ -40,7 +40,7 @@ export class RebindCommand extends BaseCommand {
       sdkSessionId: target.sdkSessionId,
       provider: target.provider ?? binding?.provider ?? ctx.services.providers.defaultProviderKind,
       cwd: target.workdir,
-      claudeSettingSources: binding?.claudeSettingSources,
+      agentSettingSources: binding?.agentSettingSources,
       projectName: binding?.projectName,
     });
     ctx.services.workspace.pushHistory(ctx.msg.channelType, scopeId, target.workdir);

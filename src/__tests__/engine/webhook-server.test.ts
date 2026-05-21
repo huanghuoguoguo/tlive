@@ -378,7 +378,7 @@ describe('WebhookServer', () => {
         sessionId: 'binding-1',
         cwd: '/repo/explicit',
         projectName: 'explicit-project',
-        claudeSettingSources: ['user', 'project'],
+        agentSettingSources: ['user', 'project'],
         createdAt: '',
       } as any);
 
@@ -394,7 +394,7 @@ describe('WebhookServer', () => {
         chatId: 'chat-explicit',
         workdir: '/repo/explicit',
         projectName: 'explicit-project',
-        claudeSettingSources: ['user', 'project'],
+        settingSources: ['user', 'project'],
       });
     });
 
@@ -403,7 +403,7 @@ describe('WebhookServer', () => {
         {
           name: 'project-a',
           workdir: '/repo/a',
-          claudeSettingSources: ['user'],
+          agentSettingSources: ['user'],
           webhookDefaultChat: { channelType: 'feishu', chatId: 'chat-a' },
         },
       ];
@@ -427,7 +427,7 @@ describe('WebhookServer', () => {
         chatId: 'chat-a',
         workdir: '/repo/a',
         projectName: 'project-a',
-        claudeSettingSources: ['user'],
+        settingSources: ['user'],
       });
     });
 
@@ -436,7 +436,7 @@ describe('WebhookServer', () => {
         {
           name: 'project-b',
           workdir: '/repo/b',
-          claudeSettingSources: ['user', 'local'],
+          agentSettingSources: ['user', 'local'],
         },
       ];
       server = new WebhookServer({
@@ -459,7 +459,7 @@ describe('WebhookServer', () => {
         chatId: 'chat-123',
         workdir: '/repo/b',
         projectName: 'project-b',
-        claudeSettingSources: ['user', 'local'],
+        settingSources: ['user', 'local'],
       });
       expect(mockBridge.getLastChatId).toHaveBeenCalledWith('feishu');
     });
@@ -511,7 +511,7 @@ describe('WebhookServer', () => {
         chatId: 'chat-default',
         workdir: '/repo/default',
         projectName: 'default',
-        claudeSettingSources: undefined,
+        settingSources: undefined,
       });
     });
 
@@ -546,7 +546,7 @@ describe('WebhookServer', () => {
         chatId: 'chat-from-session',
         workdir: '/repo/session',
         projectName: undefined,
-        claudeSettingSources: undefined,
+        settingSources: undefined,
       });
       expect(mockBridge.getBindingBySessionId).toHaveBeenCalledWith('sdk-456');
       expect(mockBridge.getBinding).not.toHaveBeenCalled();

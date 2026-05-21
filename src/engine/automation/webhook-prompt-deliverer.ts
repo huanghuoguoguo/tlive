@@ -25,7 +25,7 @@ export class WebhookPromptDeliverer {
     requestId: string,
   ): Promise<WebhookPromptDeliveryResult> {
     const { event, silent } = request;
-    const { channelType, chatId, workdir, projectName, claudeSettingSources } = route;
+    const { channelType, chatId, workdir, projectName, settingSources } = route;
 
     const adapter = this.options.bridge.getAdapter(channelType);
     if (!adapter) {
@@ -76,7 +76,7 @@ export class WebhookPromptDeliverer {
         userId: 'webhook',
         workdir,
         projectName,
-        claudeSettingSources,
+        settingSources,
       });
 
       return {
@@ -92,4 +92,3 @@ export class WebhookPromptDeliverer {
     }
   }
 }
-

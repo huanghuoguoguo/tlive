@@ -32,15 +32,17 @@ TL_FS_ALLOWED_USERS=ou_xxx,xxx
 
 详见 [飞书配置指南](setup-feishu-cn.md)。
 
-## Claude Code 设置
+## Agent 设置
 
 ```env
-# 新 chat 默认加载的 Claude 设置来源
+# 新 chat 默认加载的 Agent 设置来源
 # user    = ~/.claude/settings.json
 # project = .claude/settings.json + CLAUDE.md + MCP + skills
 # local   = .claude/settings.local.json
-TL_CLAUDE_SETTINGS=user,project,local
+TL_AGENT_SETTINGS=user,project,local
 ```
+
+已有的 `TL_CLAUDE_SETTINGS` 配置仍会作为别名读取。
 
 可通过 `/settings user|full|isolated` 仅覆盖当前 chat 的 Claude 设置：
 

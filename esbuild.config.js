@@ -25,7 +25,7 @@ const common = {
 
 const entryPoints = [
   { entry: 'src/main.ts', outfile: 'dist/main.mjs' },
-  { entry: 'src/setup-wizard.ts', outfile: 'dist/setup.mjs' },
+  { entry: 'src/providers/claude-setup-wizard.ts', outfile: 'dist/setup.mjs' },
 ];
 
 // Build all entry points

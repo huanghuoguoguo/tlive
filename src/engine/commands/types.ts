@@ -9,7 +9,7 @@ import type { RecentProjectsManager } from '../state/recent-projects.js';
 import type { ChannelRouter } from '../../utils/router.js';
 import type { SDKEngine, SessionCleanupReason } from '../sdk/engine.js';
 import type { PermissionCoordinator } from '../coordinators/permission.js';
-import type { ClaudeSettingSource, ProjectsValidationResult } from '../../config.js';
+import type { AgentSettingSource, ProjectsValidationResult } from '../../config.js';
 import type { HelpCommandEntry, HomeData } from '../../formatting/message-types.js';
 import type { Locale } from '../../i18n/index.js';
 import type { HelpCategoryId } from './help-categories.js';
@@ -35,11 +35,11 @@ export interface RouterHelpers {
   /** Update workspace binding from path (find git root) */
   updateWorkspaceBindingFromPath(channelType: string, chatId: string, cwd: string): void;
   /** Get settings preset name from sources */
-  getSettingsPreset(sources: ClaudeSettingSource[]): string;
+  getSettingsPreset(sources: AgentSettingSource[]): string;
   /** Cached projects config */
   projectsConfig: ProjectsValidationResult | null;
-  /** Default Claude setting sources */
-  defaultClaudeSettingSources: ClaudeSettingSource[];
+  /** Default provider setting sources */
+  defaultAgentSettingSources: AgentSettingSource[];
 }
 
 /** Stable service dependencies shared across all commands */
@@ -55,7 +55,7 @@ export interface CommandServices {
   providers: AgentProviderRegistry;
   activeControls: Map<string, QueryControls>;
   defaultWorkdir: string;
-  defaultClaudeSettingSources: ClaudeSettingSource[];
+  defaultAgentSettingSources: AgentSettingSource[];
   getAdapters: () => Map<string, BaseChannelAdapter>;
   topicSessions?: TopicSessionManager;
 }

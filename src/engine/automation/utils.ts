@@ -1,9 +1,9 @@
-import type { ClaudeSettingSource } from '../../config.js';
+import type { AgentSettingSource } from '../../config.js';
 
-/** Compare two ClaudeSettingSource arrays for equality */
+/** Compare two AgentSettingSource arrays for equality */
 export function areSettingSourcesEqual(
-  current: ClaudeSettingSource[] | undefined,
-  next: ClaudeSettingSource[] | undefined,
+  current: AgentSettingSource[] | undefined,
+  next: AgentSettingSource[] | undefined,
 ): boolean {
   const left = current ?? [];
   const right = next ?? [];

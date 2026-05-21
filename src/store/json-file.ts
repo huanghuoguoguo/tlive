@@ -81,7 +81,7 @@ export class JsonFileStore implements BridgeStore {
   }
 
   async getBindingBySessionId(sessionId: string): Promise<ChannelBinding | null> {
-    // Match by sdkSessionId (Claude session) or sessionId (internal)
+    // Match by sdkSessionId (provider runtime session) or sessionId (internal)
     for (const binding of this.bindings.values()) {
       if (binding.sdkSessionId === sessionId || binding.sessionId === sessionId) {
         return binding;

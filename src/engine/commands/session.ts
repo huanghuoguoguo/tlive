@@ -105,7 +105,7 @@ async function ensureTopicBinding(
       sdkSessionId: target.sdkSessionId,
       provider: target.provider,
       cwd: target.cwd,
-      claudeSettingSources: existing?.claudeSettingSources ?? source?.claudeSettingSources,
+      agentSettingSources: existing?.agentSettingSources ?? source?.agentSettingSources,
       projectName: existing?.projectName ?? source?.projectName,
     },
   );
@@ -180,7 +180,7 @@ async function continueAgentSession(
         sdkSessionId: target.sdkSessionId,
         provider: target.provider,
         cwd: target.cwd,
-        claudeSettingSources: currentBinding?.claudeSettingSources,
+        agentSettingSources: currentBinding?.agentSettingSources,
         projectName: currentBinding?.projectName,
       });
       ctx.services.workspace.pushHistory(ctx.msg.channelType, scopeId, target.cwd);
@@ -210,7 +210,7 @@ async function continueAgentSession(
     sdkSessionId: target.sdkSessionId,
     provider: target.provider,
     cwd: target.cwd,
-    claudeSettingSources: currentBinding?.claudeSettingSources,
+    agentSettingSources: currentBinding?.agentSettingSources,
     projectName: switchedRepo ? undefined : currentBinding?.projectName,
   });
   ctx.services.workspace.pushHistory(ctx.msg.channelType, ctx.scopeId, target.cwd);

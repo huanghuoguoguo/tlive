@@ -1,5 +1,5 @@
 import type { CanonicalEvent } from '../canonical/schema.js';
-import type { ClaudeSettingSource } from '../config.js';
+import type { AgentSettingSource } from '../config.js';
 import type { EffortLevel } from '../utils/types.js';
 import type { AgentProviderKind } from './kinds.js';
 import type {
@@ -7,6 +7,7 @@ import type {
   DeferredToolHandler,
   FileAttachment,
   PermissionRequestHandler,
+  PermissionTimeoutCallback,
   QueryControls,
 } from './types.js';
 
@@ -15,6 +16,7 @@ export type {
   DeferredToolHandler,
   FileAttachment,
   PermissionRequestHandler,
+  PermissionTimeoutCallback,
   QueryControls,
 };
 
@@ -32,6 +34,8 @@ export interface AgentProviderCapabilities {
   askUserQuestion: boolean;
   /** Provider exposes deferred tool callbacks such as EnterPlanMode. */
   deferredTools: boolean;
+  /** Provider supports user/project/local setting source selection. */
+  settingSources: boolean;
   /** Provider supports resuming a previous SDK/runtime conversation id. */
   sessionResume: boolean;
   /** Provider accepts image attachments as native inputs. */
@@ -52,10 +56,10 @@ export interface StreamChatParams {
   onAskUserQuestion?: AskUserQuestionHandler;
   /** Deferred tool handler for EnterPlanMode, EnterWorktree, etc. */
   onDeferredTool?: DeferredToolHandler;
-  /** Controls Claude's thinking depth */
+  /** Controls the provider's thinking depth when supported. */
   effort?: EffortLevel;
-  /** Claude Code settings sources for this turn */
-  settingSources?: ClaudeSettingSource[];
+  /** Provider settings sources for this turn when supported. */
+  settingSources?: AgentSettingSource[];
 }
 
 export interface CreateSessionParams {
@@ -63,7 +67,7 @@ export interface CreateSessionParams {
   sessionId?: string;
   effort?: EffortLevel;
   model?: string;
-  settingSources?: ClaudeSettingSource[];
+  settingSources?: AgentSettingSource[];
   appendSystemPrompt?: string;
 }
 
@@ -90,8 +94,6 @@ export type MessagePriority = 'now' | 'next' | 'later';
 
 /**
  * Long-lived session wrapping a persistent query/thread.
- * Follows Claude SDK's AsyncGenerator prompt model: one query() stays alive
- * across multiple turns. Each startTurn() yields a new user message into the generator.
  */
 export interface LiveSession {
   readonly capabilities?: Pick<AgentProviderCapabilities, 'nativeSteer' | 'nativeQueue'>;
@@ -117,6 +119,7 @@ export interface AgentProvider {
   readonly kind: AgentProviderKind;
   readonly displayName: string;
   readonly capabilities: AgentProviderCapabilities;
+  onPermissionTimeout?: PermissionTimeoutCallback;
   createSession(params: CreateSessionParams): LiveSession;
   streamChat(params: StreamChatParams): StreamChatResult;
 }

@@ -5,9 +5,9 @@ import {
   presentSettingsChanged,
   presentSettingsUnavailable,
 } from '../messages/presenter.js';
-import type { ClaudeSettingSource } from '../../config.js';
+import type { AgentSettingSource } from '../../config.js';
 
-const PRESETS: Record<string, ClaudeSettingSource[]> = {
+const PRESETS: Record<string, AgentSettingSource[]> = {
   user: ['user'],
   full: ['user', 'project', 'local'],
   isolated: [],
@@ -23,9 +23,9 @@ export class SettingsCommand extends BaseCommand {
   readonly name = '/settings';
   readonly quick = true;
   readonly helpCategory = 'status' as const;
-  readonly description = 'Claude 设置';
+  readonly description = 'Provider 设置';
   readonly helpDesc =
-    '查看或切换 Claude 设置加载模式。user 仅加载全局设置，full 加载项目规则/MCP/技能，isolated 完全隔离。';
+    '查看或切换当前执行引擎的设置加载模式。user 仅加载全局设置，full 加载项目规则/MCP/技能，isolated 完全隔离。';
   readonly helpExample = '/settings full';
 
   async execute(ctx: CommandContext): Promise<boolean> {
@@ -33,16 +33,17 @@ export class SettingsCommand extends BaseCommand {
     const scopeId = ctx.scopeId;
     const existingBinding = await ctx.services.store.getBinding(ctx.msg.channelType, scopeId);
     const providerKind = existingBinding?.provider ?? ctx.services.providers.defaultProviderKind;
+    const provider = ctx.services.providers.get(providerKind);
 
-    if (providerKind !== 'claude') {
+    if (!provider?.capabilities.settingSources) {
       await this.send(ctx, presentSettingsUnavailable(ctx.msg.chatId));
       return true;
     }
 
     if (arg && arg in PRESETS) {
       const binding = await ctx.services.router.resolve(ctx.msg.channelType, scopeId);
-      binding.provider ??= 'claude';
-      binding.claudeSettingSources = [...PRESETS[arg]];
+      binding.provider ??= providerKind;
+      binding.agentSettingSources = [...PRESETS[arg]];
       await ctx.services.store.saveBinding(binding);
       await ctx.helpers.resetSessionContext(ctx.msg.channelType, scopeId, 'settings', {
         previousCwd: binding.cwd,
@@ -51,7 +52,7 @@ export class SettingsCommand extends BaseCommand {
       await this.send(ctx, presentSettingsChanged(ctx.msg.chatId, LABELS[arg]));
     } else {
       const binding = existingBinding;
-      const current = binding?.claudeSettingSources ?? ctx.services.defaultClaudeSettingSources;
+      const current = binding?.agentSettingSources ?? ctx.services.defaultAgentSettingSources;
       const preset = ctx.helpers.getSettingsPreset(current);
       await this.send(
         ctx,
@@ -59,7 +60,7 @@ export class SettingsCommand extends BaseCommand {
           ctx.msg.chatId,
           preset,
           current,
-          binding?.claudeSettingSources ? 'chat override' : 'default',
+          binding?.agentSettingSources ? 'chat override' : 'default',
         ),
       );
     }

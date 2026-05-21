@@ -9,7 +9,7 @@
 
 import type { AgentProvider, LiveSession } from '../../providers/base.js';
 import type { AgentProviderKind } from '../../providers/kinds.js';
-import type { ClaudeSettingSource } from '../../config.js';
+import type { AgentSettingSource } from '../../config.js';
 import type { EffortLevel } from '../../utils/types.js';
 import { SESSION_STALE_THRESHOLD_MS } from '../../core/timing.js';
 import { chatKey as buildChatKey } from '../../core/key.js';
@@ -47,7 +47,7 @@ export interface ManagedSessionOptions {
   sessionId?: string;
   effort?: EffortLevel;
   model?: string;
-  settingSources?: ClaudeSettingSource[];
+  settingSources?: AgentSettingSource[];
   appendSystemPrompt?: string;
   setAsCurrent?: boolean;
 }

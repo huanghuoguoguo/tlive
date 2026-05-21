@@ -1,5 +1,5 @@
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
-import type { ClaudeSettingSource } from '../config.js';
+import type { AgentSettingSource } from '../config.js';
 import type { EffortLevel } from '../utils/types.js';
 import { buildSubprocessEnv, SAFE_PERMISSIONS } from './claude-shared.js';
 import type {
@@ -32,7 +32,7 @@ export interface ClaudeQueryOptionsParams {
   resume?: string;
   permissionMode?: 'acceptEdits' | 'plan' | 'default';
   effort?: EffortLevel;
-  settingSources: ClaudeSettingSource[];
+  settingSources: AgentSettingSource[];
   appendSystemPrompt?: string;
   cliPath?: string;
   stderr?: (data: string) => void;

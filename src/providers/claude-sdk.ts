@@ -7,7 +7,7 @@ import { existsSync, unlinkSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import { ClaudeAdapter } from '../canonical/claude-adapter.js';
+import { ClaudeAdapter } from './claude-adapter.js';
 import type { CanonicalEvent } from '../canonical/schema.js';
 import type {
   AgentProvider,
@@ -17,10 +17,11 @@ import type {
   StreamChatResult,
   QueryControls,
   LiveSession,
+  PermissionTimeoutCallback,
 } from './base.js';
-import { DEFAULT_CLAUDE_SETTING_SOURCES, type ClaudeSettingSource } from '../config.js';
+import { DEFAULT_AGENT_SETTING_SOURCES, type AgentSettingSource } from '../config.js';
 import { ClaudeLiveSession } from './claude-live-session.js';
-import { preparePromptWithImages, type PermissionTimeoutCallback } from './claude-shared.js';
+import { preparePromptWithImages } from './prompt-media.js';
 import {
   buildClaudeQueryOptions,
   createClaudeQueryControls,
@@ -32,8 +33,8 @@ import {
 import { ClaudeEventLogger } from './claude-event-logger.js';
 import { checkClaudeCliVersion, findClaudeCli } from './cli-detection.js';
 
-// Re-export for backward compatibility
-export type { PermissionTimeoutCallback } from './claude-shared.js';
+// Re-export for backward compatibility.
+export type { PermissionTimeoutCallback } from './base.js';
 
 // ── Auth error classification ──
 
@@ -141,20 +142,21 @@ export class ClaudeSDKProvider implements AgentProvider {
     interactivePermissions: true,
     askUserQuestion: true,
     deferredTools: true,
+    settingSources: true,
     sessionResume: true,
     imageInputs: true,
   };
 
   private cliPath: string | undefined;
-  private defaultSettingSources: ClaudeSettingSource[];
+  private defaultSettingSources: AgentSettingSource[];
 
   /** Called when a permission request times out — set by main.ts to send IM notifications */
   onPermissionTimeout?: PermissionTimeoutCallback;
 
-  constructor(settingSources?: ClaudeSettingSource[]) {
+  constructor(settingSources?: AgentSettingSource[]) {
     this.defaultSettingSources = settingSources?.length
       ? [...settingSources]
-      : [...DEFAULT_CLAUDE_SETTING_SOURCES];
+      : [...DEFAULT_AGENT_SETTING_SOURCES];
 
     // Preflight check
     this.cliPath = findClaudeCli();
@@ -176,7 +178,7 @@ export class ClaudeSDKProvider implements AgentProvider {
     console.log(`[claude-sdk] Settings sources: ${srcLabel}`);
   }
 
-  getDefaultSettingSources(): ClaudeSettingSource[] {
+  getDefaultSettingSources(): AgentSettingSource[] {
     return [...this.defaultSettingSources];
   }
 

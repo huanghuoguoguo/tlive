@@ -190,7 +190,7 @@ export class TopicConversationService {
         sdkSessionId: moved.sdkSessionId,
         provider: moved.provider ?? oldBinding?.provider ?? binding.provider,
         cwd: moved.workdir,
-        claudeSettingSources: oldBinding?.claudeSettingSources ?? binding.claudeSettingSources,
+        agentSettingSources: oldBinding?.agentSettingSources ?? binding.agentSettingSources,
         projectName: oldBinding?.projectName ?? binding.projectName,
         createdAt: binding.createdAt,
       };

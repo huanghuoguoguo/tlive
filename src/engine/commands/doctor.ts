@@ -30,11 +30,13 @@ export class DoctorCommand extends BaseCommand {
       `**${t(locale, 'doctor.config')}**: ${diagnostics.configStatus}`,
     ];
 
-    // Claude CLI status
-    if (diagnostics.claudeCli) {
-      lines.push(`**${t(locale, 'doctor.claudeCli')}**: ${diagnostics.claudeCli}`);
-    } else {
-      lines.push(`**${t(locale, 'doctor.claudeCli')}**: ❌ ${t(locale, 'doctor.notFound')}`);
+    if (diagnostics.providers.length > 0) {
+      lines.push('', `**${t(locale, 'doctor.providers')}**:`);
+      for (const provider of diagnostics.providers) {
+        const statusIcon = provider.available ? '✅' : '❌';
+        const detail = provider.version ? `v${provider.version}` : provider.reason;
+        lines.push(`  ${statusIcon} ${provider.displayName}: ${detail ?? t(locale, 'doctor.notFound')}`);
+      }
     }
 
     // Channel status
@@ -58,7 +60,7 @@ export class DoctorCommand extends BaseCommand {
     tliveVersion: string;
     uptime: number;
     configStatus: string;
-    claudeCli: string | null;
+    providers: Array<{ displayName: string; available: boolean; version?: string; reason?: string }>;
     channels: Array<{ type: string; connected: boolean; status: string }>;
   }> {
     // OS info
@@ -82,18 +84,13 @@ export class DoctorCommand extends BaseCommand {
       ? `✅ ${t('zh', 'doctor.configFound')}`
       : `❌ ${t('zh', 'doctor.configMissing')}`;
 
-    // Claude CLI version - run check directly
-    let claudeCli: string | null = null;
-    try {
-      const result = this.checkClaudeCliVersion();
-      if (result.version) {
-        claudeCli = `✅ v${result.version}`;
-      } else if (result.error) {
-        claudeCli = `⚠️ ${result.error}`;
-      }
-    } catch {
-      claudeCli = null;
-    }
+    const providers =
+      ctx.services.providers?.list?.().map((provider) => ({
+        displayName: provider.displayName,
+        available: provider.available,
+        ...(provider.version ? { version: provider.version } : {}),
+        ...(provider.reason ? { reason: provider.reason } : {}),
+      })) ?? [];
 
     // Channel status
     const adapters = ctx.services.getAdapters();
@@ -110,7 +107,7 @@ export class DoctorCommand extends BaseCommand {
       tliveVersion,
       uptime,
       configStatus,
-      claudeCli,
+      providers,
       channels,
     };
   }
@@ -123,25 +120,4 @@ export class DoctorCommand extends BaseCommand {
     return `${hours}h ${mins}m`;
   }
 
-  private checkClaudeCliVersion(): { version?: string; error?: string } {
-    try {
-      // Try common CLI paths
-      const cliPaths = ['claude', 'claude-code'];
-      for (const cli of cliPaths) {
-        try {
-          const { execSync } = require('node:child_process');
-          const output = execSync(`${cli} --version`, { encoding: 'utf-8', timeout: 5000 }).trim();
-          const match = output.match(/(\d+\.\d+\.\d+)/);
-          if (match) {
-            return { version: match[1] };
-          }
-        } catch {
-          // Try next CLI path
-        }
-      }
-      return { error: 'Not found' };
-    } catch {
-      return { error: 'Check failed' };
-    }
-  }
 }

@@ -11,7 +11,7 @@ import { ChannelRouter } from '../../utils/router.js';
 import { JsonFileStore } from '../../store/json-file.js';
 import { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
 import { AgentProviderRegistry, singleProviderRegistry } from '../../providers/registry.js';
-import { loadProjectsConfig, type ClaudeSettingSource } from '../../config.js';
+import { loadProjectsConfig, type AgentSettingSource } from '../../config.js';
 import type { SDKEngine } from '../../engine/sdk/engine.js';
 import type { PermissionCoordinator } from '../../engine/coordinators/permission.js';
 import * as sessionScanner from '../../providers/session-scanner.js';
@@ -38,6 +38,7 @@ function createMockClaudeProvider(): ClaudeSDKProvider {
       interactivePermissions: true,
       askUserQuestion: true,
       deferredTools: true,
+      settingSources: true,
       sessionResume: true,
       imageInputs: true,
     },
@@ -54,6 +55,7 @@ function createMockCodexProvider() {
       interactivePermissions: false,
       askUserQuestion: false,
       deferredTools: false,
+      settingSources: false,
       sessionResume: false,
       imageInputs: true,
     },
@@ -139,7 +141,7 @@ describe('CommandRouter /settings', () => {
     } as any);
 
     const binding = await store.getBinding('feishu', 'c1');
-    expect(binding?.claudeSettingSources).toEqual([]);
+    expect(binding?.agentSettingSources).toEqual([]);
     expect(binding?.sdkSessionId).toBeUndefined();
     expect(binding?.sessionId).not.toBe('binding-1');
     expect(sdkEngine.cleanupSession).not.toHaveBeenCalled();
@@ -154,7 +156,7 @@ describe('CommandRouter /settings', () => {
       channelType: 'feishu',
       chatId: 'c1',
       sessionId: 'binding-1',
-      claudeSettingSources: [],
+      agentSettingSources: [],
       createdAt: '',
     });
 
@@ -211,7 +213,7 @@ describe('CommandRouter /settings', () => {
       sessionId: 'binding-1',
       sdkSessionId: 'sdk-1',
       projectName: 'repo',
-      claudeSettingSources: ['user'] as ClaudeSettingSource[],
+      agentSettingSources: ['user'] as AgentSettingSource[],
       cwd: '/tmp/project',
       createdAt: '',
     });
@@ -226,7 +228,7 @@ describe('CommandRouter /settings', () => {
     } as any);
 
     const binding = await store.getBinding('feishu', 'c1');
-    expect(binding?.claudeSettingSources).toEqual(['user']);
+    expect(binding?.agentSettingSources).toEqual(['user']);
     expect(binding?.projectName).toBe('repo');
   });
 
@@ -406,7 +408,7 @@ describe('CommandRouter /settings', () => {
       sessionId: 'binding-1',
       sdkSessionId: 'sdk-1',
       projectName: 'repo',
-      claudeSettingSources: ['user'] as ClaudeSettingSource[],
+      agentSettingSources: ['user'] as AgentSettingSource[],
       cwd: '/tmp/project',
       createdAt: '',
     });
@@ -430,7 +432,7 @@ describe('CommandRouter /settings', () => {
 
     expect(adapterWithTopic.startThreadWithTitle).toHaveBeenCalledWith(
       'c1',
-      '新 Claude 会话',
+      '新 Claude Code 会话',
       expect.stringContaining('已开启新话题'),
     );
     const scopeId = chatScopeId('c1', 'thread-new');
@@ -439,7 +441,7 @@ describe('CommandRouter /settings', () => {
       chatId: scopeId,
       provider: 'claude',
       cwd: '/tmp/project',
-      claudeSettingSources: ['user'],
+      agentSettingSources: ['user'],
       projectName: 'repo',
       sdkSessionId: undefined,
     });
@@ -449,7 +451,7 @@ describe('CommandRouter /settings', () => {
       provider: 'claude',
       rootMessageId: 'msg-title',
       lastMessageId: 'msg-topic-start',
-      title: '新 Claude 会话',
+      title: '新 Claude Code 会话',
     });
   });
 
@@ -493,7 +495,7 @@ describe('CommandRouter /settings', () => {
       channelType: 'feishu',
       chatId: 'c1',
       sessionId: 'binding-1',
-      claudeSettingSources: ['user'] as ClaudeSettingSource[],
+      agentSettingSources: ['user'] as AgentSettingSource[],
       cwd: '/tmp/project',
       createdAt: '',
     });
@@ -525,7 +527,7 @@ describe('CommandRouter /settings', () => {
       chatId: scopeId,
       provider: 'codex',
       cwd: '/tmp/project',
-      claudeSettingSources: ['user'],
+      agentSettingSources: ['user'],
     });
     expect(topicSessions.findByScope(scopeId)).toMatchObject({
       scopeId,

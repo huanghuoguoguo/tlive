@@ -63,7 +63,7 @@ export interface ResolvedSessionTarget {
 
 /** Handles shared SDK session state for live turns and follow-up steering.
  *
- * Provider-agnostic — works with both Claude SDK (LiveSession) and fallback streamChat.
+ * Provider-agnostic — works with both persistent LiveSession and fallback streamChat.
  */
 export class SDKEngine {
   private sessions: SessionManager;
