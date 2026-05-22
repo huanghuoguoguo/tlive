@@ -14,11 +14,12 @@ import type {
   MessageFormatterOptions,
 } from '../../formatting/message-formatter.js';
 import { t, type Locale } from '../../i18n/index.js';
-import { buildFeishuButtonElements, type FeishuCardElement } from './card-builder.js';
+import type { FeishuCardElement } from './card-builder.js';
 import type { FeishuRenderedMessage } from './types.js';
 import type {
   HomeData,
   PermissionStatusData,
+  SessionListData,
   TaskStartData,
   HelpData,
   TopicCommandPaletteData,
@@ -48,7 +49,7 @@ import {
 import { truncate } from '../../core/string.js';
 
 // Import specialized formatters
-import { mdElement, buildHomeElements, homeButtons } from './format-home.js';
+import { buildHomeElements, homeButtons } from './format-home.js';
 import {
   buildQuestionElements,
   buildDeferredToolElements,
@@ -68,6 +69,8 @@ import { buildStatusElements } from './format-status.js';
 import { actionCallback } from '../../core/callbacks.js';
 import { buildHelpElements } from './format-help.js';
 import { buildDiagnoseElements } from './format-diagnostics.js';
+import { buildSessionListElements } from './format-session-list.js';
+import { buttonElements, collapsiblePanel, markdownElement } from './card-elements.js';
 
 export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> {
   constructor(
@@ -96,6 +99,8 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
         return this.formatTaskStart(chatId, msg.data);
       case 'help':
         return this.formatHelp(chatId, msg.data);
+      case 'sessionList':
+        return this.formatSessionList(chatId, msg.data);
       case 'topicCommandPalette':
         return this.formatTopicCommandPalette(chatId, msg.data);
       case 'newSession':
@@ -137,7 +142,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
   ): FeishuRenderedMessage {
     const allElements = [...elements];
     if (buttons && buttons.length > 0) {
-      allElements.push(...buildFeishuButtonElements(buttons));
+      allElements.push(...buttonElements(buttons));
     }
     return {
       chatId,
@@ -148,19 +153,10 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
   }
 
   private footerActionPanel(footerLine: string, buttons: Button[]): FeishuCardElement {
-    const panelElements = [
+    return collapsiblePanel(this.locale === 'zh' ? '运行信息' : 'Run info', [
       this.md(`<font color='grey'>${footerLine}</font>`),
-      ...buildFeishuButtonElements(buttons),
-    ];
-
-    return {
-      tag: 'collapsible_panel',
-      expanded: false,
-      header: {
-        title: { tag: 'plain_text', content: this.locale === 'zh' ? '运行信息' : 'Run info' },
-      },
-      elements: panelElements,
-    } as FeishuCardElement;
+      ...buttonElements(buttons),
+    ]);
   }
 
   private shouldNestDoneButtons(
@@ -171,7 +167,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
   }
 
   private md(content: string): FeishuCardElement {
-    return mdElement(content);
+    return markdownElement(content);
   }
 
   private defaultProgressButtons(phase: ProgressData['phase']): Button[] {
@@ -221,7 +217,6 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
       chatId,
       data,
       locale: this.locale,
-      buildButtons: buildFeishuButtonElements,
     });
     const buttons = homeButtons(this.locale, data.providers?.available ?? []);
     return this.createCardMessage(
@@ -246,6 +241,14 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
       },
       elements,
       buttons,
+    );
+  }
+
+  formatSessionList(chatId: string, data: SessionListData): FeishuRenderedMessage {
+    return this.createCardMessage(
+      chatId,
+      { template: 'blue', title: data.title },
+      buildSessionListElements(data),
     );
   }
 

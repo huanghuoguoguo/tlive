@@ -1,7 +1,7 @@
 import type { HelpData } from '../../formatting/message-types.js';
 import { groupHelpCommands } from '../../formatting/help-format.js';
 import type { FeishuCardElement } from './card-builder.js';
-import { mdElement } from './format-home.js';
+import { collapsiblePanel, markdownElement } from './card-elements.js';
 
 export function buildHelpElements(data: HelpData): FeishuCardElement[] {
   const elements: FeishuCardElement[] = [];
@@ -16,19 +16,17 @@ export function buildHelpElements(data: HelpData): FeishuCardElement[] {
       if (cmd.example) {
         text += `\n📌 示例: \`${cmd.example}\``;
       }
-      panelElements.push(mdElement(text));
-      panelElements.push(mdElement('---'));
+      panelElements.push(markdownElement(text));
+      panelElements.push(markdownElement('---'));
     }
     panelElements.pop();
 
-    elements.push({
-      tag: 'collapsible_panel',
-      expanded: group.category.expandedByDefault ?? false,
-      header: { title: { tag: 'plain_text', content: `${group.category.icon} ${group.category.title}` } },
-      elements: panelElements,
-    } as FeishuCardElement);
+    elements.push(
+      collapsiblePanel(`${group.category.icon} ${group.category.title}`, panelElements, {
+        expanded: group.category.expandedByDefault ?? false,
+      }),
+    );
   }
 
   return elements;
 }
-

@@ -11,8 +11,7 @@ import type {
 } from '../../formatting/message-types.js';
 import type { Button } from '../../ui/types.js';
 import type { FeishuCardElement } from './card-builder.js';
-import { buildFeishuButtonElements } from './card-builder.js';
-import { mdElement } from './format-home.js';
+import { formElement, markdownElement } from './card-elements.js';
 
 export interface FormatQuestionParams {
   chatId: string;
@@ -25,7 +24,7 @@ export function buildQuestionElements(params: FormatQuestionParams): FeishuCardE
   const { question, options, multiSelect, permId } = data;
 
   const cardElements: FeishuCardElement[] = [
-    mdElement(`**${t(locale, 'perm.labelQuestion')}**\n${question}`),
+    markdownElement(`**${t(locale, 'perm.labelQuestion')}**\n${question}`),
   ];
 
   const useSelectDropdown = !multiSelect && options.length > 4;
@@ -37,11 +36,11 @@ export function buildQuestionElements(params: FormatQuestionParams): FeishuCardE
           `${i + 1}. **${opt.label}**${opt.description ? ` — ${opt.description}` : ''}`,
       )
       .join('\n');
-    cardElements.push(mdElement(`**${t(locale, 'perm.labelOptions')}**\n${optionsList}`));
+    cardElements.push(markdownElement(`**${t(locale, 'perm.labelOptions')}**\n${optionsList}`));
     if (multiSelect) {
-      cardElements.push(mdElement(t(locale, 'perm.hintClickToggle')));
+      cardElements.push(markdownElement(t(locale, 'perm.hintClickToggle')));
     } else {
-      cardElements.push(mdElement(t(locale, 'perm.hintClickOrText')));
+      cardElements.push(markdownElement(t(locale, 'perm.hintClickOrText')));
     }
   }
 
@@ -72,14 +71,7 @@ export function buildQuestionElements(params: FormatQuestionParams): FeishuCardE
     required: false,
   } as FeishuCardElement);
 
-  cardElements.push({
-    tag: 'form',
-    name: `form_${permId}`,
-    elements: [
-      ...formElements,
-      ...buildFeishuButtonElements(buildQuestionButtons(data, locale)),
-    ],
-  });
+  cardElements.push(formElement(`form_${permId}`, formElements, buildQuestionButtons(data, locale)));
 
   return cardElements;
 }
@@ -158,10 +150,10 @@ export function buildDeferredToolElements(
   const { toolName, prompt, permId, sessionId, inputPlaceholder } = data;
 
   const cardElements: FeishuCardElement[] = [
-    mdElement(`**${t(locale, 'perm.labelToolRequest')}**\n${toolName}`),
-    mdElement(`**${t(locale, 'perm.labelDescription')}**\n${prompt}`),
-    mdElement(`**${t(locale, 'perm.labelSessionInfo')}**\n${sessionId}`),
-    mdElement(t(locale, 'perm.hintInputSubmit')),
+    markdownElement(`**${t(locale, 'perm.labelToolRequest')}**\n${toolName}`),
+    markdownElement(`**${t(locale, 'perm.labelDescription')}**\n${prompt}`),
+    markdownElement(`**${t(locale, 'perm.labelSessionInfo')}**\n${sessionId}`),
+    markdownElement(t(locale, 'perm.hintInputSubmit')),
   ];
 
   const formElements: FeishuCardElement[] = [
@@ -186,14 +178,7 @@ export function buildDeferredToolElements(
     },
   ];
 
-  cardElements.push({
-    tag: 'form',
-    name: `form_deferred_${permId}`,
-    elements: [
-      ...formElements,
-      ...buildFeishuButtonElements(formButtons),
-    ],
-  });
+  cardElements.push(formElement(`form_deferred_${permId}`, formElements, formButtons));
 
   return cardElements;
 }
@@ -214,9 +199,11 @@ export function buildMultiSelectElements(params: FormatMultiSelectParams): Feish
     .join('\n');
 
   return [
-    mdElement(`**${t(locale, 'perm.labelQuestion')}**\n${data.question}`),
-    mdElement(`**${t(locale, 'perm.labelOptions')}**\n${optionsList}`),
-    mdElement(`**${t(locale, 'perm.labelDescription')}**\n${t(locale, 'perm.hintMultiSelect')}`),
+    markdownElement(`**${t(locale, 'perm.labelQuestion')}**\n${data.question}`),
+    markdownElement(`**${t(locale, 'perm.labelOptions')}**\n${optionsList}`),
+    markdownElement(
+      `**${t(locale, 'perm.labelDescription')}**\n${t(locale, 'perm.hintMultiSelect')}`,
+    ),
   ];
 }
 

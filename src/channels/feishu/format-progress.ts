@@ -8,7 +8,7 @@ import type { FeishuCardElement } from './card-builder.js';
 import type { ProgressData } from '../../formatting/message-types.js';
 import { truncate } from '../../core/string.js';
 import { downgradeHeadings } from './markdown.js';
-import { mdPanel } from './format-home.js';
+import { collapsiblePanel, dividerElement, markdownElement } from './card-elements.js';
 
 type TimelineToolDisplay = {
   toolName: string;
@@ -253,25 +253,25 @@ export function buildProgressTimelineElements(params: FormatProgressParams): Fei
     picked.reverse();
     const expandedIndex = isDone ? -1 : picked.length - 1;
     for (let i = 0; i < picked.length; i++) {
-      if (i > 0) elements.push({ tag: 'hr' } as FeishuCardElement);
+      if (i > 0) elements.push(dividerElement());
       const { operation, content } = picked[i];
       const isExpanded = i === expandedIndex;
-      elements.push({
-        tag: 'collapsible_panel',
-        expanded: isExpanded,
-        header: { title: { tag: 'plain_text', content: buildOperationHeader(locale, operation, isExpanded) } },
-        elements: [mdPanel(content)],
-      });
+      elements.push(
+        collapsiblePanel(
+          buildOperationHeader(locale, operation, isExpanded),
+          [markdownElement(content)],
+          { expanded: isExpanded },
+        ),
+      );
     }
   } else {
     // Legacy fallback: separate thinking + tool panels
     if (data.thinkingText?.trim()) {
-      elements.push({
-        tag: 'collapsible_panel',
-        expanded: false,
-        header: { title: { tag: 'plain_text', content: t(locale, 'progress.labelThinkingProcess') } },
-        elements: [mdPanel(truncate(data.thinkingText.trim(), 1500))],
-      });
+      elements.push(
+        collapsiblePanel(t(locale, 'progress.labelThinkingProcess'), [
+          markdownElement(truncate(data.thinkingText.trim(), 1500)),
+        ]),
+      );
     }
     if (data.toolLogs?.length) {
       const logLines = data.toolLogs.map(log => {
@@ -280,12 +280,13 @@ export function buildProgressTimelineElements(params: FormatProgressParams): Fei
         const resultLine = log.result ? `\n   → ${truncate(log.result, 120)}` : '';
         return `${status} **${log.name}**: ${truncate(log.input || '(no input)', 100)}${resultLine}`;
       });
-      elements.push({
-        tag: 'collapsible_panel',
-        expanded: !isDone,
-        header: { title: { tag: 'plain_text', content: `${t(locale, 'progress.labelToolCalls')} (${data.toolLogs.length})` } },
-        elements: [mdPanel(truncate(logLines.join('\n'), 2000))],
-      });
+      elements.push(
+        collapsiblePanel(
+          `${t(locale, 'progress.labelToolCalls')} (${data.toolLogs.length})`,
+          [markdownElement(truncate(logLines.join('\n'), 2000))],
+          { expanded: !isDone },
+        ),
+      );
     }
   }
 
@@ -339,12 +340,11 @@ export function buildProgressContentElements(params: FormatProgressParams): Feis
 
   // Tool use summary
   if (data.toolUseSummaryText && isDone) {
-    elements.push({
-      tag: 'collapsible_panel',
-      expanded: false,
-      header: { title: { tag: 'plain_text', content: t(locale, 'progress.labelToolSummary') } },
-      elements: [mdPanel(truncate(data.toolUseSummaryText, 1000))],
-    });
+    elements.push(
+      collapsiblePanel(t(locale, 'progress.labelToolSummary'), [
+        markdownElement(truncate(data.toolUseSummaryText, 1000)),
+      ]),
+    );
   }
 
   // Todo progress

@@ -9,7 +9,7 @@ import type { Button } from '../../ui/types.js';
 import { permStatusButtons } from '../../ui/buttons.js';
 import { truncate } from '../../core/string.js';
 import type { FeishuCardElement } from './card-builder.js';
-import { mdElement } from './format-home.js';
+import { markdownElement } from './card-elements.js';
 
 export interface FormatPermStatusParams {
   chatId: string;
@@ -29,27 +29,31 @@ export function buildPermStatusElements(params: FormatPermStatusParams): FeishuC
     : '';
 
   const elements: FeishuCardElement[] = [
-    mdElement(
+    markdownElement(
       `**${t(locale, 'perm.labelMode')}**\n${data.mode === 'on' ? t(locale, 'perm.labelModeOn') : t(locale, 'perm.labelModeOff')}`,
     ),
-    mdElement(
+    markdownElement(
       `**${t(locale, 'perm.labelSessionMemory')}**\n${t(locale, 'perm.labelTools')} ${data.rememberedTools} · ${t(locale, 'perm.labelBashPrefixes')} ${data.rememberedBashPrefixes}`,
     ),
   ];
 
   if (data.pending) {
     elements.push(
-      mdElement(
+      markdownElement(
         `**${t(locale, 'perm.pendingApproval')}**\n${data.pending.toolName}\n\`\`\`\n${truncate(data.pending.input, 220)}\n\`\`\``,
       ),
     );
   } else {
-    elements.push(mdElement(`**${t(locale, 'perm.pendingApproval')}**\n${t(locale, 'perm.labelNoPending')}`));
+    elements.push(
+      markdownElement(`**${t(locale, 'perm.pendingApproval')}**\n${t(locale, 'perm.labelNoPending')}`),
+    );
   }
 
   if (data.lastDecision) {
     elements.push(
-      mdElement(`**${t(locale, 'perm.lastDecision')}**\n${data.lastDecision.toolName} · ${decisionLabel}`),
+      markdownElement(
+        `**${t(locale, 'perm.lastDecision')}**\n${data.lastDecision.toolName} · ${decisionLabel}`,
+      ),
     );
   }
 

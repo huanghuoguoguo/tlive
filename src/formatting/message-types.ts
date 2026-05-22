@@ -94,6 +94,28 @@ export interface HomeTopicEntry {
   isActive: boolean;
 }
 
+export interface SessionListEntry {
+  index: number;
+  provider?: AgentProviderKind;
+  providerDisplayName?: string;
+  sdkSessionId?: string;
+  date: string;
+  cwd: string;
+  title?: string;
+  preview: string;
+  transcript?: Array<{ role: string; text: string }>;
+  isCurrent?: boolean;
+  isActive?: boolean;
+  actionLabel: string;
+  actionStyle?: Button['style'];
+}
+
+export interface SessionListData {
+  title: string;
+  emptyText: string;
+  entries: SessionListEntry[];
+}
+
 export interface HomeProviderEntry {
   kind: AgentProviderKind;
   displayName: string;
@@ -402,6 +424,7 @@ export type FormattableMessage =
   | { type: 'permissionStatus'; chatId: string; data: PermissionStatusData }
   | { type: 'taskStart'; chatId: string; data: TaskStartData }
   | { type: 'help'; chatId: string; data: HelpData }
+  | { type: 'sessionList'; chatId: string; data: SessionListData }
   | { type: 'topicCommandPalette'; chatId: string; data: TopicCommandPaletteData }
   | { type: 'newSession'; chatId: string; data: NewSessionData }
   | { type: 'error'; chatId: string; data: ErrorData }

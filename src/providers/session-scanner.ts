@@ -39,6 +39,7 @@ let claudeCacheTime = 0;
 let codexCacheTime = 0;
 const CACHE_TTL = 5000;
 const CODEX_META_READ_SIZE = 64 * 1024;
+const CODEX_PREVIEW_HEAD_READ_SIZE = 256 * 1024;
 const SESSION_TAIL_READ_SIZE = 96 * 1024;
 const CLAUDE_PREVIEW_READ_SIZE = 32 * 1024;
 
@@ -79,11 +80,7 @@ export function scanClaudeSessions(limit = 10, filterByCwd?: string): ScannedSes
 }
 
 /**
- * Scan TLive-created Codex SDK thread history from ~/.codex/sessions.
- *
- * Codex also stores the operator's own CLI/TUI rollouts in the same tree. We only
- * list `codex_sdk_ts` threads here so TLive history does not mix with the host
- * Codex session that is being used to edit this repo.
+ * Scan Codex thread history from ~/.codex/sessions.
  */
 export function scanCodexSessions(limit = 10, filterByCwd?: string): ScannedSession[] {
   return filterAndLimit(getCodexSessions(), limit, filterByCwd);
@@ -120,7 +117,7 @@ function filterAndLimit(
   limit: number,
   filterByCwd?: string,
 ): ScannedSession[] {
-  let filtered = sessions.filter((s) => s.preview !== '(empty)');
+  let filtered = sessions;
   if (filterByCwd) {
     const normalizedFilter = filterByCwd.replace(/\/+$/, '');
     // Match current directory AND all subdirectories (prefix match)
@@ -262,6 +259,8 @@ function parseClaudeSessionHeader(
       // Parse lines backwards to find last meaningful message
       let lastCwd = '';
       let lastUserMsg = '';
+      let fallbackTitle = '';
+      let fallbackPrompt = '';
 
       for (let i = lines.length - 1; i >= 0; i--) {
         const line = lines[i].trim();
@@ -271,6 +270,12 @@ function parseClaudeSessionHeader(
 
           // Track cwd from any message (first found going backwards)
           if (!lastCwd && obj.cwd) lastCwd = obj.cwd;
+          if (!fallbackTitle && obj.type === 'ai-title' && typeof obj.aiTitle === 'string') {
+            fallbackTitle = normalizePlainText(obj.aiTitle, 40);
+          }
+          if (!fallbackPrompt && obj.type === 'last-prompt' && typeof obj.lastPrompt === 'string') {
+            fallbackPrompt = normalizePlainText(obj.lastPrompt, 40);
+          }
 
           // Look for user messages with content
           if (obj.type === 'user' && !lastUserMsg && obj.message?.content) {
@@ -284,7 +289,7 @@ function parseClaudeSessionHeader(
       }
 
       if (lastCwd) cwd = lastCwd;
-      if (lastUserMsg) preview = lastUserMsg;
+      preview = lastUserMsg || fallbackPrompt || fallbackTitle || preview;
     } finally {
       closeSync(fd);
     }
@@ -301,7 +306,7 @@ function parseClaudeSessionHeader(
     cwd,
     mtime,
     size,
-    preview,
+    preview: preview === '(empty)' ? fallbackSessionPreview('Claude', sessionId) : preview,
   };
 }
 
@@ -314,7 +319,6 @@ function parseCodexSession(
 ): ScannedSession | null {
   let sessionId = fallbackSessionId;
   let cwd = homedir();
-  let originator = '';
   let preview = '(empty)';
 
   try {
@@ -328,28 +332,17 @@ function parseCodexSession(
         const payload = obj.payload;
         if (typeof payload.id === 'string' && payload.id) sessionId = payload.id;
         if (typeof payload.cwd === 'string' && payload.cwd) cwd = payload.cwd;
-        if (typeof payload.originator === 'string') originator = payload.originator;
         break;
       } catch {
         // Ignore malformed/incomplete head line.
       }
     }
 
-    if (originator !== 'codex_sdk_ts') return null;
-
     const tail = readWindow(filePath, size, SESSION_TAIL_READ_SIZE, 'tail');
-    for (const rawLine of tail.split('\n').reverse()) {
-      const line = rawLine.trim();
-      if (!line) continue;
-      try {
-        const obj = JSON.parse(line);
-        const message = extractCodexTranscriptMessage(obj);
-        if (message?.role !== 'user' || !message.text) continue;
-        preview = truncate(message.text.trim().replace(/\s+/g, ' '), 40);
-        break;
-      } catch {
-        // Ignore malformed/incomplete tail line.
-      }
+    preview = extractCodexUserPreview(tail, 'last') ?? preview;
+    if (preview === '(empty)') {
+      const previewHead = readWindow(filePath, size, CODEX_PREVIEW_HEAD_READ_SIZE, 'head');
+      preview = extractCodexUserPreview(previewHead, 'first') ?? preview;
     }
   } catch {
     return null;
@@ -364,7 +357,7 @@ function parseCodexSession(
     cwd,
     mtime,
     size,
-    preview,
+    preview: preview === '(empty)' ? fallbackSessionPreview('Codex', sessionId) : preview,
   };
 }
 
@@ -431,6 +424,23 @@ function readTranscriptMessages(
   return messages.reverse();
 }
 
+function extractCodexUserPreview(text: string, direction: 'first' | 'last'): string | null {
+  const lines = direction === 'last' ? text.split('\n').reverse() : text.split('\n');
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    try {
+      const obj = JSON.parse(line);
+      const message = extractCodexTranscriptMessage(obj);
+      if (message?.role !== 'user' || !message.text) continue;
+      return truncate(message.text.trim().replace(/\s+/g, ' '), 40);
+    } catch {
+      // Ignore malformed/incomplete window lines.
+    }
+  }
+  return null;
+}
+
 function extractClaudeTranscriptMessage(obj: any): SessionTranscriptMessage | null {
   if (obj?.type === 'user') {
     const text = normalizeClaudeUserContent(obj?.message?.content, 160);
@@ -484,6 +494,21 @@ function normalizeClaudeUserContent(content: unknown, limit: number): string {
     return normalizePlainText(content, limit);
   }
 
+  if (Array.isArray(content)) {
+    const textBlocks = content
+      .map((block) => {
+        if (typeof block === 'string') return block;
+        if (!block || typeof block !== 'object' || !('type' in block)) return '';
+        const typed = block as { type?: unknown; text?: unknown };
+        if (typed.type === 'text' && typeof typed.text === 'string') return typed.text;
+        return '';
+      })
+      .map((text) => text.trim().replace(/\s+/g, ' '))
+      .filter(Boolean);
+    if (!textBlocks.length) return '';
+    return truncate(textBlocks.join('\n'), limit);
+  }
+
   return '';
 }
 
@@ -529,6 +554,10 @@ function normalizeCodexContent(content: unknown, role: 'user' | 'assistant'): st
 
 function normalizePlainText(text: string, limit: number): string {
   return truncate(text.trim().replace(/\s+/g, ' '), limit);
+}
+
+function fallbackSessionPreview(providerDisplayName: string, sessionId: string): string {
+  return `${providerDisplayName} session ${sessionId.slice(0, 8)}`;
 }
 
 function readWindow(

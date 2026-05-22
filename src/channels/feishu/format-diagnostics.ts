@@ -1,7 +1,7 @@
 import type { DiagnoseData } from '../../formatting/message-types.js';
 import { t, type Locale } from '../../i18n/index.js';
 import type { FeishuCardElement } from './card-builder.js';
-import { mdElement } from './format-home.js';
+import { markdownElement } from './card-elements.js';
 
 export function buildDiagnoseElements(data: DiagnoseData, locale: Locale): {
   elements: FeishuCardElement[];
@@ -52,10 +52,10 @@ export function buildDiagnoseElements(data: DiagnoseData, locale: Locale): {
   if (data.memoryUsage) {
     lines.push(`**${t(locale, 'format.labelMemory')}** ${data.memoryUsage}`);
   }
-  const elements: FeishuCardElement[] = [mdElement(lines.join('\n'))];
+  const elements: FeishuCardElement[] = [markdownElement(lines.join('\n'))];
   if (data.queueStats.length > 0) {
     elements.push(
-      mdElement(
+      markdownElement(
         `**${t(locale, 'diagnose.labelQueueDetail')}**\n${data.queueStats
           .map((stat) => `- \`${stat.sessionKey}\` ${stat.depth}/${stat.maxDepth}`)
           .join('\n')}`,

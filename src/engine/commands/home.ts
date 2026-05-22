@@ -39,3 +39,79 @@ export class TliveCommand extends BaseCommand {
     return true;
   }
 }
+
+const TOPIC_DETAIL_LIMIT = 8;
+const HISTORY_DETAIL_LIMIT = 10;
+
+export class HomeTopicsCommand extends BaseCommand {
+  readonly name = '/home-topics';
+  readonly quick = true;
+  readonly helpCategory = 'status' as const;
+  readonly description = undefined;
+
+  async execute(ctx: CommandContext): Promise<boolean> {
+    const home = await ctx.helpers.buildHomePayload(ctx.msg.channelType, ctx.scopeId, ctx.locale);
+    const topics = home.session.topics ?? [];
+    const shown = topics.slice(0, TOPIC_DETAIL_LIMIT);
+    await this.send(ctx, {
+      type: 'sessionList',
+      chatId: ctx.msg.chatId,
+      data: {
+        title: '最近会话话题',
+        emptyText: '暂无可继续的话题会话',
+        entries: shown.map((topic) => ({
+          index: topic.index,
+          provider: topic.provider,
+          providerDisplayName: topic.providerDisplayName,
+          sdkSessionId: topic.sdkSessionId,
+          date: topic.updatedAt,
+          cwd: topic.cwd,
+          title: topic.title,
+          preview: topic.preview,
+          isCurrent: topic.isCurrent,
+          isActive: topic.isActive,
+          actionLabel: '回到话题',
+          actionStyle: topic.isCurrent ? 'default' : 'primary',
+        })),
+      },
+    });
+    return true;
+  }
+}
+
+export class HomeHistoryCommand extends BaseCommand {
+  readonly name = '/home-history';
+  readonly quick = true;
+  readonly helpCategory = 'status' as const;
+  readonly description = undefined;
+
+  async execute(ctx: CommandContext): Promise<boolean> {
+    const home = await ctx.helpers.buildHomePayload(ctx.msg.channelType, ctx.scopeId, ctx.locale);
+    const sessions = (home.session.recent ?? []).filter(
+      (session) => session.sdkSessionId && !session.topic,
+    );
+    const shown = sessions.slice(0, HISTORY_DETAIL_LIMIT);
+    await this.send(ctx, {
+      type: 'sessionList',
+      chatId: ctx.msg.chatId,
+      data: {
+        title: '最近本地会话',
+        emptyText: '暂无可恢复的本地历史会话',
+        entries: shown.map((session) => ({
+          index: session.index,
+          provider: session.provider,
+          providerDisplayName: session.providerDisplayName,
+          sdkSessionId: session.sdkSessionId,
+          date: session.date,
+          cwd: session.cwd,
+          preview: session.preview,
+          transcript: session.transcript,
+          isCurrent: session.isCurrent,
+          actionLabel: '恢复到话题',
+          actionStyle: 'primary',
+        })),
+      },
+    });
+    return true;
+  }
+}

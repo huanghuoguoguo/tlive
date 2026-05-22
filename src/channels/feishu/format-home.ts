@@ -9,10 +9,15 @@ import type { HomeData } from '../../formatting/message-types.js';
 import type { Button } from '../../ui/types.js';
 import { newSessionButtons, type NewSessionButtonProvider } from '../../ui/buttons.js';
 import { truncate } from '../../core/string.js';
-import { downgradeHeadings, splitLargeTables } from './markdown.js';
 import { actionCallback } from '../../core/callbacks.js';
+import {
+  buttonElements,
+  collapsiblePanel,
+  formElement,
+  markdownElement,
+} from './card-elements.js';
 
-const MAX_HOME_TOPICS = 2;
+const MAX_HOME_TOPICS = 3;
 const MAX_HISTORY_SESSIONS = 2;
 
 /** Unified session status label for consistent display across /status and /home */
@@ -26,33 +31,22 @@ export function sessionStatusLabel(
   return { icon: '💤', text: t(locale, 'home.statusIdle') };
 }
 
-/** Shared helper for creating markdown elements with table handling */
-export function mdElement(content: string): FeishuCardElement {
-  return { tag: 'markdown', content: downgradeHeadings(splitLargeTables(content)) };
-}
-
-/** Shared helper for panel content */
-export function mdPanel(content: string): { tag: string; content: string } {
-  return { tag: 'markdown', content: downgradeHeadings(splitLargeTables(content)) };
-}
-
 export interface FormatHomeParams {
   chatId: string;
   data: HomeData;
   locale: Locale;
-  buildButtons: (buttons: Button[]) => FeishuCardElement[];
 }
 
 export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[] {
-  const { data, locale, buildButtons } = params;
+  const { data, locale } = params;
   const elements: FeishuCardElement[] = [];
 
   elements.push(
-    mdElement(
-      `**新会话默认工作区**\n\`${data.workspace.cwd}\`\n**新会话默认工具审批**\n${defaultPermissionLabel(data.permission.mode)}`,
+    markdownElement(
+      `**新会话默认工作区**\n\`${data.workspace.cwd}\``,
     ),
   );
-  elements.push(...buildNewSessionControls(data, locale, buildButtons));
+  elements.push(...buildNewSessionControls(data, locale));
 
   // Recent topic-backed conversations.
   if (data.session.topics?.length) {
@@ -63,13 +57,13 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
       const sdkShort = topic.sdkSessionId ? topic.sdkSessionId.slice(0, 8) : '-';
       const providerLabel = topic.providerDisplayName ?? 'Agent';
       topicPanelElements.push(
-        mdPanel(
+        markdownElement(
           `**${topic.index}. ${status} ${truncate(topic.title, 36)}${currentMark}**\n${providerLabel} \`${sdkShort}\` · \`${topic.cwd}\` · ${topic.updatedAt}\n${truncate(topic.preview, 90)}`,
         ),
       );
       if (topic.sdkSessionId) {
         topicPanelElements.push(
-          ...buildButtons([
+          ...buttonElements([
             {
               label: '回到话题',
               callbackData: actionCallback(
@@ -83,33 +77,25 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
         );
       }
     }
-    elements.push({
-      tag: 'collapsible_panel',
-      expanded: false,
-      header: {
-        title: { tag: 'plain_text', content: `💬 最近会话话题 (${data.session.topics.length})` },
-      },
-      elements: topicPanelElements,
-    } as FeishuCardElement);
+    elements.push(collapsiblePanel('💬 最近会话话题', topicPanelElements));
   }
 
-  const recoverableSessions =
-    data.session.recent
-      ?.filter((session) => session.sdkSessionId && !session.topic)
-      .slice(0, MAX_HISTORY_SESSIONS) ?? [];
+  const recoverableHistorySessions =
+    data.session.recent?.filter((session) => session.sdkSessionId && !session.topic) ?? [];
+  const recoverableSessions = recoverableHistorySessions.slice(0, MAX_HISTORY_SESSIONS);
   if (recoverableSessions.length) {
     const historyElements: FeishuCardElement[] = [];
     for (const session of recoverableSessions) {
       const providerLabel = session.providerDisplayName ?? 'Agent';
       const sdkShort = session.sdkSessionId ? session.sdkSessionId.slice(0, 8) : '-';
       historyElements.push(
-        mdPanel(
+        markdownElement(
           `**${session.index}. ${providerLabel} \`${sdkShort}\` · ${session.date}**\n\`${session.cwd}\`\n${truncate(session.preview, 80)}`,
         ),
       );
       if (session.sdkSessionId) {
         historyElements.push(
-          ...buildButtons([
+          ...buttonElements([
             {
               label: '恢复到话题',
               callbackData: actionCallback(
@@ -123,21 +109,11 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
         );
       }
     }
-    elements.push({
-      tag: 'collapsible_panel',
-      expanded: false,
-      header: { title: { tag: 'plain_text', content: '🧭 本地历史会话' } },
-      elements: historyElements,
-    } as FeishuCardElement);
+    elements.push(collapsiblePanel('🧭 最近本地会话', historyElements));
   }
 
-  elements.push({
-    tag: 'collapsible_panel',
-    expanded: false,
-    header: { title: { tag: 'plain_text', content: '🛠️ 诊断' } },
-    elements: buildDiagnosticsControls(buildButtons),
-  } as FeishuCardElement);
-  elements.push(buildWorkbenchCommandForm(buildButtons));
+  elements.push(collapsiblePanel('🛠️ 诊断', buildDiagnosticsControls()));
+  elements.push(buildWorkbenchCommandForm());
 
   return elements;
 }
@@ -149,44 +125,38 @@ export function homeButtons(
   return [];
 }
 
-function defaultPermissionLabel(mode: HomeData['permission']['mode']): string {
-  return mode === 'on' ? '需要确认工具调用' : '自动允许工具调用';
-}
-
 function buildNewSessionControls(
   data: HomeData,
   locale: Locale,
-  buildButtons: (buttons: Button[]) => FeishuCardElement[],
 ): FeishuCardElement[] {
-  const nextPermMode = data.permission.mode === 'on' ? 'off' : 'on';
   const buttons: Button[] = [
     ...newSessionButtons(locale, data.providers?.available ?? [], 0),
     {
-      label: data.permission.mode === 'on' ? '改为自动允许' : '改为需要确认',
-      callbackData: actionCallback('perm', nextPermMode),
+      label: '查看最近会话',
+      callbackData: actionCallback('home-topics'),
+      row: 1,
+    },
+    {
+      label: '查看本地历史',
+      callbackData: actionCallback('home-history'),
       row: 1,
     },
   ];
 
-  return buildButtons(buttons);
+  return buttonElements(buttons);
 }
 
-function buildDiagnosticsControls(
-  buildButtons: (buttons: Button[]) => FeishuCardElement[],
-): FeishuCardElement[] {
-  return buildButtons([
+function buildDiagnosticsControls(): FeishuCardElement[] {
+  return buttonElements([
     { label: 'Bridge 状态', callbackData: actionCallback('status'), row: 0 },
     { label: '内部诊断', callbackData: actionCallback('diagnose'), row: 0 },
   ]);
 }
 
-function buildWorkbenchCommandForm(
-  buildButtons: (buttons: Button[]) => FeishuCardElement[],
-): FeishuCardElement {
-  return {
-    tag: 'form',
-    name: 'form_tlive_command',
-    elements: [
+function buildWorkbenchCommandForm(): FeishuCardElement {
+  return formElement(
+    'form_tlive_command',
+    [
       {
         tag: 'input',
         name: '_tlive_command',
@@ -196,9 +166,7 @@ function buildWorkbenchCommandForm(
         },
         required: false,
       },
-      ...buildButtons([
-        { label: '执行', callbackData: 'form:tlive_command', style: 'primary', row: 0 },
-      ]),
     ],
-  } as FeishuCardElement;
+    [{ label: '执行', callbackData: 'form:tlive_command', style: 'primary', row: 0 }],
+  );
 }

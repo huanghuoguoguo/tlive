@@ -1,7 +1,8 @@
 import type { StatusData } from '../../formatting/message-types.js';
 import { t, type Locale } from '../../i18n/index.js';
 import type { FeishuCardElement } from './card-builder.js';
-import { mdElement, mdPanel, sessionStatusLabel } from './format-home.js';
+import { collapsiblePanel, markdownElement } from './card-elements.js';
+import { sessionStatusLabel } from './format-home.js';
 
 function formatFeishuUptime(locale: Locale, seconds: number): string {
   if (seconds < 60) return `${seconds}${t(locale, 'format.seconds')}`;
@@ -32,8 +33,8 @@ export function buildStatusElements(data: StatusData, locale: Locale): FeishuCar
     }) || data.channels;
 
   const elements: FeishuCardElement[] = [
-    mdElement(`**${t(locale, 'format.labelStatus')}**\n${status}`),
-    mdElement(
+    markdownElement(`**${t(locale, 'format.labelStatus')}**\n${status}`),
+    markdownElement(
       `**${t(locale, 'format.labelChannel')}**\n${channelDetails.join('\n') || t(locale, 'home.labelNone')}`,
     ),
   ];
@@ -58,35 +59,31 @@ export function buildStatusElements(data: StatusData, locale: Locale): FeishuCar
         const sid = s.sessionKey.length > 12 ? `…${s.sessionKey.slice(-8)}` : s.sessionKey;
         return `${stateIcon} **${stateText}** \`${sid}\`\n📁 \`${dir}\` · ${ago}${t(locale, 'format.activeAgo')}`;
       });
-      elements.push({
-        tag: 'collapsible_panel',
-        expanded: false,
-        header: {
-          title: {
-            tag: 'plain_text',
-            content: `📡 ${t(locale, 'format.labelSession')} ${sessionHeader}`,
-          },
-        },
-        elements: [mdPanel(lines.join('\n\n'))],
-      } as FeishuCardElement);
+      elements.push(
+        collapsiblePanel(`📡 ${t(locale, 'format.labelSession')} ${sessionHeader}`, [
+          markdownElement(lines.join('\n\n')),
+        ]),
+      );
     } else {
-      elements.push(mdElement(`**${t(locale, 'format.labelSession')}**\n${sessionHeader}`));
+      elements.push(markdownElement(`**${t(locale, 'format.labelSession')}**\n${sessionHeader}`));
     }
   }
 
   if (data.memoryUsage) {
-    elements.push(mdElement(`**${t(locale, 'format.labelMemory')}**\n${data.memoryUsage}`));
+    elements.push(markdownElement(`**${t(locale, 'format.labelMemory')}**\n${data.memoryUsage}`));
   }
   if (data.uptimeSeconds !== undefined) {
     elements.push(
-      mdElement(`**${t(locale, 'format.labelUptime')}**\n${formatFeishuUptime(locale, data.uptimeSeconds)}`),
+      markdownElement(
+        `**${t(locale, 'format.labelUptime')}**\n${formatFeishuUptime(locale, data.uptimeSeconds)}`,
+      ),
     );
   }
   if (data.version) {
-    elements.push(mdElement(`**${t(locale, 'format.labelVersion')}**\n\`v${data.version}\``));
+    elements.push(markdownElement(`**${t(locale, 'format.labelVersion')}**\n\`v${data.version}\``));
   }
   if (data.cwd) {
-    elements.push(mdElement(`**${t(locale, 'format.labelDirectory')}**\n\`${data.cwd}\``));
+    elements.push(markdownElement(`**${t(locale, 'format.labelDirectory')}**\n\`${data.cwd}\``));
   }
 
   return elements;

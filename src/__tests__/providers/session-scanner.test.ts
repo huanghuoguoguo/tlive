@@ -101,6 +101,10 @@ function claudeLine(content: string, cwd = '/home/user/project'): string {
   return JSON.stringify({ type: 'user', message: { content }, cwd });
 }
 
+function claudeArrayLine(text: string, cwd = '/home/user/project'): string {
+  return JSON.stringify({ type: 'user', message: { content: [{ type: 'text', text }] }, cwd });
+}
+
 describe('session-scanner', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -175,6 +179,51 @@ describe('session-scanner', () => {
       const sessions = scanClaudeSessions();
 
       expect(sessions.map((session) => session.sdkSessionId)).toEqual(['main-session']);
+    });
+
+    it('extracts preview text from Claude Code content blocks', () => {
+      installClaudeProjects({
+        project: {
+          'array-content.jsonl': {
+            content: claudeArrayLine('prompt from text block'),
+            mtimeMs: 1000,
+          },
+        },
+      });
+
+      const sessions = scanClaudeSessions();
+
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]).toMatchObject({
+        sdkSessionId: 'array-content',
+        preview: 'prompt from text block',
+      });
+      expect(readSessionTranscriptPreview(sessions[0], 1)).toEqual([
+        { role: 'user', text: 'prompt from text block', timestamp: undefined },
+      ]);
+    });
+
+    it('keeps Claude sessions without user preview using a metadata fallback', () => {
+      installClaudeProjects({
+        project: {
+          'title-only.jsonl': {
+            content: JSON.stringify({
+              type: 'ai-title',
+              aiTitle: 'Fallback Claude title',
+              cwd: '/home/user/project',
+            }),
+            mtimeMs: 1000,
+          },
+        },
+      });
+
+      const sessions = scanClaudeSessions();
+
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]).toMatchObject({
+        sdkSessionId: 'title-only',
+        preview: 'Fallback Claude title',
+      });
     });
 
     it('sorts sessions by mtime descending (most recent first)', () => {
@@ -277,7 +326,7 @@ describe('session-scanner', () => {
   });
 
   describe('scanCodexSessions', () => {
-    it('scans Codex SDK threads and ignores host Codex CLI rollouts', () => {
+    it('scans Codex sessions across SDK, CLI, and editor originators', () => {
       const sdkId = '019e4b16-a370-7ee0-b14a-ee20923bef5b';
       const cliId = '019e4b16-a370-7ee0-b14a-ee20923bef5c';
       const sdkFile = `rollout-2026-05-21T23-10-35-${sdkId}.jsonl`;
@@ -312,10 +361,16 @@ describe('session-scanner', () => {
         ],
         [
           cliPath,
-          JSON.stringify({
-            type: 'session_meta',
-            payload: { id: cliId, cwd: '/repo/cli', originator: 'codex_tui' },
-          }),
+          [
+            JSON.stringify({
+              type: 'session_meta',
+              payload: { id: cliId, cwd: '/repo/cli', originator: 'codex_tui' },
+            }),
+            JSON.stringify({
+              type: 'event_msg',
+              payload: { type: 'user_message', message: 'cli prompt text' },
+            }),
+          ].join('\n'),
         ],
       ]);
       const openPaths = new Map<number, string>();
@@ -361,17 +416,79 @@ describe('session-scanner', () => {
 
       const sessions = scanCodexSessions();
 
-      expect(sessions).toHaveLength(1);
+      expect(sessions).toHaveLength(2);
       expect(sessions[0]).toMatchObject({
         provider: 'codex',
         sdkSessionId: sdkId,
         cwd: '/repo/codex',
         preview: 'codex prompt text',
       });
+      expect(sessions[1]).toMatchObject({
+        provider: 'codex',
+        sdkSessionId: cliId,
+        cwd: '/repo/cli',
+        preview: 'cli prompt text',
+      });
       expect(readSessionTranscriptPreview(sessions[0], 2)).toEqual([
         { role: 'user', text: 'codex prompt text', timestamp: undefined },
         { role: 'assistant', text: 'codex response', timestamp: undefined },
       ]);
+    });
+
+    it('keeps Codex sessions without user preview using a session fallback', () => {
+      const id = '019e4b16-a370-7ee0-b14a-ee20923bef5d';
+      const file = `rollout-2026-05-21T23-10-35-${id}.jsonl`;
+      const filePath = `/home/testuser/.codex/sessions/2026/05/21/${file}`;
+      const content = JSON.stringify({
+        type: 'session_meta',
+        payload: { id, cwd: '/repo/codex', originator: 'codex_tui' },
+      });
+      const openPaths = new Map<number, string>();
+      let nextFd = 10;
+
+      mockReaddir.mockImplementation(((path: fs.PathLike) => {
+        const pathStr = String(path);
+        if (pathStr.endsWith('/.codex/sessions')) {
+          return [{ name: '2026', isDirectory: () => true } as fs.Dirent];
+        }
+        if (pathStr.endsWith('/.codex/sessions/2026')) {
+          return [{ name: '05', isDirectory: () => true } as fs.Dirent];
+        }
+        if (pathStr.endsWith('/.codex/sessions/2026/05')) {
+          return [{ name: '21', isDirectory: () => true } as fs.Dirent];
+        }
+        if (pathStr.endsWith('/.codex/sessions/2026/05/21')) {
+          return [{ name: file, isDirectory: () => false } as fs.Dirent];
+        }
+        throw new Error('ENOENT');
+      }) as unknown as typeof fs.readdirSync);
+
+      mockStat.mockReturnValue({ mtimeMs: 1000, size: Buffer.byteLength(content) } as fs.Stats);
+      vi.mocked(fs.openSync).mockImplementation(((path: fs.PathLike) => {
+        const fd = nextFd++;
+        openPaths.set(fd, String(path));
+        return fd;
+      }) as unknown as typeof fs.openSync);
+      mockRead.mockImplementation(
+        ((fd: number, buffer: ArrayBufferView, offset: number, length: number, position: number) => {
+          const chunk = Buffer.from(openPaths.get(fd) === filePath ? content : '').subarray(
+            position,
+            position + length,
+          );
+          const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer as Uint8Array);
+          chunk.copy(buf, offset);
+          return chunk.length;
+        }) as unknown as typeof fs.readSync,
+      );
+
+      const sessions = scanCodexSessions();
+
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]).toMatchObject({
+        sdkSessionId: id,
+        cwd: '/repo/codex',
+        preview: 'Codex session 019e4b16',
+      });
     });
   });
 
