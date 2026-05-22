@@ -120,8 +120,8 @@ describe('ClaudeAdapter', () => {
       'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'TaskStop', 'TaskOutput',
     ];
 
-    for (const toolName of hiddenTools) {
-      it(`filters out ${toolName} from stream_event`, () => {
+    it('filters hidden tool stream events by tool name', () => {
+      for (const toolName of hiddenTools) {
         const events = adapter.mapMessage({
           type: 'stream_event',
           event: {
@@ -131,8 +131,8 @@ describe('ClaudeAdapter', () => {
         });
 
         expect(events).toHaveLength(0);
-      });
-    }
+      }
+    });
 
     it('filters hidden tools from assistant messages', () => {
       const events = adapter.mapMessage({
@@ -302,59 +302,51 @@ describe('ClaudeAdapter', () => {
   // ── 8. user message tool_result (snake_case → camelCase) ──
 
   describe('user message tool_result mapping', () => {
-    it('maps snake_case SDK fields to camelCase', () => {
-      const events = adapter.mapMessage({
-        type: 'user',
-        message: {
-          content: [{
+    it('normalizes SDK tool_result fields into canonical events', () => {
+      const cases = [
+        {
+          block: {
             type: 'tool_result',
             tool_use_id: 'tu_abc',
             content: 'file contents here',
             is_error: false,
-          }],
+          },
+          expected: {
+            kind: 'tool_result',
+            toolUseId: 'tu_abc',
+            content: 'file contents here',
+            isError: false,
+          },
         },
-      });
-
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({
-        kind: 'tool_result',
-        toolUseId: 'tu_abc',
-        content: 'file contents here',
-        isError: false,
-      });
-    });
-
-    it('handles non-string content by JSON stringifying', () => {
-      const events = adapter.mapMessage({
-        type: 'user',
-        message: {
-          content: [{
+        {
+          block: {
             type: 'tool_result',
             tool_use_id: 'tu_xyz',
             content: [{ type: 'text', text: 'output' }],
             is_error: false,
-          }],
+          },
+          expected: {
+            kind: 'tool_result',
+            toolUseId: 'tu_xyz',
+            content: JSON.stringify([{ type: 'text', text: 'output' }]),
+            isError: false,
+          },
         },
-      });
-
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({
-        kind: 'tool_result',
-        toolUseId: 'tu_xyz',
-        content: JSON.stringify([{ type: 'text', text: 'output' }]),
-        isError: false,
-      });
-    });
-
-    it('defaults is_error to false when missing', () => {
-      const events = adapter.mapMessage({
-        type: 'user',
-        message: {
-          content: [{ type: 'tool_result', tool_use_id: 'tu_def', content: 'ok' }],
+        {
+          block: { type: 'tool_result', tool_use_id: 'tu_def', content: 'ok' },
+          expected: { kind: 'tool_result', toolUseId: 'tu_def', isError: false },
         },
-      });
+      ];
 
-      expect(events[0]).toMatchObject({ isError: false });
+      for (const testCase of cases) {
+        const events = adapter.mapMessage({
+          type: 'user',
+          message: { content: [testCase.block] },
+        });
+
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject(testCase.expected);
+      }
     });
   });
 
@@ -424,36 +416,43 @@ describe('ClaudeAdapter', () => {
       ]);
     });
 
-    it('maps non-success result to error', () => {
-      const events = adapter.mapMessage({
-        type: 'result',
-        subtype: 'error',
-        session_id: 'sess_err',
-        errors: ['Rate limit exceeded', 'Timeout'],
-      });
+    it('maps non-success result shapes to canonical errors', () => {
+      const cases = [
+        {
+          message: {
+            type: 'result',
+            subtype: 'error',
+            session_id: 'sess_err',
+            errors: ['Rate limit exceeded', 'Timeout'],
+          },
+          expected: {
+            sessionId: 'sess_err',
+            error: 'Rate limit exceeded; Timeout',
+          },
+        },
+        {
+          message: {
+            type: 'result',
+            subtype: 'error',
+            session_id: 'sess_err2',
+          },
+          expected: {
+            sessionId: 'sess_err2',
+            error: 'Unknown error',
+          },
+        },
+      ];
 
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({
-        kind: 'query_result',
-        sessionId: 'sess_err',
-        isError: true,
-        error: 'Rate limit exceeded; Timeout',
-      });
-    });
+      for (const testCase of cases) {
+        const events = adapter.mapMessage(testCase.message);
 
-    it('handles missing errors array', () => {
-      const events = adapter.mapMessage({
-        type: 'result',
-        subtype: 'error',
-        session_id: 'sess_err2',
-      });
-
-      expect(events[0]).toMatchObject({
-        kind: 'query_result',
-        sessionId: 'sess_err2',
-        isError: true,
-        error: 'Unknown error',
-      });
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          kind: 'query_result',
+          isError: true,
+          ...testCase.expected,
+        });
+      }
     });
 
     it('maps interrupt result to query_result with Interrupted error', () => {
@@ -504,161 +503,151 @@ describe('ClaudeAdapter', () => {
   // ── 10. system → status, agent_start, agent_progress, agent_complete ──
 
   describe('system message mapping', () => {
-    it('maps init to status', () => {
-      const events = adapter.mapMessage({
-        type: 'system',
-        subtype: 'init',
-        session_id: 'sess_init',
-        model: 'claude-sonnet-4-20250514',
-      });
+    it('maps supported system subtypes into canonical agent/status events', () => {
+      const cases = [
+        {
+          message: {
+            type: 'system',
+            subtype: 'init',
+            session_id: 'sess_init',
+            model: 'claude-sonnet-4-20250514',
+          },
+          expected: {
+            kind: 'status',
+            sessionId: 'sess_init',
+            model: 'claude-sonnet-4-20250514',
+          },
+        },
+        {
+          message: {
+            type: 'system',
+            subtype: 'task_started',
+            description: 'Analyzing code',
+            task_id: 'task_1',
+          },
+          expected: {
+            kind: 'agent_start',
+            description: 'Analyzing code',
+            taskId: 'task_1',
+          },
+        },
+        {
+          message: {
+            type: 'system',
+            subtype: 'task_progress',
+            summary: 'Found 3 files to edit',
+            description: 'Static description',
+            last_tool_name: 'Grep',
+            usage: { tool_uses: 5, duration_ms: 12000 },
+          },
+          expected: {
+            kind: 'agent_progress',
+            description: 'Found 3 files to edit',
+            lastTool: 'Grep',
+            usage: { toolUses: 5, durationMs: 12000 },
+          },
+        },
+        {
+          message: {
+            type: 'system',
+            subtype: 'task_progress',
+            description: 'Processing...',
+          },
+          expected: {
+            kind: 'agent_progress',
+            description: 'Processing...',
+          },
+        },
+        {
+          message: {
+            type: 'system',
+            subtype: 'task_notification',
+            summary: 'All files updated',
+            status: 'completed',
+          },
+          expected: {
+            kind: 'agent_complete',
+            summary: 'All files updated',
+            status: 'completed',
+          },
+        },
+      ];
 
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({
-        kind: 'status',
-        sessionId: 'sess_init',
-        model: 'claude-sonnet-4-20250514',
-      });
-    });
+      for (const testCase of cases) {
+        const events = adapter.mapMessage(testCase.message);
 
-    it('maps task_started to agent_start', () => {
-      const events = adapter.mapMessage({
-        type: 'system',
-        subtype: 'task_started',
-        description: 'Analyzing code',
-        task_id: 'task_1',
-      });
-
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({
-        kind: 'agent_start',
-        description: 'Analyzing code',
-        taskId: 'task_1',
-      });
-    });
-
-    it('maps task_progress to agent_progress with summary preferred', () => {
-      const events = adapter.mapMessage({
-        type: 'system',
-        subtype: 'task_progress',
-        summary: 'Found 3 files to edit',
-        description: 'Static description',
-        last_tool_name: 'Grep',
-        usage: { tool_uses: 5, duration_ms: 12000 },
-      });
-
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({
-        kind: 'agent_progress',
-        description: 'Found 3 files to edit', // summary preferred over description
-        lastTool: 'Grep',
-        usage: { toolUses: 5, durationMs: 12000 },
-      });
-    });
-
-    it('maps task_progress falling back to description', () => {
-      const events = adapter.mapMessage({
-        type: 'system',
-        subtype: 'task_progress',
-        description: 'Processing...',
-      });
-
-      expect(events[0]).toMatchObject({
-        kind: 'agent_progress',
-        description: 'Processing...',
-      });
-    });
-
-    it('maps task_notification to agent_complete', () => {
-      const events = adapter.mapMessage({
-        type: 'system',
-        subtype: 'task_notification',
-        summary: 'All files updated',
-        status: 'completed',
-      });
-
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({
-        kind: 'agent_complete',
-        summary: 'All files updated',
-        status: 'completed',
-      });
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject(testCase.expected);
+      }
     });
   });
 
   // ── 11. tool_progress (>3s filter) ──
 
   describe('tool_progress filtering', () => {
-    it('emits tool_progress when elapsed > 3s', () => {
-      const events = adapter.mapMessage({
-        type: 'tool_progress',
-        tool_name: 'Bash',
-        elapsed_time_seconds: 5,
-      });
+    it('emits only meaningful long-running tool progress', () => {
+      const cases = [
+        { elapsed: 5, expectedLength: 1 },
+        { elapsed: 3, expectedLength: 0 },
+        { elapsed: 2, expectedLength: 0 },
+      ];
 
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({
-        kind: 'tool_progress',
-        toolName: 'Bash',
-        elapsed: 5,
-      });
-    });
+      for (const testCase of cases) {
+        const events = adapter.mapMessage({
+          type: 'tool_progress',
+          tool_name: 'Bash',
+          elapsed_time_seconds: testCase.elapsed,
+        });
 
-    it('filters tool_progress when elapsed <= 3s', () => {
-      const events = adapter.mapMessage({
-        type: 'tool_progress',
-        tool_name: 'Bash',
-        elapsed_time_seconds: 2,
-      });
-
-      expect(events).toHaveLength(0);
-    });
-
-    it('filters tool_progress when elapsed is exactly 3s', () => {
-      const events = adapter.mapMessage({
-        type: 'tool_progress',
-        tool_name: 'Bash',
-        elapsed_time_seconds: 3,
-      });
-
-      expect(events).toHaveLength(0);
+        expect(events).toHaveLength(testCase.expectedLength);
+        if (testCase.expectedLength > 0) {
+          expect(events[0]).toMatchObject({
+            kind: 'tool_progress',
+            toolName: 'Bash',
+            elapsed: testCase.elapsed,
+          });
+        }
+      }
     });
   });
 
   // ── 12. rate_limit ──
 
   describe('rate_limit mapping', () => {
-    it('emits rate_limit for rejected status', () => {
-      const events = adapter.mapMessage({
-        type: 'rate_limit_event',
-        rate_limit_info: { status: 'rejected', utilization: 0.95, resetsAt: 1700000000 },
-      });
+    it('emits only rejected or warning rate-limit statuses', () => {
+      const cases = [
+        {
+          info: { status: 'rejected', utilization: 0.95, resetsAt: 1700000000 },
+          expected: {
+            kind: 'rate_limit',
+            status: 'rejected',
+            utilization: 0.95,
+            resetsAt: 1700000000,
+          },
+        },
+        {
+          info: { status: 'allowed_warning', utilization: 0.8 },
+          expected: { kind: 'rate_limit', status: 'allowed_warning' },
+        },
+        {
+          info: { status: 'allowed' },
+          expected: undefined,
+        },
+      ];
 
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({
-        kind: 'rate_limit',
-        status: 'rejected',
-        utilization: 0.95,
-        resetsAt: 1700000000,
-      });
-    });
+      for (const testCase of cases) {
+        const events = adapter.mapMessage({
+          type: 'rate_limit_event',
+          rate_limit_info: testCase.info,
+        });
 
-    it('emits rate_limit for allowed_warning status', () => {
-      const events = adapter.mapMessage({
-        type: 'rate_limit_event',
-        rate_limit_info: { status: 'allowed_warning', utilization: 0.8 },
-      });
-
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({ kind: 'rate_limit', status: 'allowed_warning' });
-    });
-
-    it('filters out non-rejected/warning rate_limit events', () => {
-      const events = adapter.mapMessage({
-        type: 'rate_limit_event',
-        rate_limit_info: { status: 'allowed' },
-      });
-
-      expect(events).toHaveLength(0);
+        if (testCase.expected) {
+          expect(events).toHaveLength(1);
+          expect(events[0]).toMatchObject(testCase.expected);
+        } else {
+          expect(events).toHaveLength(0);
+        }
+      }
     });
   });
 
@@ -719,19 +708,4 @@ describe('ClaudeAdapter', () => {
     });
   });
 
-  // ── Zod validation ──
-
-  describe('Zod validation', () => {
-    it('all emitted events pass Zod validation', () => {
-      // This is implicitly tested by every other test since mapMessage
-      // calls canonicalEventSchema.parse(), but let's be explicit
-      const events = adapter.mapMessage({
-        type: 'stream_event',
-        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'valid' } },
-      });
-
-      expect(events).toHaveLength(1);
-      // If Zod validation failed, mapMessage would have thrown
-    });
-  });
 });
