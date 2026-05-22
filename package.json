@@ -1,6 +1,6 @@
 {
   "name": "tlive",
-  "version": "0.13.8-beta.3",
+  "version": "0.13.8",
   "description": "Feishu bridge for Claude Code and Codex",
   "type": "module",
   "main": "dist/main.mjs",
