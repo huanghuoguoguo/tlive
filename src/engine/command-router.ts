@@ -261,6 +261,7 @@ export class CommandRouter {
       isActive: this.services.activeControls.has(sessionKey),
       permissionMode: this.state.getPermMode(msg.channelType, scopeId, binding?.sessionId),
       capabilities: {
+        runtimeMode: provider.capabilities.runtimeMode,
         nativeSteer: provider.capabilities.nativeSteer,
         nativeQueue: provider.capabilities.nativeQueue,
         interactivePermissions: provider.capabilities.interactivePermissions,

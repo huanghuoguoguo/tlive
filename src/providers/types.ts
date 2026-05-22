@@ -2,6 +2,9 @@ import type { FileAttachment } from '../media/attachments.js';
 
 export type { FileAttachment };
 
+/** Runtime execution shape exposed at the provider capability boundary. */
+export type AgentProviderRuntimeMode = 'interactive' | 'turn-based';
+
 /** Permission request handler — called by canUseTool. */
 export type PermissionRequestHandler = (
   toolName: string,

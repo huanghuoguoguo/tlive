@@ -11,7 +11,8 @@ import { CodexLiveSession, type CodexRuntimeOptions } from './codex-live-session
 export class CodexSDKProvider implements AgentProvider {
   readonly kind = 'codex' as const;
   readonly displayName = 'Codex';
-  readonly capabilities: AgentProviderCapabilities = {
+  readonly capabilities = {
+    runtimeMode: 'turn-based',
     nativeSteer: false,
     nativeQueue: false,
     interactivePermissions: false,
@@ -20,7 +21,7 @@ export class CodexSDKProvider implements AgentProvider {
     settingSources: false,
     sessionResume: true,
     imageInputs: true,
-  };
+  } satisfies AgentProviderCapabilities;
 
   constructor(private readonly runtimeOptions: CodexRuntimeOptions = {}) {
     const model = runtimeOptions.model ? ` model=${runtimeOptions.model}` : '';

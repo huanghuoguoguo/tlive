@@ -55,6 +55,12 @@ describe('ClaudeSDKProvider', () => {
   });
 
   describe('constructor', () => {
+    it('marks Claude as an interactive runtime', () => {
+      expect(provider.capabilities.runtimeMode).toBe('interactive');
+      expect(provider.capabilities.nativeSteer).toBe(true);
+      expect(provider.capabilities.nativeQueue).toBe(true);
+    });
+
     it('accepts setting sources', () => {
       const p = new ClaudeSDKProvider(['user', 'project']);
       expect(p.getDefaultSettingSources()).toEqual(['user', 'project']);

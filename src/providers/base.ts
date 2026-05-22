@@ -9,6 +9,7 @@ import type {
   PermissionRequestHandler,
   PermissionTimeoutCallback,
   QueryControls,
+  AgentProviderRuntimeMode,
 } from './types.js';
 
 export type {
@@ -24,6 +25,8 @@ export type { EffortLevel };
 export type { AgentProviderKind };
 
 export interface AgentProviderCapabilities {
+  /** Provider runtime shape; do not infer this from native steering flags. */
+  runtimeMode: AgentProviderRuntimeMode;
   /** Provider can inject text into a running turn. */
   nativeSteer: boolean;
   /** Provider can enqueue follow-up messages inside its own runtime. */

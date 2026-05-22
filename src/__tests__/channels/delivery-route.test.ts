@@ -19,6 +19,14 @@ function inbound(overrides: Partial<InboundMessage> = {}): InboundMessage {
 }
 
 describe('delivery route helpers', () => {
+  it('derives workbench delivery route from inbound messages', () => {
+    expect(deliveryRouteFromInbound(inbound())).toMatchObject({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      scopeId: 'chat-1',
+    });
+  });
+
   it('derives logical scope and topic reply target from inbound messages', () => {
     const route = deliveryRouteFromInbound(inbound({
       threadId: 'thread-1',
@@ -32,6 +40,18 @@ describe('delivery route helpers', () => {
       threadId: 'thread-1',
       replyToMessageId: 'msg-topic',
       replyInThread: true,
+    });
+  });
+
+  it('maps canonical reply targets into delivery reply fields', () => {
+    expect(deliveryRouteFromInbound(inbound({
+      replyTargetMessageId: 'reply-target',
+      replyToMessageId: 'legacy-reply-target',
+    }))).toMatchObject({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      scopeId: 'chat-1',
+      replyToMessageId: 'reply-target',
     });
   });
 

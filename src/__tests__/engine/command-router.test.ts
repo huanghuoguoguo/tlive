@@ -33,6 +33,7 @@ function createMockClaudeProvider(): ClaudeSDKProvider {
     kind: 'claude',
     displayName: 'Claude Code',
     capabilities: {
+      runtimeMode: 'interactive',
       nativeSteer: true,
       nativeQueue: true,
       interactivePermissions: true,
@@ -50,6 +51,7 @@ function createMockCodexProvider() {
     kind: 'codex',
     displayName: 'Codex',
     capabilities: {
+      runtimeMode: 'turn-based',
       nativeSteer: false,
       nativeQueue: false,
       interactivePermissions: false,
@@ -359,6 +361,9 @@ describe('CommandRouter /settings', () => {
         sdkSessionId: 'sdk-123456789',
         isActive: false,
         permissionMode: 'on',
+        capabilities: expect.objectContaining({
+          runtimeMode: 'interactive',
+        }),
       }),
     }));
     expect(adapterWithFormat.send).toHaveBeenCalledWith(expect.objectContaining({

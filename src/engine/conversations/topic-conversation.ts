@@ -5,7 +5,11 @@ import type { ChannelRouter } from '../../utils/router.js';
 import type { SDKEngine, ResolvedSessionTarget } from '../sdk/engine.js';
 import type { TopicSessionManager } from '../state/topic-sessions.js';
 import { chatScopeId, sessionKey as buildSessionKey } from '../../core/key.js';
-import { conversationScopeId } from '../../channels/conversation-context.js';
+import {
+  conversationRouteFromInbound,
+  conversationScopeId,
+  type ConversationRoute,
+} from '../../channels/conversation-context.js';
 import { generateSessionId } from '../../core/id.js';
 import { truncate } from '../../core/string.js';
 import { Logger } from '../../logger.js';
@@ -26,10 +30,19 @@ export interface TopicConversationServiceOptions {
 
 export interface ResolvedConversation {
   msg: InboundMessage;
+  route: ConversationRoute;
   scopeId: string;
   binding: ChannelBinding;
   target?: ResolvedSessionTarget;
   failureReason?: SessionTargetFailureReason;
+}
+
+export interface TopicSessionBindingSnapshot {
+  channelType?: string;
+  chatId?: string;
+  cwd?: string;
+  sdkSessionId?: string;
+  provider?: ChannelBinding['provider'];
 }
 
 interface ClaimedThreadSession {
@@ -51,14 +64,15 @@ export class TopicConversationService {
     rawMsg: InboundMessage,
   ): Promise<ResolvedConversation> {
     const msg = await this.ensureTopicScope(adapter, rawMsg);
-    const scopeId = conversationScopeId(msg);
+    const route = conversationRouteFromInbound(msg);
+    const scopeId = route.logicalScopeId;
     const existingBinding = await this.options.store.getBinding(msg.channelType, scopeId);
     let binding = existingBinding ?? (await this.options.router.resolve(msg.channelType, scopeId));
 
     const claimed = await this.claimThreadSession(msg, scopeId, binding, !existingBinding);
     if (claimed) {
       binding = claimed.binding;
-      return { msg, scopeId, binding, target: claimed.target };
+      return { msg, route, scopeId, binding, target: claimed.target };
     }
 
     const sessionReplyMessageId = msg.threadId ? undefined : msg.replyToMessageId;
@@ -81,6 +95,7 @@ export class TopicConversationService {
 
     return {
       msg,
+      route,
       scopeId,
       binding,
       target: targetResult.target,
@@ -90,13 +105,7 @@ export class TopicConversationService {
 
   recordTopicSession(
     msg: InboundMessage,
-    binding: {
-      channelType?: string;
-      chatId?: string;
-      cwd?: string;
-      sdkSessionId?: string;
-      provider?: ChannelBinding['provider'];
-    },
+    binding: TopicSessionBindingSnapshot,
     updates: { sdkSessionId?: string; lastMessageId?: string } = {},
   ): void {
     if (!msg.threadId || !this.options.topicSessions) return;

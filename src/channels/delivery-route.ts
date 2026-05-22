@@ -1,5 +1,5 @@
 import type { InboundMessage } from './types.js';
-import { conversationContextFromInbound } from './conversation-context.js';
+import { conversationRouteFromInbound } from './conversation-context.js';
 
 export interface DeliveryRoute {
   channelType: string;
@@ -28,14 +28,14 @@ export type RoutableMessage = {
 };
 
 export function deliveryRouteFromInbound(msg: InboundMessage): DeliveryRoute {
-  const context = conversationContextFromInbound(msg);
+  const route = conversationRouteFromInbound(msg);
   return {
-    channelType: context.channelType,
-    chatId: context.chatId,
-    scopeId: context.scopeId,
-    threadId: context.threadId,
-    replyToMessageId: context.replyToMessageId,
-    replyInThread: context.replyInThread,
+    channelType: route.channelType,
+    chatId: route.platformChatId,
+    scopeId: route.logicalScopeId,
+    threadId: route.threadId,
+    replyToMessageId: route.replyTargetMessageId,
+    replyInThread: route.replyInThread,
   };
 }
 

@@ -324,6 +324,14 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
     const isZh = this.locale === 'zh';
     const sdkSession = data.sdkSessionId ? data.sdkSessionId.slice(0, 8) : isZh ? '未建立' : 'none';
     const status = data.isActive ? (isZh ? '执行中' : 'running') : isZh ? '空闲' : 'idle';
+    const runtimeMode =
+      data.capabilities.runtimeMode === 'interactive'
+        ? isZh
+          ? '交互式'
+          : 'interactive'
+        : isZh
+          ? '按回合'
+          : 'turn-based';
     const permissionStatus =
       data.permissionMode === 'on'
         ? isZh
@@ -352,7 +360,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
 
     const elements: FeishuCardElement[] = [
       this.md(
-        `**${isZh ? '当前会话' : 'Current session'}**\n${data.providerDisplayName} · \`${sdkSession}\` · ${status}`,
+        `**${isZh ? '当前会话' : 'Current session'}**\n${data.providerDisplayName} · ${runtimeMode} · \`${sdkSession}\` · ${status}`,
       ),
       this.md(`**${isZh ? '目录' : 'Directory'}**\n\`${data.cwd}\``),
       this.md(`${slashLine}${permissionLine ? `\n${permissionLine}` : ''}`),

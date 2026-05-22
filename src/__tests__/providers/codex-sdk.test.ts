@@ -23,7 +23,7 @@ vi.mock('@openai/codex-sdk', () => ({
 }));
 
 import { CodexLiveSession, resolveCodexSessionOptions } from '../../providers/codex-live-session.js';
-import { toCodexReasoningEffort } from '../../providers/codex-sdk.js';
+import { CodexSDKProvider, toCodexReasoningEffort } from '../../providers/codex-sdk.js';
 
 describe('CodexSDKProvider', () => {
   const originalCodexHome = process.env.CODEX_HOME;
@@ -46,6 +46,14 @@ describe('CodexSDKProvider', () => {
     expect(toCodexReasoningEffort('max')).toBe('xhigh');
     expect(toCodexReasoningEffort('high')).toBe('high');
     expect(toCodexReasoningEffort(undefined)).toBeUndefined();
+  });
+
+  it('marks Codex as a turn-based runtime', () => {
+    const provider = new CodexSDKProvider();
+
+    expect(provider.capabilities.runtimeMode).toBe('turn-based');
+    expect(provider.capabilities.nativeSteer).toBe(false);
+    expect(provider.capabilities.nativeQueue).toBe(false);
   });
 
   it('resolves Codex model and effort from current session defaults when not explicit', () => {

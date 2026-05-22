@@ -13,15 +13,18 @@ import type { TopicSessionManager } from '../state/topic-sessions.js';
 import { Logger, type LogContext } from '../../logger.js';
 import type { AgentProvider } from '../../providers/base.js';
 import { singleProviderRegistry, type AgentProviderRegistry } from '../../providers/registry.js';
-import { SessionStaleError } from '../state/session-stale-error.js';
 import { QueryContext } from './query-context.js';
 import { withInboundReplyContext } from '../../channels/reply-context.js';
-import { TopicConversationService } from '../conversations/topic-conversation.js';
+import {
+  TopicConversationService,
+  type TopicSessionBindingSnapshot,
+} from '../conversations/topic-conversation.js';
 import { deliveryRouteFromInbound } from '../../channels/delivery-route.js';
 import { QueryTurnRunner } from './query-turn-runner.js';
 import { conversationScopeId } from '../../channels/conversation-context.js';
 import { QueryPresentationFactory } from './query-presentation.js';
 import { QuerySdkInteractionsFactory } from './query-sdk-interactions.js';
+import { QueryRecoveryPolicy } from './query-recovery.js';
 
 interface QueryOrchestratorOptions {
   engine: ConversationEngine;
@@ -50,6 +53,7 @@ export class QueryOrchestrator {
   private turnRunner: QueryTurnRunner;
   private presentation: QueryPresentationFactory;
   private sdkInteractions: QuerySdkInteractionsFactory;
+  private recovery: QueryRecoveryPolicy;
 
   constructor(private options: QueryOrchestratorOptions) {
     const providers = options.providers ?? singleProviderRegistry(options.llm);
@@ -82,6 +86,12 @@ export class QueryOrchestrator {
       router: options.router,
       interactionState: options.sdkEngine.getInteractionState(),
     });
+    this.recovery = new QueryRecoveryPolicy({
+      defaultWorkdir: options.defaultWorkdir,
+      sdkEngine: options.sdkEngine,
+      state: options.state,
+      store: options.store,
+    });
   }
 
   async run(
@@ -92,7 +102,7 @@ export class QueryOrchestrator {
     const rawMsg = msg;
     const resolved = await this.conversations.resolve(adapter, msg);
     msg = resolved.msg;
-    const scopeId = resolved.scopeId;
+    const scopeId = resolved.route.logicalScopeId;
     await this.options.onConversationMessageResolved?.(msg, rawMsg);
     const ctx: LogContext = { requestId, chatId: scopeId };
     // Update last active time (no session reset - let SDK decide via SessionStaleError)
@@ -222,47 +232,20 @@ export class QueryOrchestrator {
         // Turn reached a terminal state; break out of retry loop.
         break;
       } catch (err) {
-        // Check if this is a stale session error - retry with fresh session
-        if (err instanceof SessionStaleError && attemptCount < maxAttempts) {
-          console.log(`[query] ${ctx.requestId} SESSION_STALE retrying with fresh session`);
-          resumeFallbackMessage = '🔄 旧会话无法恢复，已为你开启新会话';
-
-          // Clear sdkSessionId and recycle the stale live session
-          currentBinding.sdkSessionId = undefined;
-          this.options.sdkEngine.updateSessionSdkSessionId?.(sessionTarget.sessionKey, undefined);
-          this.options.sdkEngine.resetSessionRuntime?.(sessionTarget.sessionKey, 'expire');
-          sessionTarget = { ...sessionTarget, sdkSessionId: undefined };
-          routeBinding = { ...currentBinding };
-          if (sessionTarget.source === 'current') {
-            await this.options.store.saveBinding(currentBinding);
-          }
-
-          // Send task start notification card for stale session recovery
-          const staleTaskStartMsg = adapter.format({
-            type: 'taskStart',
-            chatId: msg.chatId,
-            data: {
-              cwd: shortPath(currentBinding.cwd || this.options.defaultWorkdir),
-              permissionMode: this.options.state.getPermMode(
-                msg.channelType,
-                scopeId,
-                currentBinding.sessionId,
-              ),
-              isNewSession: true,
-              reason: 'stale',
-            },
+        if (this.recovery.canRetryStaleSession(err, attemptCount, maxAttempts)) {
+          const recovered = await this.recovery.recoverStaleSession({
+            adapter,
+            msg,
+            scopeId,
+            currentBinding,
+            sessionTarget,
+            requestId: ctx.requestId,
+            renderer,
+            presenter,
           });
-          await adapter.send(withInboundReplyContext(staleTaskStartMsg, msg));
-
-          // Continue to next iteration with fresh binding
-          renderer.dispose();
-          await presenter.dispose();
-          this.options.sdkEngine.setControlsForChat(
-            this.options.state.stateKey(msg.channelType, scopeId),
-            undefined,
-            sessionTarget.sessionKey,
-          );
-
+          routeBinding = recovered.routeBinding;
+          sessionTarget = recovered.sessionTarget;
+          resumeFallbackMessage = recovered.resumeFallbackMessage;
           continue;
         }
 
@@ -283,13 +266,7 @@ export class QueryOrchestrator {
 
   private recordTopicSession(
     msg: InboundMessage,
-    binding: {
-      channelType?: string;
-      chatId?: string;
-      cwd?: string;
-      sdkSessionId?: string;
-      provider?: ChannelBinding['provider'];
-    },
+    binding: TopicSessionBindingSnapshot,
     updates: { sdkSessionId?: string; lastMessageId?: string } = {},
   ): void {
     this.conversations.recordTopicSession(msg, binding, updates);
@@ -297,13 +274,7 @@ export class QueryOrchestrator {
 
   private linkProgressMessage(
     msg: InboundMessage,
-    binding: {
-      channelType?: string;
-      chatId?: string;
-      cwd?: string;
-      sdkSessionId?: string;
-      provider?: ChannelBinding['provider'];
-    },
+    binding: TopicSessionBindingSnapshot,
     sessionKey: string,
     messageId: string,
   ): void {

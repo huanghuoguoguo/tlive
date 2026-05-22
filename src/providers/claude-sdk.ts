@@ -136,7 +136,8 @@ interface StreamState {
 export class ClaudeSDKProvider implements AgentProvider {
   readonly kind = 'claude' as const;
   readonly displayName = 'Claude Code';
-  readonly capabilities: AgentProviderCapabilities = {
+  readonly capabilities = {
+    runtimeMode: 'interactive',
     nativeSteer: true,
     nativeQueue: true,
     interactivePermissions: true,
@@ -145,7 +146,7 @@ export class ClaudeSDKProvider implements AgentProvider {
     settingSources: true,
     sessionResume: true,
     imageInputs: true,
-  };
+  } satisfies AgentProviderCapabilities;
 
   private cliPath: string | undefined;
   private defaultSettingSources: AgentSettingSource[];

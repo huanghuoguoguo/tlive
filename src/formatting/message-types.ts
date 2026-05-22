@@ -5,6 +5,7 @@
 
 import type { Button } from '../ui/types.js';
 import type { AgentProviderKind } from '../providers/kinds.js';
+import type { AgentProviderRuntimeMode } from '../providers/types.js';
 
 export interface ChannelInfo {
   type: string;
@@ -222,6 +223,7 @@ export interface TopicCommandPaletteData {
   isActive: boolean;
   permissionMode: 'on' | 'off';
   capabilities: {
+    runtimeMode: AgentProviderRuntimeMode;
     nativeSteer: boolean;
     nativeQueue: boolean;
     interactivePermissions: boolean;

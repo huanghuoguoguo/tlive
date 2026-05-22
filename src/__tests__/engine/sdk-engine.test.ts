@@ -337,4 +337,29 @@ describe('SDKEngine', () => {
       expect(engine.getSessionsForChat('feishu', 'chat-1#thread:thread-1')[0].sessionKey).toBe(newKey);
     });
   });
+
+  describe('file delivery routes', () => {
+    it('resolves file delivery tokens without consuming them', () => {
+      const token = engine.registerFileDeliveryRoute(
+        DEFAULT_SESSION_KEY,
+        {
+          channelType: 'feishu',
+          chatId: 'chat-1',
+          scopeId: 'chat-1',
+        },
+        '/workdir',
+      );
+
+      expect(engine.resolveFileDeliveryToken(token)).toMatchObject({
+        chatId: 'chat-1',
+        cwd: '/workdir',
+        sessionKey: DEFAULT_SESSION_KEY,
+      });
+      expect(engine.resolveFileDeliveryToken(token)).toMatchObject({
+        chatId: 'chat-1',
+        cwd: '/workdir',
+        sessionKey: DEFAULT_SESSION_KEY,
+      });
+    });
+  });
 });

@@ -28,8 +28,12 @@ import {
 } from './session-manager.js';
 import { QueueManager, type QueueStats } from './queue-manager.js';
 import { splitChatKey } from '../../core/key.js';
-import { randomBytes } from 'node:crypto';
 import type { DeliveryRoute, FileDeliveryRoute } from '../../channels/delivery-route.js';
+import {
+  TurnControlRegistry,
+  type TurnControlCleanupOptions,
+} from './turn-control-registry.js';
+import { FileDeliveryRegistry } from './file-delivery-registry.js';
 
 // Re-export for backward compatibility
 export type { SessionCleanupReason } from './session-manager.js';
@@ -68,15 +72,11 @@ export interface ResolvedSessionTarget {
 export class SDKEngine {
   private sessions: SessionManager;
   private queues: QueueManager;
-
-  private activeControlsBySession = new Map<string, QueryControls>();
-  private activeControlsByChat = new Map<string, QueryControls>();
-  private controlChatBySession = new Map<string, string>();
-  private fileDeliveryRoutes = new Map<string, { route: FileDeliveryRoute; createdAt: number }>();
+  private turnControls: TurnControlRegistry;
+  private fileDelivery: FileDeliveryRegistry;
 
   // SDK AskUserQuestion state — shared with routing / callbacks via InteractionState.
   private interactions = new InteractionState();
-  private static readonly FILE_DELIVERY_ROUTE_TTL_MS = 6 * 60 * 60 * 1000;
 
   /** Optional callback after an idle live session is pruned */
   onSessionPruned?: (sessionKey: string) => void;
@@ -86,6 +86,8 @@ export class SDKEngine {
   constructor() {
     this.sessions = new SessionManager();
     this.queues = new QueueManager();
+    this.turnControls = new TurnControlRegistry();
+    this.fileDelivery = new FileDeliveryRegistry();
     // Forward the pruning callback
     this.sessions.onSessionPruned = (sessionKey: string) => {
       this.onSessionPruned?.(sessionKey);
@@ -154,31 +156,16 @@ export class SDKEngine {
   }
 
   moveSessionToChat(sessionKey: string, newChatId: string): string | undefined {
-    const oldChatKey = this.controlChatBySession.get(sessionKey);
     const newSessionKey = this.sessions.moveSessionToChat(sessionKey, newChatId);
     if (!newSessionKey || newSessionKey === sessionKey) return newSessionKey;
 
     this.queues.moveSessionKey(sessionKey, newSessionKey);
 
-    const controls = this.activeControlsBySession.get(sessionKey);
-    if (controls) {
-      this.activeControlsBySession.delete(sessionKey);
-      this.activeControlsBySession.set(newSessionKey, controls);
-    }
-
-    if (oldChatKey) {
-      this.controlChatBySession.delete(sessionKey);
-      this.activeControlsByChat.delete(oldChatKey);
-    }
-
     const managed = this.sessions.getSessionContext(newSessionKey);
-    if (managed) {
-      const newChatKey = this.sessions.chatKey(managed.channelType, managed.chatId);
-      this.controlChatBySession.set(newSessionKey, newChatKey);
-      if (controls) {
-        this.activeControlsByChat.set(newChatKey, controls);
-      }
-    }
+    const newChatKey = managed
+      ? this.sessions.chatKey(managed.channelType, managed.chatId)
+      : undefined;
+    this.turnControls.moveSession(sessionKey, newSessionKey, newChatKey);
 
     return newSessionKey;
   }
@@ -248,23 +235,7 @@ export class SDKEngine {
   }
 
   private cleanupControlsForSession(sessionKey: string): void {
-    this.activeControlsBySession.delete(sessionKey);
-    const chatKey = this.controlChatBySession.get(sessionKey);
-    if (!chatKey) return;
-    this.controlChatBySession.delete(sessionKey);
-
-    // Try to find fallback from the current default session
-    const { channelType, chatId } = splitChatKey(chatKey);
-    const defaultSessionKey = this.sessions.getActiveSessionKey(channelType, chatId);
-    if (defaultSessionKey) {
-      const defaultCtrl = this.activeControlsBySession.get(defaultSessionKey);
-      if (defaultCtrl) {
-        this.activeControlsByChat.set(chatKey, defaultCtrl);
-        return;
-      }
-    }
-
-    this.activeControlsByChat.delete(chatKey);
+    this.turnControls.cleanupSessionControls(sessionKey, this.turnControlCleanupOptions());
   }
 
   /**
@@ -500,38 +471,32 @@ export class SDKEngine {
 
   /** Get active controls for a chat (legacy /stop wiring). */
   getActiveControls(): Map<string, QueryControls> {
-    return this.activeControlsByChat;
+    return this.turnControls.getActiveControls();
   }
 
   /** Get active controls for a specific chat */
   getControlsForChat(chatKey: string): QueryControls | undefined {
-    return this.activeControlsByChat.get(chatKey);
+    return this.turnControls.getControlsForChat(chatKey);
   }
 
   /** Get active controls for a specific logical session. */
   getControlsForSession(sessionKey: string): QueryControls | undefined {
-    return this.activeControlsBySession.get(sessionKey);
+    return this.turnControls.getControlsForSession(sessionKey);
   }
 
   async interruptSession(sessionKey: string): Promise<boolean> {
-    const ctrl = this.activeControlsBySession.get(sessionKey);
+    const ctrl = this.turnControls.consumeSessionControls(
+      sessionKey,
+      this.turnControlCleanupOptions(),
+    );
     if (!ctrl) return false;
-    this.cleanupControlsForSession(sessionKey);
     await ctrl.interrupt();
     return true;
   }
 
   async interruptChat(chatKey: string): Promise<boolean> {
-    const ctrl = this.activeControlsByChat.get(chatKey);
+    const ctrl = this.turnControls.consumeChatControls(chatKey, this.turnControlCleanupOptions());
     if (!ctrl) return false;
-    const sessionKey = [...this.controlChatBySession.entries()].find(
-      ([, key]) => key === chatKey,
-    )?.[0];
-    if (sessionKey) {
-      this.cleanupControlsForSession(sessionKey);
-    } else {
-      this.activeControlsByChat.delete(chatKey);
-    }
     await ctrl.interrupt();
     return true;
   }
@@ -546,35 +511,29 @@ export class SDKEngine {
     const targetSessionKey =
       sessionKey ?? this.sessions.getActiveSessionKey(channelType, chatId) ?? chatKey;
 
-    if (controls) {
-      this.activeControlsBySession.set(targetSessionKey, controls);
-      this.activeControlsByChat.set(chatKey, controls);
-      this.controlChatBySession.set(targetSessionKey, chatKey);
-      return;
-    }
+    this.turnControls.setControlsForChat(
+      chatKey,
+      controls,
+      targetSessionKey,
+      this.turnControlCleanupOptions(),
+    );
+  }
 
-    this.cleanupControlsForSession(targetSessionKey);
+  private turnControlCleanupOptions(): TurnControlCleanupOptions {
+    return {
+      resolveFallbackSessionKey: (chatKey: string) => {
+        const { channelType, chatId } = splitChatKey(chatKey);
+        return this.sessions.getActiveSessionKey(channelType, chatId);
+      },
+    };
   }
 
   registerFileDeliveryRoute(sessionKey: string, route: DeliveryRoute, cwd: string): string {
-    this.pruneFileDeliveryRoutes();
-    const token = randomBytes(18).toString('base64url');
-    const fileRoute: FileDeliveryRoute = { ...route, cwd, sessionKey };
-    this.fileDeliveryRoutes.set(token, { route: fileRoute, createdAt: Date.now() });
-    return token;
+    return this.fileDelivery.register(sessionKey, route, cwd);
   }
 
   resolveFileDeliveryToken(token: string): FileDeliveryRoute | undefined {
-    this.pruneFileDeliveryRoutes();
-    return this.fileDeliveryRoutes.get(token)?.route;
-  }
-
-  private pruneFileDeliveryRoutes(now = Date.now()): void {
-    for (const [token, entry] of this.fileDeliveryRoutes) {
-      if (now - entry.createdAt > SDKEngine.FILE_DELIVERY_ROUTE_TTL_MS) {
-        this.fileDeliveryRoutes.delete(token);
-      }
-    }
+    return this.fileDelivery.resolve(token);
   }
 
   /** Track progress bubble messageId → sessionKey mapping */

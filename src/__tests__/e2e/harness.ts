@@ -209,6 +209,7 @@ export class FakeClaudeProvider {
   readonly kind = 'claude' as const;
   readonly displayName = 'Claude';
   readonly capabilities = {
+    runtimeMode: 'interactive',
     nativeSteer: true,
     nativeQueue: true,
     interactivePermissions: true,
