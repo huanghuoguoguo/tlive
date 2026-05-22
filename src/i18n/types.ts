@@ -187,6 +187,7 @@ export interface Translations {
   'format.titleTaskStart': string;
   'format.titleTaskEnd': string;
   'format.titleTaskSummary': string;
+  'format.titleDiagnose': string;
   'format.statusRunning': string;
   'format.statusDisconnected': string;
   'format.statusActive': string;
@@ -195,6 +196,16 @@ export interface Translations {
   'format.queueEmpty': string;
   'format.flushErrorTitle': string;
   'format.flushErrorHint': string;
+
+  // --- diagnose ---
+  'diagnose.labelSessions': string;
+  'diagnose.labelQueuedMessages': string;
+  'diagnose.labelProcessingChats': string;
+  'diagnose.labelBubbleMappings': string;
+  'diagnose.labelQueueUtilization': string;
+  'diagnose.labelSaturatedSessions': string;
+  'diagnose.labelBusiestSession': string;
+  'diagnose.labelQueueDetail': string;
 
   // --- adapter ---
   'adapter.submitted': string;

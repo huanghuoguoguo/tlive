@@ -1,8 +1,9 @@
 import type { DiagnoseData } from '../../formatting/message-types.js';
+import { t, type Locale } from '../../i18n/index.js';
 import type { FeishuCardElement } from './card-builder.js';
 import { mdElement } from './format-home.js';
 
-export function buildDiagnoseElements(data: DiagnoseData): {
+export function buildDiagnoseElements(data: DiagnoseData, locale: Locale): {
   elements: FeishuCardElement[];
   saturatedSessions: number;
 } {
@@ -22,28 +23,28 @@ export function buildDiagnoseElements(data: DiagnoseData): {
         }, data.queueStats[0])
       : undefined);
   const lines = [
-    `**Sessions** active ${data.activeSessions}, idle ${data.idleSessions}`,
-    `**Queued messages** ${data.totalQueuedMessages}`,
-    `**Processing chats** ${data.processingChats}`,
-    `**Bubble mappings** ${data.totalBubbleMappings}`,
+    `**${t(locale, 'diagnose.labelSessions')}** ${t(locale, 'format.statusActive')} ${data.activeSessions}, ${t(locale, 'format.statusIdle')} ${data.idleSessions}`,
+    `**${t(locale, 'diagnose.labelQueuedMessages')}** ${data.totalQueuedMessages}`,
+    `**${t(locale, 'diagnose.labelProcessingChats')}** ${data.processingChats}`,
+    `**${t(locale, 'diagnose.labelBubbleMappings')}** ${data.totalBubbleMappings}`,
   ];
   if (queueUtilizationRatio !== undefined) {
-    lines.push(`**Queue utilization** ${Math.round(queueUtilizationRatio * 100)}%`);
+    lines.push(`**${t(locale, 'diagnose.labelQueueUtilization')}** ${Math.round(queueUtilizationRatio * 100)}%`);
   }
   if (saturatedSessions > 0) {
-    lines.push(`**Saturated sessions** ${saturatedSessions}`);
+    lines.push(`**${t(locale, 'diagnose.labelSaturatedSessions')}** ${saturatedSessions}`);
   }
   if (busiestSession) {
-    lines.push(`**Busiest session** ${busiestSession.depth}/${busiestSession.maxDepth}`);
+    lines.push(`**${t(locale, 'diagnose.labelBusiestSession')}** ${busiestSession.depth}/${busiestSession.maxDepth}`);
   }
   if (data.memoryUsage) {
-    lines.push(`**Memory** ${data.memoryUsage}`);
+    lines.push(`**${t(locale, 'format.labelMemory')}** ${data.memoryUsage}`);
   }
   const elements: FeishuCardElement[] = [mdElement(lines.join('\n'))];
   if (data.queueStats.length > 0) {
     elements.push(
       mdElement(
-        `**Queue detail**\n${data.queueStats
+        `**${t(locale, 'diagnose.labelQueueDetail')}**\n${data.queueStats
           .map((stat) => `- \`${stat.sessionKey}\` ${stat.depth}/${stat.maxDepth}`)
           .join('\n')}`,
       ),

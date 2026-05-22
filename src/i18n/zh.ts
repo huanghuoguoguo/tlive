@@ -185,6 +185,7 @@ export const zh: Translations = {
   'format.titleTaskStart': '🚀 开始执行',
   'format.titleTaskEnd': '⚠️ 任务结束',
   'format.titleTaskSummary': '✅ 任务摘要',
+  'format.titleDiagnose': '🩺 内部诊断',
   'format.statusRunning': '运行中',
   'format.statusDisconnected': '已断开',
   'format.statusActive': '活跃',
@@ -193,6 +194,16 @@ export const zh: Translations = {
   'format.queueEmpty': '队列已为空',
   'format.flushErrorTitle': '消息发送失败',
   'format.flushErrorHint': '可能原因：内容超出平台限制（如表格行数、消息长度）。',
+
+  // --- diagnose ---
+  'diagnose.labelSessions': '会话',
+  'diagnose.labelQueuedMessages': '排队消息',
+  'diagnose.labelProcessingChats': '处理中对话',
+  'diagnose.labelBubbleMappings': '气泡映射',
+  'diagnose.labelQueueUtilization': '队列使用率',
+  'diagnose.labelSaturatedSessions': '队列已满会话',
+  'diagnose.labelBusiestSession': '最忙会话',
+  'diagnose.labelQueueDetail': '队列详情',
 
   // --- adapter ---
   'adapter.submitted': '已提交',

@@ -186,6 +186,7 @@ export const en: Translations = {
   'format.titleTaskStart': '🚀 Starting',
   'format.titleTaskEnd': '⚠️ Task Ended',
   'format.titleTaskSummary': '✅ Task Summary',
+  'format.titleDiagnose': '🩺 Diagnose',
   'format.statusRunning': 'Running',
   'format.statusDisconnected': 'Disconnected',
   'format.statusActive': 'Active',
@@ -195,6 +196,16 @@ export const en: Translations = {
   'format.flushErrorTitle': 'Message send failed',
   'format.flushErrorHint':
     'Possible cause: content exceeds platform limits (e.g., table rows, message length).',
+
+  // --- diagnose ---
+  'diagnose.labelSessions': 'Sessions',
+  'diagnose.labelQueuedMessages': 'Queued messages',
+  'diagnose.labelProcessingChats': 'Processing chats',
+  'diagnose.labelBubbleMappings': 'Bubble mappings',
+  'diagnose.labelQueueUtilization': 'Queue utilization',
+  'diagnose.labelSaturatedSessions': 'Saturated sessions',
+  'diagnose.labelBusiestSession': 'Busiest session',
+  'diagnose.labelQueueDetail': 'Queue detail',
 
   // --- adapter ---
   'adapter.submitted': 'Submitted',

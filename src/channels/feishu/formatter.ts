@@ -506,10 +506,13 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
   }
 
   formatDiagnose(chatId: string, data: DiagnoseData): FeishuRenderedMessage {
-    const { elements, saturatedSessions } = buildDiagnoseElements(data);
+    const { elements, saturatedSessions } = buildDiagnoseElements(data, this.locale);
     return this.createCardMessage(
       chatId,
-      { template: saturatedSessions > 0 ? 'orange' : 'blue', title: '🩺 Diagnose' },
+      {
+        template: saturatedSessions > 0 ? 'orange' : 'blue',
+        title: t(this.locale, 'format.titleDiagnose'),
+      },
       elements,
     );
   }

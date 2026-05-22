@@ -249,8 +249,12 @@ describe('command presenter', () => {
         memoryUsage: '128MB',
       });
       const formatted = feishuFormatter.format(msg);
-      expect(formatted.feishuHeader?.title).toBe('🩺 Diagnose');
-      expect(JSON.stringify(formatted.feishuElements)).toContain('128MB');
+      const rendered = JSON.stringify(formatted.feishuElements);
+      expect(formatted.feishuHeader?.title).toBe('🩺 内部诊断');
+      expect(rendered).toContain('会话');
+      expect(rendered).toContain('排队消息');
+      expect(rendered).toContain('内存');
+      expect(rendered).toContain('128MB');
     });
   });
 
