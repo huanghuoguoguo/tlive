@@ -15,7 +15,7 @@ import {
   deferredSkip,
 } from '../../ui/buttons.js';
 import type { Locale } from '../../i18n/index.js';
-import { actionCallback } from '../../core/callbacks.js';
+import { actionCallback, routedActionCallback } from '../../core/callbacks.js';
 
 describe('ui/buttons', () => {
   describe('permissionButtons', () => {
@@ -152,20 +152,45 @@ describe('ui/buttons', () => {
     it('shows status by default', () => {
       const buttons = topicCommandPaletteButtons('en');
 
-      expect(buttons.map(b => b.callbackData)).toEqual([actionCallback('status')]);
+      expect(buttons.map(b => b.callbackData)).toEqual([actionCallback('home')]);
       expect(buttons[0].label).toContain('Topic');
     });
 
-    it('adds permission and stop controls only when supported by context', () => {
+    it('adds settings, permission, provider, and stop controls when supported by context', () => {
       const buttons = topicCommandPaletteButtons('zh', {
         isActive: true,
         interactivePermissions: true,
+        settingSources: true,
+        providers: [
+          { kind: 'claude', displayName: 'Claude Code', isDefault: true },
+          { kind: 'codex', displayName: 'Codex' },
+        ],
       });
 
       expect(buttons.map(b => b.callbackData)).toEqual([
-        actionCallback('status'),
+        actionCallback('home'),
+        actionCallback('settings'),
         actionCallback('perm'),
+        actionCallback('new', 'claude'),
+        actionCallback('new', 'codex'),
         actionCallback('stop'),
+      ]);
+    });
+
+    it('carries topic route context on palette actions', () => {
+      const route = {
+        scopeId: 'chat-1#thread:thread-1',
+        threadId: 'thread-1',
+        replyInThread: true,
+      };
+      const buttons = topicCommandPaletteButtons('zh', {
+        interactivePermissions: true,
+        route,
+      });
+
+      expect(buttons.map(b => b.callbackData)).toEqual([
+        routedActionCallback('home', route),
+        routedActionCallback('perm', route),
       ]);
     });
   });

@@ -7,7 +7,12 @@ import type { Button } from './types.js';
 import type { Locale, TranslationKey } from '../i18n/index.js';
 import type { AgentProviderKind } from '../providers/kinds.js';
 import { t } from '../i18n/index.js';
-import { CALLBACK_PREFIXES, actionCallback } from '../core/callbacks.js';
+import {
+  CALLBACK_PREFIXES,
+  actionCallback,
+  routedActionCallback,
+  type ActionCallbackRoute,
+} from '../core/callbacks.js';
 import {
   DEFAULT_DONE_BUTTONS,
   QUICK_BUTTONS,
@@ -221,28 +226,61 @@ export function topicDoneButtons(_locale: Locale): Button[] {
 
 export function topicCommandPaletteButtons(
   locale: Locale,
-  options: { isActive?: boolean; interactivePermissions?: boolean } = {},
+  options: {
+    isActive?: boolean;
+    interactivePermissions?: boolean;
+    settingSources?: boolean;
+    providers?: readonly NewSessionButtonProvider[];
+    route?: ActionCallbackRoute;
+  } = {},
 ): Button[] {
+  const action = (name: string, ...args: Array<string | undefined>) =>
+    options.route
+      ? routedActionCallback(name, options.route, ...args)
+      : actionCallback(name, ...args);
   const buttons: Button[] = [
     {
       label: locale === 'zh' ? '📊 本话题状态' : '📊 Topic status',
-      callbackData: actionCallback('status'),
+      callbackData: action('home'),
       style: 'default',
       row: 0,
     },
   ];
 
-  if (options.interactivePermissions) {
+  if (options.settingSources) {
     buttons.push({
-      label: locale === 'zh' ? '🔐 工具审批' : t(locale, 'home.btnPermissions'),
-      callbackData: actionCallback('perm'),
+      label: locale === 'zh' ? '⚙️ 设置源' : '⚙️ Settings',
+      callbackData: action('settings'),
       style: 'default',
       row: 0,
     });
   }
 
+  if (options.interactivePermissions) {
+    buttons.push({
+      label: locale === 'zh' ? '🔐 工具审批' : t(locale, 'home.btnPermissions'),
+      callbackData: action('perm'),
+      style: 'default',
+      row: 0,
+    });
+  }
+
+  const providers = options.providers ?? [];
+  for (const provider of providers) {
+    buttons.push({
+      label: locale === 'zh' ? `🆕 新 ${provider.displayName}` : `🆕 New ${provider.displayName}`,
+      callbackData: action('new', provider.kind),
+      style: provider.isDefault ? 'primary' : 'default',
+      row: 1,
+    });
+  }
+
   if (options.isActive) {
-    buttons.push(navStop(locale));
+    buttons.push({
+      ...navStop(locale),
+      callbackData: action('stop'),
+      row: 1,
+    });
   }
 
   return buttons;

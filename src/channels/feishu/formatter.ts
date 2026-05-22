@@ -357,12 +357,24 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
         : isZh
           ? '其它 slash 命令会透传给当前 Agent。'
           : 'Other slash commands pass through to the current agent.';
+    const capabilityLabels = [
+      data.capabilities.imageInputs ? (isZh ? '图片输入' : 'images') : undefined,
+      data.capabilities.settingSources ? (isZh ? '设置源' : 'settings') : undefined,
+      data.capabilities.nativeSteer ? (isZh ? '即时插话' : 'steer') : undefined,
+      data.capabilities.nativeQueue ? (isZh ? '队列' : 'queue') : undefined,
+    ].filter(Boolean);
+    const providersLine = data.providers?.length
+      ? data.providers.map((provider) => provider.displayName).join(' / ')
+      : data.providerDisplayName;
 
     const elements: FeishuCardElement[] = [
       this.md(
         `**${isZh ? '当前会话' : 'Current session'}**\n${data.providerDisplayName} · ${runtimeMode} · \`${sdkSession}\` · ${status}`,
       ),
       this.md(`**${isZh ? '目录' : 'Directory'}**\n\`${data.cwd}\``),
+      this.md(
+        `**${isZh ? '能力' : 'Capabilities'}**\n${capabilityLabels.join(' · ') || (isZh ? '基础对话' : 'chat')}\n**${isZh ? '新会话' : 'New session'}**\n${providersLine}`,
+      ),
       this.md(`${slashLine}${permissionLine ? `\n${permissionLine}` : ''}`),
     ];
 
@@ -373,6 +385,9 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
       topicCommandPaletteButtons(this.locale, {
         isActive: data.isActive,
         interactivePermissions: data.capabilities.interactivePermissions,
+        settingSources: data.capabilities.settingSources,
+        providers: data.providers,
+        route: data.route,
       }),
     );
   }

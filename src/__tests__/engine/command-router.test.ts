@@ -361,6 +361,14 @@ describe('CommandRouter /settings', () => {
         sdkSessionId: 'sdk-123456789',
         isActive: false,
         permissionMode: 'on',
+        route: expect.objectContaining({
+          scopeId,
+          threadId: 'thread-1',
+          replyInThread: true,
+        }),
+        providers: expect.arrayContaining([
+          expect.objectContaining({ kind: 'claude', displayName: 'Claude Code' }),
+        ]),
         capabilities: expect.objectContaining({
           runtimeMode: 'interactive',
         }),

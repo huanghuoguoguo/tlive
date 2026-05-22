@@ -4,7 +4,7 @@ import {
   parseCommandCallback,
 } from '../../core/callbacks.js';
 import type { CallbackHandlerContext, CallbackHandlerResult } from './callback-context.js';
-import { buildReplayMessage } from './callback-context.js';
+import { buildActionMessage, buildReplayMessage } from './callback-context.js';
 
 export async function handleCommandCallback(
   ctx: CallbackHandlerContext,
@@ -18,7 +18,7 @@ export async function handleCommandCallback(
 
   const action = parseActionCallback(callbackData);
   if (action) {
-    await deps.runAction(adapter, msg, action);
+    await deps.runAction(adapter, buildActionMessage(msg, action), action);
     return true;
   }
 

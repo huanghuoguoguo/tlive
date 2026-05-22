@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { handleCallbackMessage } from '../../engine/messages/callback-dispatcher.js';
-import { actionCallback } from '../../core/callbacks.js';
+import { actionCallback, routedActionCallback } from '../../core/callbacks.js';
 
 function createAdapter() {
   return {
@@ -180,6 +180,42 @@ describe('handleCallbackMessage form submissions', () => {
       replyTargetMessageId: 'msg-card-1',
     }), { name: 'home', args: [] });
     expect(deps.replayMessage).not.toHaveBeenCalled();
+  });
+
+  it('uses explicit route context carried by topic palette callbacks', async () => {
+    const adapter = createAdapter();
+    const { deps } = createDeps();
+
+    const handled = await handleCallbackMessage(adapter, {
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      scopeId: 'chat-1',
+      userId: 'user-1',
+      messageId: 'msg-topic-palette',
+      callbackData: routedActionCallback('home', {
+        scopeId: 'chat-1#thread:thread-1',
+        threadId: 'thread-1',
+        replyInThread: true,
+      }),
+    } as any, deps);
+
+    expect(handled).toBe(true);
+    expect(deps.sdkEngine.getSessionForBubble).toHaveBeenCalledWith('msg-topic-palette');
+    expect(deps.runAction).toHaveBeenCalledWith(adapter, expect.objectContaining({
+      chatId: 'chat-1',
+      scopeId: 'chat-1#thread:thread-1',
+      threadId: 'thread-1',
+      replyInThread: true,
+      replyTargetMessageId: 'msg-topic-palette',
+    }), expect.objectContaining({
+      name: 'home',
+      args: [],
+      route: expect.objectContaining({
+        scopeId: 'chat-1#thread:thread-1',
+        threadId: 'thread-1',
+        replyInThread: true,
+      }),
+    }));
   });
 
   it('infers Feishu topic scope from an explicit stop session callback before bubble mapping exists', async () => {

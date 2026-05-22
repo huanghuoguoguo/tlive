@@ -260,6 +260,18 @@ export class CommandRouter {
       sdkSessionId: binding?.sdkSessionId,
       isActive: this.services.activeControls.has(sessionKey),
       permissionMode: this.state.getPermMode(msg.channelType, scopeId, binding?.sessionId),
+      route: {
+        scopeId,
+        threadId: msg.threadId,
+        replyInThread: msg.replyInThread ?? !!msg.threadId,
+      },
+      providers: this.services.providers.availableForNewSession().map((provider) => ({
+        kind: provider.kind,
+        displayName: provider.displayName,
+        available: provider.available,
+        isDefault: provider.isDefault,
+        reason: provider.reason,
+      })),
       capabilities: {
         runtimeMode: provider.capabilities.runtimeMode,
         nativeSteer: provider.capabilities.nativeSteer,

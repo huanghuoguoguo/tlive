@@ -1,6 +1,10 @@
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage } from '../../channels/types.js';
-import { parseActionCallback, parseCommandCallback, type ActionCallback } from '../../core/callbacks.js';
+import {
+  parseActionCallback,
+  parseCommandCallback,
+  type ActionCallback,
+} from '../../core/callbacks.js';
 import { THREAD_SCOPE_SEPARATOR, threadIdFromScope } from '../../core/key.js';
 import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { SDKEngine } from '../sdk/engine.js';
@@ -53,6 +57,23 @@ export function buildReplayMessage(
     userId: msg.userId,
     messageId: msg.messageId,
     internalCommand: opts.internalCommand,
+  };
+}
+
+export function buildActionMessage(msg: InboundMessage, action: ActionCallback): InboundMessage {
+  if (!action.route) return msg;
+  const replyTargetMessageId =
+    action.route.replyTargetMessageId ??
+    msg.replyTargetMessageId ??
+    (action.route.threadId ? msg.messageId : undefined);
+
+  return {
+    ...msg,
+    scopeId: action.route.scopeId ?? msg.scopeId,
+    threadId: action.route.threadId ?? msg.threadId,
+    replyInThread: action.route.replyInThread ?? msg.replyInThread,
+    replyTargetMessageId,
+    replyToMessageId: msg.replyToMessageId,
   };
 }
 

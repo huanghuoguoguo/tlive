@@ -222,6 +222,13 @@ export interface TopicCommandPaletteData {
   sdkSessionId?: string;
   isActive: boolean;
   permissionMode: 'on' | 'off';
+  route?: {
+    scopeId?: string;
+    threadId?: string;
+    replyTargetMessageId?: string;
+    replyInThread?: boolean;
+  };
+  providers?: HomeProviderEntry[];
   capabilities: {
     runtimeMode: AgentProviderRuntimeMode;
     nativeSteer: boolean;
