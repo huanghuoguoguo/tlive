@@ -125,6 +125,36 @@ describe('CommandRouter /settings', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  function createTopicRouter(options: {
+    state?: SessionStateManager;
+    providers?: AgentProviderRegistry;
+    topicSessions?: TopicSessionManager;
+  } = {}) {
+    const state = options.state ?? new SessionStateManager();
+    const topicSessions = options.topicSessions ?? new TopicSessionManager();
+    return {
+      state,
+      topicSessions,
+      router: new CommandRouter(
+        state,
+        workspace,
+        new RecentProjectsManager(),
+        () => new Map(),
+        new ChannelRouter(store),
+        store,
+        '/tmp/project',
+        createMockClaudeProvider(),
+        options.providers ?? singleProviderRegistry(createMockClaudeProvider()),
+        new Map(),
+        permissions,
+        ['user', 'project', 'local'],
+        sdkEngine as SDKEngine,
+        undefined,
+        topicSessions,
+      ),
+    };
+  }
+
   it('stores settings overrides per chat and rotates the default session on change', async () => {
     await store.saveBinding({
       channelType: 'feishu',
@@ -351,83 +381,7 @@ describe('CommandRouter /settings', () => {
     expect(binding?.sdkSessionId).toBeUndefined();
   });
 
-  it('opens workbench /new as a fresh Feishu topic when topics are supported', async () => {
-    const topicSessions = new TopicSessionManager();
-    const state = new SessionStateManager();
-    state.setPermMode('feishu', 'c1', undefined, 'off');
-    const topicRouter = new CommandRouter(
-      state,
-      workspace,
-      new RecentProjectsManager(),
-      () => new Map(),
-      new ChannelRouter(store),
-      store,
-      '/tmp/project',
-      createMockClaudeProvider(),
-      singleProviderRegistry(createMockClaudeProvider()),
-      new Map(),
-      permissions,
-      ['user', 'project', 'local'],
-      sdkEngine as SDKEngine,
-      undefined,
-      topicSessions,
-    );
-    await store.saveBinding({
-      channelType: 'feishu',
-      chatId: 'c1',
-      sessionId: 'binding-1',
-      sdkSessionId: 'sdk-1',
-      projectName: 'repo',
-      agentSettingSources: ['user'] as AgentSettingSource[],
-      cwd: '/tmp/project',
-      createdAt: '',
-    });
-    const adapterWithTopic = {
-      ...adapter,
-      startThreadWithTitle: vi.fn().mockResolvedValue({
-        threadId: 'thread-new',
-        rootMessageId: 'msg-title',
-        messageId: 'msg-topic-start',
-      }),
-    };
-
-    await topicRouter.handle(adapterWithTopic, {
-      channelType: 'feishu',
-      chatId: 'c1',
-      userId: 'u1',
-      text: '/new',
-      internalCommand: true,
-      messageId: 'workbench-card',
-    } as any);
-
-    expect(adapterWithTopic.startThreadWithTitle).toHaveBeenCalledWith(
-      'c1',
-      '新 Claude Code 会话',
-      expect.stringContaining('已开启新话题'),
-    );
-    const scopeId = chatScopeId('c1', 'thread-new');
-    const topicBinding = await store.getBinding('feishu', scopeId);
-    expect(topicBinding).toMatchObject({
-      chatId: scopeId,
-      provider: 'claude',
-      cwd: '/tmp/project',
-      agentSettingSources: ['user'],
-      projectName: 'repo',
-      sdkSessionId: undefined,
-    });
-    expect(topicBinding?.sessionId).not.toBe('binding-1');
-    expect(state.getPermMode('feishu', scopeId, topicBinding?.sessionId)).toBe('off');
-    expect(topicSessions.findByScope(scopeId)).toMatchObject({
-      scopeId,
-      provider: 'claude',
-      rootMessageId: 'msg-title',
-      lastMessageId: 'msg-topic-start',
-      title: '新 Claude Code 会话',
-    });
-  });
-
-  it('opens workbench /new codex as a Codex topic binding', async () => {
-    const topicSessions = new TopicSessionManager();
+  it('opens workbench /new as a fresh provider-specific Feishu topic', async () => {
     const providers = new AgentProviderRegistry(
       'claude',
       new Map([
@@ -445,66 +399,96 @@ describe('CommandRouter /settings', () => {
         ],
       ]),
     );
-    const topicRouter = new CommandRouter(
-      new SessionStateManager(),
-      workspace,
-      new RecentProjectsManager(),
-      () => new Map(),
-      new ChannelRouter(store),
-      store,
-      '/tmp/project',
-      createMockClaudeProvider(),
-      providers,
-      new Map(),
-      permissions,
-      ['user', 'project', 'local'],
-      sdkEngine as SDKEngine,
-      undefined,
-      topicSessions,
-    );
-    await store.saveBinding({
-      channelType: 'feishu',
-      chatId: 'c1',
-      sessionId: 'binding-1',
-      agentSettingSources: ['user'] as AgentSettingSource[],
-      cwd: '/tmp/project',
-      createdAt: '',
-    });
-    const adapterWithTopic = {
-      ...adapter,
-      startThreadWithTitle: vi.fn().mockResolvedValue({
+    const cases = [
+      {
+        chatId: 'c-claude',
+        text: '/new',
+        threadId: 'thread-new',
+        rootMessageId: 'msg-title',
+        messageId: 'msg-topic-start',
+        provider: 'claude',
+        title: '新 Claude 会话',
+        seed: {
+          sdkSessionId: 'sdk-1',
+          projectName: 'repo',
+        },
+        assertPermissionMode: true,
+      },
+      {
+        chatId: 'c-codex',
+        text: '/new codex',
         threadId: 'thread-codex',
         rootMessageId: 'msg-codex-root',
         messageId: 'msg-codex-start',
-      }),
-    };
+        provider: 'codex',
+        title: '新 Codex 会话',
+        seed: {},
+        assertPermissionMode: false,
+      },
+    ] as const;
 
-    await topicRouter.handle(adapterWithTopic, {
-      channelType: 'feishu',
-      chatId: 'c1',
-      userId: 'u1',
-      text: '/new codex',
-      internalCommand: true,
-      messageId: 'workbench-card',
-    } as any);
+    for (const testCase of cases) {
+      const state = new SessionStateManager();
+      if (testCase.assertPermissionMode) {
+        state.setPermMode('feishu', testCase.chatId, undefined, 'off');
+      }
+      const topic = createTopicRouter({ state, providers });
+      await store.saveBinding({
+        channelType: 'feishu',
+        chatId: testCase.chatId,
+        sessionId: `binding-${testCase.provider}`,
+        agentSettingSources: ['user'] as AgentSettingSource[],
+        cwd: '/tmp/project',
+        createdAt: '',
+        ...testCase.seed,
+      });
+      const adapterWithTopic = {
+        ...adapter,
+        startThreadWithTitle: vi.fn().mockResolvedValue({
+          threadId: testCase.threadId,
+          rootMessageId: testCase.rootMessageId,
+          messageId: testCase.messageId,
+        }),
+      };
 
-    expect(adapterWithTopic.startThreadWithTitle).toHaveBeenCalledWith(
-      'c1',
-      '新 Codex 会话',
-      expect.stringContaining('已开启新话题'),
-    );
-    const scopeId = chatScopeId('c1', 'thread-codex');
-    expect(await store.getBinding('feishu', scopeId)).toMatchObject({
-      chatId: scopeId,
-      provider: 'codex',
-      cwd: '/tmp/project',
-      agentSettingSources: ['user'],
-    });
-    expect(topicSessions.findByScope(scopeId)).toMatchObject({
-      scopeId,
-      provider: 'codex',
-      title: '新 Codex 会话',
-    });
+      await topic.router.handle(adapterWithTopic, {
+        channelType: 'feishu',
+        chatId: testCase.chatId,
+        userId: 'u1',
+        text: testCase.text,
+        internalCommand: true,
+        messageId: 'workbench-card',
+      } as any);
+
+      expect(adapterWithTopic.startThreadWithTitle).toHaveBeenCalledWith(
+        testCase.chatId,
+        testCase.title,
+        expect.stringContaining('已开启新话题'),
+      );
+      const scopeId = chatScopeId(testCase.chatId, testCase.threadId);
+      const topicBinding = await store.getBinding('feishu', scopeId);
+      expect(topicBinding).toMatchObject({
+        chatId: scopeId,
+        provider: testCase.provider,
+        cwd: '/tmp/project',
+        agentSettingSources: ['user'],
+      });
+      expect(topicBinding?.sessionId).not.toBe(`binding-${testCase.provider}`);
+      expect(topic.topicSessions.findByScope(scopeId)).toMatchObject({
+        scopeId,
+        provider: testCase.provider,
+        rootMessageId: testCase.rootMessageId,
+        lastMessageId: testCase.messageId,
+        title: testCase.title,
+      });
+      if (testCase.assertPermissionMode) {
+        expect(state.getPermMode('feishu', scopeId, topicBinding?.sessionId)).toBe('off');
+        expect(topicBinding).toMatchObject({
+          projectName: 'repo',
+          sdkSessionId: undefined,
+        });
+      }
+    }
   });
 
   it('tracks the current directory so /cd - returns to the immediate previous path', async () => {
@@ -556,15 +540,19 @@ describe('CommandRouter /settings', () => {
     expect(workspace.getHistory('feishu', 'c1')).toEqual([dirB, dirC, dirA]);
   });
 
-  it('does not cleanup session when /cd stays in the same git repo', async () => {
+  it('updates /cd state based on repository boundaries', async () => {
     const repoDir = join(tmpDir, 'repo');
     const subDir = join(repoDir, 'src');
+    const repoA = join(tmpDir, 'repo-a');
+    const repoB = join(tmpDir, 'repo-b');
     mkdirSync(join(repoDir, '.git'), { recursive: true });
     mkdirSync(subDir, { recursive: true });
+    mkdirSync(join(repoA, '.git'), { recursive: true });
+    mkdirSync(join(repoB, '.git'), { recursive: true });
 
     await store.saveBinding({
       channelType: 'feishu',
-      chatId: 'c1',
+      chatId: 'c-same-repo',
       sessionId: 'binding-1',
       sdkSessionId: 'sdk-1',
       cwd: repoDir,
@@ -574,31 +562,22 @@ describe('CommandRouter /settings', () => {
 
     await router.handle(adapter, {
       channelType: 'feishu',
-      chatId: 'c1',
+      chatId: 'c-same-repo',
       userId: 'u1',
       text: `/cd ${subDir}`,
       internalCommand: true,
       messageId: 'm8',
     } as any);
 
-    expect(sdkEngine.cleanupSession).not.toHaveBeenCalled();
-    expect(permissions.clearSessionWhitelist).not.toHaveBeenCalled();
-    const binding = await store.getBinding('feishu', 'c1');
-    expect(binding?.cwd).toBe(subDir);
-    expect(binding?.sdkSessionId).toBe('sdk-1');
-    expect(binding?.projectName).toBe('repo');
-    expect(workspace.getBinding('feishu', 'c1')).toBe(repoDir);
-  });
-
-  it('cleans session and clears project binding when /cd crosses repos', async () => {
-    const repoA = join(tmpDir, 'repo-a');
-    const repoB = join(tmpDir, 'repo-b');
-    mkdirSync(join(repoA, '.git'), { recursive: true });
-    mkdirSync(join(repoB, '.git'), { recursive: true });
+    const sameRepoBinding = await store.getBinding('feishu', 'c-same-repo');
+    expect(sameRepoBinding?.cwd).toBe(subDir);
+    expect(sameRepoBinding?.sdkSessionId).toBe('sdk-1');
+    expect(sameRepoBinding?.projectName).toBe('repo');
+    expect(workspace.getBinding('feishu', 'c-same-repo')).toBe(repoDir);
 
     await store.saveBinding({
       channelType: 'feishu',
-      chatId: 'c1',
+      chatId: 'c-cross-repo',
       sessionId: 'binding-1',
       sdkSessionId: 'sdk-1',
       cwd: repoA,
@@ -608,21 +587,19 @@ describe('CommandRouter /settings', () => {
 
     await router.handle(adapter, {
       channelType: 'feishu',
-      chatId: 'c1',
+      chatId: 'c-cross-repo',
       userId: 'u1',
       text: `/cd ${repoB}`,
       internalCommand: true,
       messageId: 'm9',
     } as any);
 
-    expect(sdkEngine.cleanupSession).not.toHaveBeenCalled();
-    expect(permissions.clearSessionWhitelist).not.toHaveBeenCalled();
-    const binding = await store.getBinding('feishu', 'c1');
-    expect(binding?.cwd).toBe(repoB);
-    expect(binding?.sdkSessionId).toBeUndefined();
-    expect(binding?.sessionId).not.toBe('binding-1');
-    expect(binding?.projectName).toBeUndefined();
-    expect(workspace.getBinding('feishu', 'c1')).toBe(repoB);
+    const crossRepoBinding = await store.getBinding('feishu', 'c-cross-repo');
+    expect(crossRepoBinding?.cwd).toBe(repoB);
+    expect(crossRepoBinding?.sdkSessionId).toBeUndefined();
+    expect(crossRepoBinding?.sessionId).not.toBe('binding-1');
+    expect(crossRepoBinding?.projectName).toBeUndefined();
+    expect(workspace.getBinding('feishu', 'c-cross-repo')).toBe(repoB);
   });
 
   it('does not mutate the workbench binding when hidden continue cannot create a topic', async () => {
@@ -683,24 +660,7 @@ describe('CommandRouter /settings', () => {
   it('opens a fresh Feishu topic from a Claude history title when continuing by sdk id', async () => {
     const repoDir = join(tmpDir, 'repo-topic');
     mkdirSync(repoDir, { recursive: true });
-    const topicSessions = new TopicSessionManager();
-    const topicRouter = new CommandRouter(
-      new SessionStateManager(),
-      workspace,
-      new RecentProjectsManager(),
-      () => new Map(),
-      new ChannelRouter(store),
-      store,
-      '/tmp/project',
-      createMockClaudeProvider(),
-      singleProviderRegistry(createMockClaudeProvider()),
-      new Map(),
-      permissions,
-      ['user', 'project', 'local'],
-      sdkEngine as SDKEngine,
-      undefined,
-      topicSessions,
-    );
+    const topic = createTopicRouter();
     const scanSpy = vi.spyOn(sessionScanner, 'scanAgentSessions').mockReturnValue([
       {
         provider: 'claude',
@@ -723,7 +683,7 @@ describe('CommandRouter /settings', () => {
       }),
     };
 
-    await topicRouter.handle(adapterWithTopic, {
+    await topic.router.handle(adapterWithTopic, {
       channelType: 'feishu',
       chatId: 'c1',
       userId: 'u1',
@@ -743,7 +703,7 @@ describe('CommandRouter /settings', () => {
       sdkSessionId: '5049209e-session',
       cwd: repoDir,
     });
-    expect(topicSessions.findBySdkSessionId('5049209e-session')).toMatchObject({
+    expect(topic.topicSessions.findBySdkSessionId('5049209e-session')).toMatchObject({
       scopeId,
       rootMessageId: 'msg-title',
       lastMessageId: 'msg-topic-start',
