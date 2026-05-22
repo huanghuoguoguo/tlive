@@ -12,7 +12,7 @@ import type { AgentProviderKind } from '../../providers/kinds.js';
 import type { AgentSettingSource } from '../../config.js';
 import type { EffortLevel } from '../../utils/types.js';
 import { SESSION_STALE_THRESHOLD_MS } from '../../core/timing.js';
-import { chatKey as buildChatKey } from '../../core/key.js';
+import { chatKey as buildChatKey, sessionKey as buildSessionKey } from '../../core/key.js';
 
 /** Reason for closing a session — used for logging and diagnostics */
 export type SessionCleanupReason = 'new' | 'switch' | 'cd' | 'settings' | 'expire' | 'close';
@@ -100,7 +100,7 @@ export class SessionManager {
 
   /** Build session key: channelType:chatId:bindingSessionId */
   sessionKey(channelType: string, chatId: string, bindingSessionId: string): string {
-    return `${channelType}:${chatId}:${bindingSessionId}`;
+    return buildSessionKey(channelType, chatId, bindingSessionId);
   }
 
   /** Filter sessions matching a chat and optionally workdir. */

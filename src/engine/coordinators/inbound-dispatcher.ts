@@ -2,6 +2,7 @@ import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage } from '../../channels/types.js';
 import { generateRequestId, type LogContext } from '../../logger.js';
 import type { CommandRouter } from '../command-router.js';
+import { publicTextCommandName } from '../commands/slash-policy.js';
 import { handleCallbackMessage } from '../messages/callback-dispatcher.js';
 import type { TextDispatcher } from '../messages/text-dispatcher.js';
 import type { SDKEngine } from '../sdk/engine.js';
@@ -76,6 +77,15 @@ export class InboundDispatcher {
       return true;
     }
 
+    const publicCommand = msg.callbackData ? null : publicTextCommandName(msg.text);
+    if (publicCommand) {
+      const handled = await commands.handle(adapter, msg);
+      if (handled) {
+        console.log(`[bridge] ${ctx.requestId} CMD ${publicCommand}`);
+        return true;
+      }
+    }
+
     if (await text.handle(adapter, msg)) {
       return true;
     }
@@ -91,7 +101,7 @@ export class InboundDispatcher {
       });
     }
 
-    if (msg.text.startsWith('/')) {
+    if (!publicCommand && msg.text.startsWith('/')) {
       const handled = await commands.handle(adapter, msg);
       if (handled) {
         console.log(`[bridge] ${ctx.requestId} CMD ${msg.text.split(' ')[0]}`);

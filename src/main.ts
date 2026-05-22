@@ -10,8 +10,16 @@ import {
   isVersionNotified,
   markVersionNotified,
 } from './utils/version-checker.js';
-import { join } from 'node:path';
-import { mkdirSync, writeFileSync, readFileSync, unlinkSync, existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import {
+  existsSync,
+  linkSync,
+  mkdirSync,
+  readFileSync,
+  readlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import {
   getTliveHome,
@@ -70,94 +78,197 @@ function deleteUpgradeResult(): void {
   } catch {}
 }
 
-/**
- * Ensure only one bridge instance runs at a time.
- * Uses a PID file lock — kills stale processes if needed.
- * Supports restart handoff via restart-request.json marker.
- */
-export function acquireSingletonLock(): void {
-  const runtimeDir = getTliveRuntimeDir();
-  mkdirSync(runtimeDir, { recursive: true });
-  const pidFile = join(runtimeDir, 'bridge.pid');
+interface SingletonLock {
+  pid: number;
+  startedAt?: string;
+  argv?: string[];
+  cwd?: string;
+}
 
-  // Check for restart handoff marker
-  const restartRequest = readRestartRequest();
-  if (restartRequest && restartRequest.oldPid !== process.pid) {
-    console.log(`[singleton] Restart handoff detected (old PID ${restartRequest.oldPid})`);
-    // Wait for old process to exit (up to 5s)
-    const start = Date.now();
-    const maxWait = 5000;
-    while (Date.now() - start < maxWait) {
-      try {
-        process.kill(restartRequest.oldPid, 0);
-        // Old process still alive, wait 100ms
-        const end = Date.now() + 100;
-        while (Date.now() < end) {
-          /* spin */
-        }
-      } catch {
-        // Old process exited
-        break;
-      }
-    }
-    // Clean up restart marker
-    deleteRestartRequest();
-    console.log('[singleton] Restart handoff complete');
-  }
+interface ProcessMetadata {
+  cmdline: string[];
+  comm?: string;
+  cwd?: string;
+}
 
-  if (existsSync(pidFile)) {
+const sleepBuffer = new Int32Array(new SharedArrayBuffer(4));
+
+function sleepSync(ms: number): void {
+  Atomics.wait(sleepBuffer, 0, 0, ms);
+}
+
+function parseSingletonLock(content: string): SingletonLock | null {
+  const trimmed = content.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith('{')) {
     try {
-      const oldPid = parseInt(readFileSync(pidFile, 'utf-8').trim(), 10);
-      if (oldPid && oldPid !== process.pid) {
-        // Skip killing if this is a restart handoff (oldPid matches restart request)
-        const wasRestartHandoff = restartRequest && restartRequest.oldPid === oldPid;
-        if (!wasRestartHandoff) {
-          // Check if process is still alive
-          try {
-            process.kill(oldPid, 0);
-            // Process is alive — kill it
-            console.warn(`[singleton] Killing existing bridge process (PID ${oldPid})`);
-            process.kill(oldPid, 'SIGTERM');
-            // Brief wait for graceful shutdown
-            const start = Date.now();
-            while (Date.now() - start < 2000) {
-              try {
-                process.kill(oldPid, 0);
-              } catch {
-                break;
-              }
-              // busy-wait ~50ms
-              const end = Date.now() + 50;
-              while (Date.now() < end) {
-                /* spin */
-              }
-            }
-            // Force kill if still alive
-            try {
-              process.kill(oldPid, 0);
-              process.kill(oldPid, 'SIGKILL');
-              console.warn(`[singleton] Force-killed PID ${oldPid}`);
-            } catch {
-              // Already dead — good
-            }
-          } catch {
-            // Process not alive — stale PID file, safe to proceed
-          }
-        }
-      }
+      const parsed = JSON.parse(trimmed) as {
+        pid?: unknown;
+        startedAt?: unknown;
+        argv?: unknown;
+        cwd?: unknown;
+      };
+      const pid = Number(parsed.pid);
+      if (!Number.isSafeInteger(pid) || pid <= 0) return null;
+      return {
+        pid,
+        startedAt: typeof parsed.startedAt === 'string' ? parsed.startedAt : undefined,
+        argv: Array.isArray(parsed.argv)
+          ? parsed.argv.filter((value): value is string => typeof value === 'string')
+          : undefined,
+        cwd: typeof parsed.cwd === 'string' ? parsed.cwd : undefined,
+      };
     } catch {
-      // Malformed PID file — overwrite
+      return null;
     }
   }
 
-  // Write our PID
-  writeFileSync(pidFile, String(process.pid));
+  const pid = Number(trimmed);
+  if (!Number.isSafeInteger(pid) || pid <= 0) return null;
+  return { pid };
+}
 
-  // Clean up PID file on exit
+function readSingletonLock(pidFile: string): SingletonLock | null {
+  try {
+    return parseSingletonLock(readFileSync(pidFile, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function waitForProcessExit(pid: number, timeoutMs: number, intervalMs: number): boolean {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isProcessAlive(pid)) return true;
+    sleepSync(Math.min(intervalMs, Math.max(1, deadline - Date.now())));
+  }
+  return !isProcessAlive(pid);
+}
+
+function readProcessMetadata(pid: number): ProcessMetadata | null {
+  const procRoot =
+    process.env.NODE_ENV === 'test' ? process.env.TLIVE_PROC_ROOT?.trim() || '/proc' : '/proc';
+  const procDir = join(procRoot, String(pid));
+
+  try {
+    const rawCmdline = readFileSync(join(procDir, 'cmdline'));
+    const cmdline = rawCmdline.toString('utf-8').split('\0').filter(Boolean);
+    let comm: string | undefined;
+    let cwd: string | undefined;
+
+    try {
+      comm = readFileSync(join(procDir, 'comm'), 'utf-8').trim();
+    } catch {
+      /* optional */
+    }
+
+    try {
+      cwd = readlinkSync(join(procDir, 'cwd'));
+    } catch {
+      /* optional */
+    }
+
+    return { cmdline, comm, cwd };
+  } catch {
+    return null;
+  }
+}
+
+function looksLikeTliveBridgeProcess(metadata: ProcessMetadata): boolean {
+  const cmdline = metadata.cmdline.join(' ').toLowerCase();
+  const command = metadata.cmdline[0]?.toLowerCase() ?? '';
+  const comm = metadata.comm?.toLowerCase() ?? '';
+  const cwd = metadata.cwd?.toLowerCase() ?? '';
+
+  const nodeLike = command.includes('node') || comm.includes('node');
+  const hasTliveCommand = cmdline.includes('tlive');
+  const hasBridgeEntry = cmdline.includes('dist/main.mjs') || cmdline.includes('src/main.ts');
+
+  return nodeLike && (hasTliveCommand || (hasBridgeEntry && cwd.endsWith('/tlive')));
+}
+
+function writeLockFileAtomically(pidFile: string, content: string): boolean {
+  const tempFile = join(
+    dirname(pidFile),
+    `.bridge.pid.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`,
+  );
+
+  try {
+    writeFileSync(tempFile, content, { flag: 'wx', mode: 0o600 });
+    try {
+      linkSync(tempFile, pidFile);
+      return true;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') return false;
+
+      try {
+        writeFileSync(pidFile, content, { flag: 'wx', mode: 0o600 });
+        return true;
+      } catch (fallbackErr) {
+        if ((fallbackErr as NodeJS.ErrnoException).code === 'EEXIST') return false;
+        throw fallbackErr;
+      }
+    }
+  } finally {
+    try {
+      unlinkSync(tempFile);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function removePidFile(pidFile: string): void {
+  try {
+    unlinkSync(pidFile);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+}
+
+function terminateExistingBridge(lock: SingletonLock): void {
+  const metadata = readProcessMetadata(lock.pid);
+  if (!metadata || !looksLikeTliveBridgeProcess(metadata)) {
+    console.warn(
+      `[singleton] PID ${lock.pid} is alive but does not look like a tlive bridge; ` +
+        'leaving the process untouched and replacing the stale lock',
+    );
+    return;
+  }
+
+  console.warn(`[singleton] Killing existing bridge process (PID ${lock.pid})`);
+  process.kill(lock.pid, 'SIGTERM');
+
+  if (waitForProcessExit(lock.pid, 2000, 50)) return;
+
+  const metadataBeforeKill = readProcessMetadata(lock.pid);
+  if (!metadataBeforeKill || !looksLikeTliveBridgeProcess(metadataBeforeKill)) {
+    console.warn(
+      `[singleton] PID ${lock.pid} no longer matches tlive bridge metadata; skipping SIGKILL`,
+    );
+    return;
+  }
+
+  process.kill(lock.pid, 'SIGKILL');
+  console.warn(`[singleton] Force-killed PID ${lock.pid}`);
+}
+
+function registerPidCleanup(pidFile: string): void {
   const cleanPid = () => {
     try {
-      const current = readFileSync(pidFile, 'utf-8').trim();
-      if (current === String(process.pid)) {
+      const current = readSingletonLock(pidFile);
+      if (current?.pid === process.pid) {
         unlinkSync(pidFile);
       }
     } catch {
@@ -165,6 +276,58 @@ export function acquireSingletonLock(): void {
     }
   };
   process.on('exit', cleanPid);
+}
+
+/**
+ * Ensure only one bridge instance runs at a time.
+ * Uses an atomically-created PID file and validates live processes before killing.
+ * Supports restart handoff via restart-request.json marker.
+ */
+export function acquireSingletonLock(): void {
+  const runtimeDir = getTliveRuntimeDir();
+  mkdirSync(runtimeDir, { recursive: true });
+  const pidFile = join(runtimeDir, 'bridge.pid');
+
+  const restartRequest = readRestartRequest();
+  if (restartRequest && restartRequest.oldPid !== process.pid) {
+    console.log(`[singleton] Restart handoff detected (old PID ${restartRequest.oldPid})`);
+    if (!waitForProcessExit(restartRequest.oldPid, 5000, 100)) {
+      console.warn(
+        `[singleton] Restart handoff old PID ${restartRequest.oldPid} still alive after 5000ms`,
+      );
+    }
+    deleteRestartRequest();
+    console.log('[singleton] Restart handoff complete');
+  }
+
+  const lockContent = `${process.pid}\n`;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    if (writeLockFileAtomically(pidFile, lockContent)) {
+      registerPidCleanup(pidFile);
+      return;
+    }
+
+    const existingLock = readSingletonLock(pidFile);
+    if (!existingLock) {
+      console.warn('[singleton] Malformed bridge.pid lock found; replacing it');
+      removePidFile(pidFile);
+      continue;
+    }
+
+    if (existingLock.pid === process.pid) {
+      registerPidCleanup(pidFile);
+      return;
+    }
+
+    const wasRestartHandoff = restartRequest?.oldPid === existingLock.pid;
+    if (!wasRestartHandoff && isProcessAlive(existingLock.pid)) {
+      terminateExistingBridge(existingLock);
+    }
+
+    removePidFile(pidFile);
+  }
+
+  throw new Error('[singleton] Failed to acquire bridge.pid lock after retries');
 }
 
 export async function main() {

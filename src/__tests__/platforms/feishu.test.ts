@@ -807,26 +807,45 @@ describe('FeishuAdapter', () => {
       await adapter.stop();
     });
 
-    it('maps application bot menu events to commands', async () => {
+    it('maps application bot menu events to the workbench', async () => {
+      await adapter.start();
+
+      const handler = eventHandlers.get('application.bot.menu_v6');
+      expect(handler).toBeTypeOf('function');
+
+      for (const eventKey of ['tlive_home', 'tlive_status', 'tlive_help']) {
+        const result = await handler?.({
+          event_key: eventKey,
+          operator: { operator_id: { user_id: 'user_1' } },
+        });
+
+        expect(result).toEqual({});
+
+        const msg = await adapter.consumeOne();
+        expect(msg).toMatchObject({
+          channelType: 'feishu',
+          chatId: '',
+          userId: 'user_1',
+          text: '/home',
+        });
+      }
+
+      await adapter.stop();
+    });
+
+    it('ignores unknown application bot menu events', async () => {
       await adapter.start();
 
       const handler = eventHandlers.get('application.bot.menu_v6');
       expect(handler).toBeTypeOf('function');
 
       const result = await handler?.({
-        event_key: 'tlive_home',
+        event_key: 'tlive_unknown',
         operator: { operator_id: { user_id: 'user_1' } },
       });
 
       expect(result).toEqual({});
-
-      const msg = await adapter.consumeOne();
-      expect(msg).toMatchObject({
-        channelType: 'feishu',
-        chatId: '',
-        userId: 'user_1',
-        text: '/home',
-      });
+      expect(await adapter.consumeOne()).toBeNull();
 
       await adapter.stop();
     });

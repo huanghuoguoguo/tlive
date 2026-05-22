@@ -6,6 +6,7 @@ import type { SessionStateManager } from '../state/session-state.js';
 import { t, matchesLocalizedInput } from '../../i18n/index.js';
 import { conversationScopeId } from '../../channels/conversation-context.js';
 import { withInboundReplyContext } from '../../channels/reply-context.js';
+import { publicTextCommandName } from '../commands/slash-policy.js';
 
 interface TextDispatcherOptions {
   permissions: PermissionCoordinator;
@@ -40,6 +41,10 @@ export class TextDispatcher {
   }
 
   async handle(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
+    if (publicTextCommandName(msg.text)) {
+      return false;
+    }
+
     if (msg.text && await this.handlePermissionText(adapter, msg)) {
       return true;
     }

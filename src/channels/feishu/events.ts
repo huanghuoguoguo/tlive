@@ -4,8 +4,8 @@ import { feishuInboundScope } from './inbound.js';
 
 const FEISHU_MENU_EVENT_TO_COMMAND: Record<string, string> = {
   tlive_home: '/home',
-  tlive_status: '/status',
-  tlive_help: '/help',
+  tlive_status: '/home',
+  tlive_help: '/home',
 };
 
 export interface FeishuCardActionResult {

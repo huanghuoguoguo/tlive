@@ -4,7 +4,7 @@ import type { ChannelBinding, BridgeStore } from '../../store/interface.js';
 import type { ChannelRouter } from '../../utils/router.js';
 import type { SDKEngine, ResolvedSessionTarget } from '../sdk/engine.js';
 import type { TopicSessionManager } from '../state/topic-sessions.js';
-import { chatScopeId } from '../../core/key.js';
+import { chatScopeId, sessionKey as buildSessionKey } from '../../core/key.js';
 import { conversationScopeId } from '../../channels/conversation-context.js';
 import { generateSessionId } from '../../core/id.js';
 import { truncate } from '../../core/string.js';
@@ -70,7 +70,7 @@ export class TopicConversationService {
       sessionReplyMessageId,
     ) ?? {
       target: {
-        sessionKey: `${msg.channelType}:${scopeId}:${binding.sessionId}`,
+        sessionKey: buildSessionKey(msg.channelType, scopeId, binding.sessionId),
         bindingSessionId: binding.sessionId,
         workdir: binding.cwd || this.options.defaultWorkdir,
         sdkSessionId: binding.sdkSessionId,

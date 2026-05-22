@@ -17,6 +17,36 @@ export function splitChatKey(key: string): { channelType: string; chatId: string
   return { channelType: key.slice(0, idx), chatId: key.slice(idx + 1) };
 }
 
+export interface SessionKeyParts {
+  channelType: string;
+  chatId: string;
+  bindingSessionId: string;
+}
+
+/** Build a logical runtime session key.
+ *
+ * Only split on the first and last separator: chatId/scopeId may itself contain ':'.
+ */
+export function sessionKey(
+  channelType: string,
+  chatId: string,
+  bindingSessionId: string,
+): string {
+  return `${channelType}:${chatId}:${bindingSessionId}`;
+}
+
+/** Split a logical runtime session key while preserving ':' inside chatId/scopeId. */
+export function splitSessionKey(key: string): SessionKeyParts | undefined {
+  const first = key.indexOf(':');
+  const last = key.lastIndexOf(':');
+  if (first <= 0 || last <= first) return undefined;
+  return {
+    channelType: key.slice(0, first),
+    chatId: key.slice(first + 1, last),
+    bindingSessionId: key.slice(last + 1),
+  };
+}
+
 /** Separator used to derive a logical chat scope from a platform thread/topic. */
 export const THREAD_SCOPE_SEPARATOR = '#thread:';
 
