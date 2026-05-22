@@ -351,6 +351,12 @@ export interface MultiSelectToggleData {
 export interface DiagnoseData {
   activeSessions: number;
   totalBubbleMappings: number;
+  /** Persisted channel bindings on disk */
+  persistedBindings?: number;
+  /** Persisted topic sessions across all chats */
+  persistedTopicSessions?: number;
+  /** Persisted topic sessions for the current platform chat */
+  persistedTopicSessionsInChat?: number;
   /** Queue statistics per session */
   queueStats: Array<{ sessionKey: string; depth: number; maxDepth: number }>;
   /** Total queued messages across all sessions */

@@ -17,6 +17,12 @@ export class DiagnoseCommand extends BaseCommand {
     const totalBubbleMappings = ctx.services.sdkEngine?.getTotalBubbleMappings() ?? 0;
     const queueStats = ctx.services.sdkEngine?.getAllQueueStats() ?? [];
     const totalQueuedMessages = ctx.services.sdkEngine?.getTotalQueuedMessages() ?? 0;
+    const persistedBindings = (await ctx.services.store.listBindings()).length;
+    const persistedTopicSessions = ctx.services.topicSessions?.count();
+    const persistedTopicSessionsInChat = ctx.services.topicSessions?.count({
+      channelType: ctx.msg.channelType,
+      chatId: ctx.msg.chatId,
+    });
 
     let processingChats = 0;
     for (const chatKey of ctx.services.activeControls.keys()) {
@@ -29,6 +35,9 @@ export class DiagnoseCommand extends BaseCommand {
     await this.send(ctx, presentDiagnose(ctx.msg.chatId, {
       activeSessions,
       totalBubbleMappings,
+      persistedBindings,
+      persistedTopicSessions,
+      persistedTopicSessionsInChat,
       queueStats,
       totalQueuedMessages,
       memoryUsage,

@@ -202,6 +202,9 @@ export interface Translations {
   'diagnose.labelQueuedMessages': string;
   'diagnose.labelProcessingChats': string;
   'diagnose.labelBubbleMappings': string;
+  'diagnose.labelPersistedBindings': string;
+  'diagnose.labelPersistedTopicSessions': string;
+  'diagnose.labelCurrentChat': string;
   'diagnose.labelQueueUtilization': string;
   'diagnose.labelSaturatedSessions': string;
   'diagnose.labelBusiestSession': string;

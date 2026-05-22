@@ -108,6 +108,12 @@ export class TopicSessionManager {
       .slice(0, limit);
   }
 
+  count(opts: { channelType?: string; chatId?: string } = {}): number {
+    return [...this.records.values()]
+      .filter((record) => !opts.channelType || record.channelType === opts.channelType)
+      .filter((record) => !opts.chatId || record.chatId === opts.chatId).length;
+  }
+
   updateLastMessage(scopeId: string, messageId: string): void {
     const record = this.records.get(scopeId);
     if (!record) return;

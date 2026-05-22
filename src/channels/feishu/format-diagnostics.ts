@@ -28,6 +28,18 @@ export function buildDiagnoseElements(data: DiagnoseData, locale: Locale): {
     `**${t(locale, 'diagnose.labelProcessingChats')}** ${data.processingChats}`,
     `**${t(locale, 'diagnose.labelBubbleMappings')}** ${data.totalBubbleMappings}`,
   ];
+  if (data.persistedTopicSessions !== undefined) {
+    const currentChat =
+      data.persistedTopicSessionsInChat !== undefined
+        ? ` (${t(locale, 'diagnose.labelCurrentChat')} ${data.persistedTopicSessionsInChat})`
+        : '';
+    lines.push(
+      `**${t(locale, 'diagnose.labelPersistedTopicSessions')}** ${data.persistedTopicSessions}${currentChat}`,
+    );
+  }
+  if (data.persistedBindings !== undefined) {
+    lines.push(`**${t(locale, 'diagnose.labelPersistedBindings')}** ${data.persistedBindings}`);
+  }
   if (queueUtilizationRatio !== undefined) {
     lines.push(`**${t(locale, 'diagnose.labelQueueUtilization')}** ${Math.round(queueUtilizationRatio * 100)}%`);
   }

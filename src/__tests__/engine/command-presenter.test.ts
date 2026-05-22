@@ -221,6 +221,9 @@ describe('command presenter', () => {
         activeSessions: 2,
         idleSessions: 1,
         totalBubbleMappings: 4,
+        persistedBindings: 3,
+        persistedTopicSessions: 2,
+        persistedTopicSessionsInChat: 1,
         queueStats: [
           { sessionKey: 's1', depth: 3, maxDepth: 3 },
           { sessionKey: 's2', depth: 1, maxDepth: 4 },
@@ -243,6 +246,9 @@ describe('command presenter', () => {
         activeSessions: 2,
         idleSessions: 1,
         totalBubbleMappings: 4,
+        persistedBindings: 3,
+        persistedTopicSessions: 2,
+        persistedTopicSessionsInChat: 1,
         queueStats: [{ sessionKey: 's1', depth: 3, maxDepth: 3 }],
         totalQueuedMessages: 3,
         processingChats: 1,
@@ -253,6 +259,9 @@ describe('command presenter', () => {
       expect(formatted.feishuHeader?.title).toBe('🩺 内部诊断');
       expect(rendered).toContain('会话');
       expect(rendered).toContain('排队消息');
+      expect(rendered).toContain('卡片路由缓存');
+      expect(rendered).toContain('持久化话题');
+      expect(rendered).toContain('持久化绑定');
       expect(rendered).toContain('内存');
       expect(rendered).toContain('128MB');
     });
