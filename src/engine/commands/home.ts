@@ -31,7 +31,7 @@ export class TliveCommand extends BaseCommand {
   readonly helpCategory = 'status' as const;
   readonly description = '打开工作台';
   readonly helpDesc =
-    '打开 TLive 工作台。除 /home 和 /stop 外，其它 slash 文本默认透传给底层 agent。';
+    '打开 TLive 工作台。主窗口用于新建会话、回到话题和诊断；/stop 只在具体话题内中断任务。';
   readonly helpExample = '/tlive';
 
   async execute(ctx: CommandContext): Promise<boolean> {

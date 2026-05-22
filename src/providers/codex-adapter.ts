@@ -51,7 +51,7 @@ export class CodexAdapter {
         events.push({
           kind: 'status',
           sessionId: event.thread_id,
-          model: this.state.model ?? 'codex',
+          ...(this.state.model ? { model: this.state.model } : {}),
         });
         break;
       case 'turn.started':
@@ -224,6 +224,12 @@ export class CodexAdapter {
       usage: {
         inputTokens: usage?.input_tokens ?? 0,
         outputTokens: usage?.output_tokens ?? 0,
+        ...(usage?.cached_input_tokens !== undefined
+          ? { cachedInputTokens: usage.cached_input_tokens }
+          : {}),
+        ...(usage?.reasoning_output_tokens !== undefined
+          ? { reasoningOutputTokens: usage.reasoning_output_tokens }
+          : {}),
       },
       ...(error ? { error } : {}),
     };

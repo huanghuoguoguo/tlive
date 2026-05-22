@@ -73,6 +73,9 @@ describe('message-schema', () => {
     it('validates status', () => {
       expect(canonicalEventSchema.parse({ kind: 'status', sessionId: 's', model: 'claude-sonnet-4-5-20250514' }).kind).toBe('status');
     });
+    it('allows status without model when provider SDK does not expose it', () => {
+      expect(canonicalEventSchema.parse({ kind: 'status', sessionId: 's' }).kind).toBe('status');
+    });
     it('validates prompt_suggestion', () => {
       expect(canonicalEventSchema.parse({ kind: 'prompt_suggestion', suggestion: 'Try this' }).kind).toBe('prompt_suggestion');
     });

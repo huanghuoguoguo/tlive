@@ -1,7 +1,7 @@
-import { CALLBACK_PREFIXES } from '../core/callbacks.js';
+import { actionCallback } from '../core/callbacks.js';
 import type { TranslationKey } from '../i18n/index.js';
 
-export type ButtonAction = { kind: 'cmd'; command: string };
+export type ButtonAction = { kind: 'action'; name: string; args?: string[] };
 
 export interface QuickButtonDefinition {
   labelKey: TranslationKey;
@@ -9,11 +9,10 @@ export interface QuickButtonDefinition {
 }
 
 export const QUICK_BUTTONS = {
-  home: { labelKey: 'perm.btnHome', action: { kind: 'cmd', command: 'home' } },
-  sessions: { labelKey: 'home.btnSessions', action: { kind: 'cmd', command: 'session' } },
-  new: { labelKey: 'home.btnNew', action: { kind: 'cmd', command: 'new' } },
-  help: { labelKey: 'home.btnHelp', action: { kind: 'cmd', command: 'help' } },
-  perm: { labelKey: 'home.btnPermissions', action: { kind: 'cmd', command: 'perm' } },
+  home: { labelKey: 'perm.btnHome', action: { kind: 'action', name: 'home' } },
+  new: { labelKey: 'home.btnNew', action: { kind: 'action', name: 'new' } },
+  help: { labelKey: 'home.btnHelp', action: { kind: 'action', name: 'help' } },
+  perm: { labelKey: 'home.btnPermissions', action: { kind: 'action', name: 'perm' } },
 } as const satisfies Record<string, QuickButtonDefinition>;
 
 export type QuickButtonName = keyof typeof QUICK_BUTTONS;
@@ -23,9 +22,6 @@ export const DEFAULT_DONE_BUTTONS: QuickButtonName[] = ['home'];
 const QUICK_BUTTON_ALIASES: Record<string, QuickButtonName | 'none'> = {
   home: 'home',
   workbench: 'home',
-  sessions: 'sessions',
-  session: 'sessions',
-  recent: 'sessions',
   new: 'new',
   'new-session': 'new',
   help: 'help',
@@ -38,8 +34,8 @@ const QUICK_BUTTON_ALIASES: Record<string, QuickButtonName | 'none'> = {
 
 export function encodeButtonAction(action: ButtonAction): string {
   switch (action.kind) {
-    case 'cmd':
-      return `${CALLBACK_PREFIXES.CMD}${action.command}`;
+    case 'action':
+      return actionCallback(action.name, ...(action.args ?? []));
   }
 }
 

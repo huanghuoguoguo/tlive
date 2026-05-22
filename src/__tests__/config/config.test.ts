@@ -65,9 +65,9 @@ describe('loadConfig', () => {
   });
 
   it('parses configurable done card buttons with aliases and dedupe', () => {
-    process.env.TL_DONE_BUTTONS = 'home,recent,new,help,permissions,home';
+    process.env.TL_DONE_BUTTONS = 'home,new,help,permissions,home';
     const config = loadConfig();
-    expect(config.ui.doneButtons).toEqual(['home', 'sessions', 'new', 'help', 'perm']);
+    expect(config.ui.doneButtons).toEqual(['home', 'new', 'help', 'perm']);
   });
 
   it('allows disabling done card buttons', () => {

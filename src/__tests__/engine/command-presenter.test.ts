@@ -3,7 +3,6 @@ import {
   presentHelp,
   presentNewSession,
   presentPermissionStatus,
-  presentSessions,
   presentStatus,
   presentHome,
   presentQueueStatus,
@@ -69,36 +68,6 @@ describe('command presenter', () => {
     });
   });
 
-  describe('presentSessions', () => {
-    it('returns semantic message data', () => {
-      const msg = presentSessions('chat-1', {
-        sessions: [
-          { index: 1, date: 'Jan 1', cwd: '/project', size: '1KB', preview: 'test', isCurrent: true },
-        ],
-        filterHint: ' (project)',
-      });
-      expect(msg.type).toBe('sessions');
-      if (msg.type === 'sessions') {
-        expect(msg.data.sessions).toHaveLength(1);
-        expect(msg.data.sessions[0].isCurrent).toBe(true);
-      }
-    });
-
-    it('formats for Feishu with buttons', () => {
-      const msg = presentSessions('chat-1', {
-        sessions: [
-          { index: 1, date: 'Jan 1', cwd: '/project', size: '1KB', preview: 'test', isCurrent: false },
-          { index: 2, date: 'Jan 2', cwd: '/other', size: '2KB', preview: 'other', isCurrent: true },
-        ],
-        filterHint: ' (all)',
-      });
-      const formatted = feishuFormatter.format(msg);
-      expect(formatted.feishuHeader?.template).toBe('blue');
-      // Feishu puts buttons in feishuElements
-      expect(formatted.feishuElements?.length).toBeGreaterThan(0);
-    });
-  });
-
   describe('presentHelp', () => {
     it('returns semantic message data', () => {
       const msg = presentHelp('chat-1', {
@@ -156,6 +125,9 @@ describe('command presenter', () => {
       const formatted = feishuFormatter.format(msg);
       expect(formatted.feishuHeader?.template).toBe('blue');
       expect(formatted.feishuElements?.length).toBeGreaterThan(0);
+      expect(JSON.stringify(formatted.feishuElements)).toContain('新会话默认工作区');
+      expect(JSON.stringify(formatted.feishuElements)).toContain('新会话默认工具审批');
+      expect(formatted.feishuElements?.at(-1)?.tag).toBe('form');
     });
 
     it('keeps Feishu home card under the platform element limit', () => {

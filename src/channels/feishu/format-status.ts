@@ -27,7 +27,7 @@ export function buildStatusElements(data: StatusData, locale: Locale): FeishuCar
   const channelDetails =
     data.channelInfo?.map((ch) => {
       if (ch.name) return `${ch.type} (@${ch.name})`;
-      if (ch.id) return `${ch.type} (${ch.id})`;
+      if (ch.appId) return `${ch.type} (${ch.appId})`;
       return ch.type;
     }) || data.channels;
 

@@ -1,6 +1,6 @@
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage } from '../../channels/types.js';
-import { parseCommandCallback } from '../../core/callbacks.js';
+import { parseActionCallback, parseCommandCallback, type ActionCallback } from '../../core/callbacks.js';
 import { THREAD_SCOPE_SEPARATOR, threadIdFromScope } from '../../core/key.js';
 import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { SDKEngine } from '../sdk/engine.js';
@@ -9,6 +9,11 @@ export interface CallbackDispatcherDeps {
   permissions: PermissionCoordinator;
   sdkEngine: SDKEngine;
   replayMessage: (adapter: BaseChannelAdapter, msg: InboundMessage) => Promise<boolean>;
+  runAction: (
+    adapter: BaseChannelAdapter,
+    msg: InboundMessage,
+    action: ActionCallback,
+  ) => Promise<boolean>;
 }
 
 export interface CallbackHandlerContext {
@@ -52,6 +57,8 @@ export function buildReplayMessage(
 }
 
 function explicitSessionKeyFromCallback(callbackData?: string): string | undefined {
+  const action = parseActionCallback(callbackData);
+  if (action?.name === 'stop') return action.args[0]?.trim() || undefined;
   const command = parseCommandCallback(callbackData);
   if (!command?.startsWith('stop ')) return undefined;
   return command.slice('stop '.length).trim() || undefined;

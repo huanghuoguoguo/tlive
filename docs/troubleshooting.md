@@ -1,13 +1,5 @@
 # Troubleshooting
 
-## Quick Diagnostics
-
-```bash
-tlive doctor
-```
-
-Automatically checks common issues.
-
 ## View Logs
 
 ```bash
@@ -43,9 +35,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$tmp = Join-Path $env:TE
    chmod 600 ~/.tlive/config.env
    ```
 
-3. Run diagnostics:
+3. Check recent logs:
    ```bash
-   tlive doctor
+   tlive logs 100
    ```
 
 ### No IM Messages Received

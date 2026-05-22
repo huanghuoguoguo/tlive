@@ -9,13 +9,14 @@ import type { AgentProviderRegistry } from '../providers/registry.js';
 import type { SDKEngine, SessionCleanupReason } from './sdk/engine.js';
 import type { ProjectsValidationResult, AgentSettingSource } from '../config.js';
 import type { BridgeStore, ChannelBinding } from '../store/interface.js';
-import type { HomeData } from '../formatting/message-types.js';
+import type { HomeData, TopicCommandPaletteData } from '../formatting/message-types.js';
 import type { RouterHelpers, CommandServices } from './commands/types.js';
 import type { PermissionCoordinator } from './coordinators/permission.js';
 import type { Locale } from '../i18n/index.js';
 import type { TopicSessionManager } from './state/topic-sessions.js';
 import { commandRegistry, registerAllCommands } from './commands/index.js';
 import { isPublicTextCommand } from './commands/slash-policy.js';
+import type { ActionCallback } from '../core/callbacks.js';
 import { DEFAULT_AGENT_SETTING_SOURCES } from '../config.js';
 import { findGitRoot } from '../utils/repo.js';
 import { generateSessionId } from '../core/id.js';
@@ -164,23 +165,25 @@ export class CommandRouter {
     };
   }
 
-  /** Handle command message using registry dispatch */
-  async handle(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
-    const parts = msg.text.split(' ');
+  private async executeCommand(
+    adapter: BaseChannelAdapter,
+    msg: InboundMessage,
+    parts: string[],
+    opts: { requirePublicTextCommand: boolean },
+  ): Promise<boolean> {
     const cmd = parts[0].toLowerCase();
     const scopeId = conversationScopeId(msg);
+    const surface = conversationSurface({ threadId: msg.threadId, scopeId });
 
-    // Try registry dispatch
     const handler = commandRegistry.get(cmd);
     if (handler) {
-      if (!msg.internalCommand && !isPublicTextCommand(handler.name)) {
+      if (opts.requirePublicTextCommand && !isPublicTextCommand(handler.name)) {
         return false;
       }
-      const surface = conversationSurface({ threadId: msg.threadId, scopeId });
       const rejection = commandRejectionForSurface(cmd, surface);
       if (rejection) {
         await adapter.send(
-          withInboundReplyContext({ chatId: msg.chatId, text: rejection }, msg) as any,
+          withInboundReplyContext({ chatId: msg.chatId, text: rejection }, msg),
         );
         return true;
       }
@@ -199,17 +202,74 @@ export class CommandRouter {
       return handler.execute(ctx);
     }
 
-    if (msg.internalCommand) {
+    if (!opts.requirePublicTextCommand) {
       await adapter.send(
         withInboundReplyContext(
           { chatId: msg.chatId, text: `⚠️ 未知 TLive 命令: ${cmd}` },
           msg,
-        ) as any,
+        ),
       );
       return true;
     }
 
     // Unknown command
     return false;
+  }
+
+  /** Handle user text slash commands. */
+  async handle(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
+    const scopeId = conversationScopeId(msg);
+    const surface = conversationSurface({ threadId: msg.threadId, scopeId });
+
+    if (!msg.internalCommand && msg.text.trim() === '/' && surface === 'topic') {
+      await this.sendTopicCommandPalette(adapter, msg, scopeId);
+      return true;
+    }
+
+    return this.executeCommand(adapter, msg, msg.text.split(' '), {
+      requirePublicTextCommand: !msg.internalCommand,
+    });
+  }
+
+  /** Handle typed card/workbench actions without replaying fake slash messages. */
+  async handleAction(
+    adapter: BaseChannelAdapter,
+    msg: InboundMessage,
+    action: ActionCallback,
+  ): Promise<boolean> {
+    return this.executeCommand(adapter, msg, [`/${action.name}`, ...action.args], {
+      requirePublicTextCommand: false,
+    });
+  }
+
+  private async sendTopicCommandPalette(
+    adapter: BaseChannelAdapter,
+    msg: InboundMessage,
+    scopeId: string,
+  ): Promise<void> {
+    const binding = await this.store.getBinding(msg.channelType, scopeId);
+    const providerKind = binding?.provider ?? this.services.providers.defaultProviderKind;
+    const provider =
+      this.services.providers.get(providerKind) ?? this.services.providers.defaultProvider;
+    const descriptor = this.services.providers.descriptor(provider.kind);
+    const sessionKey = this.state.stateKey(msg.channelType, scopeId);
+    const data: TopicCommandPaletteData = {
+      provider: provider.kind,
+      providerDisplayName: descriptor?.displayName ?? provider.displayName,
+      cwd: binding?.cwd ?? this.services.defaultWorkdir,
+      sdkSessionId: binding?.sdkSessionId,
+      isActive: this.services.activeControls.has(sessionKey),
+      permissionMode: this.state.getPermMode(msg.channelType, scopeId, binding?.sessionId),
+      capabilities: {
+        nativeSteer: provider.capabilities.nativeSteer,
+        nativeQueue: provider.capabilities.nativeQueue,
+        interactivePermissions: provider.capabilities.interactivePermissions,
+        settingSources: provider.capabilities.settingSources,
+        sessionResume: provider.capabilities.sessionResume,
+        imageInputs: provider.capabilities.imageInputs,
+      },
+    };
+    const outMsg = adapter.format({ type: 'topicCommandPalette', chatId: msg.chatId, data });
+    await adapter.send(withInboundReplyContext(outMsg, msg));
   }
 }

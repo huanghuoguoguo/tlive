@@ -3,9 +3,9 @@ import type { CommandContext } from './types.js';
 import { presentNewSession, presentHome } from '../messages/presenter.js';
 import { generateSessionId } from '../../core/id.js';
 import { t } from '../../i18n/index.js';
-import { chatScopeId } from '../../core/key.js';
 import type { AgentProviderKind } from '../../providers/kinds.js';
 import type { ChannelBinding } from '../../store/interface.js';
+import { startWorkbenchTopic } from '../services/topic-starter.js';
 
 interface NewSessionProviderChoice {
   kind: AgentProviderKind;
@@ -46,6 +46,11 @@ export class NewCommand extends BaseCommand {
       agentSettingSources: previousBinding?.agentSettingSources,
       projectName: previousBinding?.projectName,
     });
+    const permissionMode =
+      ctx.surface === 'workbench'
+        ? ctx.services.state.getPermMode(ctx.msg.channelType, scopeId)
+        : ctx.services.state.getPermMode(ctx.msg.channelType, scopeId, previousBinding?.sessionId);
+    ctx.services.state.setPermMode(ctx.msg.channelType, scopeId, newSessionId, permissionMode);
 
     ctx.services.state.clearLastActive(ctx.msg.channelType, scopeId);
 
@@ -108,46 +113,34 @@ export class NewCommand extends BaseCommand {
     newSessionId: string,
     providerChoice: NewSessionProviderChoice,
   ): Promise<boolean> {
-    if (ctx.surface !== 'workbench' || !ctx.msg.messageId) return false;
-
-    const startThreadWithTitle = (ctx.adapter as any).startThreadWithTitle;
-    const startThreadFromMessage = (ctx.adapter as any).startThreadFromMessage;
-    if (
-      typeof startThreadWithTitle !== 'function' &&
-      typeof startThreadFromMessage !== 'function'
-    ) {
-      return false;
-    }
-
     const cwd = previousBinding?.cwd || ctx.services.defaultWorkdir;
     const title = `新 ${providerChoice.displayName} 会话`;
     const intro = `💬 已开启新话题，请在本话题内继续发送消息。`;
-    const started =
-      typeof startThreadWithTitle === 'function'
-        ? await startThreadWithTitle
-            .call(ctx.adapter, ctx.msg.chatId, title, intro)
-            .catch(() => null)
-        : await startThreadFromMessage
-            .call(ctx.adapter, ctx.msg.chatId, ctx.msg.messageId, intro)
-            .catch(() => null);
-    if (!started?.threadId || !started?.messageId) return false;
+    const topic = await startWorkbenchTopic(ctx, title, intro);
+    if (!topic) return false;
 
-    const topicScopeId = chatScopeId(ctx.msg.chatId, started.threadId);
+    const topicScopeId = topic.scopeId;
     await ctx.services.router.rebind(ctx.msg.channelType, topicScopeId, newSessionId, {
       provider: providerChoice.kind,
       cwd,
       agentSettingSources: previousBinding?.agentSettingSources,
       projectName: previousBinding?.projectName,
     });
+    ctx.services.state.setPermMode(
+      ctx.msg.channelType,
+      topicScopeId,
+      newSessionId,
+      ctx.services.state.getPermMode(ctx.msg.channelType, ctx.scopeId),
+    );
     ctx.services.workspace.pushHistory(ctx.msg.channelType, topicScopeId, cwd);
     ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, topicScopeId, cwd);
     ctx.services.topicSessions?.upsert({
       channelType: ctx.msg.channelType,
       chatId: ctx.msg.chatId,
       scopeId: topicScopeId,
-      threadId: started.threadId,
-      rootMessageId: started.rootMessageId ?? started.messageId,
-      lastMessageId: started.messageId,
+      threadId: topic.threadId,
+      rootMessageId: topic.rootMessageId,
+      lastMessageId: topic.lastMessageId,
       provider: providerChoice.kind,
       cwd,
       title,

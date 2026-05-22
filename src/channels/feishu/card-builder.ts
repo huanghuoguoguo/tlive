@@ -6,7 +6,7 @@ export type FeishuHeaderTemplate = 'blue' | 'green' | 'orange' | 'red' | 'purple
 export interface FeishuCardElement {
   tag: string;
   content?: string;
-  elements?: Array<{ tag: string; content: string }>;
+  elements?: FeishuCardElement[];
   actions?: Array<{
     tag: string;
     text: { tag: string; content: string };
@@ -19,7 +19,7 @@ export interface FeishuCardElement {
     title: { tag: string; content: string };
   };
   body?: {
-    elements: Array<{ tag: string; content: string }>;
+    elements: FeishuCardElement[];
   };
   /** Allow arbitrary additional properties */
   [key: string]: unknown;
@@ -36,7 +36,7 @@ export interface FeishuCardOptions {
 export function buildFeishuButtonElements(buttons?: Button[]): FeishuCardElement[] {
   if (!buttons?.length) return [];
 
-  const makeButton = (btn: Button) => {
+  const makeButton = (btn: Button): FeishuCardElement => {
     // Check if this is a form submit button (callbackData starts with 'form:')
     const isFormSubmit = btn.callbackData?.startsWith('form:');
     // Check if this is a form reset button
@@ -90,7 +90,7 @@ export function buildFeishuButtonElements(buttons?: Button[]): FeishuCardElement
       tag: 'column_set',
       flex_mode: 'flow',
       columns: buttons.map(makeButton),
-    } as unknown as FeishuCardElement];
+    }];
   }
 
   const rowMap = new Map<number, Button[]>();
@@ -106,7 +106,7 @@ export function buildFeishuButtonElements(buttons?: Button[]): FeishuCardElement
       tag: 'column_set',
       flex_mode: 'flow',
       columns: rowButtons.map(makeButton),
-    } as unknown as FeishuCardElement));
+    }));
 }
 
 /**
@@ -116,7 +116,7 @@ export function buildFeishuButtonElements(buttons?: Button[]): FeishuCardElement
 export function buildFeishuCard(options: FeishuCardOptions): string {
   const card: Record<string, unknown> = {
     schema: '2.0',
-    config: { wide_screen_mode: true },
+    config: { wide_screen_mode: true, update_multi: true },
     body: {
       elements: options.elements,
     },

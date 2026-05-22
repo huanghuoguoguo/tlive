@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { handleCallbackMessage } from '../../engine/messages/callback-dispatcher.js';
+import { actionCallback } from '../../core/callbacks.js';
 
 function createAdapter() {
   return {
@@ -60,12 +61,13 @@ function createDeps() {
         }),
       },
       replayMessage: vi.fn(),
+      runAction: vi.fn().mockResolvedValue(true),
     } as any,
   };
 }
 
 describe('handleCallbackMessage form submissions', () => {
-  it('replays workbench command form submissions as internal commands', async () => {
+  it('runs workbench command form submissions as typed actions', async () => {
     const adapter = createAdapter();
     const { deps } = createDeps();
 
@@ -78,10 +80,11 @@ describe('handleCallbackMessage form submissions', () => {
     } as any, deps);
 
     expect(handled).toBe(true);
-    expect(deps.replayMessage).toHaveBeenCalledWith(adapter, expect.objectContaining({
-      text: '/status',
-      internalCommand: true,
-    }));
+    expect(deps.runAction).toHaveBeenCalledWith(adapter, expect.any(Object), {
+      name: 'status',
+      args: [],
+    });
+    expect(deps.replayMessage).not.toHaveBeenCalled();
   });
 
   it('does not resolve empty Feishu form submissions', async () => {
@@ -165,18 +168,18 @@ describe('handleCallbackMessage form submissions', () => {
       scopeId: 'chat-1',
       userId: 'user-1',
       messageId: 'msg-card-1',
-      callbackData: 'cmd:home',
+      callbackData: actionCallback('home'),
     } as any, deps);
 
     expect(handled).toBe(true);
-    expect(deps.replayMessage).toHaveBeenCalledWith(adapter, expect.objectContaining({
+    expect(deps.runAction).toHaveBeenCalledWith(adapter, expect.objectContaining({
       chatId: 'chat-1',
       scopeId: 'chat-1#thread:thread-1',
       threadId: 'thread-1',
       replyInThread: true,
       replyTargetMessageId: 'msg-card-1',
-      text: '/home',
-    }));
+    }), { name: 'home', args: [] });
+    expect(deps.replayMessage).not.toHaveBeenCalled();
   });
 
   it('infers Feishu topic scope from an explicit stop session callback before bubble mapping exists', async () => {
@@ -197,7 +200,7 @@ describe('handleCallbackMessage form submissions', () => {
       scopeId: 'chat-1',
       userId: 'user-1',
       messageId: 'msg-running-card',
-      callbackData: 'cmd:stop feishu:chat-1#thread:thread-1:session-1',
+      callbackData: actionCallback('stop', 'feishu:chat-1#thread:thread-1:session-1'),
     } as any, deps);
 
     expect(handled).toBe(true);
@@ -205,13 +208,16 @@ describe('handleCallbackMessage form submissions', () => {
     expect(deps.sdkEngine.getSessionContext).toHaveBeenCalledWith(
       'feishu:chat-1#thread:thread-1:session-1',
     );
-    expect(deps.replayMessage).toHaveBeenCalledWith(adapter, expect.objectContaining({
+    expect(deps.runAction).toHaveBeenCalledWith(adapter, expect.objectContaining({
       chatId: 'chat-1',
       scopeId: 'chat-1#thread:thread-1',
       threadId: 'thread-1',
       replyInThread: true,
       replyTargetMessageId: 'msg-running-card',
-      text: '/stop feishu:chat-1#thread:thread-1:session-1',
-    }));
+    }), {
+      name: 'stop',
+      args: ['feishu:chat-1#thread:thread-1:session-1'],
+    });
+    expect(deps.replayMessage).not.toHaveBeenCalled();
   });
 });

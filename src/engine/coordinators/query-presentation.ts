@@ -63,6 +63,17 @@ export class QueryPresentationFactory {
       shouldSplitState: (state) => this.shouldSplitProgressBubble(adapter, msg, state),
       platformLimit: FEISHU_MESSAGE_LIMIT,
       throttleMs: 300,
+      adaptiveFlush: {
+        baseMs: 800,
+        minMs: 800,
+        maxMs: 4000,
+        sizePenaltyStartBytes: 10 * 1024,
+        largeSizePenaltyStartBytes: 20 * 1024,
+        fastOutputCharsPerSec: 240,
+        veryFastOutputCharsPerSec: 480,
+        highLatencyMs: 600,
+        rateLimitBackoffMs: 2000,
+      },
       cwd: binding.cwd || this.options.defaultWorkdir,
       sessionId: binding.sdkSessionId,
       onPermissionReaction: () => {

@@ -76,6 +76,14 @@ export interface StreamChatResult {
   controls?: QueryControls;
 }
 
+/** Runtime metadata for the actual provider session currently running. */
+export interface AgentRuntimeInfo {
+  provider: AgentProviderKind;
+  displayName: string;
+  model?: string;
+  reasoningEffort?: string;
+}
+
 /** Parameters for starting a turn within a LiveSession */
 export interface TurnParams {
   attachments?: FileAttachment[];
@@ -97,6 +105,7 @@ export type MessagePriority = 'now' | 'next' | 'later';
  */
 export interface LiveSession {
   readonly capabilities?: Pick<AgentProviderCapabilities, 'nativeSteer' | 'nativeQueue'>;
+  readonly runtimeInfo?: AgentRuntimeInfo;
   /** Start a new turn (user message → agent response). Returns per-turn event stream. */
   startTurn(prompt: string, params?: TurnParams): StreamChatResult;
   /** Inject text into active turn. No-op if no turn is active. */

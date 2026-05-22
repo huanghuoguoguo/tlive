@@ -83,15 +83,12 @@ Claude Code will execute locally and stream progress, tool usage, permission pro
 
 - `/perm on|off`: toggle permission prompts
 - `/stop`: interrupt current execution
-- `/sessions`: list recent Claude Code sessions
-- `/session <n>`: resume a listed session
 - `/cd <path>`: switch workdir
 - `/pwd`: show workdir
 
 ## Troubleshooting
 
 ```bash
-tlive doctor
 tlive logs 50
 ```
 

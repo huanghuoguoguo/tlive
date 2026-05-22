@@ -66,6 +66,7 @@ vi.mock('@larksuiteoapi/node-sdk', () => {
 });
 
 import { FeishuAdapter } from '../../channels/feishu/adapter.js';
+import { RateLimitError } from '../../channels/errors.js';
 
 describe('FeishuAdapter', () => {
   let adapter: FeishuAdapter;
@@ -108,6 +109,24 @@ describe('FeishuAdapter', () => {
 
     it('returns null when config is valid', () => {
       expect(adapter.validateConfig()).toBeNull();
+    });
+  });
+
+  describe('classifyError()', () => {
+    it('treats Feishu message patch frequency errors as rate limits', () => {
+      const err = adapter.classifyError({ code: 230020, message: 'frequency limit' });
+      expect(err).toBeInstanceOf(RateLimitError);
+      expect((err as RateLimitError).retryAfterMs).toBe(2000);
+    });
+
+    it('reads retry-after headers for 429 responses', () => {
+      const err = adapter.classifyError({
+        status: 429,
+        message: 'too many requests',
+        headers: { 'retry-after': '3' },
+      });
+      expect(err).toBeInstanceOf(RateLimitError);
+      expect((err as RateLimitError).retryAfterMs).toBe(3000);
     });
   });
 
@@ -407,6 +426,18 @@ describe('FeishuAdapter', () => {
       await adapter.stop();
     });
 
+    it('propagates rate limits so the renderer can back off', async () => {
+      await adapter.start();
+      mockMessagePatch.mockRejectedValueOnce({ code: 230020, message: 'frequency limit' });
+
+      await expect(adapter.editMessage('oc_chat123', 'msg-feishu-1', {
+        chatId: 'oc_chat123',
+        text: 'Updated content',
+      })).rejects.toBeInstanceOf(RateLimitError);
+
+      await adapter.stop();
+    });
+
     it('does nothing when client is not started', async () => {
       await adapter.editMessage('oc_chat', 'msg-1', { chatId: 'oc_chat', text: 'hi' });
       expect(mockMessagePatch).not.toHaveBeenCalled();
@@ -697,6 +728,64 @@ describe('FeishuAdapter', () => {
       });
       expect(msg!.callbackData).toContain('form:askq-123:');
       expect(msg!.callbackData).toContain('_text_answer');
+
+      await adapter.stop();
+    });
+
+    it('uses form submit action name when form_value has no interaction id', async () => {
+      await adapter.start();
+
+      const handler = eventHandlers.get('card.action.trigger');
+      await handler?.({
+        operator: { user_id: 'user_1' },
+        action: {
+          name: 'tlive_command',
+          form_value: { _tlive_command: 'cd ..' },
+        },
+        context: { chat_id: 'chat_1', open_message_id: 'om_tlive' },
+      });
+
+      const msg = await adapter.consumeOne();
+      expect(msg!.callbackData).toContain('form:tlive_command:');
+      expect(msg!.callbackData).toContain('cd ..');
+
+      await adapter.stop();
+    });
+
+    it('infers workbench command form from field names when action name is missing', async () => {
+      await adapter.start();
+
+      const handler = eventHandlers.get('card.action.trigger');
+      await handler?.({
+        operator: { user_id: 'user_1' },
+        action: {
+          form_value: { _tlive_command: 'cd ..' },
+        },
+        context: { chat_id: 'chat_1', open_message_id: 'om_tlive' },
+      });
+
+      const msg = await adapter.consumeOne();
+      expect(msg!.callbackData).toContain('form:tlive_command:');
+      expect(msg!.callbackData).toContain('cd ..');
+
+      await adapter.stop();
+    });
+
+    it('prefers explicit form interaction id over action name', async () => {
+      await adapter.start();
+
+      const handler = eventHandlers.get('card.action.trigger');
+      await handler?.({
+        operator: { user_id: 'user_1' },
+        action: {
+          name: 'tlive_command',
+          form_value: { _interaction_id: 'askq-789', _text_answer: 'ok' },
+        },
+        context: { chat_id: 'chat_1', open_message_id: 'om_789' },
+      });
+
+      const msg = await adapter.consumeOne();
+      expect(msg!.callbackData).toContain('form:askq-789:');
 
       await adapter.stop();
     });

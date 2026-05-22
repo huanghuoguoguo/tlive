@@ -1,13 +1,5 @@
 # 故障排查
 
-## 快速诊断
-
-```bash
-tlive doctor
-```
-
-自动检查常见问题。
-
 ## 查看日志
 
 ```bash
@@ -43,9 +35,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$tmp = Join-Path $env:TE
    chmod 600 ~/.tlive/config.env
    ```
 
-3. 运行诊断：
+3. 查看最近日志：
    ```bash
-   tlive doctor
+   tlive logs 100
    ```
 
 ### 收不到 IM 消息

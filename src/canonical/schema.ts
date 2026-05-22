@@ -60,6 +60,8 @@ const agentCompleteSchema = z.object({
 const usageSchema = z.object({
   inputTokens: z.number(),
   outputTokens: z.number(),
+  cachedInputTokens: z.number().optional(),
+  reasoningOutputTokens: z.number().optional(),
   costUsd: z.number().optional(),
 }).passthrough();
 
@@ -85,7 +87,7 @@ const errorSchema = z.object({
 const statusSchema = z.object({
   kind: z.literal('status'),
   sessionId: z.string(),
-  model: z.string(),
+  model: z.string().optional(),
 }).passthrough();
 
 const sessionInfoSchema = z.object({

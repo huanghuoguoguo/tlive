@@ -79,6 +79,7 @@ describe('CommandRouter /settings', () => {
     permissions = createMockPermissions();
     adapter = {
       channelType: 'feishu',
+      format: vi.fn((msg: any) => msg),
       send: vi.fn().mockResolvedValue(undefined),
       sendFormatted: vi.fn().mockResolvedValue(undefined),
     };
@@ -187,7 +188,7 @@ describe('CommandRouter /settings', () => {
 
     expect(handled).toBe(false);
     expect(adapter.send).not.toHaveBeenCalled();
-    expect(adapter.sendFormatted).not.toHaveBeenCalled();
+    expect(adapter.format).not.toHaveBeenCalled();
   });
 
   it('keeps /tlive as the public workbench entrypoint', async () => {
@@ -200,7 +201,11 @@ describe('CommandRouter /settings', () => {
     } as any);
 
     expect(handled).toBe(true);
-    expect(adapter.sendFormatted).toHaveBeenCalledWith(expect.objectContaining({
+    expect(adapter.format).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'home',
+      chatId: 'c1',
+    }));
+    expect(adapter.send).toHaveBeenCalledWith(expect.objectContaining({
       type: 'home',
       chatId: 'c1',
     }));
@@ -253,6 +258,25 @@ describe('CommandRouter /settings', () => {
     }));
   });
 
+  it('rejects /stop in the workbench without an explicit session key', async () => {
+    sdkEngine.interruptChat = vi.fn().mockResolvedValue(true);
+
+    await router.handle(adapter, {
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      scopeId: 'chat-1',
+      userId: 'u1',
+      text: '/stop',
+      messageId: 'm-stop-workbench',
+    } as any);
+
+    expect(sdkEngine.interruptChat).not.toHaveBeenCalled();
+    expect(adapter.send).toHaveBeenCalledWith(expect.objectContaining({
+      chatId: 'chat-1',
+      text: expect.stringContaining('/stop 只中断具体话题'),
+    }));
+  });
+
   it('rejects workbench home inside a Feishu topic instead of rendering a workbench card', async () => {
     await router.handle(adapter, {
       channelType: 'feishu',
@@ -266,31 +290,9 @@ describe('CommandRouter /settings', () => {
       messageId: 'topic-card',
     } as any);
 
-    expect(adapter.sendFormatted).not.toHaveBeenCalled();
+    expect(adapter.format).not.toHaveBeenCalled();
     expect(adapter.send).toHaveBeenCalledWith(expect.objectContaining({
       text: expect.stringContaining('/home 是工作台命令'),
-      replyToMessageId: 'topic-card',
-      replyInThread: true,
-    }));
-  });
-
-  it('rejects internal session switching inside a Feishu topic', async () => {
-    await router.handle(adapter, {
-      channelType: 'feishu',
-      chatId: 'c1',
-      scopeId: chatScopeId('c1', 'thread-1'),
-      threadId: 'thread-1',
-      replyInThread: true,
-      replyTargetMessageId: 'topic-card',
-      userId: 'u1',
-      text: '/session --all',
-      internalCommand: true,
-      messageId: 'topic-card',
-    } as any);
-
-    expect(adapter.sendFormatted).not.toHaveBeenCalled();
-    expect(adapter.send).toHaveBeenCalledWith(expect.objectContaining({
-      text: expect.stringContaining('/session 是工作台命令'),
       replyToMessageId: 'topic-card',
       replyInThread: true,
     }));
@@ -310,9 +312,58 @@ describe('CommandRouter /settings', () => {
       messageId: 'topic-card',
     } as any);
 
-    expect(adapter.sendFormatted).not.toHaveBeenCalled();
+    expect(adapter.format).not.toHaveBeenCalled();
     expect(adapter.send).toHaveBeenCalledWith(expect.objectContaining({
       text: expect.stringContaining('不支持切换到其他会话'),
+      replyToMessageId: 'topic-card',
+      replyInThread: true,
+    }));
+  });
+
+  it('renders a topic command palette when the user sends only slash in a Feishu topic', async () => {
+    const scopeId = chatScopeId('c1', 'thread-1');
+    await store.saveBinding({
+      channelType: 'feishu',
+      chatId: scopeId,
+      sessionId: 'binding-1',
+      sdkSessionId: 'sdk-123456789',
+      provider: 'claude',
+      cwd: '/tmp/project',
+      createdAt: '',
+    });
+    const adapterWithFormat = {
+      ...adapter,
+      format: vi.fn().mockReturnValue({ chatId: 'c1', text: 'palette card' }),
+    };
+
+    const handled = await router.handle(adapterWithFormat, {
+      channelType: 'feishu',
+      chatId: 'c1',
+      scopeId,
+      threadId: 'thread-1',
+      replyInThread: true,
+      replyTargetMessageId: 'topic-card',
+      userId: 'u1',
+      text: '/',
+      messageId: 'm-slash',
+    } as any);
+
+    expect(handled).toBe(true);
+    expect(adapterWithFormat.format).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'topicCommandPalette',
+      chatId: 'c1',
+      data: expect.objectContaining({
+        provider: 'claude',
+        providerDisplayName: 'Claude Code',
+        cwd: '/tmp/project',
+        sdkSessionId: 'sdk-123456789',
+        isActive: false,
+        permissionMode: 'on',
+      }),
+    }));
+    expect(adapterWithFormat.send).toHaveBeenCalledWith(expect.objectContaining({
+      chatId: 'c1',
+      text: 'palette card',
       replyToMessageId: 'topic-card',
       replyInThread: true,
     }));
@@ -332,7 +383,7 @@ describe('CommandRouter /settings', () => {
       messageId: 'topic-card',
     } as any);
 
-    expect(adapter.sendFormatted).toHaveBeenCalledWith(expect.objectContaining({
+    expect(adapter.format).toHaveBeenCalledWith(expect.objectContaining({
       type: 'help',
       chatId: 'c1',
       data: expect.objectContaining({
@@ -369,12 +420,12 @@ describe('CommandRouter /settings', () => {
       messageId: 'topic-card',
     } as any);
 
-    expect(adapter.sendFormatted).toHaveBeenCalledTimes(1);
-    expect(adapter.sendFormatted).toHaveBeenCalledWith(expect.objectContaining({
+    expect(adapter.format).toHaveBeenCalledTimes(1);
+    expect(adapter.format).toHaveBeenCalledWith(expect.objectContaining({
       type: 'newSession',
       chatId: 'c1',
     }));
-    expect(adapter.sendFormatted).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(adapter.format).not.toHaveBeenCalledWith(expect.objectContaining({
       type: 'home',
     }));
 
@@ -385,8 +436,10 @@ describe('CommandRouter /settings', () => {
 
   it('opens workbench /new as a fresh Feishu topic when topics are supported', async () => {
     const topicSessions = new TopicSessionManager();
+    const state = new SessionStateManager();
+    state.setPermMode('feishu', 'c1', undefined, 'off');
     const topicRouter = new CommandRouter(
-      new SessionStateManager(),
+      state,
       workspace,
       new RecentProjectsManager(),
       () => new Map(),
@@ -446,6 +499,7 @@ describe('CommandRouter /settings', () => {
       sdkSessionId: undefined,
     });
     expect(topicBinding?.sessionId).not.toBe('binding-1');
+    expect(state.getPermMode('feishu', scopeId, topicBinding?.sessionId)).toBe('off');
     expect(topicSessions.findByScope(scopeId)).toMatchObject({
       scopeId,
       provider: 'claude',
@@ -654,7 +708,7 @@ describe('CommandRouter /settings', () => {
     expect(workspace.getBinding('feishu', 'c1')).toBe(repoB);
   });
 
-  it('clears project binding when /session --all switches to another repo', async () => {
+  it('does not mutate the workbench binding when hidden continue cannot create a topic', async () => {
     const repoA = join(tmpDir, 'repo-a');
     const repoB = join(tmpDir, 'repo-b');
     mkdirSync(join(repoA, '.git'), { recursive: true });
@@ -689,7 +743,7 @@ describe('CommandRouter /settings', () => {
       channelType: 'feishu',
       chatId: 'c1',
       userId: 'u1',
-      text: '/session --all 1',
+      text: '/continue claude:sdk-target',
       internalCommand: true,
       messageId: 'm12',
     } as any);
@@ -697,11 +751,14 @@ describe('CommandRouter /settings', () => {
     expect(sdkEngine.cleanupSession).not.toHaveBeenCalled();
     expect(permissions.clearSessionWhitelist).not.toHaveBeenCalled();
     const binding = await store.getBinding('feishu', 'c1');
-    expect(binding?.cwd).toBe(repoB);
-    expect(binding?.sdkSessionId).toBe('sdk-target');
-    expect(binding?.sessionId).not.toBe('binding-1');
-    expect(binding?.projectName).toBeUndefined();
-    expect(workspace.getBinding('feishu', 'c1')).toBe(repoB);
+    expect(binding?.cwd).toBe(repoA);
+    expect(binding?.sdkSessionId).toBe('sdk-1');
+    expect(binding?.sessionId).toBe('binding-1');
+    expect(binding?.projectName).toBe('repo-a');
+    expect(workspace.getBinding('feishu', 'c1')).toBe(repoA);
+    expect(adapter.send).toHaveBeenCalledWith(expect.objectContaining({
+      text: expect.stringContaining('无法创建话题'),
+    }));
 
     scanSpy.mockRestore();
   });

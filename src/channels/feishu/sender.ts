@@ -28,6 +28,12 @@ function isThreadReplyUnsupported(err: unknown): boolean {
   return (err as any)?.code === 230071;
 }
 
+function isFeishuRateLimit(err: unknown): boolean {
+  const e = err as Record<string, any>;
+  const statusCode = e?.statusCode ?? e?.status ?? e?.response?.statusCode ?? e?.response?.status;
+  return e?.code === 230020 || e?.code === 99991400 || statusCode === 429;
+}
+
 export async function sendFeishuMessage(
   client: Client,
   message: FeishuRenderedMessage,
@@ -57,6 +63,7 @@ export async function editFeishuMessage(
   client: Client | null,
   messageId: string,
   message: FeishuRenderedMessage,
+  classifyError?: ClassifyError,
 ): Promise<void> {
   if (!client) return;
   const text = message.text ? message.text : markdownToFeishu(message.html ?? '');
@@ -71,6 +78,9 @@ export async function editFeishuMessage(
       },
     });
   } catch (err: any) {
+    if (classifyError && isFeishuRateLimit(err)) {
+      throw classifyError(err);
+    }
     console.warn(`[feishu] editMessage failed: ${err?.message ?? err}`);
   }
 }

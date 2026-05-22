@@ -14,6 +14,7 @@ import { SessionStaleError, isStaleSessionError } from '../state/session-stale-e
 import type { SDKEngine } from '../sdk/engine.js';
 import { buildFileSendRoutePrompt } from '../automation/file-send-prompt.js';
 import type { QueryContext } from './query-context.js';
+import { CostTracker } from '../cost-tracker.js';
 
 const DEBUG_EVENTS = process.env.TL_DEBUG_EVENTS === '1';
 
@@ -86,11 +87,20 @@ export class QueryTurnRunner {
     }
 
     if (liveSession) {
+      renderer.setRuntimeInfo(liveSession.runtimeInfo ?? {
+        provider: provider.kind,
+        displayName: provider.displayName,
+      });
       streamResult = liveSession.startTurn(promptText, {
         onPermissionRequest: sdkPermissionHandler,
         onAskUserQuestion: sdkAskQuestionHandler,
         onDeferredTool: sdkDeferredToolHandler,
         attachments: imageAttachments,
+      });
+    } else {
+      renderer.setRuntimeInfo({
+        provider: provider.kind,
+        displayName: provider.displayName,
       });
     }
 
@@ -173,11 +183,14 @@ export class QueryTurnRunner {
             `[query] ${ctx.requestId} DENIALS ${event.permissionDenials.map((denial) => denial.toolName).join(', ')}`,
           );
         }
-        costTracker.finish({
+        const usageStats = costTracker.finish({
           input_tokens: event.usage.inputTokens,
           output_tokens: event.usage.outputTokens,
+          cached_input_tokens: event.usage.cachedInputTokens,
+          reasoning_output_tokens: event.usage.reasoningOutputTokens,
           cost_usd: event.usage.costUsd,
         });
+        renderer.setUsageSummary(CostTracker.format(usageStats));
         console.log(
           `[query] ${ctx.requestId} COMPLETE tokens=${event.usage.inputTokens}+${event.usage.outputTokens} cost=${event.usage.costUsd?.toFixed(4) || '?'}$`,
         );

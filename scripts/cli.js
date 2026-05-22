@@ -543,75 +543,6 @@ function getDailyLogPath(baseName, date = new Date()) {
   return join(LOG_DIR, `${baseName}-${year}-${month}-${day}.log`);
 }
 
-// ---------------------------------------------------------------------------
-// Doctor
-// ---------------------------------------------------------------------------
-
-async function runDoctor() {
-  console.log('=== TLive Doctor ===\n');
-
-  // Dependencies
-  console.log('Dependencies:');
-
-  console.log(`  node:    ${process.version}`);
-
-  const checkCmd = (name) => {
-    try {
-      const r = spawnSync(isWindows ? 'where' : 'which', [name], { encoding: 'utf-8', timeout: 5000 });
-      return r.status === 0;
-    } catch { return false; }
-  };
-
-  const gitVersion = (() => {
-    try {
-      const r = spawnSync('git', ['--version'], { encoding: 'utf-8', timeout: 5000 });
-      return r.status === 0 ? r.stdout.trim().split('\n')[0] : null;
-    } catch { return null; }
-  })();
-
-  console.log(checkCmd('curl') ? '  curl:    OK' : '  curl:    NOT FOUND (optional)');
-  console.log(checkCmd('jq') ? '  jq:      OK' : '  jq:      NOT FOUND (optional)');
-  console.log(gitVersion ? `  git:     ${gitVersion}` : '  git:     NOT FOUND');
-
-  console.log('');
-
-  // Config
-  console.log('Config:');
-  if (existsSync(CONFIG_FILE)) {
-    console.log('  config.env: OK');
-    const config = loadConfigEnv();
-    console.log(config.TL_TOKEN ? '  TL_TOKEN: set' : '  TL_TOKEN: NOT SET');
-    console.log(
-      config.TL_FS_APP_ID && config.TL_FS_APP_SECRET
-        ? '  Feishu:   configured'
-        : '  Feishu:   not configured',
-    );
-  } else {
-    console.log("  config.env: NOT FOUND (run 'tlive setup')");
-  }
-
-  console.log('');
-
-  // Processes
-  console.log('Processes:');
-  const bridgePid = getBridgePid();
-  console.log(bridgePid ? `  Bridge:   running (PID ${bridgePid})` : '  Bridge:   not running');
-
-  // Show active sessions count
-  const bindingsFile = join(TLIVE_HOME, 'data', 'bindings.json');
-  try {
-    const bindings = JSON.parse(readFileSync(bindingsFile, 'utf-8'));
-    const count = Object.values(bindings).filter(binding => binding?.channelType === 'feishu').length;
-    console.log(count > 0 ? `  Sessions: ${count} active` : '  Sessions: none');
-  } catch {
-    console.log('  Sessions: (no data)');
-  }
-
-  console.log('');
-
-  console.log('\n=== Done ===');
-}
-
 const HELP_TEXT = `TLive — Terminal live monitoring + IM bridge for AI coding tools
 
 Usage:
@@ -627,7 +558,6 @@ Service Management:
   tlive restart              Restart IM Bridge daemon
   tlive status               Show Bridge status
   tlive logs [N]             Show last N log lines (default: 50)
-  tlive doctor               Run diagnostic checks
   tlive upgrade [version]    Upgrade to latest or specified version
   tlive version              Show version info
 
@@ -641,10 +571,9 @@ In Claude Code (AI-guided):
   /tlive                     Start Bridge (with pre-checks)
   /tlive setup               Interactive setup wizard
   /tlive reconfigure         Modify specific config fields
-  /tlive doctor              Diagnose issues + suggest fixes
 `;
 
-const NODE_COMMANDS = new Set(['setup', 'start', 'stop', 'restart', 'status', 'logs', 'doctor', 'version', 'update', 'upgrade']);
+const NODE_COMMANDS = new Set(['setup', 'start', 'stop', 'restart', 'status', 'logs', 'version', 'update', 'upgrade']);
 const CORE_COMMANDS = new Set(['install']);
 
 function run(cmd, opts = {}) {
@@ -716,10 +645,6 @@ switch (command) {
 
   case 'logs':
     daemonLogs(parseInt(args[0], 10) || 50);
-    break;
-
-  case 'doctor':
-    await runDoctor();
     break;
 
   case 'version': {
@@ -981,7 +906,7 @@ switch (command) {
 
   default: {
     // Check for typos of known commands before failing
-    const known = ['setup', 'start', 'stop', 'restart', 'status', 'logs', 'doctor', 'install', 'help', 'version', 'update', 'upgrade'];
+    const known = ['setup', 'start', 'stop', 'restart', 'status', 'logs', 'install', 'help', 'version', 'update', 'upgrade'];
     const similar = known.find(k => {
       if (Math.abs(k.length - command.length) > 2) return false;
       let diff = 0;

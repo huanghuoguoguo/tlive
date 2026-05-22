@@ -153,9 +153,9 @@ export class QueryExecutionPresenter {
     errorMessage?: string;
     footerLine?: string;
   }): import('../../formatting/message-types.js').TaskSummaryData {
-    const summarySource = (state.responseText || state.renderedText || '').trim();
     // Allow full summary for task completion (up to 5000 chars)
     const locale = this.adapter.getLocale();
+    const summarySource = (state.responseText || '').trim();
     const summary = truncate(summarySource || t(locale, 'format.taskCompleted'), 5000);
     const changedFileKeys = new Set(
       state.toolLogs

@@ -1,4 +1,8 @@
-import { CALLBACK_PREFIXES, parseCommandCallback } from '../../core/callbacks.js';
+import {
+  CALLBACK_PREFIXES,
+  parseActionCallback,
+  parseCommandCallback,
+} from '../../core/callbacks.js';
 import type { CallbackHandlerContext, CallbackHandlerResult } from './callback-context.js';
 import { buildReplayMessage } from './callback-context.js';
 
@@ -10,6 +14,12 @@ export async function handleCommandCallback(
   if (callbackData.startsWith(CALLBACK_PREFIXES.SUGGEST)) {
     const suggestion = callbackData.slice(CALLBACK_PREFIXES.SUGGEST.length);
     return deps.replayMessage(adapter, buildReplayMessage(msg, suggestion));
+  }
+
+  const action = parseActionCallback(callbackData);
+  if (action) {
+    await deps.runAction(adapter, msg, action);
+    return true;
   }
 
   const command = parseCommandCallback(callbackData);

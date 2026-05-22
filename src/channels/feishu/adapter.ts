@@ -176,7 +176,7 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
     messageId: string,
     message: FeishuRenderedMessage,
   ): Promise<void> {
-    await editFeishuMessage(this.client, messageId, message);
+    await editFeishuMessage(this.client, messageId, message, (err) => this.classifyError(err));
   }
 
   createStreamingSession(
@@ -259,7 +259,10 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
 
     // Feishu uses numeric error codes
     const code = e?.code;
-    if (code === 99991400) return new RateLimitError(message);
+    const statusCode = e?.statusCode ?? e?.status ?? e?.response?.statusCode ?? e?.response?.status;
+    if (code === 230020 || code === 99991400 || statusCode === 429) {
+      return new RateLimitError(message, readRetryAfterMs(e));
+    }
     if (code === 99991401 || code === 99991403) return new AuthError(message);
 
     return super.classifyError(err);
@@ -269,4 +272,11 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
   getBotInfo(): { appId?: string; name?: string } {
     return { appId: this.config.appId };
   }
+}
+
+function readRetryAfterMs(err: Record<string, any>): number {
+  const headers = err?.response?.headers ?? err?.headers ?? {};
+  const retryAfter = headers['retry-after'] ?? headers['Retry-After'];
+  const seconds = Number(retryAfter);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 2000;
 }

@@ -4,30 +4,27 @@
  *
  * Main formatter delegates to specialized modules:
  * - format-home.ts: Home screen formatting
- * - format-permission.ts: Permission/question formatting
+ * - format-interactions.ts: user input cards
+ * - format-permission-status.ts: permission status card
  * - format-progress.ts: Progress/timeline formatting
  */
 
-import {
+import type {
   MessageFormatter,
-  type MessageFormatterOptions,
+  MessageFormatterOptions,
 } from '../../formatting/message-formatter.js';
 import { t, type Locale } from '../../i18n/index.js';
-import { downgradeHeadings } from './markdown.js';
 import { buildFeishuButtonElements, type FeishuCardElement } from './card-builder.js';
 import type { FeishuRenderedMessage } from './types.js';
 import type {
-  NotificationData,
   HomeData,
   PermissionStatusData,
   TaskStartData,
-  SessionsData,
-  SessionDetailData,
   HelpData,
+  TopicCommandPaletteData,
   NewSessionData,
   ProgressData,
   TaskSummaryData,
-  PermissionData,
   QuestionData,
   DeferredToolInputData,
   CardResolutionData,
@@ -36,39 +33,98 @@ import type {
   StatusData,
   QueueStatusData,
   DiagnoseData,
+  FormattableMessage,
 } from '../../formatting/message-types.js';
 import type { Button } from '../../ui/types.js';
-import { taskStartButtons, taskSummaryButtons, helpButtons } from '../../ui/buttons.js';
+import {
+  DEFAULT_DONE_BUTTONS,
+  progressDoneButtons,
+  progressRunningButtons,
+  taskStartButtons,
+  taskSummaryButtons,
+  helpButtons,
+  topicCommandPaletteButtons,
+  type QuickButtonName,
+} from '../../ui/buttons.js';
 import { truncate } from '../../core/string.js';
 
 // Import specialized formatters
 import { mdElement, buildHomeElements, homeButtons } from './format-home.js';
 import {
-  buildPermissionElements,
-  permissionFormatButtons,
   buildQuestionElements,
   buildDeferredToolElements,
-  buildPermStatusElements,
-  permStatusButtonsForMode,
   buildMultiSelectElements,
   buildMultiSelectButtons,
-} from './format-permission.js';
+} from './format-interactions.js';
+import {
+  buildPermStatusElements,
+  permStatusButtonsForMode,
+} from './format-permission-status.js';
 import {
   buildProgressTimelineElements,
   buildProgressContentElements,
   progressHeaderConfig,
 } from './format-progress.js';
-import { buildStatusElements, formatFeishuUptime } from './format-status.js';
-import { buildSessionDetailElements, buildSessionsElements } from './format-sessions.js';
+import { buildStatusElements } from './format-status.js';
+import { actionCallback } from '../../core/callbacks.js';
 import { buildHelpElements } from './format-help.js';
 import { buildDiagnoseElements, buildQueueStatusElements } from './format-diagnostics.js';
 
-export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
-  constructor(locale: Locale = 'zh', options: MessageFormatterOptions = {}) {
-    super(locale, options);
+export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> {
+  constructor(
+    private readonly locale: Locale = 'zh',
+    private readonly options: MessageFormatterOptions = {},
+  ) {}
+
+  getLocale(): Locale {
+    return this.locale;
   }
 
-  protected createMessage(chatId: string, text: string, buttons?: Button[]): FeishuRenderedMessage {
+  format(msg: FormattableMessage): FeishuRenderedMessage {
+    const { type, chatId } = msg;
+    switch (type) {
+      case 'status':
+        return this.formatStatus(chatId, msg.data);
+      case 'question':
+        return this.formatQuestion(chatId, msg.data);
+      case 'deferredToolInput':
+        return this.formatDeferredToolInput(chatId, msg.data);
+      case 'home':
+        return this.formatHome(chatId, msg.data);
+      case 'permissionStatus':
+        return this.formatPermissionStatus(chatId, msg.data);
+      case 'taskStart':
+        return this.formatTaskStart(chatId, msg.data);
+      case 'help':
+        return this.formatHelp(chatId, msg.data);
+      case 'topicCommandPalette':
+        return this.formatTopicCommandPalette(chatId, msg.data);
+      case 'newSession':
+        return this.formatNewSession(chatId, msg.data);
+      case 'error':
+        return this.formatError(chatId, msg.data);
+      case 'progress':
+        return this.formatProgress(chatId, msg.data);
+      case 'taskSummary':
+        return this.formatTaskSummary(chatId, msg.data);
+      case 'cardResolution':
+        return this.formatCardResolution(chatId, msg.data);
+      case 'versionUpdate':
+        return this.formatVersionUpdate(chatId, msg.data);
+      case 'multiSelectToggle':
+        return this.formatMultiSelectToggle(chatId, msg.data);
+      case 'queueStatus':
+        return this.formatQueueStatus(chatId, msg.data);
+      case 'diagnose':
+        return this.formatDiagnose(chatId, msg.data);
+    }
+  }
+
+  formatContent(chatId: string, content: string, buttons?: Button[]): FeishuRenderedMessage {
+    return this.createMessage(chatId, content, buttons);
+  }
+
+  private createMessage(chatId: string, text: string, buttons?: Button[]): FeishuRenderedMessage {
     const msg: FeishuRenderedMessage = { chatId, text };
     if (buttons) {
       msg.buttons = buttons;
@@ -76,7 +132,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     return msg;
   }
 
-  protected createCardMessage(
+  private createCardMessage(
     chatId: string,
     header: { template: string; title: string },
     elements: FeishuCardElement[],
@@ -95,14 +151,17 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
   }
 
   private footerActionPanel(footerLine: string, buttons: Button[]): FeishuCardElement {
-    const panelElements = buttons.length
-      ? buildFeishuButtonElements(buttons)
-      : [this.md(`<font color='grey'>${footerLine}</font>`)];
+    const panelElements = [
+      this.md(`<font color='grey'>${footerLine}</font>`),
+      ...buildFeishuButtonElements(buttons),
+    ];
 
     return {
       tag: 'collapsible_panel',
       expanded: false,
-      header: { title: { tag: 'plain_text', content: footerLine } },
+      header: {
+        title: { tag: 'plain_text', content: this.locale === 'zh' ? '运行信息' : 'Run info' },
+      },
       elements: panelElements,
     } as FeishuCardElement;
   }
@@ -118,9 +177,18 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     return mdElement(content);
   }
 
-  // --- Override all formatting methods for Feishu Card format ---
+  private defaultProgressButtons(phase: ProgressData['phase']): Button[] {
+    if (phase === 'completed' || phase === 'failed') {
+      return progressDoneButtons(this.locale, this.getDoneButtons());
+    }
+    return progressRunningButtons(this.locale);
+  }
 
-  override formatStatus(chatId: string, data: StatusData): FeishuRenderedMessage {
+  private getDoneButtons(): readonly QuickButtonName[] {
+    return this.options.doneButtons ?? DEFAULT_DONE_BUTTONS;
+  }
+
+  formatStatus(chatId: string, data: StatusData): FeishuRenderedMessage {
     return this.createCardMessage(
       chatId,
       { template: 'blue', title: t(this.locale, 'format.titleStatus') },
@@ -128,22 +196,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     );
   }
 
-  protected override formatUptime(seconds: number): string {
-    return formatFeishuUptime(this.locale, seconds);
-  }
-
-  override formatPermission(chatId: string, data: PermissionData): FeishuRenderedMessage {
-    const elements = buildPermissionElements({ chatId, data, locale: this.locale });
-    const buttons = permissionFormatButtons(data, this.locale);
-    return this.createCardMessage(
-      chatId,
-      { template: 'orange', title: t(this.locale, 'format.titlePermission') },
-      elements,
-      buttons,
-    );
-  }
-
-  override formatQuestion(chatId: string, data: QuestionData): FeishuRenderedMessage {
+  formatQuestion(chatId: string, data: QuestionData): FeishuRenderedMessage {
     const elements = buildQuestionElements({ chatId, data, locale: this.locale });
     return this.createCardMessage(
       chatId,
@@ -153,7 +206,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     );
   }
 
-  override formatDeferredToolInput(
+  formatDeferredToolInput(
     chatId: string,
     data: DeferredToolInputData,
   ): FeishuRenderedMessage {
@@ -166,25 +219,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     );
   }
 
-  override formatNotification(chatId: string, data: NotificationData): FeishuRenderedMessage {
-    const templateMap = { stop: 'green', idle_prompt: 'yellow', generic: 'blue' };
-    const emojiMap = { stop: '✅', idle_prompt: '⏳', generic: '📢' };
-    const template = templateMap[data.type];
-    const emoji = emojiMap[data.type];
-
-    const elements: FeishuCardElement[] = [];
-    if (data.summary) {
-      elements.push(this.md(downgradeHeadings(truncate(data.summary, 3000))));
-    }
-    if (data.terminalUrl) {
-      elements.push({ tag: 'hr' });
-      elements.push(this.md(`<font color='grey'>🔗 [Open Terminal](${data.terminalUrl})</font>`));
-    }
-
-    return this.createCardMessage(chatId, { template, title: `${emoji} ${data.title}` }, elements);
-  }
-
-  override formatHome(chatId: string, data: HomeData): FeishuRenderedMessage {
+  formatHome(chatId: string, data: HomeData): FeishuRenderedMessage {
     const elements = buildHomeElements({
       chatId,
       data,
@@ -200,7 +235,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     );
   }
 
-  override formatPermissionStatus(
+  formatPermissionStatus(
     chatId: string,
     data: PermissionStatusData,
   ): FeishuRenderedMessage {
@@ -217,7 +252,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     );
   }
 
-  override formatTaskStart(chatId: string, data: TaskStartData): FeishuRenderedMessage {
+  formatTaskStart(chatId: string, data: TaskStartData): FeishuRenderedMessage {
     const title = data.isNewSession
       ? t(this.locale, 'format.titleTaskReset')
       : t(this.locale, 'format.titleTaskStart');
@@ -242,7 +277,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     );
   }
 
-  override formatTaskSummary(chatId: string, data: TaskSummaryData): FeishuRenderedMessage {
+  formatTaskSummary(chatId: string, data: TaskSummaryData): FeishuRenderedMessage {
     const elements: FeishuCardElement[] = [
       this.md(`**${t(this.locale, 'format.labelResultSummary')}**\n${data.summary}`),
       this.md(
@@ -276,29 +311,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     );
   }
 
-  override formatSessions(chatId: string, data: SessionsData): FeishuRenderedMessage {
-    const showAll = data.showAll ?? false;
-    const title = showAll
-      ? t(this.locale, 'sessions.btnAll')
-      : t(this.locale, 'sessions.btnRecent');
-
-    return this.createCardMessage(
-      chatId,
-      { template: 'blue', title },
-      buildSessionsElements(data, this.locale),
-      undefined,
-    );
-  }
-
-  override formatSessionDetail(chatId: string, data: SessionDetailData): FeishuRenderedMessage {
-    return this.createCardMessage(
-      chatId,
-      { template: 'blue', title: `📋 ${t(this.locale, 'sessions.btnList')} #${data.index}` },
-      buildSessionDetailElements(data, this.locale),
-    );
-  }
-
-  override formatHelp(chatId: string, data: HelpData): FeishuRenderedMessage {
+  formatHelp(chatId: string, data: HelpData): FeishuRenderedMessage {
     return this.createCardMessage(
       chatId,
       { template: 'blue', title: t(this.locale, 'home.btnHelp') },
@@ -307,7 +320,59 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     );
   }
 
-  override formatNewSession(chatId: string, data: NewSessionData): FeishuRenderedMessage {
+  formatTopicCommandPalette(
+    chatId: string,
+    data: TopicCommandPaletteData,
+  ): FeishuRenderedMessage {
+    const isZh = this.locale === 'zh';
+    const sdkSession = data.sdkSessionId ? data.sdkSessionId.slice(0, 8) : isZh ? '未建立' : 'none';
+    const status = data.isActive ? (isZh ? '执行中' : 'running') : isZh ? '空闲' : 'idle';
+    const permissionStatus =
+      data.permissionMode === 'on'
+        ? isZh
+          ? '工具调用需要确认'
+          : 'tool approval required'
+        : isZh
+          ? '工具调用自动允许'
+          : 'tool calls auto-allowed';
+    const permissionLine = data.capabilities.interactivePermissions
+      ? isZh
+        ? `本话题${permissionStatus}。`
+        : `This topic has ${permissionStatus}.`
+      : data.provider === 'codex'
+        ? isZh
+          ? 'Codex 的权限由 sandbox / approval policy 控制，不提供 Claude 式逐工具审批。'
+          : 'Codex permissions are controlled by sandbox / approval policy.'
+        : '';
+    const slashLine =
+      data.provider === 'codex'
+        ? isZh
+          ? 'Codex SDK 当前不暴露 CLI 里的 slash 自动补全；这里显示 TLive 能控制的会话操作。'
+          : 'The Codex SDK does not expose CLI slash autocomplete; this card shows TLive controls.'
+        : isZh
+          ? '其它 slash 命令会透传给当前 Agent。'
+          : 'Other slash commands pass through to the current agent.';
+
+    const elements: FeishuCardElement[] = [
+      this.md(
+        `**${isZh ? '当前会话' : 'Current session'}**\n${data.providerDisplayName} · \`${sdkSession}\` · ${status}`,
+      ),
+      this.md(`**${isZh ? '目录' : 'Directory'}**\n\`${data.cwd}\``),
+      this.md(`${slashLine}${permissionLine ? `\n${permissionLine}` : ''}`),
+    ];
+
+    return this.createCardMessage(
+      chatId,
+      { template: 'blue', title: isZh ? '⌘ 会话操作' : '⌘ Session actions' },
+      elements,
+      topicCommandPaletteButtons(this.locale, {
+        isActive: data.isActive,
+        interactivePermissions: data.capabilities.interactivePermissions,
+      }),
+    );
+  }
+
+  formatNewSession(chatId: string, data: NewSessionData): FeishuRenderedMessage {
     const cwdLabel = data.cwd ? ` in \`${data.cwd}\`` : '';
     return this.createCardMessage(
       chatId,
@@ -316,7 +381,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     );
   }
 
-  override formatError(
+  formatError(
     chatId: string,
     data: { title: string; message: string },
   ): FeishuRenderedMessage {
@@ -325,7 +390,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     ]);
   }
 
-  override formatProgress(chatId: string, data: ProgressData): FeishuRenderedMessage {
+  formatProgress(chatId: string, data: ProgressData): FeishuRenderedMessage {
     const headerConfig = progressHeaderConfig(this.locale, data);
     const elements: FeishuCardElement[] = [];
 
@@ -349,9 +414,10 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
       }),
     );
 
-    const buttons = data.actionButtons?.length
-      ? data.actionButtons
-      : this.defaultProgressButtons(data.phase);
+    const buttons =
+      data.actionButtons !== undefined
+        ? data.actionButtons
+        : this.defaultProgressButtons(data.phase);
     if (this.shouldNestDoneButtons(data.phase, data.footerLine)) {
       elements.push(this.footerActionPanel(data.footerLine, buttons));
       return this.createCardMessage(chatId, headerConfig, elements);
@@ -359,7 +425,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     return this.createCardMessage(chatId, headerConfig, elements, buttons);
   }
 
-  override formatCardResolution(chatId: string, data: CardResolutionData): FeishuRenderedMessage {
+  formatCardResolution(chatId: string, data: CardResolutionData): FeishuRenderedMessage {
     const templateMap: Record<CardResolutionData['resolution'], string> = {
       approved: 'green',
       denied: 'red',
@@ -375,7 +441,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     return this.createCardMessage(chatId, { template, title }, elements, data.buttons);
   }
 
-  override formatVersionUpdate(chatId: string, data: VersionUpdateData): FeishuRenderedMessage {
+  formatVersionUpdate(chatId: string, data: VersionUpdateData): FeishuRenderedMessage {
     const dateStr = data.publishedAt
       ? new Date(data.publishedAt).toLocaleDateString(this.locale === 'zh' ? 'zh-CN' : 'en-US', {
           month: 'short',
@@ -394,7 +460,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     const buttons: Button[] = [
       {
         label: `⬆️ ${t(this.locale, 'home.labelSwitch')}`,
-        callbackData: `cmd:upgrade confirm:${data.latest}`,
+        callbackData: actionCallback('upgrade', `confirm:${data.latest}`),
         style: 'primary',
       },
     ];
@@ -406,7 +472,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     );
   }
 
-  override formatMultiSelectToggle(
+  formatMultiSelectToggle(
     chatId: string,
     data: MultiSelectToggleData,
   ): FeishuRenderedMessage {
@@ -425,7 +491,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     );
   }
 
-  override formatQueueStatus(chatId: string, data: QueueStatusData): FeishuRenderedMessage {
+  formatQueueStatus(chatId: string, data: QueueStatusData): FeishuRenderedMessage {
     return this.createCardMessage(
       chatId,
       { template: data.depth > 0 ? 'yellow' : 'green', title: '📥 Queue Status' },
@@ -433,7 +499,7 @@ export class FeishuFormatter extends MessageFormatter<FeishuRenderedMessage> {
     );
   }
 
-  override formatDiagnose(chatId: string, data: DiagnoseData): FeishuRenderedMessage {
+  formatDiagnose(chatId: string, data: DiagnoseData): FeishuRenderedMessage {
     const { elements, saturatedSessions } = buildDiagnoseElements(data);
     return this.createCardMessage(
       chatId,

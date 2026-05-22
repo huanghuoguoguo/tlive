@@ -197,7 +197,6 @@ All environment variable names, permissions, and event names are identical.
 **"Invalid App ID" or "Invalid App Secret"**
 - Double-check you copied the full values from Step 2
 - Make sure you're using the credentials from the correct app (if you created multiple)
-- Run `tlive doctor` to check your configuration
 
 **Bot responds in Feishu but not in tlive**
 - Check the tlive logs for connection errors

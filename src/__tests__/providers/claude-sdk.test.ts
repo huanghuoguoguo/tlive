@@ -169,6 +169,21 @@ describe('ClaudeSDKProvider', () => {
 
       expect(session).toBeDefined();
     });
+
+    it('exposes runtime info from current Claude session options', () => {
+      const session = provider.createSession({
+        workingDirectory: '/tmp',
+        model: 'claude-opus-4',
+        effort: 'high',
+      });
+
+      expect(session.runtimeInfo).toMatchObject({
+        provider: 'claude',
+        displayName: 'Claude Code',
+        model: 'claude-opus-4',
+        reasoningEffort: 'high',
+      });
+    });
   });
 
   describe('permission handling', () => {

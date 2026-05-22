@@ -25,8 +25,21 @@ describe('CodexAdapter', () => {
         kind: 'query_result',
         sessionId: 'thread-1',
         isError: false,
-        usage: { inputTokens: 10, outputTokens: 4 },
+        usage: {
+          inputTokens: 10,
+          outputTokens: 4,
+          cachedInputTokens: 2,
+          reasoningOutputTokens: 1,
+        },
       },
+    ]);
+  });
+
+  it('does not report provider name as a model when Codex SDK has no model metadata', () => {
+    const adapter = new CodexAdapter();
+
+    expect(adapter.mapEvent({ type: 'thread.started', thread_id: 'thread-1' })).toEqual([
+      { kind: 'status', sessionId: 'thread-1' },
     ]);
   });
 

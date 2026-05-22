@@ -8,12 +8,14 @@ import {
   taskSummaryButtons,
   helpButtons,
   topicDoneButtons,
+  topicCommandPaletteButtons,
   permStatusButtons,
   navNew,
   deferredSubmit,
   deferredSkip,
 } from '../../ui/buttons.js';
 import type { Locale } from '../../i18n/index.js';
+import { actionCallback } from '../../core/callbacks.js';
 
 describe('ui/buttons', () => {
   describe('permissionButtons', () => {
@@ -54,12 +56,11 @@ describe('ui/buttons', () => {
       expect(buttons.length).toBeGreaterThan(0);
     });
 
-    it('includes session and new buttons', () => {
+    it('includes new session buttons', () => {
       const buttons = homeButtons('en');
 
-      const hasSessions = buttons.some(b => b.callbackData === 'cmd:session');
       const hasNew = buttons.some(b => b.callbackData.includes('new'));
-      expect(hasSessions || hasNew).toBe(true);
+      expect(hasNew).toBe(true);
     });
   });
 
@@ -72,14 +73,12 @@ describe('ui/buttons', () => {
     });
 
     it('uses configured completed progress buttons', () => {
-      const buttons = progressDoneButtons('en', ['home', 'sessions', 'new', 'help']);
+      const buttons = progressDoneButtons('en', ['home', 'new', 'help']);
 
       const hasHome = buttons.some(b => b.callbackData.includes('home'));
-      const hasSessions = buttons.some(b => b.callbackData === 'cmd:session');
       const hasNew = buttons.some(b => b.callbackData.includes('new'));
       const hasHelp = buttons.some(b => b.callbackData.includes('help'));
       expect(hasHome).toBe(true);
-      expect(hasSessions).toBe(true);
       expect(hasNew).toBe(true);
       expect(hasHelp).toBe(true);
     });
@@ -105,7 +104,9 @@ describe('ui/buttons', () => {
     it('can bind stop button to a specific session key', () => {
       const buttons = progressRunningButtons('en', 'feishu:chat#thread:t1:session-1');
 
-      expect(buttons[0].callbackData).toBe('cmd:stop feishu:chat#thread:t1:session-1');
+      expect(buttons[0].callbackData).toBe(
+        actionCallback('stop', 'feishu:chat#thread:t1:session-1'),
+      );
     });
   });
 
@@ -140,11 +141,32 @@ describe('ui/buttons', () => {
   });
 
   describe('topicDoneButtons', () => {
-    it('shows only help inside topic completion cards', () => {
+    it('hides action buttons inside topic completion cards', () => {
       const buttons = topicDoneButtons('en');
 
-      expect(buttons).toHaveLength(1);
-      expect(buttons[0].callbackData).toBe('cmd:help');
+      expect(buttons).toEqual([]);
+    });
+  });
+
+  describe('topicCommandPaletteButtons', () => {
+    it('shows status by default', () => {
+      const buttons = topicCommandPaletteButtons('en');
+
+      expect(buttons.map(b => b.callbackData)).toEqual([actionCallback('status')]);
+      expect(buttons[0].label).toContain('Topic');
+    });
+
+    it('adds permission and stop controls only when supported by context', () => {
+      const buttons = topicCommandPaletteButtons('zh', {
+        isActive: true,
+        interactivePermissions: true,
+      });
+
+      expect(buttons.map(b => b.callbackData)).toEqual([
+        actionCallback('status'),
+        actionCallback('perm'),
+        actionCallback('stop'),
+      ]);
     });
   });
 

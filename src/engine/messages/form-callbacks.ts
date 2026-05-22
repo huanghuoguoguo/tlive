@@ -1,7 +1,6 @@
 import { withInboundReplyContext } from '../../channels/reply-context.js';
 import { truncate } from '../../core/string.js';
 import type { CallbackHandlerContext, CallbackHandlerResult } from './callback-context.js';
-import { buildReplayMessage } from './callback-context.js';
 import { parseFormCallback } from './callback-utils.js';
 import { submitMultiSelectAnswer } from './question-callbacks.js';
 
@@ -16,32 +15,8 @@ export async function handleFormCallback(
   const permId = interactionId;
   const interactionState = deps.sdkEngine.getInteractionState();
 
-  if (interactionId === 'session_select') {
-    const sessionIdx = (formData._session_idx || formData.session_idx || '').trim();
-    const idx = parseInt(sessionIdx, 10);
-    if (idx > 0) {
-      await deps.replayMessage(
-        adapter,
-        buildReplayMessage(msg, `/session ${idx}`, { internalCommand: true }),
-      );
-      return true;
-    }
-
-    await adapter.send(
-      withInboundReplyContext(
-        {
-          chatId: msg.chatId,
-          text: `⚠️ 无效编号: "${sessionIdx}"，请输入正整数。`,
-        },
-        msg,
-      ),
-    );
-    return true;
-  }
-
   if (interactionId === 'tlive_command') {
     const commandInput = (formData._tlive_command || formData.tlive_command || '').trim();
-    const commandText = commandInput.startsWith('/') ? commandInput : `/${commandInput}`;
 
     if (!commandInput) {
       await adapter.send(
@@ -56,10 +31,8 @@ export async function handleFormCallback(
       return true;
     }
 
-    await deps.replayMessage(
-      adapter,
-      buildReplayMessage(msg, commandText, { internalCommand: true }),
-    );
+    const [rawName = '', ...args] = commandInput.replace(/^\//, '').split(/\s+/);
+    await deps.runAction(adapter, msg, { name: rawName, args });
     return true;
   }
 

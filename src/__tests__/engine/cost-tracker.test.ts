@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CostTracker } from '../../engine/cost-tracker.js';
 
 describe('CostTracker', () => {
@@ -6,6 +6,11 @@ describe('CostTracker', () => {
 
   beforeEach(() => {
     tracker = new CostTracker();
+  });
+
+  afterEach(() => {
+    delete process.env.TL_COST_INPUT_PER_M;
+    delete process.env.TL_COST_OUTPUT_PER_M;
   });
 
   it('tracks duration', () => {
@@ -23,12 +28,22 @@ describe('CostTracker', () => {
     expect(stats.costUsd).toBe(0.12);
   });
 
-  it('computes cost from tokens when cost_usd not provided', () => {
+  it('does not invent a dollar cost when cost_usd and configured rates are absent', () => {
+    tracker.start();
+    const stats = tracker.finish({ input_tokens: 1000, output_tokens: 500 });
+    expect(stats.costUsd).toBe(0);
+    expect(stats.costEstimated).toBe(false);
+    expect(stats.inputTokens).toBe(1000);
+    expect(stats.outputTokens).toBe(500);
+  });
+
+  it('can estimate cost when explicit local rates are configured', () => {
+    process.env.TL_COST_INPUT_PER_M = '3';
+    process.env.TL_COST_OUTPUT_PER_M = '15';
     tracker.start();
     const stats = tracker.finish({ input_tokens: 1000, output_tokens: 500 });
     expect(stats.costUsd).toBeGreaterThan(0);
-    expect(stats.inputTokens).toBe(1000);
-    expect(stats.outputTokens).toBe(500);
+    expect(stats.costEstimated).toBe(true);
   });
 
   it('formats stats as human-readable string', () => {
@@ -37,7 +52,7 @@ describe('CostTracker', () => {
     vi.advanceTimersByTime(154000); // 2m 34s
     const stats = tracker.finish({ input_tokens: 12345, output_tokens: 8100, cost_usd: 0.08 });
     const formatted = CostTracker.format(stats);
-    expect(formatted).toBe('📊 12.3k/8.1k tok | $0.08 | 2m 34s');
+    expect(formatted).toBe('输入 12.3k / 输出 8.1k | $0.08 | 2m 34s');
     vi.useRealTimers();
   });
 
@@ -45,7 +60,7 @@ describe('CostTracker', () => {
     tracker.start();
     const stats = tracker.finish({ input_tokens: 800, output_tokens: 200, cost_usd: 0.01 });
     const formatted = CostTracker.format(stats);
-    expect(formatted).toContain('800/200 tok');
+    expect(formatted).toContain('输入 800 / 输出 200');
   });
 
   it('formats cost with 2 decimal places', () => {
@@ -64,5 +79,19 @@ describe('CostTracker', () => {
     expect(formatted).toContain('45s');
     expect(formatted).not.toContain('m');
     vi.useRealTimers();
+  });
+
+  it('formats cached input and reasoning output separately', () => {
+    tracker.start();
+    const stats = tracker.finish({
+      input_tokens: 403800,
+      cached_input_tokens: 400000,
+      output_tokens: 2700,
+      reasoning_output_tokens: 900,
+    });
+    const formatted = CostTracker.format(stats);
+    expect(formatted).toContain('输入 3.8k / 输出 2.7k / 推理 900 / 缓存 400.0k');
+    expect(formatted).not.toContain('403.8k');
+    expect(formatted).not.toContain('$');
   });
 });

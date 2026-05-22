@@ -23,6 +23,7 @@ import type {
   PermissionRequestHandler,
   AskUserQuestionHandler,
   DeferredToolHandler,
+  AgentRuntimeInfo,
   EffortLevel,
   PermissionTimeoutCallback,
 } from './base.js';
@@ -52,6 +53,7 @@ export interface ClaudeLiveSessionOptions {
 
 export class ClaudeLiveSession implements LiveSession {
   readonly capabilities = { nativeSteer: true, nativeQueue: true };
+  readonly runtimeInfo: AgentRuntimeInfo;
 
   private _query: ReturnType<typeof query> | null = null;
   private adapter = new ClaudeAdapter();
@@ -74,6 +76,12 @@ export class ClaudeLiveSession implements LiveSession {
   private lifecycleCallbacks: { onTurnComplete?: () => void } = {};
 
   constructor(private options: ClaudeLiveSessionOptions) {
+    this.runtimeInfo = {
+      provider: 'claude',
+      displayName: 'Claude Code',
+      ...(options.model ? { model: options.model } : {}),
+      ...(options.effort ? { reasoningEffort: options.effort } : {}),
+    };
     this.initQuery();
   }
 

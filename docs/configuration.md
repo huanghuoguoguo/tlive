@@ -12,7 +12,7 @@ TL_DEFAULT_MODEL=
 
 # Completed/failed task card buttons.
 # Default is only the workbench button. Add more if needed.
-# Supported: home,sessions,new,help,perm,none
+# Supported: home,new,help,perm,none
 TL_DONE_BUTTONS=home
 ```
 

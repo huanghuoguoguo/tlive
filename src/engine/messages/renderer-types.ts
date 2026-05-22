@@ -63,6 +63,8 @@ export interface MessageRendererState {
   };
   /** AI-generated summary of preceding tool calls */
   toolUseSummaryText?: string;
+  /** Formatted usage/cost summary shown in run info. */
+  usageSummary?: string;
   /** API retry state */
   apiRetry?: {
     attempt: number;

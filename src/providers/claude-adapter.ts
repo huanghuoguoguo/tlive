@@ -21,6 +21,32 @@ const HIDDEN_TOOLS = new Set([
   'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'TaskStop', 'TaskOutput',
 ]);
 
+interface ClaudeUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+}
+
+interface CanonicalUsage extends Record<string, unknown> {
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens?: number;
+  costUsd?: number;
+}
+
+function mapUsage(usage: ClaudeUsage | undefined, costUsd: unknown): CanonicalUsage {
+  const inputTokens = usage?.input_tokens ?? 0;
+  const cacheCreationInputTokens = usage?.cache_creation_input_tokens ?? 0;
+  const cacheReadInputTokens = usage?.cache_read_input_tokens ?? 0;
+  return {
+    inputTokens: inputTokens + cacheCreationInputTokens + cacheReadInputTokens,
+    outputTokens: usage?.output_tokens ?? 0,
+    ...(cacheReadInputTokens > 0 ? { cachedInputTokens: cacheReadInputTokens } : {}),
+    ...(typeof costUsd === 'number' ? { costUsd } : {}),
+  };
+}
+
 export class ClaudeAdapter {
   private currentBlockType: 'text' | 'thinking' | null = null;
   private hasStreamedText = false;
@@ -304,7 +330,7 @@ export class ClaudeAdapter {
     msg: SDKMessage,
     events: CanonicalEvent[],
   ): void {
-    const usage = msg.usage as { input_tokens: number; output_tokens: number } | undefined;
+    const usage = msg.usage as ClaudeUsage | undefined;
     const denials = Array.isArray(msg.permission_denials)
       ? (msg.permission_denials as Array<{ tool_name: string; tool_use_id: string }>).map(d => ({
         toolName: d.tool_name,
@@ -317,11 +343,7 @@ export class ClaudeAdapter {
         kind: 'query_result',
         sessionId: msg.session_id as string,
         isError: (msg.is_error as boolean) || false,
-        usage: {
-          inputTokens: usage?.input_tokens ?? 0,
-          outputTokens: usage?.output_tokens ?? 0,
-          ...(msg.total_cost_usd != null ? { costUsd: msg.total_cost_usd as number } : {}),
-        },
+        usage: mapUsage(usage, msg.total_cost_usd),
         ...(denials && denials.length > 0 ? { permissionDenials: denials } : {}),
       };
       events.push(ev);
@@ -337,11 +359,7 @@ export class ClaudeAdapter {
         kind: 'query_result',
         sessionId: msg.session_id as string,
         isError: true,
-        usage: {
-          inputTokens: usage?.input_tokens ?? 0,
-          outputTokens: usage?.output_tokens ?? 0,
-          ...(msg.total_cost_usd != null ? { costUsd: msg.total_cost_usd as number } : {}),
-        },
+        usage: mapUsage(usage, msg.total_cost_usd),
         error: errorMsg, // Include error message in query_result
         ...(denials && denials.length > 0 ? { permissionDenials: denials } : {}),
       };

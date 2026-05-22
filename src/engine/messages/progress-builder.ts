@@ -36,8 +36,11 @@ export interface RenderInput {
   completed: boolean;
   footerLine?: string;
   model?: string;
+  engineName?: string;
+  reasoningEffort?: string;
   cwd?: string;
   sessionId?: string;
+  usageSummary?: string;
   platformLimit: number;
   /** Session info from SDK init */
   sessionInfo?: {
@@ -124,6 +127,7 @@ export class ProgressContentBuilder {
       isContinuation: input.bubbleToolCount === 0 && input.totalTools > 0,
       sessionInfo: input.sessionInfo,
       toolUseSummaryText: input.toolUseSummaryText,
+      usageSummary: input.usageSummary,
       apiRetry: input.apiRetry,
       compacting: input.compacting,
     };
@@ -133,6 +137,11 @@ export class ProgressContentBuilder {
     const parts: string[] = [];
     if (input.model) {
       parts.push(`[${input.model}]`);
+    } else if (input.engineName) {
+      parts.push(`引擎 ${input.engineName}`);
+    }
+    if (input.reasoningEffort) {
+      parts.push(`思考 ${input.reasoningEffort}`);
     }
     if (input.cwd) {
       parts.push(shortPath(input.cwd));
@@ -141,7 +150,10 @@ export class ProgressContentBuilder {
       const shortId = input.sessionId.length > 4 ? input.sessionId.slice(-4) : input.sessionId;
       parts.push(`#${shortId}`);
     }
-    return parts.length > 0 ? parts.join(' │ ') : '';
+    const lines: string[] = [];
+    if (parts.length > 0) lines.push(parts.join(' │ '));
+    if (input.usageSummary) lines.push(input.usageSummary);
+    return lines.join('\n');
   }
 
   // --- Private helpers ---
@@ -303,6 +315,7 @@ export function buildProgressData(
     isContinuation: state.isContinuation,
     sessionInfo: state.sessionInfo,
     toolUseSummaryText: state.toolUseSummaryText,
+    usageSummary: state.usageSummary,
     apiRetry: state.apiRetry,
     compacting: state.compacting,
     actionButtons: buttons,

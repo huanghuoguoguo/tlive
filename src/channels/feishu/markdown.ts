@@ -7,7 +7,39 @@ export function markdownToFeishu(text: string): string {
   result = result.replace(/<a href="(.*?)">(.*?)<\/a>/g, '[$2]($1)');
   result = result.replace(/<pre>([\s\S]*?)<\/pre>/g, '```\n$1\n```');
   result = result.replace(/<\/?[^>]+>/g, '');
-  return result;
+  return sanitizeFeishuMarkdown(result);
+}
+
+/**
+ * Feishu Card markdown does not accept arbitrary Markdown image URLs. It treats
+ * `![alt](url)` as an image element and expects a Feishu-uploaded image_key,
+ * so external badges/images make card create/edit fail with 400. Keep the
+ * information as a normal link instead.
+ */
+export function sanitizeFeishuMarkdown(text: string): string {
+  const lines = text.split('\n');
+  let inFence = false;
+  return lines
+    .map((line) => {
+      if (/^\s*```/.test(line)) {
+        inFence = !inFence;
+        return line;
+      }
+      if (inFence) return line;
+      return line
+        .replace(
+          /\[!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g,
+          (_match, alt, _imageUrl, targetUrl) => {
+            const label = String(alt || '').trim() || String(targetUrl);
+            return `[${label}](${targetUrl})`;
+          },
+        )
+        .replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, (_match, alt, url) => {
+          const label = String(alt || '').trim();
+          return label ? `[${label}](${url})` : String(url);
+        });
+    })
+    .join('\n');
 }
 
 /**
@@ -16,6 +48,7 @@ export function markdownToFeishu(text: string): string {
  * Ensures a blank line before each heading for proper spacing.
  */
 export function downgradeHeadings(text: string): string {
+  text = sanitizeFeishuMarkdown(text);
   // Ensure blank line before heading lines (unless already blank or start of text)
   let result = text.replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2');
   // Convert headings to bold

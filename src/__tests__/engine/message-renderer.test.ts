@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MessageRenderer } from '../../engine/messages/renderer.js';
+import {
+  AdaptiveFlushController,
+  type AdaptiveFlushOptions,
+} from '../../engine/messages/adaptive-flush.js';
 
 describe('MessageRenderer', () => {
   let flushCallback: ReturnType<typeof vi.fn>;
@@ -23,6 +27,7 @@ describe('MessageRenderer', () => {
     model?: string,
     verboseLevel: 0 | 1 = 1,
     shouldSplitState?: (state: any) => boolean,
+    adaptiveFlush?: boolean | AdaptiveFlushOptions,
   ) {
     return new MessageRenderer({
       shouldSplitState,
@@ -31,6 +36,7 @@ describe('MessageRenderer', () => {
       cwd,
       model,
       verboseLevel,
+      adaptiveFlush,
       flushCallback: flushCallback as any,
     });
   }
@@ -48,6 +54,18 @@ describe('MessageRenderer', () => {
     { label: 'Allow', callbackData: 'perm:allow:abc', style: 'primary' as const },
     { label: 'Deny', callbackData: 'perm:deny:abc', style: 'danger' as const },
   ];
+
+  it('does not cap retry-after backoff with the normal max flush interval', () => {
+    const controller = new AdaptiveFlushController({ minMs: 800, maxMs: 4000 });
+    controller.recordRateLimit(60_000, 1000);
+
+    expect(controller.nextDelay({
+      fallbackMs: 300,
+      content: 'running',
+      phase: 'executing',
+      hasMessage: true,
+    }, 1000)).toBe(60_000);
+  });
 
   // ─── Executing phase ─────────────────────────────
 
@@ -125,6 +143,26 @@ describe('MessageRenderer', () => {
       await advance(100);
       expect(flushCallback).toHaveBeenCalledTimes(1);
       await advance(200);
+      expect(flushCallback).toHaveBeenCalledTimes(2);
+      r.dispose();
+    });
+
+    it('uses adaptive flush timing after the first progress card', async () => {
+      const r = createRenderer(4096, 300, undefined, undefined, 1, undefined, {
+        baseMs: 800,
+        minMs: 800,
+        maxMs: 4000,
+      });
+
+      r.onTextDelta('hello');
+      await advance(0);
+      expect(flushCallback).toHaveBeenCalledTimes(1);
+
+      r.onTextDelta(' world');
+      await advance(300);
+      expect(flushCallback).toHaveBeenCalledTimes(1);
+
+      await advance(500);
       expect(flushCallback).toHaveBeenCalledTimes(2);
       r.dispose();
     });
@@ -460,6 +498,26 @@ describe('MessageRenderer', () => {
       const content = flushCallback.mock.calls[0][0] as string;
       expect(content).toContain('Here is the result.');
       expect(content).toContain('───────────────');
+      r.dispose();
+    });
+
+    it('includes current session model, effort, and usage in final run info', async () => {
+      const r = createRenderer(4096, 300, '/home/user/workspace');
+      r.setRuntimeInfo({
+        provider: 'codex',
+        displayName: 'Codex',
+        model: 'gpt-5.5',
+        reasoningEffort: 'xhigh',
+      });
+      r.setUsageSummary('📊 10/4 tok | 2s');
+      r.onTextDelta('Done.');
+      await r.onComplete();
+      await advance(0);
+
+      const content = flushCallback.mock.calls[flushCallback.mock.calls.length - 1][0] as string;
+      expect(content).toContain('Done.');
+      expect(content).toContain('[gpt-5.5] │ 思考 xhigh │ /home/user/workspace');
+      expect(content).toContain('📊 10/4 tok | 2s');
       r.dispose();
     });
   });

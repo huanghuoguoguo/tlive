@@ -4,7 +4,7 @@ import { NewCommand } from './new.js';
 import { HomeCommand, TliveCommand } from './home.js';
 import { PermCommand } from './perm.js';
 import { StopCommand } from './stop.js';
-import { ContinueSessionCommand, SessionCommand } from './session.js';
+import { ContinueSessionCommand } from './continue.js';
 import { CdCommand } from './cd.js';
 import { PwdCommand } from './pwd.js';
 import { BashCommand } from './bash.js';
@@ -14,8 +14,6 @@ import { UpgradeCommand } from './upgrade.js';
 import { RestartCommand } from './restart.js';
 import { QueueCommand } from './queue.js';
 import { DiagnoseCommand } from './diagnose.js';
-import { RebindCommand } from './rebind.js';
-import { DoctorCommand } from './doctor.js';
 
 /** Register all built-in commands */
 export function registerAllCommands(): void {
@@ -25,7 +23,6 @@ export function registerAllCommands(): void {
   commandRegistry.register(new HomeCommand());
   commandRegistry.register(new PermCommand());
   commandRegistry.register(new StopCommand());
-  commandRegistry.register(new SessionCommand());
   commandRegistry.register(new ContinueSessionCommand());
   commandRegistry.register(new CdCommand());
   commandRegistry.register(new PwdCommand());
@@ -36,8 +33,6 @@ export function registerAllCommands(): void {
   commandRegistry.register(new RestartCommand());
   commandRegistry.register(new QueueCommand());
   commandRegistry.register(new DiagnoseCommand());
-  commandRegistry.register(new RebindCommand());
-  commandRegistry.register(new DoctorCommand());
 }
 
 export { commandRegistry } from './registry.js';

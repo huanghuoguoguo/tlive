@@ -19,7 +19,6 @@ describe('conversation surface policy', () => {
 
   it('keeps workbench-only commands out of topic surfaces', () => {
     expect(isCommandAllowedOnSurface('/home', 'topic')).toBe(false);
-    expect(isCommandAllowedOnSurface('session', 'topic')).toBe(false);
     expect(isCommandAllowedOnSurface('/continue sdk-1', 'topic')).toBe(false);
     expect(isCommandAllowedOnSurface('/help', 'topic')).toBe(true);
     expect(isCommandAllowedOnSurface('/home', 'workbench')).toBe(true);
@@ -28,7 +27,6 @@ describe('conversation surface policy', () => {
   it('filters topic help through the same command policy', () => {
     const entries = [
       { cmd: 'home' },
-      { cmd: 'session' },
       { cmd: 'help' },
       { cmd: 'stop' },
     ];
@@ -42,15 +40,14 @@ describe('conversation surface policy', () => {
 
   it('centralizes topic completion buttons', () => {
     expect(progressButtonsForSurface('topic', 'completed', 'zh')?.map(b => b.callbackData))
-      .toEqual(['cmd:help']);
+      .toEqual([]);
     expect(taskSummaryButtonsForSurface('topic', 'zh')?.map(b => b.callbackData))
-      .toEqual(['cmd:help']);
+      .toEqual([]);
     expect(progressButtonsForSurface('workbench', 'completed', 'zh')).toBeUndefined();
   });
 
   it('uses explicit rejection messages for blocked topic commands', () => {
     expect(commandRejectionForSurface('/home', 'topic')).toContain('/home 是工作台命令');
-    expect(commandRejectionForSurface('/session 1', 'topic')).toContain('/session 是工作台命令');
     expect(commandRejectionForSurface('/continue sdk-1', 'topic')).toContain('不支持切换');
     expect(commandRejectionForSurface('/help', 'topic')).toBeUndefined();
   });

@@ -19,6 +19,14 @@ export class StopCommand extends BaseCommand {
       return true;
     }
 
+    if (ctx.surface === 'workbench') {
+      await this.send(ctx, {
+        chatId: ctx.msg.chatId,
+        text: '⚠️ /stop 只中断具体话题内的当前任务。请进入正在执行的话题后停止。',
+      });
+      return true;
+    }
+
     const key = chatKey(ctx.msg.channelType, ctx.scopeId);
     const interrupted = ctx.services.sdkEngine?.interruptChat
       ? await ctx.services.sdkEngine.interruptChat(key)

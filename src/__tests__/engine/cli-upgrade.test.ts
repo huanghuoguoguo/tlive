@@ -5,9 +5,26 @@ import { join, resolve } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 
 function writePackage(root: string, version: string): void {
+  const packageJson = { name: 'tlive-test-app', version, type: 'module', dependencies: {} };
   writeFileSync(
     join(root, 'package.json'),
-    JSON.stringify({ name: 'tlive-test-app', version, type: 'module', dependencies: {} }, null, 2),
+    JSON.stringify(packageJson, null, 2),
+  );
+  writeFileSync(
+    join(root, 'package-lock.json'),
+    JSON.stringify(
+      {
+        name: packageJson.name,
+        version,
+        lockfileVersion: 3,
+        requires: true,
+        packages: {
+          '': packageJson,
+        },
+      },
+      null,
+      2,
+    ),
   );
 }
 

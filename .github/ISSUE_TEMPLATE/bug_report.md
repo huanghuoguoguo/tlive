@@ -25,7 +25,7 @@ What you expected to happen.
 - IM Platform: [Telegram / Discord / Feishu]
 
 **Logs**
-Paste output of `tlive doctor` and relevant logs from `tlive logs 50`.
+Paste relevant logs from `tlive logs 50`.
 
 **Additional context**
 Any other context about the problem.

@@ -84,6 +84,8 @@ export class InboundDispatcher {
       return handleCallbackMessage(adapter, msg, {
         permissions,
         sdkEngine,
+        runAction: (actionAdapter, actionMsg, action) =>
+          commands.handleAction(actionAdapter, actionMsg, action),
         replayMessage: (replayAdapter, replayMsg) =>
           this.handle(replayAdapter, replayMsg, ctx.requestId),
       });

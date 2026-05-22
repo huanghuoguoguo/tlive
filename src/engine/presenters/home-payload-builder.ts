@@ -179,7 +179,7 @@ export class HomePayloadBuilder {
         lastActiveAt: lastActiveTime ? formatRelativeTime(lastActiveTime, locale) : undefined,
       },
       permission: {
-        mode: state.getPermMode(channelType, chatId, binding?.sessionId),
+        mode: state.getPermMode(channelType, chatId),
         pending: permStatus.pending,
         lastDecision: permStatus.lastDecision,
         whitelistCount: permStatus.rememberedTools + permStatus.rememberedBashPrefixes,

@@ -263,7 +263,6 @@ TL_FS_ALLOWED_USERS=ou_xxxxxxxxxxxxxxxx
 **「无效的 App ID」或「无效的 App Secret」**
 - 仔细检查第二步中复制的值是否完整
 - 确认使用的是正确应用的凭证（如果你创建了多个应用）
-- 运行 `tlive doctor` 检查配置
 
 **飞书中机器人有回复但 tlive 没反应**
 - 查看 tlive 日志中是否有连接错误信息

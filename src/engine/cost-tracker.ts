@@ -9,7 +9,10 @@ export interface ModelUsageEntry {
 export interface UsageStats {
   inputTokens: number;
   outputTokens: number;
+  cachedInputTokens?: number;
+  reasoningOutputTokens?: number;
   costUsd: number;
+  costEstimated: boolean;
   durationMs: number;
   sessionTotalUsd?: number;
   queryCount?: number;
@@ -26,6 +29,10 @@ function formatDuration(ms: number): string {
   const min = Math.floor(totalSec / 60);
   const sec = totalSec % 60;
   return sec > 0 ? `${min}m ${sec}s` : `${min}m`;
+}
+
+function positiveNumber(n: number | undefined): number {
+  return n !== undefined && Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 /** Format per-model cost breakdown. Returns null if only one model or no data. */
@@ -48,15 +55,32 @@ export class CostTracker {
     this.startTime = Date.now();
   }
 
-  finish(usage: { input_tokens: number; output_tokens: number; cost_usd?: number; model_usage?: Record<string, ModelUsageEntry> }): UsageStats {
+  finish(usage: {
+    input_tokens: number;
+    output_tokens: number;
+    cached_input_tokens?: number;
+    reasoning_output_tokens?: number;
+    cost_usd?: number;
+    model_usage?: Record<string, ModelUsageEntry>;
+  }): UsageStats {
     const durationMs = Date.now() - this.startTime;
-    const costUsd = usage.cost_usd ?? this.estimateCost(usage.input_tokens, usage.output_tokens);
+    const estimatedCost = usage.cost_usd === undefined
+      ? this.estimateCost(usage.input_tokens, usage.output_tokens)
+      : undefined;
+    const costUsd = usage.cost_usd ?? estimatedCost ?? 0;
     this._queryCount++;
     this.sessionTotal += costUsd;
     return {
       inputTokens: usage.input_tokens,
       outputTokens: usage.output_tokens,
+      ...(usage.cached_input_tokens !== undefined
+        ? { cachedInputTokens: usage.cached_input_tokens }
+        : {}),
+      ...(usage.reasoning_output_tokens !== undefined
+        ? { reasoningOutputTokens: usage.reasoning_output_tokens }
+        : {}),
       costUsd,
+      costEstimated: estimatedCost !== undefined,
       durationMs,
       sessionTotalUsd: this.sessionTotal,
       queryCount: this._queryCount,
@@ -70,26 +94,43 @@ export class CostTracker {
     const duration = formatDuration(stats.durationMs);
     // When tokens are 0, show only duration.
     if (stats.inputTokens === 0 && stats.outputTokens === 0) {
-      return `📊 ${duration}`;
+      return duration;
     }
-    const tokens = `${formatTokens(stats.inputTokens)}/${formatTokens(stats.outputTokens)} tok`;
+
+    const cachedInputTokens = positiveNumber(stats.cachedInputTokens);
+    const freshInputTokens = Math.max(0, stats.inputTokens - cachedInputTokens);
+    const reasoningOutputTokens = positiveNumber(stats.reasoningOutputTokens);
+    const tokenParts = [
+      `输入 ${formatTokens(freshInputTokens)}`,
+      `输出 ${formatTokens(stats.outputTokens)}`,
+    ];
+    if (reasoningOutputTokens > 0) {
+      tokenParts.push(`推理 ${formatTokens(reasoningOutputTokens)}`);
+    }
+    if (cachedInputTokens > 0) {
+      tokenParts.push(`缓存 ${formatTokens(cachedInputTokens)}`);
+    }
+    const tokens = tokenParts.join(' / ');
+
     // Only show cost when non-zero (providers without cost_usd report 0)
-    if (stats.costUsd > 0) {
+    if (stats.costUsd > 0 && !stats.costEstimated) {
       const cost = `$${stats.costUsd.toFixed(2)}`;
       // Per-model breakdown when multiple models used
       const modelBreakdown = formatModelBreakdown(stats.modelUsage);
       const costPart = modelBreakdown || cost;
       if (stats.queryCount && stats.queryCount > 1 && stats.sessionTotalUsd != null) {
-        return `📊 ${tokens} | ${costPart} (Σ $${stats.sessionTotalUsd.toFixed(2)}) | ${duration}`;
+        return `${tokens} | ${costPart} (Σ $${stats.sessionTotalUsd.toFixed(2)}) | ${duration}`;
       }
-      return `📊 ${tokens} | ${costPart} | ${duration}`;
+      return `${tokens} | ${costPart} | ${duration}`;
     }
-    return `📊 ${tokens} | ${duration}`;
+    return `${tokens} | ${duration}`;
   }
 
-  private estimateCost(inputTokens: number, outputTokens: number): number {
-    const inputRate = process.env.TL_COST_INPUT_PER_M ? parseFloat(process.env.TL_COST_INPUT_PER_M) : 3;
-    const outputRate = process.env.TL_COST_OUTPUT_PER_M ? parseFloat(process.env.TL_COST_OUTPUT_PER_M) : 15;
+  private estimateCost(inputTokens: number, outputTokens: number): number | undefined {
+    if (!process.env.TL_COST_INPUT_PER_M || !process.env.TL_COST_OUTPUT_PER_M) return undefined;
+    const inputRate = parseFloat(process.env.TL_COST_INPUT_PER_M);
+    const outputRate = parseFloat(process.env.TL_COST_OUTPUT_PER_M);
+    if (!Number.isFinite(inputRate) || !Number.isFinite(outputRate)) return undefined;
     return (inputTokens * inputRate + outputTokens * outputRate) / 1_000_000;
   }
 }

@@ -1,6 +1,9 @@
 import type { CommandHandler, CommandContext } from './types.js';
 import type { HelpCategoryId } from './help-categories.js';
 import { withInboundReplyContext } from '../../channels/reply-context.js';
+import type { FormattableMessage } from '../../formatting/message-types.js';
+
+type PlainCommandMessage = { chatId: string; text: string };
 
 /** Base class for command handlers with common utilities */
 export abstract class BaseCommand implements CommandHandler {
@@ -13,15 +16,10 @@ export abstract class BaseCommand implements CommandHandler {
   /** Send a formatted message or simple text */
   protected async send(
     ctx: CommandContext,
-    msg: { chatId: string; text: string } | { type: string; chatId: string; data: any },
+    msg: PlainCommandMessage | FormattableMessage,
   ): Promise<void> {
     if ('type' in msg) {
-      const format = (ctx.adapter as any).format;
-      if (typeof format === 'function') {
-        await ctx.adapter.send(withInboundReplyContext(format.call(ctx.adapter, msg as any), ctx.msg));
-        return;
-      }
-      await ctx.adapter.sendFormatted(msg as any);
+      await ctx.adapter.send(withInboundReplyContext(ctx.adapter.format(msg), ctx.msg));
     } else {
       await ctx.adapter.send(withInboundReplyContext(msg, ctx.msg));
     }

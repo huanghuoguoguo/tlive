@@ -23,6 +23,10 @@ type TimelineOperationDisplay = {
   toolEntries: TimelineToolDisplay[];
 };
 
+interface TimelineCollectOptions {
+  splitTextAfterTool?: boolean;
+}
+
 function summarizeOperationText(text: string): string {
   const cleaned = text
     .replace(/[*_`>#-]/g, ' ')
@@ -38,7 +42,10 @@ function summarizeOperationText(text: string): string {
   return truncate(sentence, 20);
 }
 
-function collectTimelineOperations(data: ProgressData): TimelineOperationDisplay[] {
+function collectTimelineOperations(
+  data: ProgressData,
+  options: TimelineCollectOptions = {},
+): TimelineOperationDisplay[] {
   const operations: TimelineOperationDisplay[] = [];
   let current: TimelineOperationDisplay | undefined;
   let currentToolByKey: Map<string, TimelineToolDisplay> | undefined;
@@ -74,6 +81,9 @@ function collectTimelineOperations(data: ProgressData): TimelineOperationDisplay
     }
 
     if (entry.kind === 'text' && entry.text?.trim()) {
+      if (options.splitTextAfterTool && current?.toolEntries.length) {
+        flushCurrent();
+      }
       ensureCurrent().textEntries.push(entry.text.trim());
       continue;
     }
@@ -164,6 +174,11 @@ function buildOperationContent(operation: TimelineOperationDisplay, includeTextE
 }
 
 function extractCompletedBody(data: ProgressData): string {
+  const timelineBody = extractCompletedBodyFromTimeline(data);
+  if (timelineBody && (!data.renderedText || data.renderedText.includes(timelineBody))) {
+    return timelineBody;
+  }
+
   let body = data.renderedText.trim();
 
   if (data.footerLine && body.endsWith(data.footerLine)) {
@@ -177,6 +192,19 @@ function extractCompletedBody(data: ProgressData): string {
   }
 
   return body;
+}
+
+function extractCompletedBodyFromTimeline(data: ProgressData): string {
+  const operations = collectTimelineOperations(data, { splitTextAfterTool: true });
+  const textChunks: string[] = [];
+  for (let i = operations.length - 1; i >= 0; i--) {
+    const operation = operations[i];
+    if (operation.thinkingContent.trim() || operation.toolEntries.length > 0) break;
+    if (operation.textEntries.length > 0) {
+      textChunks.unshift(operation.textEntries.join('\n\n'));
+    }
+  }
+  return textChunks.join('\n\n').trim();
 }
 
 function operationBudget(data: ProgressData, isDone: boolean): number {
@@ -197,22 +225,25 @@ export function buildProgressTimelineElements(params: FormatProgressParams): Fei
   const { data, locale } = params;
   const elements: FeishuCardElement[] = [];
   const isDone = data.phase === 'completed' || data.phase === 'failed';
-  const operations = collectTimelineOperations(data);
+  const operations = collectTimelineOperations(data, { splitTextAfterTool: isDone });
+  const visibleOperations = isDone
+    ? operations.filter(operation => operation.thinkingContent.trim() || operation.toolEntries.length > 0)
+    : operations;
 
-  if (operations.length > 0) {
+  if (visibleOperations.length > 0) {
     let budget = operationBudget(data, isDone);
     const picked: Array<{ operation: TimelineOperationDisplay; content: string }> = [];
 
-    for (let i = operations.length - 1; i >= 0; i--) {
+    for (let i = visibleOperations.length - 1; i >= 0; i--) {
       if (budget <= 0 && picked.length > 0) break;
-      const operation = operations[i];
+      const operation = visibleOperations[i];
       const isLatest = picked.length === 0;
       const maxPerOperation = isLatest
         ? (isDone ? 1800 : 2800)
         : (isDone ? 1200 : 1800);
       const reservedBudget = isLatest && !isDone ? Math.max(budget, 1800) : budget;
       const content = truncate(
-        downgradeHeadings(buildOperationContent(operation, !isDone)),
+        downgradeHeadings(buildOperationContent(operation, true)),
         Math.min(reservedBudget, maxPerOperation),
       );
       picked.push({ operation, content });
@@ -265,7 +296,7 @@ export function buildProgressContentElements(params: FormatProgressParams): Feis
   const { data, md, locale } = params;
   const elements: FeishuCardElement[] = [];
   const isDone = data.phase === 'completed' || data.phase === 'failed';
-  const operations = collectTimelineOperations(data);
+  const operations = collectTimelineOperations(data, { splitTextAfterTool: isDone });
 
   if (isDone) {
     if (!data.completedTraceOnly) {

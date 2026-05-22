@@ -12,7 +12,7 @@ TL_DEFAULT_MODEL=
 
 # 任务完成/失败卡片底部按钮。
 # 默认只显示工作台按钮。需要更多按钮时可追加。
-# 支持：home,sessions,new,help,perm,none
+# 支持：home,new,help,perm,none
 TL_DONE_BUTTONS=home
 ```
 

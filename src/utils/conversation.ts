@@ -134,6 +134,8 @@ interface ProcessMessageParams {
     usage: {
       inputTokens: number;
       outputTokens: number;
+      cachedInputTokens?: number;
+      reasoningOutputTokens?: number;
       costUsd?: number;
       modelUsage?: Record<
         string,
@@ -162,7 +164,7 @@ interface ProcessMessageParams {
   onPromptSuggestion?: (suggestion: string) => void;
   onToolProgress?: (data: { toolName: string; elapsed: number }) => void;
   onRateLimit?: (data: { status: string; utilization?: number; resetsAt?: number }) => void;
-  onStatus?: (data: { sessionId: string; model: string }) => void;
+  onStatus?: (data: { sessionId: string; model?: string }) => void;
   onSessionInfo?: (data: {
     sessionId: string;
     model: string;
@@ -202,7 +204,13 @@ interface ProcessMessageParams {
 
 interface ProcessMessageResult {
   text: string;
-  usage?: { inputTokens: number; outputTokens: number; costUsd?: number };
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    cachedInputTokens?: number;
+    reasoningOutputTokens?: number;
+    costUsd?: number;
+  };
 }
 
 export class ConversationEngine {
@@ -211,7 +219,7 @@ export class ConversationEngine {
   async processMessage(params: ProcessMessageParams): Promise<ProcessMessageResult> {
     const lockKey = `session:${params.sdkSessionId || `new-${Date.now()}`}`;
     let fullText = '';
-    let usage: { inputTokens: number; outputTokens: number; costUsd?: number } | undefined;
+    let usage: ProcessMessageResult['usage'];
 
     // 1. Acquire lock
     await this.store.acquireLock(lockKey, 600_000);

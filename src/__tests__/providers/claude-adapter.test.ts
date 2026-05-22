@@ -380,6 +380,30 @@ describe('ClaudeAdapter', () => {
       });
     });
 
+    it('maps Claude cache usage into canonical per-turn usage', () => {
+      const events = adapter.mapMessage({
+        type: 'result',
+        subtype: 'success',
+        session_id: 'sess_cache',
+        is_error: false,
+        usage: {
+          input_tokens: 1200,
+          cache_creation_input_tokens: 300,
+          cache_read_input_tokens: 4000,
+          output_tokens: 50,
+        },
+      });
+
+      expect(events[0]).toMatchObject({
+        kind: 'query_result',
+        usage: {
+          inputTokens: 5500,
+          outputTokens: 50,
+          cachedInputTokens: 4000,
+        },
+      });
+    });
+
     it('maps success result with permission denials', () => {
       const events = adapter.mapMessage({
         type: 'result',

@@ -7,12 +7,14 @@ import { truncate } from '../../core/string.js';
 import type { TodoStatus } from '../../utils/types.js';
 import type { VerboseLevel } from '../state/session-state.js';
 import type { Button } from '../../ui/types.js';
+import type { AgentRuntimeInfo } from '../../providers/base.js';
 import { ProgressContentBuilder } from './progress-builder.js';
 import type { RenderInput } from './progress-builder.js';
 import type { ToolLogEntry, TimelineEntry, CurrentTool, MessageRendererState } from './renderer-types.js';
 import { PermissionTracker } from './permission-tracker.js';
 import { ProgressWatcher } from './progress-watcher.js';
 import { formatToolInput } from './tool-formatter.js';
+import { AdaptiveFlushController, type AdaptiveFlushOptions } from './adaptive-flush.js';
 // Re-export shared types for backwards compatibility
 export type { ToolLogEntry, TimelineEntry, MessageRendererState } from './renderer-types.js';
 
@@ -20,6 +22,7 @@ export interface MessageRendererOptions {
   shouldSplitState?: (state: MessageRendererState) => boolean;
   platformLimit: number;
   throttleMs?: number;
+  adaptiveFlush?: boolean | AdaptiveFlushOptions;
   cwd?: string;
   model?: string;
   sessionId?: string;
@@ -85,7 +88,10 @@ export class MessageRenderer {
   private pendingFlush = false;
   private cwd?: string;
   private model?: string;
+  private engineName?: string;
+  private reasoningEffort?: string;
   private sessionId?: string;
+  private usageSummary?: string;
   private verboseLevel: VerboseLevel;
   private onFlushError?: MessageRendererOptions['onFlushError'];
   private shouldSplitState?: MessageRendererOptions['shouldSplitState'];
@@ -93,6 +99,7 @@ export class MessageRenderer {
   private forceFlush = false;
   private lastFlushTime = 0;
   private elapsedUpdateInterval = 3000;
+  private adaptiveFlush?: AdaptiveFlushController;
 
   // Extracted components
   private contentBuilder = new ProgressContentBuilder();
@@ -113,6 +120,10 @@ export class MessageRenderer {
     this.model = options.model;
     this.sessionId = options.sessionId;
     this.verboseLevel = options.verboseLevel ?? 1;
+    if (options.adaptiveFlush) {
+      const adaptiveOptions = options.adaptiveFlush === true ? {} : options.adaptiveFlush;
+      this.adaptiveFlush = new AdaptiveFlushController(adaptiveOptions);
+    }
 
     // Always initialize permission tracker for queue management
     this.permissionTracker = new PermissionTracker({
@@ -260,6 +271,7 @@ export class MessageRenderer {
 
   onTextDelta(text: string): void {
     this.responseText += text;
+    this.adaptiveFlush?.recordTextDelta(text.length);
     if (this.lastTimelineIsText) {
       const last = this.timeline[this.timeline.length - 1];
       last.text = (last.text || '') + text;
@@ -279,6 +291,22 @@ export class MessageRenderer {
   setModel(model: string | undefined): void {
     if (this.model === model) return;
     this.model = model;
+  }
+
+  setEngineName(engineName: string | undefined): void {
+    if (this.engineName === engineName) return;
+    this.engineName = engineName;
+  }
+
+  setUsageSummary(summary: string | undefined): void {
+    if (this.usageSummary === summary) return;
+    this.usageSummary = summary;
+  }
+
+  setRuntimeInfo(info: AgentRuntimeInfo | undefined): void {
+    this.engineName = info?.displayName;
+    this.model = info?.model;
+    this.reasoningEffort = info?.reasoningEffort;
   }
 
   onComplete(): Promise<void> {
@@ -342,8 +370,11 @@ export class MessageRenderer {
       completed: this.completed,
       footerLine: this.footerLine,
       model: this.model,
+      engineName: this.engineName,
+      reasoningEffort: this.reasoningEffort,
       cwd: this.cwd,
       sessionId: this.sessionId,
+      usageSummary: this.usageSummary,
       platformLimit: this.platformLimit,
       sessionInfo: this.sessionInfo,
       toolUseSummaryText: this.toolUseSummaryText,
@@ -354,7 +385,16 @@ export class MessageRenderer {
 
   private scheduleFlush(): void {
     if (this.timer) return;
-    const delay = this._messageId ? this.throttleMs : 0;
+    const renderInput = this.getRenderInput();
+    const content = this.contentBuilder.render(renderInput);
+    const delay = this.adaptiveFlush
+      ? this.adaptiveFlush.nextDelay({
+          fallbackMs: this.throttleMs,
+          content,
+          phase: renderInput.phase,
+          hasMessage: !!this._messageId,
+        })
+      : this._messageId ? this.throttleMs : 0;
     this.timer = setTimeout(() => {
       this.timer = null;
       const content = this.contentBuilder.render(this.getRenderInput());
@@ -401,17 +441,25 @@ export class MessageRenderer {
       const flushButtons = this.permissionTracker?.getHead()?.buttons;
       let result: string | undefined;
       try {
+        const flushStartedAt = Date.now();
         result = await this.flushCallback(content, isEdit, flushButtons, state);
+        this.adaptiveFlush?.recordFlushLatency(Date.now() - flushStartedAt);
       } catch (err: any) {
         const code = err?.code ?? '';
         const retryable = err?.retryable || ['ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'UND_ERR_SOCKET'].includes(code);
+        const retryAfterMs = getRateLimitRetryAfterMs(err);
         const phase = this.errorMessage ? 'failed' : this.completed ? 'completed'
           : (this.permissionTracker?.getQueueLength() ?? 0) > 0 ? 'waiting_permission' : 'executing';
         const contentPreview = content.slice(0, 100);
 
         if (retryable) {
-          await new Promise(r => setTimeout(r, 1000));
-          try { result = await this.flushCallback(content, isEdit, flushButtons, state); }
+          if (retryAfterMs) this.adaptiveFlush?.recordRateLimit(retryAfterMs);
+          await new Promise(r => setTimeout(r, retryAfterMs ?? 1000));
+          try {
+            const retryStartedAt = Date.now();
+            result = await this.flushCallback(content, isEdit, flushButtons, state);
+            this.adaptiveFlush?.recordFlushLatency(Date.now() - retryStartedAt);
+          }
           catch (_retryErr) { console.error('[renderer] Failed after retry:', err); this.onFlushError?.(err, { phase, contentPreview }); }
         } else {
           console.error('[renderer] Failed:', err);
@@ -433,7 +481,13 @@ export class MessageRenderer {
       if (this.pendingFlush) {
         this.pendingFlush = false;
         const retryContent = this.contentBuilder.render(this.getRenderInput());
-        if (retryContent) await this.doFlush(retryContent);
+        if (retryContent) {
+          if (this.adaptiveFlush && this._messageId) {
+            this.scheduleFlush();
+          } else {
+            await this.doFlush(retryContent);
+          }
+        }
       }
     }
   }
@@ -464,4 +518,14 @@ export class MessageRenderer {
     }
     return this.bubbleToolCount >= SPLIT_TOOL_THRESHOLD || this.bubbleTimelineCount >= SPLIT_TIMELINE_THRESHOLD;
   }
+}
+
+function getRateLimitRetryAfterMs(err: any): number | undefined {
+  if (!err) return undefined;
+  const retryAfterMs = Number(err.retryAfterMs);
+  if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) return retryAfterMs;
+  if (err.name === 'RateLimitError' || err.code === 230020 || err.code === 99991400) return 2000;
+  const statusCode = err.statusCode ?? err.status ?? err.response?.statusCode ?? err.response?.status;
+  if (statusCode === 429) return 2000;
+  return undefined;
 }

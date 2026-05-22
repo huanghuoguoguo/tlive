@@ -17,12 +17,10 @@ export class StatusCommand extends BaseCommand {
     const channelList = Array.from(adapters.keys()).join(', ') || 'none';
 
     // Gather channel info (bot name/id if available)
-    const channelInfo = Array.from(adapters.entries()).map(([type, adapter]) => {
-      const anyAdapter = adapter as any;
-      const name = anyAdapter.botUsername || anyAdapter.botName || undefined;
-      const id = anyAdapter.config?.appId || anyAdapter.config?.botId || undefined;
-      return { type, name, id };
-    });
+    const channelInfo = Array.from(adapters.values()).map((adapter) => ({
+      type: adapter.channelType,
+      ...adapter.getBotInfo(),
+    }));
 
     // Gather session stats
     const activeSessions = ctx.services.sdkEngine?.getActiveSessionCount() ?? 0;

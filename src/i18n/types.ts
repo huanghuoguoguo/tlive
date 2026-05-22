@@ -21,7 +21,6 @@ export interface Translations {
   'home.workspaceBinding': string;
   'home.activeSessions': string;
   'home.recentSessions': string;
-  'home.btnSessions': string;
   'home.btnPermissions': string;
   'home.btnNew': string;
   'home.btnHelp': string;
@@ -63,16 +62,11 @@ export interface Translations {
   'perm.labelModeOn': string;
   'perm.labelModeOff': string;
   'perm.labelResult': string;
-  'perm.labelTool': string;
-  'perm.labelInput': string;
-  'perm.labelExpiresIn': string;
   'perm.labelSession': string;
   'perm.labelSessionMemory': string;
   'perm.labelTools': string;
   'perm.labelBashPrefixes': string;
   'perm.labelNoPending': string;
-  'perm.hintReply': string;
-  'perm.labelViewInTerminal': string;
   'perm.labelQuestion': string;
   'perm.labelOptions': string;
   'perm.labelDescription': string;
@@ -99,23 +93,6 @@ export interface Translations {
   'taskStart.previousSession': string;
   'taskStart.btnSettings': string;
   'taskStart.btnNew': string;
-
-  // --- sessions ---
-  'sessions.title': string;
-  'sessions.btnList': string;
-  'sessions.btnRecent': string;
-  'sessions.btnAll': string;
-  'sessions.subtitleAll': string;
-  'sessions.subtitleRecent': string;
-  'sessions.currentMarker': string;
-  'sessions.switchTo': string;
-  'sessions.labelDirectory': string;
-  'sessions.labelTime': string;
-  'sessions.labelSize': string;
-  'sessions.labelPreview': string;
-  'sessions.inputPlaceholder': string;
-  'sessions.btnConfirmSwitch': string;
-  'sessions.footer': string;
 
   // --- newSession ---
   'newSession.title': string;
@@ -210,7 +187,6 @@ export interface Translations {
   'format.taskStartHint': string;
   'format.titleStatus': string;
   'format.titleHome': string;
-  'format.titlePermission': string;
   'format.titlePermissionStatus': string;
   'format.titleQuestion': string;
   'format.titleDeferredInput': string;
@@ -246,20 +222,6 @@ export interface Translations {
   'error.title': string;
   'error.requestId': string;
 
-  // --- doctor command ---
-  'doctor.title': string;
-  'doctor.os': string;
-  'doctor.node': string;
-  'doctor.tlive': string;
-  'doctor.uptime': string;
-  'doctor.config': string;
-  'doctor.configFound': string;
-  'doctor.configMissing': string;
-  'doctor.providers': string;
-  'doctor.notFound': string;
-  'doctor.channels': string;
-  'doctor.connected': string;
-  'doctor.disconnected': string;
 }
 
 export type TranslationKey = keyof Translations;

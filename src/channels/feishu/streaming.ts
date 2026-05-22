@@ -25,7 +25,7 @@ export class FeishuStreamingSession {
   private sequence = 0;
   private lastContent = '';
   private updateQueue: Promise<void> = Promise.resolve();
-  private throttleMs = 100;
+  private throttleMs = 250;
   private lastUpdateTime = 0;
 
   constructor(options: FeishuStreamingOptions) {
@@ -50,8 +50,8 @@ export class FeishuStreamingSession {
         streaming_mode: true,
         summary: { content: '[Generating...]' },
         streaming_config: {
-          print_frequency_ms: { default: 50 },
-          print_step: { default: 2 },
+          print_frequency_ms: { default: 120 },
+          print_step: { default: 4 },
         },
       },
       body: {
