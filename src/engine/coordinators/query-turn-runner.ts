@@ -123,7 +123,9 @@ export class QueryTurnRunner {
       onToolStart: (event) => renderer.onToolStart(event.name, event.input, event.id),
       onToolResult: (event) => {
         renderer.onToolResult(event.toolUseId, event.content, event.isError);
-        renderer.onToolComplete(event.toolUseId);
+        if (event.isFinal !== false) {
+          renderer.onToolComplete(event.toolUseId);
+        }
       },
       onAgentStart: (data) => {
         if (DEBUG_EVENTS) console.log(`[bridge] agent_start: ${data.description}`);

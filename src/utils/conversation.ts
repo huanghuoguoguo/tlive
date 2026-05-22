@@ -121,7 +121,12 @@ interface ProcessMessageParams {
   attachments?: FileAttachment[];
   onTextDelta?: (delta: string) => void;
   onToolStart?: (event: { id: string; name: string; input: Record<string, unknown> }) => void;
-  onToolResult?: (event: { toolUseId: string; content: string; isError: boolean }) => void;
+  onToolResult?: (event: {
+    toolUseId: string;
+    content: string;
+    isError: boolean;
+    isFinal?: boolean;
+  }) => void;
   /** Called when query completes — returns Promise to allow async flush of final message */
   onQueryResult?: (event: {
     sessionId: string;

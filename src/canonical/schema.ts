@@ -24,6 +24,7 @@ const toolResultSchema = z.object({
   toolUseId: z.string(),
   content: z.string(),
   isError: z.boolean(),
+  isFinal: z.boolean().optional(),
 }).merge(baseSchema).passthrough();
 
 const toolProgressSchema = z.object({
