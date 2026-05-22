@@ -120,7 +120,8 @@ async function fetchLatestReleaseForChannel(current) {
     throw new Error(`GitHub API returned ${resp.status}`);
   }
   const data = await resp.json();
-  return currentIsPrerelease ? selectUpdateRelease(current, data) : data;
+  if (!currentIsPrerelease) return data;
+  return selectUpdateRelease(current, data) || { tag_name: `v${current}`, name: `v${current}` };
 }
 
 function toReleaseTag(version) {

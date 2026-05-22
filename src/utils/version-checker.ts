@@ -206,10 +206,29 @@ export async function checkForUpdates(): Promise<VersionInfo | null> {
   const current = getCurrentVersion();
 
   try {
-    const data = isPrereleaseVersion(current)
-      ? selectUpdateRelease(current, await fetchReleases(current) ?? [])
-      : await fetchRelease(GITHUB_LATEST_STABLE_API, current);
+    if (isPrereleaseVersion(current)) {
+      const releases = await fetchReleases(current);
+      if (!releases) return null;
+      const update = selectUpdateRelease(current, releases);
+      if (!update) {
+        return {
+          current,
+          latest: current,
+          hasUpdate: false,
+        };
+      }
+      const latest = releaseVersion(update);
+      return {
+        current,
+        latest,
+        hasUpdate: compareVersions(current, latest) < 0,
+        releaseUrl: update.html_url,
+        releaseNotes: update.body?.slice(0, 500),
+        publishedAt: update.published_at,
+      };
+    }
 
+    const data = await fetchRelease(GITHUB_LATEST_STABLE_API, current);
     if (!data) {
       console.warn('[version-checker] No release found for current update channel');
       return null;

@@ -200,7 +200,7 @@ describe('CommandRouter /settings', () => {
     );
   });
 
-  it('passes non-public slash commands through to the agent path', async () => {
+  it('rejects registered non-public slash commands from direct chat input', async () => {
     const handled = await router.handle(adapter, {
       channelType: 'feishu',
       chatId: 'c1',
@@ -209,8 +209,10 @@ describe('CommandRouter /settings', () => {
       messageId: 'm-pass-through',
     } as any);
 
-    expect(handled).toBe(false);
-    expect(adapter.send).not.toHaveBeenCalled();
+    expect(handled).toBe(true);
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('工作台命令') }),
+    );
     expect(adapter.format).not.toHaveBeenCalled();
   });
 

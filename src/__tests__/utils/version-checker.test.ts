@@ -93,4 +93,23 @@ describe('version-checker', () => {
       hasUpdate: true,
     });
   });
+
+  it('reports prerelease versions as current when no newer prerelease exists', async () => {
+    process.env.npm_package_version = '0.13.8-beta.3';
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse([
+        release('0.13.7'),
+        release('0.13.8-beta.3', true),
+      ]),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const info = await checkForUpdates();
+
+    expect(info).toMatchObject({
+      current: '0.13.8-beta.3',
+      latest: '0.13.8-beta.3',
+      hasUpdate: false,
+    });
+  });
 });

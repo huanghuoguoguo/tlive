@@ -15,7 +15,7 @@ export class BashCommand extends BaseCommand {
   readonly helpExample = '/bash ls -la';
 
   async execute(ctx: CommandContext): Promise<boolean> {
-    const cmdText = ctx.msg.text.slice('/bash '.length).trim();
+    const cmdText = ctx.parts.slice(1).join(' ').trim();
     if (!cmdText) {
       await this.send(ctx, { chatId: ctx.msg.chatId, text: 'Usage: /bash <command>' });
       return true;

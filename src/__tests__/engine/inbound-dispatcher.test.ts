@@ -153,11 +153,11 @@ describe('InboundDispatcher', () => {
     expect(query.run).not.toHaveBeenCalled();
   });
 
-  it('keeps non-public slash input on the agent path when there is no pending interaction', async () => {
+  it('keeps unknown slash input on the agent path when there is no pending interaction', async () => {
     const harness = createTextHarness('none');
     const { dispatcher, commands, query } = createDispatcher(harness);
     const adapter = createAdapter();
-    const msg = createMessage('/settings isolated');
+    const msg = createMessage('/agent-native-command arg');
 
     const handled = await dispatcher.handle(adapter, msg, 'req-settings');
 

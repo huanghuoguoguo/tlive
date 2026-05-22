@@ -175,11 +175,20 @@ export class CommandRouter {
     const scopeId = conversationScopeId(msg);
     const surface = conversationSurface({ threadId: msg.threadId, scopeId });
 
-    const handler = commandRegistry.get(cmd);
-    if (handler) {
-      if (opts.requirePublicTextCommand && !isPublicTextCommand(handler.name)) {
-        return false;
-      }
+	    const handler = commandRegistry.get(cmd);
+	    if (handler) {
+	      if (opts.requirePublicTextCommand && !isPublicTextCommand(handler.name)) {
+	        await adapter.send(
+	          withInboundReplyContext(
+	            {
+	              chatId: msg.chatId,
+	              text: `⚠️ ${handler.name} 是 TLive 工作台命令。请在 /tlive 工作台的命令输入框或按钮中执行。`,
+	            },
+	            msg,
+	          ),
+	        );
+	        return true;
+	      }
       const rejection = commandRejectionForSurface(cmd, surface);
       if (rejection) {
         await adapter.send(
