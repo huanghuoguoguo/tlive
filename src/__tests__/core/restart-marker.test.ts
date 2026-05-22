@@ -31,7 +31,7 @@ describe('restart request marker', () => {
 
       const content = JSON.parse(readFileSync(file, 'utf-8')) as RestartRequest;
       expect(content.oldPid).toBe(12345);
-      expect(content.timestamp).toBeDefined();
+      expect(Number.isNaN(Date.parse(content.timestamp))).toBe(false);
     });
 
     it('overwrites existing marker file', () => {
@@ -75,8 +75,8 @@ describe('restart request marker', () => {
 
     it('does not throw when file does not exist', () => {
       deleteRestartRequest(); // File doesn't exist
-      deleteRestartRequest(); // Should not throw
-      expect(true).toBe(true);
+      expect(() => deleteRestartRequest()).not.toThrow();
+      expect(existsSync(getRestartRequestFile())).toBe(false);
     });
   });
 

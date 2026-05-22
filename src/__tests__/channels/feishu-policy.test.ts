@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { FEISHU_POLICY } from '../../channels/feishu/policy.js';
-import type { ChannelPolicy } from '../../channels/policy.js';
 
 describe('Feishu channel policy', () => {
   it('uses the Feishu locale and platform reaction names', () => {
@@ -38,10 +37,5 @@ describe('Feishu channel policy', () => {
   it('formats code output as a fenced block', () => {
     expect(FEISHU_POLICY.format.formatCodeOutput('console.log("hello")'))
       .toBe('```\nconsole.log("hello")\n```\n');
-  });
-
-  it('exposes a narrow channel policy type without a default platform instance', () => {
-    const policy: ChannelPolicy = FEISHU_POLICY;
-    expect(policy.progress.shouldRenderPhase('executing')).toBe(true);
   });
 });

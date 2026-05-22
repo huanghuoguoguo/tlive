@@ -34,6 +34,73 @@ const mockReaddir = vi.mocked(fs.readdirSync);
 const mockStat = vi.mocked(fs.statSync);
 const mockRead = vi.mocked(fs.readSync);
 
+type MockClaudeFile = {
+  content: string;
+  mtimeMs: number;
+};
+
+function installClaudeProjects(projects: Record<string, Record<string, MockClaudeFile>>): void {
+  const root = '/home/testuser/.claude/projects';
+  const openPaths = new Map<number, string>();
+  let nextFd = 10;
+
+  mockReaddir.mockImplementation(((path: fs.PathLike, opts?: { withFileTypes?: boolean }) => {
+    const pathStr = String(path);
+    if (pathStr === root) {
+      return opts?.withFileTypes
+        ? Object.keys(projects).map((name) => ({ name, isDirectory: () => true }) as fs.Dirent)
+        : Object.keys(projects);
+    }
+    for (const [projectDir, files] of Object.entries(projects)) {
+      if (pathStr === `${root}/${projectDir}`) {
+        return Object.keys(files);
+      }
+    }
+    throw new Error(`Unexpected readdir path: ${pathStr}`);
+  }) as unknown as typeof fs.readdirSync);
+
+  mockStat.mockImplementation(((path: fs.PathLike) => {
+    const pathStr = String(path);
+    const file = findClaudeFile(projects, pathStr);
+    if (!file) throw new Error(`Unexpected stat path: ${pathStr}`);
+    return {
+      mtimeMs: file.mtimeMs,
+      size: Buffer.byteLength(file.content),
+    } as fs.Stats;
+  }) as unknown as typeof fs.statSync);
+
+  vi.mocked(fs.openSync).mockImplementation(((path: fs.PathLike) => {
+    const fd = nextFd++;
+    openPaths.set(fd, String(path));
+    return fd;
+  }) as unknown as typeof fs.openSync);
+
+  mockRead.mockImplementation(((fd: number, buffer: ArrayBufferView, offset = 0, length = 0, position = 0) => {
+    const content = findClaudeFile(projects, openPaths.get(fd) ?? '')?.content ?? '';
+    const chunk = Buffer.from(content).subarray(position, position + length);
+    const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer as Uint8Array);
+    chunk.copy(buf, offset);
+    return chunk.length;
+  }) as unknown as typeof fs.readSync);
+}
+
+function findClaudeFile(
+  projects: Record<string, Record<string, MockClaudeFile>>,
+  filePath: string,
+): MockClaudeFile | undefined {
+  const root = '/home/testuser/.claude/projects';
+  for (const [projectDir, files] of Object.entries(projects)) {
+    for (const [fileName, file] of Object.entries(files)) {
+      if (filePath === `${root}/${projectDir}/${fileName}`) return file;
+    }
+  }
+  return undefined;
+}
+
+function claudeLine(content: string, cwd = '/home/user/project'): string {
+  return JSON.stringify({ type: 'user', message: { content }, cwd });
+}
+
 describe('session-scanner', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -62,132 +129,106 @@ describe('session-scanner', () => {
     });
 
     it('scans project directories for .jsonl files', () => {
-      // Mock project directory listing - need to return Dirent objects for first call
-      mockReaddir.mockImplementation(((path: fs.PathLike, opts?: { withFileTypes?: boolean }) => {
-        const pathStr = String(path);
-        if (pathStr.includes('projects')) {
-          // First call: list project directories with Dirent-like objects
-          if (opts?.withFileTypes) {
-            return [{ name: '-home-user-project', isDirectory: () => true } as fs.Dirent];
-          }
-          return ['session-uuid-123.jsonl', 'session-uuid-456.jsonl'];
-        }
-        // Second call: list .jsonl files in project directory
-        return ['session-uuid-123.jsonl', 'session-uuid-456.jsonl'];
-      }) as unknown as typeof fs.readdirSync);
-
-      mockStat.mockReturnValue({
-        mtimeMs: 1000000,
-        size: 5000,
-      } as fs.Stats);
-
-      vi.mocked(fs.openSync).mockReturnValue(1);
-      mockRead.mockImplementation(((_fd: number, buffer: ArrayBufferView) => {
-        // Write test data to buffer
-        const testLine = '{"type":"user","message":{"content":"test prompt"},"cwd":"/home/user/project"}\n';
-        const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer as Uint8Array);
-        buf.write(testLine, 0);
-        return testLine.length;
-      }) as unknown as typeof fs.readSync);
+      installClaudeProjects({
+        '-home-user-project': {
+          'session-uuid-123.jsonl': {
+            content: claudeLine('test prompt 123'),
+            mtimeMs: 1000,
+          },
+          'session-uuid-456.jsonl': {
+            content: claudeLine('test prompt 456', '/home/user/project/subdir'),
+            mtimeMs: 2000,
+          },
+          'notes.txt': {
+            content: 'not a session',
+            mtimeMs: 3000,
+          },
+        },
+      });
 
       const sessions = scanClaudeSessions();
 
-      // Basic check - sessions should be an array (may be empty if mocks don't align)
-      expect(Array.isArray(sessions)).toBe(true);
-      if (sessions.length > 0) {
-        expect(sessions[0].sdkSessionId).toBeDefined();
-      }
+      expect(sessions).toHaveLength(2);
+      expect(sessions.map((session) => session.sdkSessionId)).toEqual([
+        'session-uuid-456',
+        'session-uuid-123',
+      ]);
+      expect(sessions[0]).toMatchObject({
+        provider: 'claude',
+        providerDisplayName: 'Claude',
+        projectDir: '-home-user-project',
+        filePath: '/home/testuser/.claude/projects/-home-user-project/session-uuid-456.jsonl',
+        cwd: '/home/user/project/subdir',
+        mtime: 2000,
+        preview: 'test prompt 456',
+      });
     });
 
     it('skips agent-* sessions (subagent sessions)', () => {
-      mockReaddir.mockImplementation(((path: fs.PathLike) => {
-        const pathStr = String(path);
-        if (pathStr.includes('projects')) {
-          return [{ name: 'test-project', isDirectory: () => true } as fs.Dirent];
-        }
-        return ['agent-subagent-1.jsonl', 'main-session.jsonl'];
-      }) as unknown as typeof fs.readdirSync);
-
-      mockStat.mockReturnValue({
-        mtimeMs: 1000000,
-        size: 5000,
-      } as fs.Stats);
+      installClaudeProjects({
+        'test-project': {
+          'agent-subagent-1.jsonl': { content: claudeLine('hidden agent prompt'), mtimeMs: 2000 },
+          'main-session.jsonl': { content: claudeLine('main prompt'), mtimeMs: 1000 },
+        },
+      });
 
       const sessions = scanClaudeSessions();
 
-      // Should only include main-session, not agent-subagent
-      expect(sessions.every(s => !s.sdkSessionId.startsWith('agent-'))).toBe(true);
+      expect(sessions.map((session) => session.sdkSessionId)).toEqual(['main-session']);
     });
 
     it('sorts sessions by mtime descending (most recent first)', () => {
-      mockReaddir.mockImplementation(((path: fs.PathLike) => {
-        const pathStr = String(path);
-        if (pathStr.includes('projects')) {
-          return [{ name: 'project', isDirectory: () => true } as fs.Dirent];
-        }
-        return ['old.jsonl', 'new.jsonl'];
-      }) as unknown as typeof fs.readdirSync);
-
-      mockStat.mockImplementation(((path: fs.PathLike) => {
-        const pathStr = String(path);
-        if (pathStr.includes('old.jsonl')) {
-          return { mtimeMs: 1000, size: 100 } as fs.Stats;
-        }
-        return { mtimeMs: 5000, size: 100 } as fs.Stats;
-      }) as unknown as typeof fs.statSync);
+      installClaudeProjects({
+        project: {
+          'old.jsonl': { content: claudeLine('old prompt'), mtimeMs: 1000 },
+          'new.jsonl': { content: claudeLine('new prompt'), mtimeMs: 5000 },
+        },
+      });
 
       const sessions = scanClaudeSessions();
 
-      if (sessions.length >= 2) {
-        expect(sessions[0].mtime).toBeGreaterThanOrEqual(sessions[1].mtime);
-      }
+      expect(sessions.map((session) => session.sdkSessionId)).toEqual(['new', 'old']);
     });
 
     it('respects limit parameter', () => {
-      mockReaddir.mockImplementation(((path: fs.PathLike) => {
-        const pathStr = String(path);
-        if (pathStr.includes('projects')) {
-          return [{ name: 'project', isDirectory: () => true } as fs.Dirent];
-        }
-        return ['s1.jsonl', 's2.jsonl', 's3.jsonl', 's4.jsonl', 's5.jsonl'];
-      }) as unknown as typeof fs.readdirSync);
-
-      mockStat.mockReturnValue({
-        mtimeMs: Date.now(),
-        size: 100,
-      } as fs.Stats);
+      installClaudeProjects({
+        project: {
+          's1.jsonl': { content: claudeLine('prompt 1'), mtimeMs: 1 },
+          's2.jsonl': { content: claudeLine('prompt 2'), mtimeMs: 2 },
+          's3.jsonl': { content: claudeLine('prompt 3'), mtimeMs: 3 },
+          's4.jsonl': { content: claudeLine('prompt 4'), mtimeMs: 4 },
+          's5.jsonl': { content: claudeLine('prompt 5'), mtimeMs: 5 },
+        },
+      });
 
       const sessions = scanClaudeSessions(2);
-      expect(sessions.length).toBeLessThanOrEqual(2);
+      expect(sessions.map((session) => session.sdkSessionId)).toEqual(['s5', 's4']);
     });
 
     it('filters by cwd when filterByCwd provided', () => {
-      mockReaddir.mockImplementation(((path: fs.PathLike) => {
-        const pathStr = String(path);
-        if (pathStr.includes('projects')) {
-          return [{ name: 'project', isDirectory: () => true } as fs.Dirent];
-        }
-        return ['s1.jsonl'];
-      }) as unknown as typeof fs.readdirSync);
-
-      mockStat.mockReturnValue({
-        mtimeMs: Date.now(),
-        size: 100,
-      } as fs.Stats);
-
-      vi.mocked(fs.openSync).mockReturnValue(1);
-      mockRead.mockImplementation(((_fd: number, buffer: ArrayBufferView) => {
-        const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer as Uint8Array);
-        buf.write('{"cwd":"/home/user/specific-project"}', 0);
-        return 50;
-      }) as unknown as typeof fs.readSync);
+      installClaudeProjects({
+        project: {
+          'match-root.jsonl': {
+            content: claudeLine('root prompt', '/home/user/specific-project'),
+            mtimeMs: 1000,
+          },
+          'match-child.jsonl': {
+            content: claudeLine('child prompt', '/home/user/specific-project/pkg'),
+            mtimeMs: 2000,
+          },
+          'sibling.jsonl': {
+            content: claudeLine('sibling prompt', '/home/user/specific-project-other'),
+            mtimeMs: 3000,
+          },
+        },
+      });
 
       const sessions = scanClaudeSessions(10, '/home/user/specific-project');
 
-      // All returned sessions should match the filter
-      for (const s of sessions) {
-        expect(s.cwd.startsWith('/home/user/specific-project')).toBe(true);
-      }
+      expect(sessions.map((session) => session.sdkSessionId)).toEqual([
+        'match-child',
+        'match-root',
+      ]);
     });
 
     it('uses cache for subsequent calls', () => {
@@ -206,19 +247,19 @@ describe('session-scanner', () => {
     });
 
     it('cache expires after TTL', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(1_000);
       mockReaddir.mockReturnValue([] as unknown as ReturnType<typeof fs.readdirSync>);
 
-      // First call
+      scanClaudeSessions();
+      const firstCallCount = mockReaddir.mock.calls.length;
+
+      vi.setSystemTime(7_000);
+
       scanClaudeSessions();
 
-      // Invalidate cache
-      invalidateSessionCache();
-
-      // Second call after invalidation
-      scanClaudeSessions();
-
-      // readdirSync should be called twice (cache invalidated)
-      expect(mockReaddir.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(mockReaddir.mock.calls.length).toBeGreaterThan(firstCallCount);
+      vi.useRealTimers();
     });
   });
 
@@ -387,8 +428,10 @@ describe('session-scanner', () => {
 
       const transcript = readSessionTranscriptPreview(session);
 
-      expect(transcript.length).toBeGreaterThan(0);
-      expect(transcript[0].role).toBe('user');
+      expect(transcript).toEqual([
+        { role: 'user', text: 'user message', timestamp: '2026-01-01' },
+        { role: 'assistant', text: 'assistant response', timestamp: undefined },
+      ]);
     });
 
     it('respects maxMessages parameter', () => {
@@ -417,7 +460,7 @@ describe('session-scanner', () => {
       };
 
       const transcript = readSessionTranscriptPreview(session, 2);
-      expect(transcript.length).toBeLessThanOrEqual(2);
+      expect(transcript.map((message) => message.text)).toEqual(['msg8', 'msg9']);
     });
   });
 });

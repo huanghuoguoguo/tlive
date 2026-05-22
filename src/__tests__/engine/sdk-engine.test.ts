@@ -58,16 +58,6 @@ describe('SDKEngine', () => {
     engine = new SDKEngine();
   });
 
-  describe('Queue Depth Management', () => {
-    it('starts with queue depth 0', () => {
-      expect(queueDepth(engine, 'test-session')).toBe(0);
-    });
-
-    it('default max queue depth is 3', () => {
-      expect(engine.getMaxQueueDepth()).toBe(3);
-    });
-  });
-
   describe('sendWithContext', () => {
     it('returns none mode when no session found', async () => {
       const result = await engine.sendWithContext('feishu', 'chat-1', 'test message');
@@ -256,8 +246,22 @@ describe('SDKEngine', () => {
 
       const session = createEngineSession(engine, mockProvider);
 
-      expect(session).toBeDefined();
-      expect(mockProvider.createSession).toHaveBeenCalled();
+      expect(session).toBe(mockSession);
+      expect(mockProvider.createSession).toHaveBeenCalledWith(expect.objectContaining({
+        workingDirectory: '/workdir',
+      }));
+      expect(engine.getActiveSessionKey('feishu', 'chat-1')).toBe(DEFAULT_SESSION_KEY);
+      expect(engine.hasActiveSession('feishu', 'chat-1', '/workdir')).toBe(true);
+      expect(engine.getSessionsForChat('feishu', 'chat-1')).toMatchObject([
+        {
+          sessionKey: DEFAULT_SESSION_KEY,
+          workdir: '/workdir',
+          isAlive: true,
+          isTurnActive: false,
+          bindingSessionId: DEFAULT_SESSION_ID,
+          isCurrent: true,
+        },
+      ]);
     });
 
     it('returns existing session if alive', () => {

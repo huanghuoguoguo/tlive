@@ -132,19 +132,6 @@ describe('PermissionCoordinator', () => {
     });
   });
 
-  describe('permission message tracking', () => {
-    it('tracks interactive permission messages for pruning', () => {
-      coord.trackPermissionMessage('msg-1', 'perm-1', 'session-1', 'feishu');
-      expect(() => coord.pruneStaleEntries()).not.toThrow();
-    });
-  });
-
-  describe('getGateway', () => {
-    it('returns the injected gateway', () => {
-      expect(coord.getGateway()).toBe(gateway);
-    });
-  });
-
   describe('dynamic session whitelist', () => {
     it('isToolAllowed returns false by default', () => {
       expect(coord.isToolAllowed('session-1', 'Edit', {})).toBe(false);

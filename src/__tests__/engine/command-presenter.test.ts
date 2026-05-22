@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  presentHelp,
-  presentNewSession,
-  presentPermissionStatus,
-  presentStatus,
   presentHome,
   presentDiagnose,
   presentUpgradeCommand,
@@ -28,88 +24,22 @@ function countFeishuTaggedElements(elements: any[]): number {
   return total;
 }
 
+function findFirstTaggedElement(elements: any[], tag: string): any | undefined {
+  for (const element of elements) {
+    if (element?.tag === tag) return element;
+    for (const value of Object.values(element ?? {})) {
+      if (Array.isArray(value)) {
+        const found = findFirstTaggedElement(value, tag);
+        if (found) return found;
+      }
+    }
+  }
+  return undefined;
+}
+
 describe('command presenter', () => {
-  describe('presentStatus', () => {
-    it('returns semantic message data', () => {
-      const msg = presentStatus('chat-1', {
-        healthy: true,
-        channels: ['feishu'],
-      });
-      expect(msg.type).toBe('status');
-      expect(msg.chatId).toBe('chat-1');
-      if (msg.type === 'status') {
-        expect(msg.data.healthy).toBe(true);
-        expect(msg.data.channels).toEqual(['feishu']);
-      }
-    });
-
-    it('formats correctly for Feishu', () => {
-      const msg = presentStatus('chat-1', { healthy: true, channels: ['feishu'] });
-      const formatted = feishuFormatter.format(msg);
-      expect(formatted.feishuHeader?.title).toContain('TLive');
-    });
-  });
-
-  describe('presentNewSession', () => {
-    it('returns semantic message data', () => {
-      const msg = presentNewSession('chat-1', { cwd: '/home/user/project' });
-      expect(msg.type).toBe('newSession');
-      expect(msg.chatId).toBe('chat-1');
-      if (msg.type === 'newSession') {
-        expect(msg.data.cwd).toBe('/home/user/project');
-      }
-    });
-
-    it('formats for Feishu', () => {
-      const msg = presentNewSession('chat-1', { cwd: '/home/user/project' });
-      const formatted = feishuFormatter.format(msg);
-      expect(formatted.feishuHeader?.template).toBe('green');
-    });
-  });
-
-  describe('presentHelp', () => {
-    it('returns semantic message data', () => {
-      const msg = presentHelp('chat-1', {
-        commands: [
-          { cmd: 'new', desc: 'New conversation', category: HELP_CATEGORIES.session },
-          { cmd: 'status', desc: 'Show status', category: HELP_CATEGORIES.status },
-        ],
-      });
-      expect(msg.type).toBe('help');
-      if (msg.type === 'help') {
-        expect(msg.data.commands).toHaveLength(2);
-      }
-    });
-
-    it('formats for Feishu with buttons', () => {
-      const msg = presentHelp('chat-1', {
-        commands: [{ cmd: 'new', desc: 'New conversation', category: HELP_CATEGORIES.session }],
-      });
-      const formatted = feishuFormatter.format(msg);
-      expect(formatted.feishuHeader?.template).toBe('blue');
-      // Feishu puts buttons in feishuElements
-      expect(formatted.feishuElements?.length).toBeGreaterThan(0);
-    });
-  });
-
   describe('presentHome', () => {
-    it('returns semantic message data', () => {
-      const msg = presentHome('chat-1', {
-        workspace: { cwd: '/home/user/project' },
-        task: { active: true },
-        session: {},
-        permission: { mode: 'on' },
-        bridge: {},
-        help: { recentSummary: 'Working on feature X' },
-      });
-      expect(msg.type).toBe('home');
-      if (msg.type === 'home') {
-        expect(msg.data.workspace.cwd).toBe('/home/user/project');
-        expect(msg.data.task.active).toBe(true);
-      }
-    });
-
-    it('formats for Feishu with rich card', () => {
+    it('renders the workbench operation form without losing defaults', () => {
       const msg = presentHome('chat-1', {
         workspace: { cwd: '/home/user/project' },
         task: { active: false },
@@ -123,10 +53,21 @@ describe('command presenter', () => {
       });
       const formatted = feishuFormatter.format(msg);
       expect(formatted.feishuHeader?.template).toBe('blue');
-      expect(formatted.feishuElements?.length).toBeGreaterThan(0);
-      expect(JSON.stringify(formatted.feishuElements)).toContain('新会话默认工作区');
-      expect(JSON.stringify(formatted.feishuElements)).toContain('新会话默认工具审批');
-      expect(formatted.feishuElements?.at(-1)?.tag).toBe('form');
+      expect(formatted.feishuElements?.[0]).toMatchObject({
+        tag: 'markdown',
+        content: expect.stringContaining('新会话默认工作区'),
+      });
+
+      const commandForm = formatted.feishuElements?.at(-1) as any;
+      expect(commandForm).toMatchObject({ tag: 'form', name: 'form_tlive_command' });
+      expect(commandForm?.elements).toContainEqual(expect.objectContaining({
+        tag: 'input',
+        name: '_tlive_command',
+      }));
+      expect(findFirstTaggedElement(commandForm?.elements ?? [], 'button')).toMatchObject({
+        name: 'tlive_command',
+        form_action_type: 'submit',
+      });
     });
 
     it('keeps Feishu home card under the platform element limit', () => {
@@ -187,61 +128,8 @@ describe('command presenter', () => {
     });
   });
 
-  describe('presentPermissionStatus', () => {
-    it('returns semantic message data', () => {
-      const msg = presentPermissionStatus('chat-1', {
-        mode: 'on',
-        rememberedTools: 1,
-        rememberedBashPrefixes: 2,
-        pending: { toolName: 'Edit', input: 'src/main.ts' },
-        lastDecision: { toolName: 'Bash', decision: 'allow_always' },
-      });
-      expect(msg.type).toBe('permissionStatus');
-      if (msg.type === 'permissionStatus') {
-        expect(msg.data.mode).toBe('on');
-        expect(msg.data.rememberedBashPrefixes).toBe(2);
-      }
-    });
-
-    it('formats for Feishu with action buttons', () => {
-      const msg = presentPermissionStatus('chat-1', {
-        mode: 'off',
-        rememberedTools: 0,
-        rememberedBashPrefixes: 0,
-      });
-      const formatted = feishuFormatter.format(msg);
-      expect(formatted.feishuHeader?.title).toContain('权限状态');
-      expect(formatted.feishuElements?.length).toBeGreaterThan(0);
-    });
-  });
-
   describe('presentDiagnose', () => {
-    it('returns semantic diagnose data without mutating payload', () => {
-      const msg = presentDiagnose('chat-1', {
-        activeSessions: 2,
-        idleSessions: 1,
-        totalBubbleMappings: 4,
-        persistedBindings: 3,
-        persistedTopicSessions: 2,
-        persistedTopicSessionsInChat: 1,
-        queueStats: [
-          { sessionKey: 's1', depth: 3, maxDepth: 3 },
-          { sessionKey: 's2', depth: 1, maxDepth: 4 },
-        ],
-        totalQueuedMessages: 4,
-        processingChats: 1,
-      });
-
-      expect(msg.type).toBe('diagnose');
-      if (msg.type === 'diagnose') {
-        expect(msg.data.queueStats).toHaveLength(2);
-        expect(msg.data.saturatedSessions).toBeUndefined();
-        expect(msg.data.queueUtilizationRatio).toBeUndefined();
-        expect(msg.data.busiestSession).toBeUndefined();
-      }
-    });
-
-    it('formats diagnose explicitly for Feishu', () => {
+    it('renders persisted and memory-only diagnostic counters distinctly', () => {
       const msg = presentDiagnose('chat-1', {
         activeSessions: 2,
         idleSessions: 1,

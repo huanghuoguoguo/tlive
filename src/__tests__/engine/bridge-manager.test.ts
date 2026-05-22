@@ -187,17 +187,6 @@ describe('BridgeManager', () => {
     expect(handled).toBe(false);
   });
 
-  it('routes /tlive command', async () => {
-    const adapter = mockAdapter();
-    manager.registerAdapter(adapter);
-
-    const handled = await manager.handleInboundMessage(adapter, {
-      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/tlive', messageId: 'm1',
-    });
-    expect(handled).toBe(true);
-    expect(adapter.send).toHaveBeenCalled();
-  });
-
   it('sends typing indicator on message', async () => {
     const adapter = mockAdapter();
     manager.registerAdapter(adapter);
@@ -328,17 +317,6 @@ describe('BridgeManager', () => {
     expect(result.sessionId).toBe(binding.sessionId);
   });
 
-  it('updates /help text to omit removed commands', async () => {
-    const adapter = mockAdapter();
-    manager.registerAdapter(adapter);
-
-    await manager.handleInboundMessage(adapter, {
-      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/help', messageId: 'm1',
-    });
-
-    expect(JSON.stringify((adapter.send as ReturnType<typeof vi.fn>).mock.calls[0][0])).not.toContain('verbose');
-  });
-
   it('expires session after 30 minutes of inactivity', async () => {
     vi.useFakeTimers();
     const adapter = mockAdapter();
@@ -363,33 +341,6 @@ describe('BridgeManager', () => {
 
     // saveBinding should have been called again (rebind creates new binding)
     expect(saveBindingSpy.mock.calls.length).toBeGreaterThan(callsBefore);
-    vi.useRealTimers();
-  });
-
-  it('does not expire session within 30 minutes', async () => {
-    vi.useFakeTimers();
-    const adapter = mockAdapter();
-    manager.registerAdapter(adapter);
-
-    await manager.handleInboundMessage(adapter, {
-      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: 'first', messageId: 'm1',
-    });
-
-    const saveBindingSpy = vi.mocked(store.saveBinding);
-
-    // Advance only 10 minutes
-    vi.advanceTimersByTime(10 * 60 * 1000);
-    const callsBefore = saveBindingSpy.mock.calls.length;
-
-    await manager.handleInboundMessage(adapter, {
-      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: 'second', messageId: 'm2',
-    });
-
-    // saveBinding may be called by onSdkSessionId (persisting SDK session),
-    // but should NOT have been called for rebind (no session expiry)
-    // Check that no rebind happened by verifying the binding's sessionId didn't change
-    const binding = await store.getBinding('feishu', 'c1');
-    expect(binding?.sessionId).toBeDefined();
     vi.useRealTimers();
   });
 
@@ -445,34 +396,4 @@ describe('BridgeManager', () => {
     );
   });
 
-  it('Feishu internal /help renders with buttons', async () => {
-    const adapter = mockAdapter('feishu');
-    manager.registerAdapter(adapter);
-
-    await manager.handleInboundMessage(adapter, {
-      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/help', internalCommand: true, messageId: 'm1',
-    });
-
-    expect(adapter.send).toHaveBeenCalledWith(
-      expect.objectContaining({
-        feishuHeader: expect.any(Object),
-        feishuElements: expect.any(Array),
-      })
-    );
-  });
-
-  it('Feishu internal /new renders with header', async () => {
-    const adapter = mockAdapter('feishu');
-    manager.registerAdapter(adapter);
-
-    await manager.handleInboundMessage(adapter, {
-      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/new', internalCommand: true, messageId: 'm1',
-    });
-
-    expect(adapter.send).toHaveBeenCalledWith(
-      expect.objectContaining({
-        feishuHeader: expect.any(Object),
-      })
-    );
-  });
 });

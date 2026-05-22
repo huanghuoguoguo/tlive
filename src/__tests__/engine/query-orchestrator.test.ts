@@ -772,10 +772,9 @@ describe('QueryOrchestrator', () => {
     const editedProgressCard = (adapter.editMessage as any).mock.calls
       .map((call: any[]) => call[2])
       .find((message: any) => (message?.feishuElements ?? []).some((el: any) => el.tag === 'collapsible_panel'));
-    expect(editedProgressCard).toBeDefined();
 
     const progressPanels = (editedProgressCard.feishuElements ?? []).filter((el: any) => el.tag === 'collapsible_panel');
-    expect(progressPanels.length).toBeGreaterThan(0);
+    expect(progressPanels[0]).toMatchObject({ tag: 'collapsible_panel' });
 
     const firstPanelContent = progressPanels[0].elements?.[0]?.content ?? '';
     expect(firstPanelContent).toContain('先读取相关文件');

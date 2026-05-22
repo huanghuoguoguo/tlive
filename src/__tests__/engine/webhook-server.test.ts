@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { WebhookServer, injectPayload, type WebhookRequest, type WebhookServerOptions, type WebhookResponse, type WebhookCallbackPayload } from '../../engine/automation/webhook.js';
+import { WebhookServer, injectPayload } from '../../engine/automation/webhook.js';
 import type { BridgeManager } from '../../engine/coordinators/bridge-manager.js';
 import type { ProjectConfig } from '../../config.js';
 
@@ -101,82 +101,6 @@ describe('WebhookServer', () => {
     if (server) {
       server.stop();
     }
-  });
-
-  describe('configuration', () => {
-    it('creates server with correct options', () => {
-      server = new WebhookServer({
-        token: 'test-token',
-        port: 9999,
-        path: '/webhook',
-        bridge: mockBridge as BridgeManager,
-        sessionStrategy: 'reject',
-      });
-      expect(server).toBeDefined();
-    });
-
-    it('accepts sessionStrategy reject option', () => {
-      server = new WebhookServer({
-        token: 'test-token',
-        port: 9999,
-        path: '/webhook',
-        bridge: mockBridge as BridgeManager,
-        sessionStrategy: 'reject',
-      });
-      expect(server).toBeDefined();
-    });
-
-    it('accepts sessionStrategy create option', () => {
-      server = new WebhookServer({
-        token: 'test-token',
-        port: 9999,
-        path: '/webhook',
-        bridge: mockBridge as BridgeManager,
-        sessionStrategy: 'create',
-      });
-      expect(server).toBeDefined();
-    });
-
-    it('accepts callbackUrl option', () => {
-      server = new WebhookServer({
-        token: 'test-token',
-        port: 9999,
-        path: '/webhook',
-        bridge: mockBridge as BridgeManager,
-        sessionStrategy: 'reject',
-        callbackUrl: 'http://example.com/callback',
-      });
-      expect(server).toBeDefined();
-    });
-
-    it('accepts webhook rate limit option', () => {
-      server = new WebhookServer({
-        token: 'test-token',
-        port: 9999,
-        path: '/webhook',
-        bridge: mockBridge as BridgeManager,
-        sessionStrategy: 'reject',
-        rateLimitPerMinute: 10,
-      });
-      expect(server).toBeDefined();
-    });
-
-    it('accepts projects configuration', () => {
-      const projects: ProjectConfig[] = [
-        { name: 'project-a', workdir: '/path/a', webhookDefaultChat: { channelType: 'feishu', chatId: 'chat-a' } },
-        { name: 'project-b', workdir: '/path/b' },
-      ];
-      server = new WebhookServer({
-        token: 'test-token',
-        port: 9999,
-        path: '/webhook',
-        bridge: mockBridge as BridgeManager,
-        sessionStrategy: 'reject',
-        projects,
-        defaultProject: 'project-a',
-      });
-      expect(server).toBeDefined();
-    });
   });
 
   describe('token validation', () => {
@@ -634,86 +558,4 @@ describe('WebhookServer', () => {
     });
   });
 
-  describe('callback notification', () => {
-    it('should define WebhookCallbackPayload interface', () => {
-      const payload: WebhookCallbackPayload = {
-        requestId: 'req-123',
-        success: true,
-        event: 'git:commit',
-        channelType: 'feishu',
-        chatId: 'chat-456',
-        sessionId: 'sess-789',
-        timestamp: '2024-01-01T00:00:00Z',
-      };
-      expect(payload).toBeDefined();
-      expect(payload.requestId).toBe('req-123');
-      expect(payload.success).toBe(true);
-    });
-
-    it('should support error field in callback payload', () => {
-      const payload: WebhookCallbackPayload = {
-        requestId: 'req-123',
-        success: false,
-        event: 'git:commit',
-        channelType: 'feishu',
-        chatId: 'chat-456',
-        error: 'No active session',
-        timestamp: '2024-01-01T00:00:00Z',
-      };
-      expect(payload.error).toBe('No active session');
-    });
-  });
-
-  describe('WebhookResponse enhancements', () => {
-    it('should support sessionId in response', () => {
-      const response: WebhookResponse = {
-        success: true,
-        message: 'Prompt delivered',
-        sessionId: 'sess-123',
-        requestId: 'req-456',
-      };
-      expect(response.sessionId).toBe('sess-123');
-    });
-
-    it('should support requestId in response', () => {
-      const response: WebhookResponse = {
-        success: false,
-        error: 'Invalid token',
-        requestId: 'req-789',
-      };
-      expect(response.requestId).toBe('req-789');
-    });
-
-    it('should support route in response', () => {
-      const response: WebhookResponse = {
-        success: true,
-        message: 'Prompt delivered',
-        route: { channelType: 'feishu', chatId: 'chat-123', workdir: '/project' },
-      };
-      expect(response.route?.channelType).toBe('feishu');
-      expect(response.route?.workdir).toBe('/project');
-    });
-  });
-
-  describe('WebhookRequest enhancements', () => {
-    it('should support sessionId in request', () => {
-      const request: WebhookRequest = {
-        event: 'test',
-        prompt: 'Hello',
-        channelType: 'feishu',
-        chatId: 'chat-123',
-        sessionId: 'sess-456',
-      };
-      expect(request.sessionId).toBe('sess-456');
-    });
-
-    it('should support projectName routing', () => {
-      const request: WebhookRequest = {
-        event: 'test',
-        prompt: 'Hello',
-        projectName: 'my-project',
-      };
-      expect(request.projectName).toBe('my-project');
-    });
-  });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SessionStateManager } from '../../engine/state/session-state.js';
 
 describe('SessionStateManager', () => {
@@ -6,6 +6,10 @@ describe('SessionStateManager', () => {
 
   beforeEach(() => {
     state = new SessionStateManager();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   describe('stateKey', () => {
@@ -17,10 +21,6 @@ describe('SessionStateManager', () => {
 
   describe('permMode', () => {
     it('defaults to on', () => {
-      expect(state.getPermMode('feishu', '1')).toBe('on');
-    });
-
-    it('feishu also defaults to on for text-based approvals', () => {
       expect(state.getPermMode('feishu', '1')).toBe('on');
     });
 
@@ -99,13 +99,9 @@ describe('SessionStateManager', () => {
     });
 
     it('getLastActiveTime returns timestamp after activity', () => {
-      const before = Date.now();
+      vi.spyOn(Date, 'now').mockReturnValue(123_456);
       state.checkAndUpdateLastActive('feishu', '1');
-      const after = Date.now();
-      const lastActive = state.getLastActiveTime('feishu', '1');
-      expect(lastActive).toBeDefined();
-      expect(lastActive!).toBeGreaterThanOrEqual(before);
-      expect(lastActive!).toBeLessThanOrEqual(after);
+      expect(state.getLastActiveTime('feishu', '1')).toBe(123_456);
     });
 
     it('getSessionAge returns undefined before any activity', () => {
@@ -113,10 +109,10 @@ describe('SessionStateManager', () => {
     });
 
     it('getSessionAge returns elapsed time since last activity', () => {
+      const now = vi.spyOn(Date, 'now').mockReturnValue(1_000);
       state.checkAndUpdateLastActive('feishu', '1');
-      const age = state.getSessionAge('feishu', '1');
-      expect(age).toBeDefined();
-      expect(age!).toBeLessThan(1000); // Should be very small right after activity
+      now.mockReturnValue(1_250);
+      expect(state.getSessionAge('feishu', '1')).toBe(250);
     });
 
     it('getSessionAge increases over time', () => {

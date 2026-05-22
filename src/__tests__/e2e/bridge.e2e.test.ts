@@ -246,7 +246,10 @@ describe('bridge E2E harness', () => {
     );
 
     expect(handled).toBe(true);
-    expect(harness.adapter.edits.length).toBeGreaterThan(0);
+    expect(harness.adapter.edits[0]).toMatchObject({
+      chatId: 'chat-1',
+      messageId: expect.stringMatching(/^out-/),
+    });
     expect(harness.adapter.sent.length).toBeGreaterThan(1);
     expect(allRenderedText(harness.adapter)).toContain('AAA');
   });

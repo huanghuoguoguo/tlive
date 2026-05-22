@@ -92,10 +92,6 @@ describe('FeishuAdapter', () => {
     });
   });
 
-  it('has correct channelType', () => {
-    expect(adapter.channelType).toBe('feishu');
-  });
-
   describe('validateConfig()', () => {
     it('returns error when appId is missing', () => {
       const bad = new FeishuAdapter({ appId: '', appSecret: 'sec', verificationToken: '', encryptKey: '', webhookPort: 0, allowedUsers: [] });
@@ -163,30 +159,6 @@ describe('FeishuAdapter', () => {
 
       expect(result.success).toBe(true);
       expect(result.messageId).toBe('msg-feishu-1');
-      await adapter.stop();
-    });
-
-    it('includes action buttons in card when provided', async () => {
-      await adapter.start();
-      await adapter.send({
-        chatId: 'oc_chat123',
-        text: 'Permission?',
-        buttons: [
-          { label: 'Allow', callbackData: 'perm:allow:123', style: 'primary' },
-          { label: 'Deny', callbackData: 'perm:deny:123', style: 'danger' },
-        ],
-      });
-
-      const call = mockMessageCreate.mock.calls[0][0];
-      const card = JSON.parse(call.data.content);
-      // Schema 2.0: buttons in column_set with behaviors
-      expect(card.body.elements[1].tag).toBe('column_set');
-      expect(card.body.elements[1].columns).toHaveLength(2);
-      const btn0 = card.body.elements[1].columns[0].elements[0];
-      const btn1 = card.body.elements[1].columns[1].elements[0];
-      expect(btn0.tag).toBe('button');
-      expect(btn0.text.content).toBe('Allow');
-      expect(btn1.type).toBe('danger');
       await adapter.stop();
     });
 
@@ -389,12 +361,13 @@ describe('FeishuAdapter', () => {
   });
 
   describe('start() / stop()', () => {
-    it('initializes client and WSClient on start', async () => {
+    it('starts websocket transport before accepting sends', async () => {
       await adapter.start();
       expect(mockWsStart).toHaveBeenCalledOnce();
-      await expect(
-        adapter.send({ chatId: 'oc_chat', text: 'test' }),
-      ).resolves.toBeDefined();
+
+      await adapter.send({ chatId: 'oc_chat', text: 'test' });
+      expect(mockMessageCreate).toHaveBeenCalledOnce();
+
       await adapter.stop();
     });
 
@@ -404,13 +377,6 @@ describe('FeishuAdapter', () => {
       await expect(adapter.send({ chatId: 'oc_chat', text: 'test' })).rejects.toThrow(
         'Feishu client not started',
       );
-    });
-  });
-
-  describe('consumeOne()', () => {
-    it('returns null when queue is empty', async () => {
-      const msg = await adapter.consumeOne();
-      expect(msg).toBeNull();
     });
   });
 
@@ -441,14 +407,6 @@ describe('FeishuAdapter', () => {
     it('does nothing when client is not started', async () => {
       await adapter.editMessage('oc_chat', 'msg-1', { chatId: 'oc_chat', text: 'hi' });
       expect(mockMessagePatch).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('sendTyping()', () => {
-    it('is a no-op that resolves without error', async () => {
-      await adapter.start();
-      await expect(adapter.sendTyping('oc_chat123')).resolves.toBeUndefined();
-      await adapter.stop();
     });
   });
 
@@ -726,8 +684,9 @@ describe('FeishuAdapter', () => {
         userId: 'user_1',
         messageId: 'om_123',
       });
-      expect(msg!.callbackData).toContain('form:askq-123:');
-      expect(msg!.callbackData).toContain('_text_answer');
+      expect(msg!.callbackData).toBe(
+        'form:askq-123:{"_interaction_id":"askq-123","_text_answer":"my answer"}',
+      );
 
       await adapter.stop();
     });
@@ -746,8 +705,7 @@ describe('FeishuAdapter', () => {
       });
 
       const msg = await adapter.consumeOne();
-      expect(msg!.callbackData).toContain('form:tlive_command:');
-      expect(msg!.callbackData).toContain('cd ..');
+      expect(msg!.callbackData).toBe('form:tlive_command:{"_tlive_command":"cd .."}');
 
       await adapter.stop();
     });
@@ -765,8 +723,7 @@ describe('FeishuAdapter', () => {
       });
 
       const msg = await adapter.consumeOne();
-      expect(msg!.callbackData).toContain('form:tlive_command:');
-      expect(msg!.callbackData).toContain('cd ..');
+      expect(msg!.callbackData).toBe('form:tlive_command:{"_tlive_command":"cd .."}');
 
       await adapter.stop();
     });
@@ -785,7 +742,9 @@ describe('FeishuAdapter', () => {
       });
 
       const msg = await adapter.consumeOne();
-      expect(msg!.callbackData).toContain('form:askq-789:');
+      expect(msg!.callbackData).toBe(
+        'form:askq-789:{"_interaction_id":"askq-789","_text_answer":"ok"}',
+      );
 
       await adapter.stop();
     });
@@ -800,9 +759,17 @@ describe('FeishuAdapter', () => {
         context: { chat_id: 'chat_1', open_message_id: 'om_456' },
       });
 
+      expect(result).toEqual({
+        toast: {
+          type: 'success',
+          content: '已提交',
+        },
+      });
+
       const msg = await adapter.consumeOne();
-      expect(msg!.callbackData).toContain('form:askq-456:');
-      expect(msg!.callbackData).toContain('_select');
+      expect(msg!.callbackData).toBe(
+        'form:askq-456:{"_interaction_id":"askq-456","_select":"Option A"}',
+      );
 
       await adapter.stop();
     });

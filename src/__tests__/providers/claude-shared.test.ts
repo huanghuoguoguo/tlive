@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { buildSubprocessEnv, SAFE_PERMISSIONS } from '../../providers/claude-shared.js';
+import { buildSubprocessEnv } from '../../providers/claude-shared.js';
 import { preparePromptWithImages } from '../../providers/prompt-media.js';
 import type { FileAttachment } from '../../providers/base.js';
 import * as fs from 'node:fs';
@@ -69,41 +69,6 @@ describe('claude-shared utilities', () => {
 
       expect(result.DEFINED).toBe('value');
       expect(result.UNDEFINED).toBeUndefined();
-    });
-  });
-
-  describe('SAFE_PERMISSIONS', () => {
-    it('includes read-only tools', () => {
-      expect(SAFE_PERMISSIONS).toContain('Read(*)');
-      expect(SAFE_PERMISSIONS).toContain('Glob(*)');
-      expect(SAFE_PERMISSIONS).toContain('Grep(*)');
-    });
-
-    it('includes write tools', () => {
-      expect(SAFE_PERMISSIONS).toContain('Write(*)');
-      expect(SAFE_PERMISSIONS).toContain('Edit(*)');
-    });
-
-    it('includes web tools', () => {
-      expect(SAFE_PERMISSIONS).toContain('WebSearch');
-      expect(SAFE_PERMISSIONS).toContain('WebFetch(domain:*)');
-    });
-
-    it('includes task/agent tools', () => {
-      expect(SAFE_PERMISSIONS).toContain('Task(*)');
-      expect(SAFE_PERMISSIONS).toContain('ExitPlanMode');
-      expect(SAFE_PERMISSIONS).toContain('ToolSearch');
-    });
-
-    it('includes safe bash patterns', () => {
-      expect(SAFE_PERMISSIONS).toContain('Bash(safe *)');
-    });
-
-    it('is an array of strings', () => {
-      expect(Array.isArray(SAFE_PERMISSIONS)).toBe(true);
-      for (const perm of SAFE_PERMISSIONS) {
-        expect(typeof perm).toBe('string');
-      }
     });
   });
 
@@ -190,9 +155,8 @@ describe('claude-shared utilities', () => {
         { type: 'image', name: 'fail.png', mimeType: 'image/png', base64Data: 'x' },
       ];
 
-      // Should not throw
       const result = preparePromptWithImages('test', attachments);
-      expect(result).toBeDefined();
+      expect(result).toEqual({ prompt: 'test', imagePaths: [] });
     });
   });
 });

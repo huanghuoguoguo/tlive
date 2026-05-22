@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getToolIcon, getToolTitle, getToolCommand, getToolResultPreview, TOOL_RESULT_MAX_LINES } from '../../engine/sdk/tool-registry.js';
+import { getToolIcon, getToolTitle, getToolCommand, getToolResultPreview } from '../../engine/sdk/tool-registry.js';
 
 describe('tool-registry', () => {
   describe('getToolIcon', () => {
@@ -91,11 +91,7 @@ describe('tool-registry', () => {
       const lines = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`);
       const result = getToolResultPreview('Bash', lines.join('\n'));
       expect(result).toContain('line 1');
-      expect(result).toContain(`+${30 - TOOL_RESULT_MAX_LINES} lines`);
-    });
-
-    it('TOOL_RESULT_MAX_LINES is 3', () => {
-      expect(TOOL_RESULT_MAX_LINES).toBe(3);
+      expect(result).toContain('+27 lines');
     });
 
     it('shows short Bash output in full', () => {
