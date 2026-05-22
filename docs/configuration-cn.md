@@ -37,7 +37,7 @@ TL_FS_ALLOWED_USERS=ou_xxx,xxx
 ```env
 # 新 chat 默认加载的 Agent 设置来源
 # user    = ~/.claude/settings.json
-# project = .claude/settings.json + CLAUDE.md + MCP + skills
+# project = .claude/settings.json + CLAUDE.md + project MCP config
 # local   = .claude/settings.local.json
 TL_AGENT_SETTINGS=user,project,local
 ```

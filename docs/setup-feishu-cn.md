@@ -164,15 +164,9 @@
 
 ## 第六步：配置 tlive
 
-你有三种方式：
+你有两种方式：
 
-**方式 A — AI 引导设置（推荐）：**
-```
-/tlive setup
-```
-在 Claude Code 中运行，按提示粘贴 App ID 和 App Secret。
-
-**方式 B — 交互式设置：**
+**方式 A — 交互式设置：**
 ```bash
 tlive setup
 ```
@@ -197,7 +191,6 @@ TL_FS_ALLOWED_USERS=ou_xxxxxxxxxxxxxxxx
    ```bash
    tlive start
    ```
-   或在 Claude Code 中运行 `/tlive`。
 
 2. 打开飞书，找到你的机器人：
    - 搜索第一步中设置的应用名称

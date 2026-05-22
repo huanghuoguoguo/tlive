@@ -59,7 +59,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$tmp = Join-Path $env:TE
 tlive stop
 rm -rf ~/.tlive
 tlive setup
-tlive install skills
 tlive start
 ```
 

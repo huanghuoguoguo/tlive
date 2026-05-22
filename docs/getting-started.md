@@ -49,26 +49,22 @@ Secure the config file:
 chmod 600 ~/.tlive/config.env
 ```
 
-## Claude Code Integration
+## MCP Integration
 
 ```bash
-tlive install skills
+tlive mcp
 ```
 
-Inside Claude Code, you can also run:
-
-```text
-/tlive setup
-```
-
-The setup flow guides you through Feishu credentials and bridge startup.
+Register command `tlive` with args `mcp` in your agent client. The MCP server lets agents
+call back into TLive for file/image delivery and automation prompts while TLive keeps Feishu
+topic routing and permissions on the bridge side.
 
 ## Start
 
-In Claude Code:
+Start the bridge:
 
-```text
-/tlive
+```bash
+tlive start
 ```
 
 Then open Feishu/Lark and send the bot a task:

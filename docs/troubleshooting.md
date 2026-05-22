@@ -59,7 +59,6 @@ Complete reset:
 tlive stop
 rm -rf ~/.tlive
 tlive setup
-tlive install skills
 tlive start
 ```
 

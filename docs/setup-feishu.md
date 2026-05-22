@@ -124,7 +124,7 @@ Feishu apps aren't active until they're published and approved by a workspace ad
 
 ## Step 6: Configure tlive
 
-You have three options:
+You have two options:
 
 **Option A — Interactive setup:**
 ```bash
@@ -132,13 +132,7 @@ tlive setup
 ```
 Paste your App ID and App Secret when prompted.
 
-**Option B — AI-guided setup (recommended):**
-```
-/tlive setup
-```
-Run this inside Claude Code for a guided experience.
-
-**Option C — Manual configuration:**
+**Option B — Manual configuration:**
 
 Edit `~/.tlive/config.env`:
 ```env
@@ -157,7 +151,6 @@ The `TL_FS_ALLOWED_USERS` field is optional. If set, only the listed user Open I
    ```bash
    tlive start
    ```
-   Or run `/tlive` in Claude Code.
 
 2. Open Feishu and find your bot:
    - Search for the app name you chose in Step 1

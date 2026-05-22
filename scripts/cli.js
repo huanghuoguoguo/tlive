@@ -3,7 +3,7 @@
 import { execSync, spawn, spawnSync } from 'node:child_process';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, writeFileSync, readFileSync, unlinkSync, mkdirSync, chmodSync, openSync, closeSync, copyFileSync, statSync, readSync, mkdtempSync, renameSync, rmSync, symlinkSync, readdirSync } from 'node:fs';
+import { existsSync, writeFileSync, readFileSync, unlinkSync, mkdirSync, chmodSync, openSync, closeSync, copyFileSync, statSync, readSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -18,6 +18,7 @@ const LOG_DIR = join(TLIVE_HOME, 'logs');
 const BRIDGE_PID = join(RUNTIME_DIR, 'bridge.pid');
 const BRIDGE_ENTRY = join(PACKAGE_ROOT, 'dist', 'main.mjs');
 const CLIENT_ENTRY = join(PACKAGE_ROOT, 'dist', 'client.mjs');
+const MCP_ENTRY = join(PACKAGE_ROOT, 'dist', 'mcp.mjs');
 const CONFIG_FILE = join(TLIVE_HOME, 'config.env');
 const UPGRADE_RESULT_FILE = join(RUNTIME_DIR, 'upgrade-result.json');
 const STATUS_FILE = join(RUNTIME_DIR, 'status.json');
@@ -624,7 +625,7 @@ Usage:
 
 Setup (one-time):
   tlive setup                Configure Feishu/Lark
-  tlive install skills       Install /tlive skill to Claude Code
+  tlive mcp                  Run local MCP server on stdio
 
 Service Management:
   tlive start                Start Feishu/Lark bridge
@@ -643,13 +644,13 @@ IM Commands (in Feishu/Lark):
   /stop                      Interrupt execution
   Other / commands           Passed through to the active agent
 
-In Claude Code (AI-guided):
-  /tlive                     Start Bridge (with pre-checks)
-  /tlive setup               Interactive setup wizard
-  /tlive reconfigure         Modify specific config fields
+MCP:
+  Command: tlive
+  Args:    mcp
+  Tools:   tlive_send_file, tlive_send_image, tlive_inject_prompt, tlive_status
 `;
 
-const NODE_COMMANDS = new Set(['setup', 'start', 'server', 'client', 'stop', 'restart', 'status', 'logs', 'version', 'update', 'upgrade']);
+const NODE_COMMANDS = new Set(['setup', 'start', 'server', 'client', 'mcp', 'stop', 'restart', 'status', 'logs', 'version', 'update', 'upgrade']);
 const CORE_COMMANDS = new Set(['install']);
 
 function run(cmd, opts = {}) {
@@ -714,6 +715,20 @@ switch (command) {
       TL_DEFAULT_WORKDIR: process.env.TL_DEFAULT_WORKDIR || process.cwd(),
     };
     const r = spawnSync(process.execPath, [CLIENT_ENTRY, ...args], { stdio: 'inherit', env });
+    if (r.status) process.exit(r.status);
+    break;
+  }
+
+  case 'mcp': {
+    if (!existsSync(MCP_ENTRY)) {
+      console.error(`MCP server not built: ${MCP_ENTRY}`);
+      process.exit(1);
+    }
+    const env = {
+      ...process.env,
+      ...loadConfigEnv(),
+    };
+    const r = spawnSync(process.execPath, [MCP_ENTRY, ...args], { stdio: 'inherit', env });
     if (r.status) process.exit(r.status);
     break;
   }
@@ -884,108 +899,20 @@ switch (command) {
   case 'install': {
     const sub = args[0];
     if (sub === 'skills') {
-      const skillSrc = join(PACKAGE_ROOT, '.claude', 'skills', 'tlive', 'SKILL.md');
-
-      if (!existsSync(skillSrc)) {
-        console.error('tlive SKILL.md not found. Reinstall from GitHub Release or rebuild this fork from source.');
-        process.exit(1);
-      }
-
-      // Install tlive skill (copy SKILL.md to commands/tlive.md for Claude Code)
-      const commandsDir = join(homedir(), '.claude', 'commands');
-      mkdirSync(commandsDir, { recursive: true });
-      const skillDest = join(commandsDir, 'tlive.md');
-      copyFileSync(skillSrc, skillDest);
-      console.log(`Skill installed: ${skillDest}`);
-
-      // Install all tlive-* skills via symlink
-      const bundledSkillsDir = join(PACKAGE_ROOT, '.claude', 'skills');
-      const globalSkillsDir = join(homedir(), '.claude', 'skills');
-      mkdirSync(globalSkillsDir, { recursive: true });
-
-      for (const retiredSkill of ['tlive-cron']) {
-        const retiredSkillDest = join(globalSkillsDir, retiredSkill);
-        if (existsSync(retiredSkillDest)) {
-          rmSync(retiredSkillDest, { recursive: true, force: true });
-          console.log(`Removed retired skill: ${retiredSkillDest}`);
-        }
-      }
-
-      try {
-        const entries = readdirSync(bundledSkillsDir, { withFileTypes: true });
-        for (const entry of entries) {
-          if (!entry.isDirectory() || !entry.name.startsWith('tlive-')) continue;
-          const skillFolderSrc = join(bundledSkillsDir, entry.name);
-          const skillFolderDest = join(globalSkillsDir, entry.name);
-          // Remove existing symlink or folder before creating new one
-          try { rmSync(skillFolderDest, { recursive: true, force: true }); } catch {}
-          try {
-            symlinkSync(skillFolderSrc, skillFolderDest);
-            console.log(`Skill installed (symlink): ${skillFolderDest}`);
-          } catch {
-            // Fallback: copy if symlink fails (e.g., on Windows without admin)
-            const skillFile = join(skillFolderSrc, 'SKILL.md');
-            if (existsSync(skillFile)) {
-              mkdirSync(skillFolderDest, { recursive: true });
-              copyFileSync(skillFile, join(skillFolderDest, 'SKILL.md'));
-              console.log(`Skill installed (copy): ${skillFolderDest}`);
-            }
-          }
-        }
-      } catch {
-        // bundledSkillsDir doesn't exist or unreadable - skip
-      }
-
-      // Sync reference docs to ~/.tlive/docs/
-      const docsDir = join(TLIVE_HOME, 'docs');
-      mkdirSync(docsDir, { recursive: true });
-      const refsDir = join(PACKAGE_ROOT, '.claude', 'skills', 'tlive', 'references');
-      for (const doc of ['setup-guides.md', 'token-validation.md', 'troubleshooting.md']) {
-        const refSrc = join(refsDir, doc);
-        const dest = join(docsDir, doc);
-        if (existsSync(refSrc)) {
-          copyFileSync(refSrc, dest);
-        }
-      }
-      console.log(`Reference docs synced: ${docsDir}`);
-
-      // Remove legacy TLive hook entries from ~/.claude/settings.json
-        const settingsPath = join(homedir(), '.claude', 'settings.json');
-        let settings = {};
-        if (existsSync(settingsPath)) {
-          try { settings = JSON.parse(readFileSync(settingsPath, 'utf-8')); } catch {}
-        }
-
-        if (!settings.hooks) settings.hooks = {};
-
-        // Remove ALL existing TLive hooks (both .sh and .mjs, any path)
-        const isTliveHook = (cmd) =>
-          cmd?.includes('hook-handler') || cmd?.includes('notify-handler') || cmd?.includes('stop-handler');
-
-        for (const hookType of Object.keys(settings.hooks)) {
-          settings.hooks[hookType] = (settings.hooks[hookType] || []).filter(e => {
-            if (isTliveHook(e.command)) return false;
-            if (e.hooks) {
-              e.hooks = e.hooks.filter(h => !isTliveHook(h.command));
-              return e.hooks.length > 0;
-            }
-            return true;
-          });
-          if (settings.hooks[hookType].length === 0) delete settings.hooks[hookType];
-        }
-
-        writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
-        console.log(`Removed legacy TLive hook entries from: ${settingsPath}`);
+      console.error('`tlive install skills` has been removed. Use the TLive MCP server instead:');
+      console.error('  command: tlive');
+      console.error('  args:    mcp');
+      process.exit(1);
     } else {
       console.log('Usage:');
-      console.log('  tlive install skills  Install /tlive skill');
+      console.log('  tlive mcp             Run local MCP server on stdio');
     }
     break;
   }
 
   default: {
     // Check for typos of known commands before failing
-    const known = ['setup', 'start', 'server', 'client', 'stop', 'restart', 'status', 'logs', 'install', 'help', 'version', 'update', 'upgrade'];
+    const known = ['setup', 'start', 'server', 'client', 'mcp', 'stop', 'restart', 'status', 'logs', 'install', 'help', 'version', 'update', 'upgrade'];
     const similar = known.find(k => {
       if (Math.abs(k.length - command.length) > 2) return false;
       let diff = 0;

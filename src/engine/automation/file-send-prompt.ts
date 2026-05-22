@@ -22,11 +22,12 @@ export function buildFileSendSystemPrompt(config: FileSendPromptConfig): string 
   if (!config.enabled || !config.token) return undefined;
 
   return [
-    'TLive file delivery through /api/files/send:',
-    '- When the user asks you to send, return, or share a local file back to the IM chat, use the local TLive file-send endpoint instead of saying you cannot send files.',
+    'TLive file delivery:',
+    '- When the user asks you to send, return, or share a local file back to the IM chat, use the TLive MCP tool tlive_send_file or tlive_send_image when available.',
+    '- If MCP tools are unavailable, use the local TLive file-send endpoint /api/files/send instead of saying you cannot send files.',
     `- Endpoint and auth are available in the ${FILE_SEND_URL_ENV} and ${FILE_SEND_TOKEN_ENV} environment variables.`,
     '- Use Bash/curl with POST JSON: {"file_path":"/absolute/or/relative/path","caption":"optional text","routeToken":"token-from-current-turn"}.',
-    '- If the current prompt includes a TLive file delivery routeToken, you must include it in the POST JSON.',
+    '- If the current prompt includes a TLive file delivery routeToken, include it in the MCP tool call or POST JSON.',
     '- If no routeToken is available, specify channelType and chatId explicitly. TLive rejects ambiguous file-send requests instead of guessing a last active chat.',
     '- After a {"success":true} response, briefly tell the user the file was sent. If it fails, report the error.',
     '- Never print or reveal the auth token value.',
