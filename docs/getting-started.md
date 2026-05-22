@@ -52,12 +52,12 @@ chmod 600 ~/.tlive/config.env
 ## MCP Integration
 
 ```bash
-tlive mcp
+tlive install mcp
 ```
 
-Register command `tlive` with args `mcp` in your agent client. The MCP server lets agents
-call back into TLive for file/image delivery and automation prompts while TLive keeps Feishu
-topic routing and permissions on the bridge side.
+This registers command `tlive` with args `mcp` in Claude Code. The MCP server lets agents call
+back into TLive for file/image delivery and automation prompts while TLive keeps Feishu topic
+routing and permissions on the bridge side.
 
 ## Start
 

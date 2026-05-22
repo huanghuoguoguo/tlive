@@ -64,10 +64,10 @@ tlive start
 请在 agent 客户端中注册内置 MCP server：
 
 ```bash
-tlive mcp
+tlive install mcp
 ```
 
-MCP 配置使用 command `tlive`，args `mcp`。它会暴露 `tlive_send_file`、
+这会注册 command `tlive`、args `mcp`。MCP server 会暴露 `tlive_send_file`、
 `tlive_send_image`、`tlive_inject_prompt`、`tlive_status` 等工具。
 
 ## 架构

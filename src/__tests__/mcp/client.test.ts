@@ -18,8 +18,8 @@ describe('TLive MCP client', () => {
   it('derives local bridge URLs and token from environment', () => {
     const config = loadMcpConfig({
       TLIVE_HOME: '/tmp/tlive-home',
-      TL_PORT: '9999',
-      TL_TOKEN: 'token-a',
+      TL_WEBHOOK_PORT: '9999',
+      TL_WEBHOOK_TOKEN: 'token-a',
       TL_WEBHOOK_PATH: 'hook',
     });
 

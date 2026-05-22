@@ -19,7 +19,6 @@ import {
   TopicConversationService,
   type TopicSessionBindingSnapshot,
 } from '../conversations/topic-conversation.js';
-import { deliveryRouteFromInbound } from '../../channels/delivery-route.js';
 import { QueryTurnRunner } from './query-turn-runner.js';
 import { conversationScopeId } from '../../channels/conversation-context.js';
 import { QueryPresentationFactory } from './query-presentation.js';
@@ -175,14 +174,6 @@ export class QueryOrchestrator {
           this.linkProgressMessage(msg, currentBinding, sessionTarget.sessionKey, messageId);
         },
       });
-      const fileDeliveryRouteToken = this.options.appendSystemPrompt
-        ? this.options.sdkEngine.registerFileDeliveryRoute(
-            sessionTarget.sessionKey,
-            deliveryRouteFromInbound(msg),
-            currentBinding.cwd || this.options.defaultWorkdir,
-          )
-        : undefined;
-
       const sdkInteractions = this.sdkInteractions.create({
         adapter,
         msg,
@@ -204,7 +195,7 @@ export class QueryOrchestrator {
           sdkInteractions.deferredTool,
           ctx,
         );
-        const outcome = await this.turnRunner.run(queryCtx, fileDeliveryRouteToken);
+        const outcome = await this.turnRunner.run(queryCtx);
 
         if (renderer.messageId) {
           this.linkProgressMessage(

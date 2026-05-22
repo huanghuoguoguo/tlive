@@ -42,10 +42,10 @@ export function loadMcpConfig(env: NodeJS.ProcessEnv = process.env): TliveMcpCon
   const port = env.TL_WEBHOOK_PORT?.trim() || env.TL_PORT?.trim() || '8080';
   const baseUrl = env.TLIVE_MCP_BRIDGE_URL?.trim() || `http://127.0.0.1:${port}`;
   const webhookPath = normalizePath(env.TL_WEBHOOK_PATH?.trim() || '/webhook');
-  const token = env.TLIVE_FILE_SEND_TOKEN?.trim() || env.TL_WEBHOOK_TOKEN?.trim() || env.TL_TOKEN?.trim() || '';
+  const token = env.TL_WEBHOOK_TOKEN?.trim() || env.TL_TOKEN?.trim() || '';
 
   return {
-    fileSendUrl: env.TLIVE_FILE_SEND_URL?.trim() || `${baseUrl}/api/files/send`,
+    fileSendUrl: `${baseUrl}/api/files/send`,
     webhookUrl: env.TLIVE_WEBHOOK_URL?.trim() || `${baseUrl}${webhookPath}`,
     token,
     statusPath: env.TLIVE_STATUS_FILE?.trim() || join(home, 'runtime', 'status.json'),
@@ -97,7 +97,7 @@ async function postJson(
   if (!token) {
     return {
       success: false,
-      error: 'Missing TLive token. Set TL_TOKEN, TL_WEBHOOK_TOKEN, or TLIVE_FILE_SEND_TOKEN.',
+      error: 'Missing TLive token. Set TL_WEBHOOK_TOKEN or TL_TOKEN.',
     };
   }
 

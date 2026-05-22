@@ -62,10 +62,10 @@ For agent-side callbacks such as sending files or images back to the current Fei
 register the bundled MCP server in your agent client:
 
 ```bash
-tlive mcp
+tlive install mcp
 ```
 
-Use command `tlive` with args `mcp`. The MCP server exposes tools such as
+This registers command `tlive` with args `mcp`. The MCP server exposes tools such as
 `tlive_send_file`, `tlive_send_image`, `tlive_inject_prompt`, and `tlive_status`.
 
 ## Architecture

@@ -12,7 +12,6 @@ import { invalidateSessionCache } from '../../providers/session-scanner.js';
 import type { SessionStateManager } from '../state/session-state.js';
 import { SessionStaleError, isStaleSessionError } from '../state/session-stale-error.js';
 import type { SDKEngine } from '../sdk/engine.js';
-import { buildFileSendRoutePrompt } from '../automation/file-send-prompt.js';
 import type { QueryContext } from './query-context.js';
 import { CostTracker } from '../cost-tracker.js';
 
@@ -41,7 +40,7 @@ export interface QueryTurnRunnerOptions {
 export class QueryTurnRunner {
   constructor(private readonly options: QueryTurnRunnerOptions) {}
 
-  async run(query: QueryContext, fileDeliveryRouteToken?: string): Promise<QueryTurnOutcome> {
+  async run(query: QueryContext): Promise<QueryTurnOutcome> {
     const {
       msg,
       binding,
@@ -59,9 +58,7 @@ export class QueryTurnRunner {
     const chatKey = this.options.state.stateKey(msg.channelType, scopeId);
     const imageAttachments = msg.attachments?.filter((a) => a.type === 'image');
     const provider = this.options.providers.require(binding.provider);
-    const promptText =
-      preparePromptWithFileAttachments(msg.text, msg.attachments) +
-      buildFileSendRoutePrompt(fileDeliveryRouteToken);
+    const promptText = preparePromptWithFileAttachments(msg.text, msg.attachments);
 
     let streamResult: StreamChatResult | undefined;
     let terminalEventSeen = false;

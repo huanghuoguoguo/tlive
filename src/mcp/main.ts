@@ -156,7 +156,7 @@ async function main(): Promise<void> {
   const config = loadMcpConfig();
   if (!config.token) {
     console.error(
-      '[tlive:mcp] Missing token. Set TL_TOKEN, TL_WEBHOOK_TOKEN, or TLIVE_FILE_SEND_TOKEN.',
+      '[tlive:mcp] Missing token. Set TL_WEBHOOK_TOKEN or TL_TOKEN.',
     );
   }
   const transport = new StdioServerTransport();

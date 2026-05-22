@@ -44,7 +44,7 @@ async function main() {
   console.log('\nTLive setup complete.');
   console.log('Next steps:');
   console.log('  1. tlive setup              — configure Feishu/Lark');
-  console.log('  2. tlive mcp                — MCP server command for agents');
+  console.log('  2. tlive install mcp        — register MCP tools in Claude Code');
 }
 
 main().catch(console.error);
