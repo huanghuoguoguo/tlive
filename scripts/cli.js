@@ -51,6 +51,78 @@ function normalizeRequestedVersion(version) {
   return trimmed.replace(/^v/i, '');
 }
 
+function isPrereleaseVersion(version) {
+  return Boolean(normalizeRequestedVersion(version)?.includes('-'));
+}
+
+function parseVersion(version) {
+  const [core, prerelease = ''] = normalizeRequestedVersion(version)?.split('-', 2) || ['0.0.0', ''];
+  const [major = 0, minor = 0, patch = 0] = core.split('.').map((part) => Number.parseInt(part, 10) || 0);
+  return { major, minor, patch, prerelease: prerelease ? prerelease.split('.') : [] };
+}
+
+function comparePrerelease(aParts, bParts) {
+  if (!aParts.length && !bParts.length) return 0;
+  if (!aParts.length) return 1;
+  if (!bParts.length) return -1;
+  const len = Math.max(aParts.length, bParts.length);
+  for (let i = 0; i < len; i++) {
+    const a = aParts[i];
+    const b = bParts[i];
+    if (a === undefined) return -1;
+    if (b === undefined) return 1;
+    const aNum = /^\d+$/.test(a) ? Number.parseInt(a, 10) : null;
+    const bNum = /^\d+$/.test(b) ? Number.parseInt(b, 10) : null;
+    if (aNum !== null && bNum !== null && aNum !== bNum) return aNum - bNum;
+    if (aNum !== null && bNum === null) return -1;
+    if (aNum === null && bNum !== null) return 1;
+    if (a !== b) return a < b ? -1 : 1;
+  }
+  return 0;
+}
+
+function compareVersions(a, b) {
+  const aVersion = parseVersion(a);
+  const bVersion = parseVersion(b);
+  if (aVersion.major !== bVersion.major) return aVersion.major - bVersion.major;
+  if (aVersion.minor !== bVersion.minor) return aVersion.minor - bVersion.minor;
+  if (aVersion.patch !== bVersion.patch) return aVersion.patch - bVersion.patch;
+  return comparePrerelease(aVersion.prerelease, bVersion.prerelease);
+}
+
+function releaseVersion(release) {
+  return normalizeRequestedVersion(release?.tag_name || release?.name);
+}
+
+function selectUpdateRelease(current, releases) {
+  const currentIsPrerelease = isPrereleaseVersion(current);
+  return releases
+    .filter((release) => !release?.draft)
+    .filter((release) => {
+      const version = releaseVersion(release);
+      if (!version) return false;
+      if (!currentIsPrerelease && release.prerelease) return false;
+      return compareVersions(current, version) < 0;
+    })
+    .sort((a, b) => compareVersions(releaseVersion(b), releaseVersion(a)))[0] || null;
+}
+
+async function fetchLatestReleaseForChannel(current) {
+  const currentIsPrerelease = isPrereleaseVersion(current);
+  const url = currentIsPrerelease
+    ? `https://api.github.com/repos/${REPO}/releases?per_page=30`
+    : `https://api.github.com/repos/${REPO}/releases/latest`;
+  const resp = await fetch(url, {
+    headers: { 'Accept': 'application/vnd.github.v3+json' },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!resp.ok) {
+    throw new Error(`GitHub API returned ${resp.status}`);
+  }
+  const data = await resp.json();
+  return currentIsPrerelease ? selectUpdateRelease(current, data) : data;
+}
+
 function toReleaseTag(version) {
   const normalized = normalizeRequestedVersion(version);
   if (!normalized) {
@@ -653,19 +725,13 @@ switch (command) {
     console.log(`node           ${process.version}`);
     // Check for updates
     try {
-      const resp = await fetch('https://api.github.com/repos/huanghuoguoguo/tlive/releases/latest', {
-        headers: { 'Accept': 'application/vnd.github.v3+json' },
-        signal: AbortSignal.timeout(5000),
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        const latest = data.tag_name?.replace(/^v/, '') || data.name?.replace(/^v/, '');
-        if (latest && latest !== ver) {
-          console.log(`\nUpdate available: ${ver} → ${latest}`);
-          console.log('Run: tlive update');
-        } else {
-          console.log('\nUp to date.');
-        }
+      const data = await fetchLatestReleaseForChannel(ver);
+      const latest = releaseVersion(data);
+      if (latest && compareVersions(ver, latest) < 0) {
+        console.log(`\nUpdate available: ${ver} → ${latest}`);
+        console.log('Run: tlive update');
+      } else {
+        console.log('\nUp to date.');
       }
     } catch {}
     break;
@@ -684,15 +750,8 @@ switch (command) {
     let latest = requestedVersion;
     if (!latest) {
       try {
-        const resp = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
-          headers: { 'Accept': 'application/vnd.github.v3+json' },
-          signal: AbortSignal.timeout(10000),
-        });
-        if (!resp.ok) {
-          throw new Error(`GitHub API returned ${resp.status}`);
-        }
-        const data = await resp.json();
-        latest = normalizeRequestedVersion(data.tag_name || data.name);
+        const data = await fetchLatestReleaseForChannel(current);
+        latest = releaseVersion(data);
         if (!latest) {
           throw new Error('Latest version not found in release metadata');
         }
