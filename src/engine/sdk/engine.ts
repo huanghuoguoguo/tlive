@@ -314,31 +314,6 @@ export class SDKEngine {
     return this.queues.getMaxQueueDepth();
   }
 
-  /** Set the max queue depth (configurable) */
-  setMaxQueueDepth(depth: number): void {
-    this.queues.setMaxQueueDepth(depth);
-  }
-
-  /** Get current queue depth for a session */
-  getQueueDepth(sessionKey: string): number {
-    return this.queues.getQueueDepth(sessionKey);
-  }
-
-  /** Check if queue is full for a session */
-  isQueueFull(sessionKey: string): boolean {
-    return this.queues.isQueueFull(sessionKey);
-  }
-
-  /** Get queued message previews for a session */
-  getQueuedMessages(sessionKey: string): { preview: string; timestamp: number }[] {
-    return this.queues.getQueuedMessages(sessionKey);
-  }
-
-  /** Clear all queued messages for a session */
-  clearQueue(sessionKey: string): number {
-    return this.queues.clearQueue(sessionKey);
-  }
-
   /** Get queue statistics for all sessions */
   getAllQueueStats(): QueueStats[] {
     return this.queues.getAllQueueStats();
@@ -347,11 +322,6 @@ export class SDKEngine {
   /** Get total queued messages across all sessions */
   getTotalQueuedMessages(): number {
     return this.queues.getTotalQueuedMessages();
-  }
-
-  /** Decrement queue depth when a queued message is consumed */
-  decrementQueueDepth(sessionKey: string): void {
-    this.queues.decrementQueueDepth(sessionKey);
   }
 
   /**

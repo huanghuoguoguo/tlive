@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { vi } from 'vitest';
 import type { CanonicalEvent } from '../../canonical/schema.js';
 import { BaseChannelAdapter } from '../../channels/base.js';
+import { RateLimitError } from '../../channels/errors.js';
 import type {
   InboundMessage,
   SendResult,
@@ -15,13 +16,14 @@ import { FEISHU_POLICY } from '../../channels/feishu/policy.js';
 import type { FeishuRenderedMessage } from '../../channels/feishu/types.js';
 import type { Config } from '../../config.js';
 import { BridgeManager } from '../../engine/coordinators/bridge-manager.js';
-import type { LiveSession, StreamChatResult, TurnParams } from '../../providers/base.js';
+import type { LiveSession, MessagePriority, StreamChatResult, TurnParams } from '../../providers/base.js';
 import type { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
 import { JsonFileStore } from '../../store/json-file.js';
 
 type Scenario =
   | string
   | CanonicalEvent[]
+  | AsyncIterable<CanonicalEvent>
   | ((prompt: string, params?: TurnParams) => Promise<CanonicalEvent[]> | CanonicalEvent[]);
 
 export interface SentMessage {
@@ -37,6 +39,7 @@ export class TestFeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage>
   readonly typing: string[] = [];
   readonly reactions: Array<{ chatId: string; messageId: string; emoji: string }> = [];
   private queue: InboundMessage[] = [];
+  private editRateLimitFailures = 0;
   private nextMessageSeq = 1;
 
   constructor(private readonly authorizedUsers = new Set(['user-1', 'webhook'])) {
@@ -85,6 +88,10 @@ export class TestFeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage>
     messageId: string,
     message: FeishuRenderedMessage,
   ): Promise<void> {
+    if (this.editRateLimitFailures > 0) {
+      this.editRateLimitFailures -= 1;
+      throw new RateLimitError('fake Feishu edit rate limit', 1);
+    }
     this.edits.push({ chatId, messageId, message });
     const existing = this.sent.find((entry) => entry.id === messageId);
     if (existing) {
@@ -125,17 +132,27 @@ export class TestFeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage>
   createStreamingSession(): StreamingCardSession | null {
     return null;
   }
+
+  failNextEditWithRateLimit(times = 1): void {
+    this.editRateLimitFailures += times;
+  }
 }
 
 class FakeLiveSession implements LiveSession {
   isAlive = true;
   isTurnActive = false;
+  readonly runtimeInfo = {
+    provider: 'claude' as const,
+    displayName: 'Claude',
+    model: 'fake-claude',
+  };
   private callbacks: { onTurnComplete?: () => void } = {};
 
   constructor(
     private readonly scenario: Scenario,
     private readonly nextSessionId: () => string,
     private readonly onPrompt: (prompt: string) => void,
+    private readonly onPriorityMessage: (text: string, priority: MessagePriority) => void,
   ) {}
 
   startTurn(prompt: string, params?: TurnParams): StreamChatResult {
@@ -145,7 +162,12 @@ class FakeLiveSession implements LiveSession {
       start: (controller) => {
         void (async () => {
           try {
-            for (const event of await resolveScenario(this.scenario, prompt, params, this.nextSessionId)) {
+            for await (const event of resolveScenarioStream(
+              this.scenario,
+              prompt,
+              params,
+              this.nextSessionId,
+            )) {
               controller.enqueue(event);
             }
           } catch (error) {
@@ -166,7 +188,9 @@ class FakeLiveSession implements LiveSession {
 
   steerTurn(_text: string): void {}
 
-  async sendWithPriority(_text: string, _priority: 'now' | 'next' | 'later'): Promise<void> {}
+  async sendWithPriority(text: string, priority: MessagePriority): Promise<void> {
+    this.onPriorityMessage(text, priority);
+  }
 
   async interruptTurn(): Promise<void> {
     this.isTurnActive = false;
@@ -182,17 +206,44 @@ class FakeLiveSession implements LiveSession {
 }
 
 export class FakeClaudeProvider {
+  readonly kind = 'claude' as const;
+  readonly displayName = 'Claude';
+  readonly capabilities = {
+    nativeSteer: true,
+    nativeQueue: true,
+    interactivePermissions: true,
+    askUserQuestion: true,
+    deferredTools: true,
+    settingSources: true,
+    sessionResume: true,
+    imageInputs: true,
+  };
   readonly prompts: string[] = [];
+  readonly priorityMessages: Array<{ text: string; priority: MessagePriority }> = [];
   readonly createSession = vi.fn((params: { workingDirectory: string; sessionId?: string }) => {
     void params;
-    return new FakeLiveSession(this.scenario, () => this.nextSessionId(), (prompt) => {
-      this.prompts.push(prompt);
-    });
+    return new FakeLiveSession(
+      this.scenario,
+      () => this.nextSessionId(),
+      (prompt) => {
+        this.prompts.push(prompt);
+      },
+      (text, priority) => {
+        this.priorityMessages.push({ text, priority });
+      },
+    );
   });
   readonly streamChat = vi.fn((params: { prompt: string }) => {
-    const session = new FakeLiveSession(this.scenario, () => this.nextSessionId(), (prompt) => {
-      this.prompts.push(prompt);
-    });
+    const session = new FakeLiveSession(
+      this.scenario,
+      () => this.nextSessionId(),
+      (prompt) => {
+        this.prompts.push(prompt);
+      },
+      (text, priority) => {
+        this.priorityMessages.push({ text, priority });
+      },
+    );
     return session.startTurn(params.prompt);
   });
   private sessionSeq = 1;
@@ -332,27 +383,35 @@ function testConfig(root: string): Config {
   };
 }
 
-async function resolveScenario(
+async function* resolveScenarioStream(
   scenario: Scenario,
   prompt: string,
   params: TurnParams | undefined,
   nextSessionId: () => string,
-): Promise<CanonicalEvent[]> {
+): AsyncIterable<CanonicalEvent> {
   if (typeof scenario === 'function') {
-    return scenario(prompt, params);
+    yield* await scenario(prompt, params);
+    return;
+  }
+  if (isAsyncIterable(scenario)) {
+    yield* scenario;
+    return;
   }
   if (Array.isArray(scenario)) {
-    return scenario;
+    yield* scenario;
+    return;
   }
-  return [
-    { kind: 'text_delta', text: scenario },
-    {
-      kind: 'query_result',
-      sessionId: nextSessionId(),
-      isError: false,
-      usage: { inputTokens: 1, outputTokens: 1, costUsd: 0 },
-    },
-  ];
+  yield { kind: 'text_delta', text: scenario };
+  yield {
+    kind: 'query_result',
+    sessionId: nextSessionId(),
+    isError: false,
+    usage: { inputTokens: 1, outputTokens: 1, costUsd: 0 },
+  };
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<CanonicalEvent> {
+  return !!value && typeof value === 'object' && Symbol.asyncIterator in value;
 }
 
 function stringifyMessage(message: FeishuRenderedMessage): string {
@@ -367,6 +426,14 @@ function findInObject(value: unknown, prefix: string): string | undefined {
       if (found) return found;
     }
     return undefined;
+  }
+
+  if (
+    prefix === 'form:' &&
+    (value as { form_action_type?: unknown }).form_action_type === 'submit' &&
+    typeof (value as { name?: unknown }).name === 'string'
+  ) {
+    return `form:${(value as { name: string }).name}`;
   }
 
   for (const [key, nested] of Object.entries(value)) {

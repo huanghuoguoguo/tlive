@@ -456,4 +456,69 @@ describe('MessageLoopCoordinator', () => {
     expect(handleMessage).toHaveBeenCalled();
     expect(sdkEngine.sendWithContext).not.toHaveBeenCalled();
   });
+
+  it('treats an aliased processing key as busy and clears it with the primary key', async () => {
+    const state = new SessionStateManager();
+    const sdkEngine = {
+      sendWithContext: vi.fn().mockResolvedValue({
+        sent: true,
+        mode: 'steer',
+        sessionKey: 'topic-session',
+      }),
+      MAX_QUEUE_DEPTH: 3,
+    } as any;
+    const permissions = {
+      parsePermissionText: vi.fn().mockReturnValue(null),
+    } as any;
+    const coordinator = createCoordinator(
+      state,
+      sdkEngine,
+      permissions,
+      async (msg) => state.stateKey(msg.channelType, conversationScopeId(msg)),
+    );
+    const adapter = createAdapter();
+    let finishPrimary!: () => void;
+    const primaryDone = new Promise<void>((resolve) => {
+      finishPrimary = resolve;
+    });
+
+    await coordinator.dispatchSlowMessage({
+      adapter,
+      msg: createMessage('primary task'),
+      coalesceMessage: async (_adapter, msg) => msg,
+      handleMessage: () => primaryDone,
+      onError: vi.fn(),
+    });
+
+    const primaryKey = state.stateKey('feishu', 'chat-1');
+    const topicKey = state.stateKey('feishu', 'chat-1#thread:thread-1');
+    coordinator.aliasProcessingKey(primaryKey, topicKey);
+
+    await coordinator.dispatchSlowMessage({
+      adapter,
+      msg: createMessage('topic follow-up', {
+        scopeId: 'chat-1#thread:thread-1',
+        threadId: 'thread-1',
+        replyInThread: true,
+        replyTargetMessageId: 'topic-root',
+      }),
+      coalesceMessage: async (_adapter, msg) => msg,
+      handleMessage: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(sdkEngine.sendWithContext).toHaveBeenCalledWith(
+      'feishu',
+      'chat-1#thread:thread-1',
+      'topic follow-up',
+      undefined,
+    );
+
+    finishPrimary();
+    await primaryDone;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(state.isProcessing(primaryKey)).toBe(false);
+    expect(state.isProcessing(topicKey)).toBe(false);
+  });
 });

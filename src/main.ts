@@ -1,5 +1,4 @@
 import { loadConfig } from './config.js';
-import { initBridgeContext } from './context.js';
 import { Logger } from './logger.js';
 import { JsonFileStore } from './store/json-file.js';
 import { createAgentProviderRegistry } from './providers/factory.js';
@@ -199,14 +198,6 @@ export async function main() {
   const store = new JsonFileStore(join(tliveHome, 'data'));
   const providers = createAgentProviderRegistry(config);
   const llm = providers.defaultProvider;
-
-  // Initialize context
-  initBridgeContext({
-    store,
-    llm,
-    providers,
-    defaultWorkdir: config.defaultWorkdir,
-  });
 
   // Start Bridge Manager with enabled IM adapters
   const manager = new BridgeManager({

@@ -5,7 +5,6 @@ import {
   presentPermissionStatus,
   presentStatus,
   presentHome,
-  presentQueueStatus,
   presentDiagnose,
   presentUpgradeCommand,
 } from '../../engine/messages/presenter.js';
@@ -213,41 +212,6 @@ describe('command presenter', () => {
       const formatted = feishuFormatter.format(msg);
       expect(formatted.feishuHeader?.title).toContain('权限状态');
       expect(formatted.feishuElements?.length).toBeGreaterThan(0);
-    });
-  });
-
-  describe('presentQueueStatus', () => {
-    it('returns semantic queue data without mutating payload', () => {
-      const now = Date.now();
-      const msg = presentQueueStatus('chat-1', {
-        sessionKey: 'feishu:chat-1:/repo',
-        depth: 2,
-        maxDepth: 4,
-        queuedMessages: [
-          { preview: 'oldest', timestamp: now - 120_000 },
-          { preview: 'newer', timestamp: now - 30_000 },
-        ],
-      });
-
-      expect(msg.type).toBe('queueStatus');
-      if (msg.type === 'queueStatus') {
-        expect(msg.data.depth).toBe(2);
-        expect(msg.data.saturationRatio).toBeUndefined();
-        expect(msg.data.estimatedWaitSeconds).toBeUndefined();
-        expect(msg.data.oldestQueuedAgeSeconds).toBeUndefined();
-      }
-    });
-
-    it('formats queue status explicitly for Feishu', () => {
-      const msg = presentQueueStatus('chat-1', {
-        sessionKey: 'feishu:chat-1:session-1',
-        depth: 1,
-        maxDepth: 4,
-        queuedMessages: [{ preview: 'queued prompt', timestamp: Date.now() - 60_000 }],
-      });
-      const formatted = feishuFormatter.format(msg);
-      expect(formatted.feishuHeader?.title).toBe('📥 Queue Status');
-      expect(JSON.stringify(formatted.feishuElements)).toContain('queued prompt');
     });
   });
 

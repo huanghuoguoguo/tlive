@@ -25,7 +25,6 @@ export default defineConfig({
       '**/src/providers/**': { statements: 25, branches: 20 },
       '**/src/channels/**': { statements: 40, branches: 30 },
       '**/src/utils/**': { statements: 70, branches: 60 },
-      '**/src/markdown/**': { statements: 90, branches: 80 },
       '**/src/permissions/**': { statements: 80, branches: 70 },
     },
   },

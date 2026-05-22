@@ -9,7 +9,6 @@ import type {
   PermissionStatusData,
   HelpData,
   NewSessionData,
-  QueueStatusData,
   DiagnoseData,
   FormattableMessage,
 } from '../../formatting/message-types.js';
@@ -123,11 +122,7 @@ export function presentRestartResult(chatId: string): { chatId: string; text: st
   return { chatId, text: '🔄 Restarting... The service will reconnect in a few seconds.' };
 }
 
-// --- Queue/Diagnose messages ---
-
-export function presentQueueStatus(chatId: string, data: QueueStatusData): FormattableMessage {
-  return { type: 'queueStatus', chatId, data };
-}
+// --- Diagnose messages ---
 
 export function presentDiagnose(chatId: string, data: DiagnoseData): FormattableMessage {
   return { type: 'diagnose', chatId, data };

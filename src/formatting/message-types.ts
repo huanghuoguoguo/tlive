@@ -340,21 +340,6 @@ export interface MultiSelectToggleData {
   sessionId: string;
 }
 
-/** Queue status for /queue command */
-export interface QueueStatusData {
-  sessionKey: string;
-  depth: number;
-  maxDepth: number;
-  /** Preview of queued messages (if available) */
-  queuedMessages?: Array<{ preview: string; timestamp: number }>;
-  /** Estimated wait time in seconds (if calculable) */
-  estimatedWaitSeconds?: number;
-  /** Age of the oldest queued message in seconds */
-  oldestQueuedAgeSeconds?: number;
-  /** Queue pressure ratio: depth/maxDepth (0-1+) */
-  saturationRatio?: number;
-}
-
 /** Diagnose system status for /diagnose command */
 export interface DiagnoseData {
   activeSessions: number;
@@ -410,6 +395,5 @@ export type FormattableMessage =
   | { type: 'cardResolution'; chatId: string; data: CardResolutionData }
   | { type: 'versionUpdate'; chatId: string; data: VersionUpdateData }
   | { type: 'multiSelectToggle'; chatId: string; data: MultiSelectToggleData }
-  | { type: 'queueStatus'; chatId: string; data: QueueStatusData }
   | { type: 'diagnose'; chatId: string; data: DiagnoseData }
   | { type: 'deferredToolInput'; chatId: string; data: DeferredToolInputData };

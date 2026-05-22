@@ -1,11 +1,30 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import type { ProjectConfig, AgentSettingSource } from './store/interface.js';
 import { expandTilde, getTliveHome } from './core/path.js';
 import { normalizeQuickButtonNames, type QuickButtonName } from './ui/button-registry.js';
 import { DEFAULT_AGENT_PROVIDER_KIND, type AgentProviderKind } from './providers/kinds.js';
 
-export type { AgentSettingSource } from './store/interface.js';
+export type AgentSettingSource = 'user' | 'project' | 'local';
+
+/** Webhook default chat configuration */
+export interface WebhookDefaultChat {
+  /** Channel type. Only 'feishu' is supported. */
+  channelType: string;
+  /** Chat ID to route webhook messages to */
+  chatId: string;
+}
+
+/** Project configuration for multi-repo support */
+export interface ProjectConfig {
+  /** Project name (unique identifier) */
+  name: string;
+  /** Default working directory */
+  workdir: string;
+  /** Provider settings sources for this project. */
+  agentSettingSources?: AgentSettingSource[];
+  /** Default chat for webhook routing (optional) */
+  webhookDefaultChat?: WebhookDefaultChat;
+}
 
 export const DEFAULT_AGENT_SETTING_SOURCES: AgentSettingSource[] = ['user', 'project', 'local'];
 
@@ -29,8 +48,6 @@ export interface ProjectsValidationResult {
   invalid: Array<{ name: string; reason: string }>;
   defaultProject: string;
 }
-
-/** Which filesystem settings to load for providers that support setting sources. */
 
 export interface Config {
   port: number;

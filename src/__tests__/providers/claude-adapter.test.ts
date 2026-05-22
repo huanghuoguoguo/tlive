@@ -687,78 +687,7 @@ describe('ClaudeAdapter', () => {
     });
   });
 
-  // ── 14. parentToolUseId propagation ──
-
-  describe('parentToolUseId propagation', () => {
-    it('propagates parentToolUseId to text_delta', () => {
-      const events = adapter.mapMessage({
-        type: 'stream_event',
-        parent_tool_use_id: 'parent_1',
-        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'sub' } },
-      });
-
-      expect(events[0]).toMatchObject({
-        kind: 'text_delta',
-        parentToolUseId: 'parent_1',
-      });
-    });
-
-    it('propagates parentToolUseId to tool_start', () => {
-      const events = adapter.mapMessage({
-        type: 'stream_event',
-        parent_tool_use_id: 'parent_2',
-        event: {
-          type: 'content_block_start',
-          content_block: { type: 'tool_use', id: 'tu_sub', name: 'Read', input: { file_path: 'src/sub.ts' } },
-        },
-      });
-
-      expect(events[0]).toMatchObject({
-        kind: 'tool_start',
-        parentToolUseId: 'parent_2',
-      });
-    });
-
-    it('propagates parentToolUseId to agent_start', () => {
-      const events = adapter.mapMessage({
-        type: 'system',
-        subtype: 'task_started',
-        parent_tool_use_id: 'parent_3',
-        description: 'Sub-task',
-      });
-
-      expect(events[0]).toMatchObject({
-        kind: 'agent_start',
-        parentToolUseId: 'parent_3',
-      });
-    });
-
-    it('propagates parentToolUseId to tool_result', () => {
-      const events = adapter.mapMessage({
-        type: 'user',
-        parent_tool_use_id: 'parent_4',
-        message: {
-          content: [{ type: 'tool_result', tool_use_id: 'tu_res', content: 'ok', is_error: false }],
-        },
-      });
-
-      expect(events[0]).toMatchObject({
-        kind: 'tool_result',
-        parentToolUseId: 'parent_4',
-      });
-    });
-
-    it('does not include parentToolUseId when not present', () => {
-      const events = adapter.mapMessage({
-        type: 'stream_event',
-        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'no parent' } },
-      });
-
-      expect(events[0]).not.toHaveProperty('parentToolUseId');
-    });
-  });
-
-  // ── 15. unknown message types ──
+  // ── 14. unknown message types ──
 
   describe('unknown message types', () => {
     it('returns empty array for unknown types', () => {

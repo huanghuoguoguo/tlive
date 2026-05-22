@@ -31,7 +31,6 @@ import type {
   VersionUpdateData,
   MultiSelectToggleData,
   StatusData,
-  QueueStatusData,
   DiagnoseData,
   FormattableMessage,
 } from '../../formatting/message-types.js';
@@ -68,7 +67,7 @@ import {
 import { buildStatusElements } from './format-status.js';
 import { actionCallback } from '../../core/callbacks.js';
 import { buildHelpElements } from './format-help.js';
-import { buildDiagnoseElements, buildQueueStatusElements } from './format-diagnostics.js';
+import { buildDiagnoseElements } from './format-diagnostics.js';
 
 export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> {
   constructor(
@@ -113,8 +112,6 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
         return this.formatVersionUpdate(chatId, msg.data);
       case 'multiSelectToggle':
         return this.formatMultiSelectToggle(chatId, msg.data);
-      case 'queueStatus':
-        return this.formatQueueStatus(chatId, msg.data);
       case 'diagnose':
         return this.formatDiagnose(chatId, msg.data);
     }
@@ -488,14 +485,6 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
       { template: 'blue', title: t(this.locale, 'format.titleQuestion') },
       elements,
       buttons,
-    );
-  }
-
-  formatQueueStatus(chatId: string, data: QueueStatusData): FeishuRenderedMessage {
-    return this.createCardMessage(
-      chatId,
-      { template: data.depth > 0 ? 'yellow' : 'green', title: '📥 Queue Status' },
-      buildQueueStatusElements(data),
     );
   }
 

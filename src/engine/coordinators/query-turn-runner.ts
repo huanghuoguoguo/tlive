@@ -152,9 +152,6 @@ export class QueryTurnRunner {
       onStatus: (data) => renderer.setModel(data.model),
       onSessionInfo: (data) => renderer.onSessionInfo(data),
       onToolUseSummary: (summary) => renderer.onToolUseSummary(summary),
-      onSessionState: (state) => {
-        if (DEBUG_EVENTS) console.log(`[bridge] session_state: ${state}`);
-      },
       onApiRetry: (data) => {
         console.log(
           `[bridge] api_retry: attempt ${data.attempt}/${data.maxRetries} delay=${data.retryDelayMs}ms${data.error ? ` error=${data.error}` : ''}`,

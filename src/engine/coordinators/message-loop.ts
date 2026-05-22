@@ -35,7 +35,17 @@ interface SlowMessageDispatchOptions {
  * - steers or queues follow-up messages while a turn is active
  */
 export class MessageLoopCoordinator {
+  private processingAliases = new Map<string, Set<string>>();
+
   constructor(private options: MessageLoopCoordinatorOptions) {}
+
+  aliasProcessingKey(primaryKey: string, aliasKey: string): void {
+    if (primaryKey === aliasKey || !this.options.state.isProcessing(primaryKey)) return;
+    this.options.state.setProcessing(aliasKey, true);
+    const aliases = this.processingAliases.get(primaryKey) ?? new Set<string>();
+    aliases.add(aliasKey);
+    this.processingAliases.set(primaryKey, aliases);
+  }
 
   isQuickMessage(_adapter: BaseChannelAdapter, msg: InboundMessage): boolean {
     const hasPendingQuestion = this.options.hasPendingSdkQuestion(msg);
@@ -69,9 +79,19 @@ export class MessageLoopCoordinator {
       this.options.state.setProcessing(processingKey, true);
       handleMessage(adapter, coalesced, requestId)
         .catch((err) => onError(err, requestId, coalesced))
-        .finally(() => this.options.state.setProcessing(processingKey, false));
+        .finally(() => this.clearProcessing(processingKey));
     } catch (err) {
       onError(err, requestId, coalesced);
+    }
+  }
+
+  private clearProcessing(processingKey: string): void {
+    this.options.state.setProcessing(processingKey, false);
+    const aliases = this.processingAliases.get(processingKey);
+    if (!aliases) return;
+    this.processingAliases.delete(processingKey);
+    for (const alias of aliases) {
+      this.options.state.setProcessing(alias, false);
     }
   }
 

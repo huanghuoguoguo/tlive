@@ -173,7 +173,6 @@ interface ProcessMessageParams {
     skills?: string[];
   }) => void;
   onToolUseSummary?: (summary: string) => void;
-  onSessionState?: (state: 'idle' | 'running' | 'requires_action') => void;
   onApiRetry?: (data: {
     attempt: number;
     maxRetries: number;
@@ -309,9 +308,6 @@ export class ConversationEngine {
             break;
           case 'tool_use_summary':
             params.onToolUseSummary?.(value.summary);
-            break;
-          case 'session_state':
-            params.onSessionState?.(value.state);
             break;
           case 'api_retry':
             params.onApiRetry?.(value);

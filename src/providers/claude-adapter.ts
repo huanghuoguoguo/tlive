@@ -12,7 +12,6 @@ import { canonicalEventSchema, type CanonicalEvent } from '../canonical/schema.j
 export interface SDKMessage {
   type: string;
   subtype?: string;
-  parent_tool_use_id?: string;
   [key: string]: unknown;
 }
 
@@ -70,20 +69,19 @@ export class ClaudeAdapter {
 
   /** Map one SDKMessage to zero or more CanonicalEvents. */
   mapMessage(msg: SDKMessage): CanonicalEvent[] {
-    const parentToolUseId = msg.parent_tool_use_id as string | undefined;
     const events: CanonicalEvent[] = [];
 
     switch (msg.type) {
       case 'stream_event':
-        this.handleStreamEvent(msg, events, parentToolUseId);
+        this.handleStreamEvent(msg, events);
         break;
 
       case 'assistant':
-        this.handleAssistant(msg, events, parentToolUseId);
+        this.handleAssistant(msg, events);
         break;
 
       case 'user':
-        this.handleUser(msg, events, parentToolUseId);
+        this.handleUser(msg, events);
         break;
 
       case 'result':
@@ -91,11 +89,11 @@ export class ClaudeAdapter {
         break;
 
       case 'system':
-        this.handleSystem(msg, events, parentToolUseId);
+        this.handleSystem(msg, events);
         break;
 
       case 'tool_progress':
-        this.handleToolProgress(msg, events, parentToolUseId);
+        this.handleToolProgress(msg, events);
         break;
 
       case 'tool_use_summary':
@@ -121,11 +119,7 @@ export class ClaudeAdapter {
 
   // ── stream_event ──
 
-  private handleStreamEvent(
-    msg: SDKMessage,
-    events: CanonicalEvent[],
-    parentToolUseId?: string,
-  ): void {
+  private handleStreamEvent(msg: SDKMessage, events: CanonicalEvent[]): void {
     const event = msg.event as Record<string, unknown> | undefined;
     if (!event) return;
     const index = typeof event.index === 'number' ? event.index : undefined;
@@ -165,7 +159,6 @@ export class ClaudeAdapter {
             id,
             name,
             input,
-            ...(parentToolUseId ? { parentToolUseId } : {}),
           };
           events.push(ev);
           this.streamedToolUseIds.add(id);
@@ -181,7 +174,6 @@ export class ClaudeAdapter {
         const ev: CanonicalEvent = {
           kind: 'thinking_delta',
           text: delta.thinking,
-          ...(parentToolUseId ? { parentToolUseId } : {}),
         };
         events.push(ev);
       } else if (delta.type === 'text_delta' && typeof delta.text === 'string') {
@@ -189,7 +181,6 @@ export class ClaudeAdapter {
           const ev: CanonicalEvent = {
             kind: 'thinking_delta',
             text: delta.text,
-            ...(parentToolUseId ? { parentToolUseId } : {}),
           };
           events.push(ev);
         } else {
@@ -197,7 +188,6 @@ export class ClaudeAdapter {
           const ev: CanonicalEvent = {
             kind: 'text_delta',
             text: delta.text,
-            ...(parentToolUseId ? { parentToolUseId } : {}),
           };
           events.push(ev);
         }
@@ -219,7 +209,6 @@ export class ClaudeAdapter {
         id: state.id,
         name: state.name,
         input,
-        ...(parentToolUseId ? { parentToolUseId } : {}),
       };
       events.push(ev);
       this.streamedToolUseIds.add(state.id);
@@ -228,11 +217,7 @@ export class ClaudeAdapter {
 
   // ── assistant ──
 
-  private handleAssistant(
-    msg: SDKMessage,
-    events: CanonicalEvent[],
-    parentToolUseId?: string,
-  ): void {
+  private handleAssistant(msg: SDKMessage, events: CanonicalEvent[]): void {
     const message = msg.message as { content?: unknown[] } | undefined;
     if (!message?.content) return;
 
@@ -261,7 +246,6 @@ export class ClaudeAdapter {
           id,
           name,
           input: (b.input as Record<string, unknown>) ?? {},
-          ...(parentToolUseId ? { parentToolUseId } : {}),
         };
         events.push(ev);
       } else if (b.type === 'text' && typeof b.text === 'string' && b.text && !this.hasStreamedText) {
@@ -269,7 +253,6 @@ export class ClaudeAdapter {
         const ev: CanonicalEvent = {
           kind: 'text_delta',
           text: b.text,
-          ...(parentToolUseId ? { parentToolUseId } : {}),
         };
         events.push(ev);
       }
@@ -288,11 +271,7 @@ export class ClaudeAdapter {
 
   // ── user ──
 
-  private handleUser(
-    msg: SDKMessage,
-    events: CanonicalEvent[],
-    parentToolUseId?: string,
-  ): void {
+  private handleUser(msg: SDKMessage, events: CanonicalEvent[]): void {
     const message = msg.message as { content?: unknown[] } | undefined;
     const content = message?.content;
     if (!Array.isArray(content)) return;
@@ -317,7 +296,6 @@ export class ClaudeAdapter {
           toolUseId,
           content: contentStr,
           isError: (b.is_error as boolean) || false,
-          ...(parentToolUseId ? { parentToolUseId } : {}),
         };
         events.push(ev);
       }
@@ -370,11 +348,7 @@ export class ClaudeAdapter {
 
   // ── system ──
 
-  private handleSystem(
-    msg: SDKMessage,
-    events: CanonicalEvent[],
-    parentToolUseId?: string,
-  ): void {
+  private handleSystem(msg: SDKMessage, events: CanonicalEvent[]): void {
     switch (msg.subtype) {
       case 'init': {
         const apiKeySource = msg.apiKeySource as string | undefined;
@@ -409,18 +383,6 @@ export class ClaudeAdapter {
         break;
       }
 
-      case 'session_state_changed': {
-        const state = msg.state as string | undefined;
-        if (state === 'idle' || state === 'running' || state === 'requires_action') {
-          const ev: CanonicalEvent = {
-            kind: 'session_state',
-            state,
-          };
-          events.push(ev);
-        }
-        break;
-      }
-
       case 'api_retry': {
         const ev: CanonicalEvent = {
           kind: 'api_retry',
@@ -449,7 +411,6 @@ export class ClaudeAdapter {
           kind: 'agent_start',
           description: (msg.description as string) || 'Agent',
           ...(msg.task_id ? { taskId: msg.task_id as string } : {}),
-          ...(parentToolUseId ? { parentToolUseId } : {}),
         };
         events.push(ev);
         break;
@@ -466,7 +427,6 @@ export class ClaudeAdapter {
           description: summary || description || 'Working...',
           ...(lastTool ? { lastTool } : {}),
           ...(usage ? { usage: { toolUses: usage.tool_uses, durationMs: usage.duration_ms } } : {}),
-          ...(parentToolUseId ? { parentToolUseId } : {}),
         };
         events.push(ev);
         break;
@@ -477,7 +437,6 @@ export class ClaudeAdapter {
           kind: 'agent_complete',
           summary: (msg.summary as string) || 'Done',
           status: (msg.status as 'completed' | 'failed' | 'stopped') || 'completed',
-          ...(parentToolUseId ? { parentToolUseId } : {}),
         };
         events.push(ev);
         break;
@@ -487,11 +446,7 @@ export class ClaudeAdapter {
 
   // ── tool_progress ──
 
-  private handleToolProgress(
-    msg: SDKMessage,
-    events: CanonicalEvent[],
-    parentToolUseId?: string,
-  ): void {
+  private handleToolProgress(msg: SDKMessage, events: CanonicalEvent[]): void {
     const toolName = msg.tool_name as string | undefined;
     const elapsed = msg.elapsed_time_seconds as number | undefined;
 
@@ -501,7 +456,6 @@ export class ClaudeAdapter {
       kind: 'tool_progress',
       toolName,
       elapsed,
-      ...(parentToolUseId ? { parentToolUseId } : {}),
     };
     events.push(ev);
   }

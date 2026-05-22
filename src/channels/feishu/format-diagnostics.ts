@@ -1,52 +1,6 @@
-import { truncate } from '../../core/string.js';
-import { AVERAGE_TURN_SECONDS } from '../../core/timing.js';
-import type { DiagnoseData, QueueStatusData } from '../../formatting/message-types.js';
+import type { DiagnoseData } from '../../formatting/message-types.js';
 import type { FeishuCardElement } from './card-builder.js';
 import { mdElement } from './format-home.js';
-
-export function buildQueueStatusElements(data: QueueStatusData): FeishuCardElement[] {
-  const saturationRatio = data.saturationRatio ?? (data.maxDepth > 0 ? data.depth / data.maxDepth : 0);
-  const oldestQueuedAgeSeconds =
-    data.oldestQueuedAgeSeconds ??
-    (data.queuedMessages?.length
-      ? Math.max(
-          0,
-          Math.floor((Date.now() - Math.min(...data.queuedMessages.map((item) => item.timestamp))) / 1000),
-        )
-      : undefined);
-  const estimatedWaitSeconds =
-    data.estimatedWaitSeconds ?? (data.depth > 0 ? data.depth * AVERAGE_TURN_SECONDS : undefined);
-  const state =
-    data.depth === 0
-      ? '空闲'
-      : saturationRatio >= 1
-        ? '已满'
-        : saturationRatio >= 0.8
-          ? '偏高'
-          : '正常';
-  const lines = [
-    `**Session** \`${data.sessionKey}\``,
-    `**Depth** ${data.depth}/${data.maxDepth}`,
-    `**State** ${state}`,
-  ];
-  if (oldestQueuedAgeSeconds !== undefined && data.depth > 0) {
-    lines.push(`**Oldest queued** ${Math.ceil(oldestQueuedAgeSeconds / 60)} min ago`);
-  }
-  if (estimatedWaitSeconds && data.depth > 0) {
-    lines.push(`**Estimated wait** ${Math.ceil(estimatedWaitSeconds / 60)} min`);
-  }
-  const elements: FeishuCardElement[] = [mdElement(lines.join('\n'))];
-  if (data.queuedMessages?.length) {
-    elements.push(
-      mdElement(
-        `**Queued messages**\n${data.queuedMessages
-          .map((message, index) => `${index + 1}. ${truncate(message.preview, 80)}`)
-          .join('\n')}`,
-      ),
-    );
-  }
-  return elements;
-}
 
 export function buildDiagnoseElements(data: DiagnoseData): {
   elements: FeishuCardElement[];
@@ -97,4 +51,3 @@ export function buildDiagnoseElements(data: DiagnoseData): {
   }
   return { elements, saturatedSessions };
 }
-

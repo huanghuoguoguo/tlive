@@ -56,13 +56,11 @@ export class PendingPermissions {
     const timeoutMs = options?.timeoutMs ?? this.timeoutMs;
     return new Promise<PermissionResult>((resolve) => {
       const timer = setTimeout(() => {
-        console.log(`[gateway] TIMEOUT: ${toolUseId} (was pending: ${this.pending.has(toolUseId)})`);
         this.pending.delete(toolUseId);
         options?.onTimeout?.(toolUseId);
         resolve({ behavior: 'deny', message: 'Permission request timed out' });
       }, timeoutMs);
       this.pending.set(toolUseId, { resolve, timer });
-      console.log(`[gateway] CREATED: ${toolUseId} (total pending: ${this.pending.size})`);
     });
   }
 
@@ -73,7 +71,6 @@ export class PendingPermissions {
     grantScope?: PermissionGrantScope,
   ): boolean {
     const entry = this.pending.get(permissionRequestId);
-    console.log(`[gateway] RESOLVE: ${permissionRequestId} → ${decision} (found: ${!!entry}, total pending: ${this.pending.size})`);
     if (!entry) return false;
     clearTimeout(entry.timer);
     const result: PermissionResult = decision === 'deny'
@@ -91,7 +88,6 @@ export class PendingPermissions {
   }
 
   denyAll(): void {
-    console.log(`[gateway] DENY_ALL: ${this.pending.size} entries`);
     for (const [, entry] of this.pending) {
       clearTimeout(entry.timer);
       entry.resolve({ behavior: 'deny', message: 'Bridge shutting down' });
@@ -101,9 +97,5 @@ export class PendingPermissions {
 
   isPending(id: string): boolean {
     return this.pending.has(id);
-  }
-
-  pendingCount(): number {
-    return this.pending.size;
   }
 }

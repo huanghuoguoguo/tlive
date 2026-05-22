@@ -155,13 +155,6 @@ export interface Translations {
   'progress.taskLabel': string;
   'progress.timeLabel': string;
 
-  // --- queue ---
-  'queue.emptyMessage': string;
-  'queue.noActiveSession': string;
-  'queue.cleared': string;
-  'queue.depthInvalid': string;
-  'queue.depthSet': string;
-
   // --- format ---
   'format.justNow': string;
   'format.continueTask': string;

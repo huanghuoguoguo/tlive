@@ -3,7 +3,6 @@ import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { BaseChannelAdapter } from '../../channels/base.js';
-import { initBridgeContext } from '../../context.js';
 import { QueryOrchestrator } from '../../engine/coordinators/query.js';
 import { SessionStateManager } from '../../engine/state/session-state.js';
 import { FeishuFormatter } from '../../channels/feishu/formatter.js';
@@ -66,20 +65,12 @@ describe('QueryOrchestrator', () => {
   beforeEach(() => {
     mockStore = {
       acquireLock: vi.fn().mockResolvedValue(true),
-      renewLock: vi.fn().mockResolvedValue(true),
       releaseLock: vi.fn().mockResolvedValue(undefined),
       getBinding: vi.fn().mockResolvedValue(binding),
+      getBindingBySessionId: vi.fn().mockResolvedValue(binding),
       saveBinding: vi.fn().mockResolvedValue(undefined),
-      deleteBinding: vi.fn(),
       listBindings: vi.fn(),
-      isDuplicate: vi.fn().mockResolvedValue(false),
-      markProcessed: vi.fn(),
     };
-    initBridgeContext({
-      defaultWorkdir: '/tmp/project',
-      store: mockStore,
-      llm: {} as any,
-    });
   });
 
   afterEach(() => {
@@ -516,13 +507,19 @@ describe('QueryOrchestrator', () => {
       replyToMessageId: 'msg-topic-start',
       replyInThread: true,
     });
-    expect(onConversationMessageResolved).toHaveBeenCalledWith(expect.objectContaining({
-      chatId: 'chat-1',
-      scopeId,
-      threadId: 'thread-auto',
-      replyTargetMessageId: 'msg-topic-start',
-      replyInThread: true,
-    }));
+    expect(onConversationMessageResolved).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: 'chat-1',
+        scopeId,
+        threadId: 'thread-auto',
+        replyTargetMessageId: 'msg-topic-start',
+        replyInThread: true,
+      }),
+      expect.objectContaining({
+        chatId: 'chat-1',
+        messageId: 'msg-main-1',
+      }),
+    );
   });
 
   it('splits Feishu completion into trace edit plus a separate result bubble', async () => {

@@ -96,23 +96,25 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
     state,
   });
 
+  const resolveProcessingKey = async (msg: InboundMessage) => {
+    const scopeId = conversationScopeId(msg);
+    const binding = await router.resolve(msg.channelType, scopeId);
+    if (msg.replyToMessageId) {
+      return (
+        sdkEngine.getSessionForBubble(msg.replyToMessageId) ??
+        sdkEngine.getSessionKeyForBinding(msg.channelType, scopeId, binding.sessionId)
+      );
+    }
+    return sdkEngine.getSessionKeyForBinding(msg.channelType, scopeId, binding.sessionId);
+  };
+
   const loop = new MessageLoopCoordinator({
     state,
     sdkEngine,
     permissions,
     quickCommands: getQuickCommands(),
     hasPendingSdkQuestion: (msg: InboundMessage) => text.hasPendingSdkQuestion(msg),
-    resolveProcessingKey: async (msg: InboundMessage) => {
-      const scopeId = conversationScopeId(msg);
-      const binding = await router.resolve(msg.channelType, scopeId);
-      if (msg.replyToMessageId) {
-        return (
-          sdkEngine.getSessionForBubble(msg.replyToMessageId) ??
-          sdkEngine.getSessionKeyForBinding(msg.channelType, scopeId, binding.sessionId)
-        );
-      }
-      return sdkEngine.getSessionKeyForBinding(msg.channelType, scopeId, binding.sessionId);
-    },
+    resolveProcessingKey,
   });
 
   const query = new QueryOrchestrator({
@@ -129,7 +131,14 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
     defaultAgentSettingSources: config.agentSettingSources,
     port,
     appendSystemPrompt: deps.appendSystemPrompt,
-    onConversationMessageResolved: (msg) => ingress.recordDeliveryTarget(msg),
+    onConversationMessageResolved: async (msg, rawMsg) => {
+      ingress.recordDeliveryTarget(msg);
+      if (conversationScopeId(msg) === conversationScopeId(rawMsg)) return;
+      loop.aliasProcessingKey(
+        await resolveProcessingKey(rawMsg),
+        await resolveProcessingKey(msg),
+      );
+    },
   });
 
   const commands = new CommandRouter(

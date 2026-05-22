@@ -1,4 +1,4 @@
-import type { AgentSettingSource, ProjectConfig } from '../../store/interface.js';
+import type { AgentSettingSource, ProjectConfig } from '../../config.js';
 import type { AutomationBridge } from '../types/automation-bridge.js';
 import type { WebhookRequest } from './webhook.js';
 

@@ -14,10 +14,10 @@ describe('message-schema', () => {
       const result = canonicalEventSchema.parse(event);
       expect(result.kind).toBe('thinking_delta');
     });
-    it('preserves unknown fields (passthrough)', () => {
+    it('strips unknown fields at the canonical boundary', () => {
       const event = { kind: 'text_delta', text: 'hi', futureField: 42 };
       const result = canonicalEventSchema.parse(event);
-      expect((result as any).futureField).toBe(42);
+      expect((result as any).futureField).toBeUndefined();
     });
   });
 
@@ -25,10 +25,6 @@ describe('message-schema', () => {
     it('validates tool_start', () => {
       const event = { kind: 'tool_start', id: 'tu_1', name: 'Bash', input: { command: 'ls' } };
       expect(canonicalEventSchema.parse(event).kind).toBe('tool_start');
-    });
-    it('validates tool_start with parentToolUseId', () => {
-      const event = { kind: 'tool_start', id: 'tu_2', name: 'Read', input: {}, parentToolUseId: 'tu_1' };
-      expect((canonicalEventSchema.parse(event) as any).parentToolUseId).toBe('tu_1');
     });
     it('validates tool_result', () => {
       const event = { kind: 'tool_result', toolUseId: 'tu_1', content: 'output', isError: false };

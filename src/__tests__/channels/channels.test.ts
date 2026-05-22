@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FEISHU_CHANNEL } from '../../channels/types.js';
-import { FeishuAdapter } from '../../channels/index.js';
+import { FeishuAdapter } from '../../channels/feishu/adapter.js';
 
 describe('Feishu channel exports', () => {
   it('uses Feishu as the only channel type', () => {

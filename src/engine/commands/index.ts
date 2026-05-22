@@ -12,7 +12,6 @@ import { SettingsCommand } from './settings.js';
 import { HelpCommand } from './help.js';
 import { UpgradeCommand } from './upgrade.js';
 import { RestartCommand } from './restart.js';
-import { QueueCommand } from './queue.js';
 import { DiagnoseCommand } from './diagnose.js';
 
 /** Register all built-in commands */
@@ -31,7 +30,6 @@ export function registerAllCommands(): void {
   commandRegistry.register(new HelpCommand());
   commandRegistry.register(new UpgradeCommand());
   commandRegistry.register(new RestartCommand());
-  commandRegistry.register(new QueueCommand());
   commandRegistry.register(new DiagnoseCommand());
 }
 

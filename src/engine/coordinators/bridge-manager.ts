@@ -2,7 +2,6 @@ import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage, RenderedMessage } from '../../channels/types.js';
 import type { FormattableMessage } from '../../formatting/message-types.js';
 import type { AutomationBridge } from '../types/automation-bridge.js';
-import { getBridgeContext } from '../../context.js';
 import { loadConfig, type Config } from '../../config.js';
 import { WebhookServer } from '../automation/webhook.js';
 import {
@@ -51,11 +50,9 @@ export class BridgeManager implements AutomationBridge {
   /** Cleanup timer for SDK question data */
   private sdkQuestionCleanupTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(deps?: BridgeManagerDeps) {
-    const config = deps?.config ?? loadConfig();
-    const context = deps ?? getBridgeContext();
-    const { store, llm, defaultWorkdir } = context;
-    const providers = deps?.providers ?? context.providers;
+  constructor(deps: BridgeManagerDeps) {
+    const config = deps.config ?? loadConfig();
+    const { store, llm, defaultWorkdir, providers } = deps;
     configureFileSendEnvironment({
       enabled: config.webhook.enabled,
       port: config.webhook.port,

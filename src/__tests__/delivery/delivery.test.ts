@@ -1,58 +1,18 @@
-import { describe, it, expect, vi } from 'vitest';
-import { DeliveryLayer } from '../../delivery/delivery.js';
-import { chunkMarkdown } from '../../delivery/delivery.js';
-import type { BaseChannelAdapter } from '../../channels/base.js';
+import { describe, it, expect } from 'vitest';
+import { chunkByParagraph } from '../../delivery/delivery.js';
 
-function mockAdapter(): BaseChannelAdapter {
-  return {
-    channelType: 'feishu',
-    send: vi.fn().mockResolvedValue({ messageId: '1', success: true }),
-    editMessage: vi.fn(), start: vi.fn(), stop: vi.fn(),
-    consumeOne: vi.fn(), validateConfig: vi.fn(), isAuthorized: vi.fn(),
-  } as any;
-}
-
-describe('DeliveryLayer', () => {
-  it('delivers short message in one chunk', async () => {
-    const adapter = mockAdapter();
-    const layer = new DeliveryLayer();
-    await layer.deliver(adapter, 'chat1', 'hello');
-    expect(adapter.send).toHaveBeenCalledOnce();
-  });
-
-  it('chunks long message at platform limit', async () => {
-    const adapter = mockAdapter();
-    const layer = new DeliveryLayer();
-    const longMsg = 'x'.repeat(5000); // Feishu limit is 4096
-    await layer.deliver(adapter, 'chat1', longMsg, { platformLimit: 4096 });
-    expect((adapter.send as any).mock.calls.length).toBeGreaterThan(1);
-  });
-
-  it('retries on failure', async () => {
-    const adapter = mockAdapter();
-    let callCount = 0;
-    (adapter.send as any).mockImplementation(() => {
-      callCount++;
-      if (callCount < 3) throw new Error('server error');
-      return { messageId: '1', success: true };
-    });
-    const layer = new DeliveryLayer();
-    await layer.deliver(adapter, 'chat1', 'hello');
-    expect(callCount).toBe(3);
-  });
-
-  it('gives up after max retries', async () => {
-    const adapter = mockAdapter();
-    (adapter.send as any).mockRejectedValue(new Error('fail'));
-    const layer = new DeliveryLayer();
-    await expect(layer.deliver(adapter, 'chat1', 'hello')).rejects.toThrow('fail');
+describe('paragraph-aware chunking', () => {
+  it('keeps paragraphs together when possible', () => {
+    const text = ['first paragraph', 'second paragraph', 'third paragraph'].join('\n\n');
+    const chunks = chunkByParagraph(text, 28);
+    expect(chunks).toEqual(['first paragraph', 'second paragraph', 'third paragraph']);
   });
 });
 
 describe('fence-aware chunking', () => {
   it('preserves code block fences across chunks', () => {
     const text = '# Title\n```js\n' + 'let x = 1;\n'.repeat(100) + '```\nEnd.';
-    const chunks = chunkMarkdown(text, 200);
+    const chunks = chunkByParagraph(text, 200);
     for (const chunk of chunks) {
       const opens = (chunk.match(/```/g) || []).length;
       expect(opens % 2).toBe(0);
@@ -61,7 +21,7 @@ describe('fence-aware chunking', () => {
 
   it('reopens code block in next chunk', () => {
     const text = '```\n' + 'line\n'.repeat(50) + '```';
-    const chunks = chunkMarkdown(text, 100);
+    const chunks = chunkByParagraph(text, 100);
     expect(chunks.length).toBeGreaterThan(1);
     expect(chunks[0].trimEnd().endsWith('```')).toBe(true);
     expect(chunks[1].startsWith('```')).toBe(true);
@@ -69,17 +29,17 @@ describe('fence-aware chunking', () => {
 
   it('handles text without code blocks normally', () => {
     const text = 'Hello\nWorld\nFoo\nBar';
-    const chunks = chunkMarkdown(text, 12);
+    const chunks = chunkByParagraph(text, 12);
     expect(chunks.join('\n')).toContain('Hello');
     expect(chunks.join('\n')).toContain('Bar');
   });
 
   it('returns single chunk if within limit', () => {
-    expect(chunkMarkdown('short text', 100)).toEqual(['short text']);
+    expect(chunkByParagraph('short text', 100)).toEqual(['short text']);
   });
 
   it('splits long line without code block', () => {
-    const chunks = chunkMarkdown('A'.repeat(300), 100);
+    const chunks = chunkByParagraph('A'.repeat(300), 100);
     expect(chunks.length).toBe(3);
   });
 });

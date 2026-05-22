@@ -13,7 +13,7 @@
 
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AutomationBridge } from '../types/automation-bridge.js';
-import type { ProjectConfig } from '../../store/interface.js';
+import type { ProjectConfig } from '../../config.js';
 import { generateRequestId, Logger } from '../../logger.js';
 import { handleFileSendRequest } from './file-send-api.js';
 import {

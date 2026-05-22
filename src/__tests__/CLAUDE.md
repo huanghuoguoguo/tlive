@@ -7,7 +7,7 @@ This document summarizes the testing strategy for the Feishu/Lark bridge for Cla
 - `src/channels/feishu/` covers Feishu adapter behavior and card/message rendering.
 - `src/providers/` wraps Claude Code SDK sessions and streaming turns.
 - `src/engine/` owns command routing, session state, permissions, and webhook delivery.
-- `src/markdown/`, `src/permissions/`, and `src/delivery/` contain mostly pure logic and should keep tight unit coverage.
+- `src/permissions/` and `src/delivery/` contain mostly pure logic and should keep tight unit coverage.
 
 ## Harder Areas To Test
 

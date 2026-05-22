@@ -37,7 +37,7 @@ interface QueryOrchestratorOptions {
   defaultAgentSettingSources: AgentSettingSource[];
   port: number;
   appendSystemPrompt?: string;
-  onConversationMessageResolved?: (msg: InboundMessage) => void;
+  onConversationMessageResolved?: (msg: InboundMessage, rawMsg: InboundMessage) => void | Promise<void>;
 }
 
 /**
@@ -89,10 +89,11 @@ export class QueryOrchestrator {
     msg: InboundMessage,
     requestId?: string,
   ): Promise<boolean> {
+    const rawMsg = msg;
     const resolved = await this.conversations.resolve(adapter, msg);
     msg = resolved.msg;
     const scopeId = resolved.scopeId;
-    this.options.onConversationMessageResolved?.(msg);
+    await this.options.onConversationMessageResolved?.(msg, rawMsg);
     const ctx: LogContext = { requestId, chatId: scopeId };
     // Update last active time (no session reset - let SDK decide via SessionStaleError)
     this.options.state.checkAndUpdateLastActive(msg.channelType, scopeId);

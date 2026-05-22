@@ -9,9 +9,7 @@ describe('CodexAdapter', () => {
     expect(adapter.mapEvent({ type: 'thread.started', thread_id: 'thread-1' })).toEqual([
       { kind: 'status', sessionId: 'thread-1', model: 'gpt-5.5' },
     ]);
-    expect(adapter.mapEvent({ type: 'turn.started' })).toEqual([
-      { kind: 'session_state', state: 'running' },
-    ]);
+    expect(adapter.mapEvent({ type: 'turn.started' })).toEqual([]);
     expect(adapter.mapEvent({
       type: 'turn.completed',
       usage: {

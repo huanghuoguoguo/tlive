@@ -23,14 +23,3 @@ export function groupHelpCommands(commands: readonly HelpCommandEntry[]): HelpCo
 
   return [...groups.values()].sort((a, b) => a.category.order - b.category.order);
 }
-
-/** Compact help text used inside the /home help panel. */
-export function formatCompactHelp(commands: readonly HelpCommandEntry[]): string {
-  return groupHelpCommands(commands)
-    .map(group => {
-      const title = `**${group.category.icon} ${group.category.title}**`;
-      const lines = group.commands.map(command => `/${command.cmd} - ${command.desc}`);
-      return [title, ...lines].join('\n');
-    })
-    .join('\n\n');
-}

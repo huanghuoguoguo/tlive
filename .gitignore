@@ -10,3 +10,5 @@ docs/plans/
 .claude/worktrees/
 coverage/
 openspec/changes/
+reports/debt/
+reports/coverage-e2e/

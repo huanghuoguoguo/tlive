@@ -276,7 +276,6 @@ export class ClaudeLiveSession implements LiveSession {
       await q.send({
         type: 'user',
         message: { role: 'user', content: text },
-        parent_tool_use_id: null,
         priority,
       });
     } else {

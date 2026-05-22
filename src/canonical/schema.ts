@@ -1,23 +1,21 @@
 import { z } from 'zod';
 
-const baseSchema = z.object({ parentToolUseId: z.string().optional() });
-
 const textDeltaSchema = z.object({
   kind: z.literal('text_delta'),
   text: z.string(),
-}).merge(baseSchema).passthrough();
+});
 
 const thinkingDeltaSchema = z.object({
   kind: z.literal('thinking_delta'),
   text: z.string(),
-}).merge(baseSchema).passthrough();
+});
 
 const toolStartSchema = z.object({
   kind: z.literal('tool_start'),
   id: z.string(),
   name: z.string(),
   input: z.record(z.string(), z.unknown()),
-}).merge(baseSchema).passthrough();
+});
 
 const toolResultSchema = z.object({
   kind: z.literal('tool_result'),
@@ -25,37 +23,37 @@ const toolResultSchema = z.object({
   content: z.string(),
   isError: z.boolean(),
   isFinal: z.boolean().optional(),
-}).merge(baseSchema).passthrough();
+});
 
 const toolProgressSchema = z.object({
   kind: z.literal('tool_progress'),
   toolName: z.string(),
   elapsed: z.number(),
-}).merge(baseSchema).passthrough();
+});
 
 const agentUsageSchema = z.object({
   toolUses: z.number(),
   durationMs: z.number(),
-}).passthrough();
+});
 
 const agentStartSchema = z.object({
   kind: z.literal('agent_start'),
   description: z.string(),
   taskId: z.string().optional(),
-}).merge(baseSchema).passthrough();
+});
 
 const agentProgressSchema = z.object({
   kind: z.literal('agent_progress'),
   description: z.string(),
   lastTool: z.string().optional(),
   usage: agentUsageSchema.optional(),
-}).merge(baseSchema).passthrough();
+});
 
 const agentCompleteSchema = z.object({
   kind: z.literal('agent_complete'),
   summary: z.string(),
   status: z.enum(['completed', 'failed', 'stopped']),
-}).merge(baseSchema).passthrough();
+});
 
 const usageSchema = z.object({
   inputTokens: z.number(),
@@ -63,12 +61,12 @@ const usageSchema = z.object({
   cachedInputTokens: z.number().optional(),
   reasoningOutputTokens: z.number().optional(),
   costUsd: z.number().optional(),
-}).passthrough();
+});
 
 const permissionDenialSchema = z.object({
   toolName: z.string(),
   toolUseId: z.string(),
-}).passthrough();
+});
 
 const queryResultSchema = z.object({
   kind: z.literal('query_result'),
@@ -77,18 +75,18 @@ const queryResultSchema = z.object({
   usage: usageSchema,
   permissionDenials: z.array(permissionDenialSchema).optional(),
   error: z.string().optional(), // Error message for isError=true cases
-}).passthrough();
+});
 
 const errorSchema = z.object({
   kind: z.literal('error'),
   message: z.string(),
-}).passthrough();
+});
 
 const statusSchema = z.object({
   kind: z.literal('status'),
   sessionId: z.string(),
   model: z.string().optional(),
-}).passthrough();
+});
 
 const sessionInfoSchema = z.object({
   kind: z.literal('session_info'),
@@ -100,17 +98,12 @@ const sessionInfoSchema = z.object({
     status: z.string(),
   })).optional(),
   skills: z.array(z.string()).optional(),
-}).passthrough();
+});
 
 const toolUseSummarySchema = z.object({
   kind: z.literal('tool_use_summary'),
   summary: z.string(),
-}).passthrough();
-
-const sessionStateSchema = z.object({
-  kind: z.literal('session_state'),
-  state: z.enum(['idle', 'running', 'requires_action']),
-}).passthrough();
+});
 
 const apiRetrySchema = z.object({
   kind: z.literal('api_retry'),
@@ -118,33 +111,33 @@ const apiRetrySchema = z.object({
   maxRetries: z.number(),
   retryDelayMs: z.number(),
   error: z.string().optional(),
-}).passthrough();
+});
 
 const compactBoundarySchema = z.object({
   kind: z.literal('compact_boundary'),
   trigger: z.enum(['manual', 'auto']),
   preTokens: z.number().optional(),
-}).passthrough();
+});
 
 const promptSuggestionSchema = z.object({
   kind: z.literal('prompt_suggestion'),
   suggestion: z.string(),
-}).passthrough();
+});
 
 const rateLimitSchema = z.object({
   kind: z.literal('rate_limit'),
   status: z.string(),
   utilization: z.number().optional(),
   resetsAt: z.number().optional(),
-}).passthrough();
+});
 
 const todoUpdateSchema = z.object({
   kind: z.literal('todo_update'),
   todos: z.array(z.object({
     content: z.string(),
     status: z.enum(['pending', 'in_progress', 'completed']),
-  }).passthrough()),
-}).passthrough();
+  })),
+});
 
 export const canonicalEventSchema = z.discriminatedUnion('kind', [
   textDeltaSchema,
@@ -160,7 +153,6 @@ export const canonicalEventSchema = z.discriminatedUnion('kind', [
   statusSchema,
   sessionInfoSchema,
   toolUseSummarySchema,
-  sessionStateSchema,
   apiRetrySchema,
   compactBoundarySchema,
   promptSuggestionSchema,

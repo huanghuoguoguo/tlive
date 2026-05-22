@@ -154,13 +154,6 @@ export const en: Translations = {
   'progress.taskLabel': 'Task',
   'progress.timeLabel': 'Time',
 
-  // --- queue ---
-  'queue.emptyMessage': 'Queue is empty',
-  'queue.noActiveSession': '⚠️ No active session, queue unavailable',
-  'queue.cleared': '✅ Queue cleared',
-  'queue.depthInvalid': '⚠️ Queue depth must be 1-10',
-  'queue.depthSet': '✅ Queue depth set to',
-
   // --- format ---
   'format.justNow': 'just now',
   'format.continueTask': 'Continue current task',

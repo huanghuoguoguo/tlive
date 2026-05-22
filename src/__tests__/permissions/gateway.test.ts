@@ -35,11 +35,11 @@ describe('PendingPermissions', () => {
   });
 
   it('times out after 5 minutes and auto-denies', async () => {
-    // Just verify the waitFor call creates a pending entry
-    gateway.waitFor('tool1');
-    expect(gateway.pendingCount()).toBe(1);
-    // Clean up
-    gateway.denyAll();
+    vi.useFakeTimers();
+    const promise = gateway.waitFor('tool1');
+    vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+    await expect(promise).resolves.toMatchObject({ behavior: 'deny' });
+    vi.useRealTimers();
   });
 
   it('denyAll denies all pending permissions', async () => {
@@ -52,12 +52,15 @@ describe('PendingPermissions', () => {
     expect(r2.behavior).toBe('deny');
   });
 
-  it('pendingCount returns number of pending', () => {
+  it('isPending returns whether a permission is still waiting', () => {
     gateway.waitFor('t1');
     gateway.waitFor('t2');
-    expect(gateway.pendingCount()).toBe(2);
+    expect(gateway.isPending('t1')).toBe(true);
+    expect(gateway.isPending('t2')).toBe(true);
     gateway.resolve('t1', 'allow');
-    expect(gateway.pendingCount()).toBe(1);
+    expect(gateway.isPending('t1')).toBe(false);
+    expect(gateway.isPending('t2')).toBe(true);
+    gateway.denyAll();
   });
 
   describe('timeout callback', () => {

@@ -153,13 +153,6 @@ export const zh: Translations = {
   'progress.taskLabel': '任务',
   'progress.timeLabel': '耗时',
 
-  // --- queue ---
-  'queue.emptyMessage': '队列已为空',
-  'queue.noActiveSession': '⚠️ 无活跃会话，队列不可用',
-  'queue.cleared': '✅ 已清空队列',
-  'queue.depthInvalid': '⚠️ 队列深度需为 1-10 的整数',
-  'queue.depthSet': '✅ 已设置队列深度为',
-
   // --- format ---
   'format.justNow': '刚刚',
   'format.continueTask': '继续当前任务',

@@ -3,7 +3,7 @@ import { t, type Locale } from '../../i18n/index.js';
 import type { FeishuCardElement } from './card-builder.js';
 import { mdElement, mdPanel, sessionStatusLabel } from './format-home.js';
 
-export function formatFeishuUptime(locale: Locale, seconds: number): string {
+function formatFeishuUptime(locale: Locale, seconds: number): string {
   if (seconds < 60) return `${seconds}${t(locale, 'format.seconds')}`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}${t(locale, 'format.minutes')}`;
   if (seconds < 86400) {

@@ -55,7 +55,6 @@ export class CodexAdapter {
         });
         break;
       case 'turn.started':
-        events.push({ kind: 'session_state', state: 'running' });
         break;
       case 'item.started':
         this.mapStartedItem(event.item, events);
