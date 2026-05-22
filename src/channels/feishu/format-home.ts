@@ -175,8 +175,8 @@ function buildDiagnosticsControls(
   buildButtons: (buttons: Button[]) => FeishuCardElement[],
 ): FeishuCardElement[] {
   return buildButtons([
-    { label: '状态', callbackData: actionCallback('status'), row: 0 },
-    { label: '运行诊断', callbackData: actionCallback('diagnose'), row: 0 },
+    { label: 'Bridge 状态', callbackData: actionCallback('status'), row: 0 },
+    { label: '内部诊断', callbackData: actionCallback('diagnose'), row: 0 },
   ]);
 }
 
