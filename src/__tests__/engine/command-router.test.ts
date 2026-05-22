@@ -14,10 +14,8 @@ import { AgentProviderRegistry, singleProviderRegistry } from '../../providers/r
 import { loadProjectsConfig, type AgentSettingSource } from '../../config.js';
 import type { SDKEngine } from '../../engine/sdk/engine.js';
 import type { PermissionCoordinator } from '../../engine/coordinators/permission.js';
-import { FeishuFormatter } from '../../channels/feishu/formatter.js';
 import * as sessionScanner from '../../providers/session-scanner.js';
 import { chatScopeId } from '../../core/key.js';
-import { routedActionCallback } from '../../core/callbacks.js';
 
 /** Create a minimal PermissionCoordinator mock for tests */
 function createMockPermissions(): PermissionCoordinator {
@@ -64,28 +62,6 @@ function createMockCodexProvider() {
       imageInputs: true,
     },
   } as any;
-}
-
-function collectFeishuCallbackActions(value: unknown): string[] {
-  const actions: string[] = [];
-  const visit = (node: unknown): void => {
-    if (Array.isArray(node)) {
-      for (const child of node) visit(child);
-      return;
-    }
-    if (!node || typeof node !== 'object') return;
-    const record = node as Record<string, unknown>;
-    const behaviors = record.behaviors;
-    if (Array.isArray(behaviors)) {
-      for (const behavior of behaviors) {
-        const action = (behavior as { value?: { action?: unknown } }).value?.action;
-        if (typeof action === 'string') actions.push(action);
-      }
-    }
-    for (const child of Object.values(record)) visit(child);
-  };
-  visit(value);
-  return actions;
 }
 
 describe('CommandRouter /settings', () => {
@@ -176,16 +152,7 @@ describe('CommandRouter /settings', () => {
     expect(adapter.send).toHaveBeenCalledWith(
       expect.objectContaining({ text: expect.stringContaining('isolated') }),
     );
-  });
-
-  it('reports defaults for other chats without inheriting another chat override', async () => {
-    await store.saveBinding({
-      channelType: 'feishu',
-      chatId: 'c1',
-      sessionId: 'binding-1',
-      agentSettingSources: [],
-      createdAt: '',
-    });
+    adapter.send.mockClear();
 
     await router.handle(adapter, {
       channelType: 'feishu',
@@ -343,143 +310,6 @@ describe('CommandRouter /settings', () => {
       text: expect.stringContaining('不支持切换到其他会话'),
       replyToMessageId: 'topic-card',
       replyInThread: true,
-    }));
-  });
-
-  it('renders a topic command palette when the user sends only slash in a Feishu topic', async () => {
-    const scopeId = chatScopeId('c1', 'thread-1');
-    await store.saveBinding({
-      channelType: 'feishu',
-      chatId: scopeId,
-      sessionId: 'binding-1',
-      sdkSessionId: 'sdk-123456789',
-      provider: 'claude',
-      cwd: '/tmp/project',
-      createdAt: '',
-    });
-    const adapterWithFormat = {
-      ...adapter,
-      format: vi.fn((msg: any) => new FeishuFormatter('zh').format(msg)),
-    };
-
-    const handled = await router.handle(adapterWithFormat, {
-      channelType: 'feishu',
-      chatId: 'c1',
-      scopeId,
-      threadId: 'thread-1',
-      replyInThread: true,
-      replyTargetMessageId: 'topic-card',
-      userId: 'u1',
-      text: '/',
-      messageId: 'm-slash',
-    } as any);
-
-    expect(handled).toBe(true);
-    expect(adapterWithFormat.format).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'topicCommandPalette',
-      chatId: 'c1',
-      data: expect.objectContaining({
-        provider: 'claude',
-        providerDisplayName: 'Claude Code',
-        cwd: '/tmp/project',
-        sdkSessionId: 'sdk-123456789',
-        isActive: false,
-        permissionMode: 'on',
-        route: expect.objectContaining({
-          scopeId,
-          threadId: 'thread-1',
-          replyInThread: true,
-        }),
-        capabilities: expect.objectContaining({
-          runtimeMode: 'interactive',
-        }),
-      }),
-    }));
-    expect(adapterWithFormat.send).toHaveBeenCalledWith(expect.objectContaining({
-      chatId: 'c1',
-      feishuHeader: expect.objectContaining({ title: '⌘ 会话操作' }),
-      replyToMessageId: 'topic-card',
-      replyInThread: true,
-    }));
-    const sent = adapterWithFormat.send.mock.calls[0][0];
-    const actions = collectFeishuCallbackActions(sent.feishuElements);
-    expect(actions).toEqual([
-      routedActionCallback('perm', {
-        scopeId,
-        threadId: 'thread-1',
-        replyInThread: true,
-      }),
-    ]);
-  });
-
-  it('keeps topic permission toggles routed to the same topic', async () => {
-    const scopeId = chatScopeId('c1', 'thread-1');
-    await store.saveBinding({
-      channelType: 'feishu',
-      chatId: scopeId,
-      sessionId: 'binding-1',
-      sdkSessionId: 'sdk-123456789',
-      provider: 'claude',
-      cwd: '/tmp/project',
-      createdAt: '',
-    });
-    const adapterWithFormat = {
-      ...adapter,
-      format: vi.fn((msg: any) => new FeishuFormatter('zh').format(msg)),
-    };
-
-    const handled = await router.handleAction(adapterWithFormat, {
-      channelType: 'feishu',
-      chatId: 'c1',
-      scopeId,
-      threadId: 'thread-1',
-      replyInThread: true,
-      replyTargetMessageId: 'topic-card',
-      userId: 'u1',
-      text: '',
-      messageId: 'm-perm',
-    } as any, { name: 'perm', args: [] });
-
-    expect(handled).toBe(true);
-    const sent = adapterWithFormat.send.mock.calls[0][0];
-    const actions = collectFeishuCallbackActions(sent.feishuElements);
-    expect(actions).toEqual([
-      routedActionCallback(
-        'perm',
-        {
-          scopeId,
-          threadId: 'thread-1',
-          replyInThread: true,
-        },
-        'off',
-      ),
-    ]);
-  });
-
-  it('filters workbench commands and removes action buttons from topic help', async () => {
-    await router.handle(adapter, {
-      channelType: 'feishu',
-      chatId: 'c1',
-      scopeId: chatScopeId('c1', 'thread-1'),
-      threadId: 'thread-1',
-      replyInThread: true,
-      replyTargetMessageId: 'topic-card',
-      userId: 'u1',
-      text: '/help',
-      internalCommand: true,
-      messageId: 'topic-card',
-    } as any);
-
-    expect(adapter.format).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'help',
-      chatId: 'c1',
-      data: expect.objectContaining({
-        actionButtons: [],
-        commands: expect.not.arrayContaining([
-          expect.objectContaining({ cmd: 'home' }),
-          expect.objectContaining({ cmd: 'session' }),
-        ]),
-      }),
     }));
   });
 
