@@ -622,7 +622,7 @@ Setup (one-time):
   tlive install skills       Install /tlive skill to Claude Code
 
 Service Management:
-  tlive start                Start Feishu Bridge for Claude Code
+  tlive start                Start Feishu/Lark bridge
   tlive stop                 Stop IM Bridge daemon
   tlive restart              Restart IM Bridge daemon
   tlive status               Show Bridge status
@@ -632,12 +632,10 @@ Service Management:
   tlive version              Show version info
 
 IM Commands (in Feishu/Lark):
-  /new                       New conversation
-  /perm on|off               Permission prompts
+  /tlive                     Open TLive workbench
+  /home                      Open TLive workbench
   /stop                      Interrupt execution
-  /sessions                  List recent sessions
-  /session <n>               Switch to session
-  /help                      Show all commands
+  Other / commands           Passed through to the active agent
 
 In Claude Code (AI-guided):
   /tlive                     Start Bridge (with pre-checks)
@@ -687,7 +685,7 @@ switch (command) {
 
   case 'start': {
     if (args.includes('--runtime')) {
-      console.error('Runtime selection has been removed; TLive now runs Claude Code only.');
+      console.error('Runtime selection has been removed. Configure TL_PROVIDER=claude or codex.');
       process.exit(1);
     }
     try {

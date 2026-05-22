@@ -3,27 +3,29 @@
 [![CI](https://github.com/huanghuoguoguo/tlive/actions/workflows/ci.yml/badge.svg)](https://github.com/huanghuoguoguo/tlive/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Control Claude Code from Feishu/Lark** — send tasks from your phone, watch progress in real time, and approve Claude Code permissions remotely.
+**Control Claude Code and Codex from Feishu/Lark** — send tasks from your phone, watch progress in real time, and manage local agent sessions remotely.
 
 ## Scope
 
 tlive is intentionally focused on one workflow:
 
 - **IM channel:** Feishu/Lark
-- **Agent runtime:** Claude Code via `@anthropic-ai/claude-agent-sdk`
-- **Interaction model:** Feishu cards for streaming progress, questions, and permission approvals
+- **Agent runtimes:** Claude Code and Codex, driven through their local CLI/SDK runtimes
+- **Interaction model:** Feishu cards for the workbench, topic sessions, streaming progress, questions, and approvals
 
-The project no longer carries Telegram, QQ Bot, Codex, or generic provider/channel runtime layers.
+The project no longer carries Telegram, QQ Bot, or generic multi-channel runtime layers.
 
 ## Features
 
-- Feishu/Lark chat to Claude Code sessions
+- Feishu/Lark chat to Claude Code or Codex sessions
+- Workbench for creating Claude/Codex topic sessions, switching directories, and resuming history
 - Real-time progress cards with thinking, tool calls, summaries, and final output
-- Remote permission approval, including session-level allow rules
-- AskUserQuestion and deferred tool interactions in Feishu cards
-- Claude Code session scanning and resume from `~/.claude/projects/`
-- Per-chat working directory with `/cd`, `/pwd`, `/new`, and `/sessions`
+- Claude Code permission approval, including session-level allow rules
+- AskUserQuestion and deferred tool interactions for providers that support them
+- Session scanning and resume from `~/.claude/projects/` and TLive-created Codex sessions under `~/.codex/sessions`
+- File and image forwarding to providers that support attachments
 - Automation webhooks for external prompt injection
+- Release-based self-upgrade with `tlive upgrade`
 
 ## Install
 
@@ -47,55 +49,83 @@ tlive --help
 
 ## Quick Start
 
+Run the one-time setup and start the bridge:
+
 ```bash
-git clone https://github.com/huanghuoguoguo/tlive.git
-cd tlive
-claude
+tlive setup
+tlive start
 ```
 
-Then ask Claude Code:
+Then send `/tlive` in Feishu/Lark to open the workbench.
+
+If you prefer guided setup inside Claude Code, install the skill and ask Claude:
+
+```bash
+tlive install skills
+claude
+```
 
 ```text
 help me setup tlive
 ```
 
-Claude Code will guide you through Feishu app credentials, local config, and bridge startup.
+The setup flow will guide you through Feishu app credentials, local config, and bridge startup.
 
 ## Architecture
 
 ```text
 ┌─────────────┐     ┌──────────────────┐     ┌─────────────┐
-│   Feishu    │────▶│  tlive Bridge    │◀────│  Claude Code│
-│   / Lark    │     │  TypeScript      │     │  sessions   │
+│   Feishu    │────▶│  tlive Bridge    │◀────│ Claude/Codex│
+│   / Lark    │     │  TypeScript      │     │   sessions  │
 └─────────────┘     └──────────────────┘     └─────────────┘
 ```
 
-The bridge runs locally, connects to Feishu through the Feishu/Lark SDK long connection, and drives Claude Code through the Claude Agent SDK.
+The bridge runs locally, connects to Feishu through the Feishu/Lark SDK long connection, and drives the selected local agent provider. Claude Code is integrated through `@anthropic-ai/claude-agent-sdk`; Codex is integrated through `@openai/codex-sdk`.
 
 ## IM Commands
 
-Send a normal message to start or continue work:
+Send a normal message inside an agent topic to start or continue work:
 
 ```text
 Fix the login bug in auth.ts
 ```
 
-Common commands:
+Public text commands are intentionally small so agent slash commands such as `/model` can pass through to Claude Code or Codex.
 
 | Command | Description |
 |---------|-------------|
-| `/new` | Start a new Claude Code conversation |
-| `/sessions` | List Claude Code sessions in the current directory |
-| `/session <n>` | Switch to a listed session |
+| `/tlive` | Open the TLive workbench |
+| `/home` | Alias for the workbench |
 | `/stop` | Interrupt current execution |
-| `/perm on\|off` | Toggle permission prompts |
-| `/cd <path>` | Change working directory |
-| `/pwd` | Show current working directory |
-| `/help` | Show commands |
+
+Other TLive operations are exposed in the workbench as buttons or command input, including new Claude/Codex sessions, session history, directory changes, permission mode, diagnostics, restart, and upgrade.
 
 ## Settings
 
-Agent settings are loaded per conversation from the session working directory:
+Choose the default provider:
+
+```env
+TL_PROVIDER=claude
+# or
+TL_PROVIDER=codex
+```
+
+The workbench shows new-session buttons only for detected local CLIs. Install `claude` for Claude Code sessions and `codex` for Codex sessions.
+
+Codex runtime options:
+
+```env
+TL_CODEX_MODEL=
+TL_CODEX_PATH=
+TL_CODEX_SANDBOX_MODE=workspace-write
+TL_CODEX_APPROVAL_POLICY=on-request
+TL_CODEX_SKIP_GIT_REPO_CHECK=false
+TL_CODEX_REASONING_EFFORT=
+TL_CODEX_NETWORK_ACCESS=
+TL_CODEX_WEB_SEARCH=
+```
+
+Claude Code setting sources are loaded per conversation from the session working directory:
 
 | Priority | Source | Path |
 |----------|--------|------|
@@ -110,6 +140,21 @@ TL_AGENT_SETTINGS=user,project,local
 ```
 
 Existing `TL_CLAUDE_SETTINGS` configs are still accepted as an alias.
+
+## Upgrade
+
+Upgrade to the latest stable release:
+
+```bash
+tlive upgrade
+```
+
+Upgrade to a specific release, including beta/prerelease versions when available:
+
+```bash
+tlive upgrade 0.13.7
+tlive upgrade 0.13.8-beta.1
+```
 
 ## Documentation
 
