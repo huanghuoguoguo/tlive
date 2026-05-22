@@ -51,11 +51,7 @@ chmod 600 ~/.tlive/config.env
 
 ## MCP Integration
 
-```bash
-tlive install mcp
-```
-
-This registers command `tlive` with args `mcp` in Claude Code. The MCP server lets agents call
+TLive SDK sessions automatically load the bundled MCP server. Agents launched by TLive can call
 back into TLive for file/image delivery and automation prompts while TLive keeps Feishu topic
 routing and permissions on the bridge side.
 

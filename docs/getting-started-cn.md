@@ -51,12 +51,8 @@ chmod 600 ~/.tlive/config.env
 
 ## MCP 集成
 
-```bash
-tlive install mcp
-```
-
-这会在 Claude Code 中注册 command `tlive`、args `mcp`。MCP server 让 agent
-可以回调 TLive 发送文件/图片或注入自动化 prompt，同时飞书话题路由和权限仍由 bridge 统一管理。
+TLive SDK 会话会自动加载内置 MCP server。由 TLive 启动的 agent 可以回调
+TLive 发送文件/图片或注入自动化 prompt，同时飞书话题路由和权限仍由 bridge 统一管理。
 
 ## 启动
 

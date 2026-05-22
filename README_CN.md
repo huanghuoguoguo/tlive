@@ -60,14 +60,8 @@ tlive start
 
 然后在飞书 / Lark 中发送 `/tlive` 打开工作台。
 
-如果需要让 agent 回调 TLive，例如把图片或文件发回当前飞书 / Lark 话题，
-请在 agent 客户端中注册内置 MCP server：
-
-```bash
-tlive install mcp
-```
-
-这会注册 command `tlive`、args `mcp`。MCP server 会暴露 `tlive_send_file`、
+TLive SDK 会话会自动加载内置 MCP server，用于 agent 回调 TLive。
+MCP server 会暴露 `tlive_send_file`、
 `tlive_send_image`、`tlive_inject_prompt`、`tlive_status` 等工具。
 
 ## 架构

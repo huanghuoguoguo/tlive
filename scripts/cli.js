@@ -625,7 +625,6 @@ Usage:
 
 Setup (one-time):
   tlive setup                Configure Feishu/Lark
-  tlive install mcp          Register TLive MCP in Claude Code
   tlive mcp                  Run local MCP server on stdio
 
 Service Management:
@@ -664,32 +663,6 @@ function run(cmd, opts = {}) {
 
 function showHelp() {
   console.log(HELP_TEXT);
-}
-
-function installMcp(args) {
-  const scopeIndex = args.findIndex(arg => arg === '--scope' || arg === '-s');
-  const scope = scopeIndex >= 0 ? args[scopeIndex + 1] : 'user';
-  if (!['local', 'user', 'project'].includes(scope)) {
-    console.error(`Invalid MCP scope: ${scope}. Use local, user, or project.`);
-    process.exit(1);
-  }
-
-  const remove = spawnSync('claude', ['mcp', 'remove', '-s', scope, 'tlive'], {
-    stdio: 'ignore',
-    shell: isWindows,
-  });
-  void remove;
-  const add = spawnSync('claude', ['mcp', 'add', '-s', scope, 'tlive', '--', 'tlive', 'mcp'], {
-    stdio: 'inherit',
-    shell: isWindows,
-  });
-  if (add.error) {
-    console.error(`Failed to run Claude Code CLI: ${add.error.message}`);
-    console.error('Install Claude Code first, or register MCP manually with command `tlive` and args `mcp`.');
-    process.exit(1);
-  }
-  if (add.status) process.exit(add.status);
-  console.log(`TLive MCP registered in Claude Code (${scope} scope).`);
 }
 
 // No command or help flags
@@ -927,14 +900,12 @@ switch (command) {
     const sub = args[0];
     if (sub === 'skills') {
       console.error('`tlive install skills` has been removed. Use the TLive MCP server instead:');
-      console.error('  tlive install mcp');
+      console.error('TLive SDK sessions load TLive MCP tools automatically.');
       process.exit(1);
-    } else if (sub === 'mcp') {
-      installMcp(args.slice(1));
     } else {
       console.log('Usage:');
-      console.log('  tlive install mcp      Register TLive MCP in Claude Code');
       console.log('  tlive mcp             Run local MCP server on stdio');
+      console.log('TLive SDK sessions load TLive MCP tools automatically.');
     }
     break;
   }

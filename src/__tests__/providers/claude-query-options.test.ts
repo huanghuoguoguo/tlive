@@ -31,7 +31,23 @@ describe('buildClaudeQueryOptions', () => {
       agentProgressSummaries: true,
       promptSuggestions: true,
       settingSources: ['user'],
-      settings: { permissions: { allow: ['Read(*)'] } },
+      settings: {
+        permissions: {
+          allow: [
+            'Read(*)',
+            'mcp__tlive__tlive_send_file',
+            'mcp__tlive__tlive_send_image',
+            'mcp__tlive__tlive_inject_prompt',
+            'mcp__tlive__tlive_status',
+          ],
+        },
+      },
+      mcpServers: {
+        tlive: expect.objectContaining({
+          command: expect.any(String),
+          args: expect.any(Array),
+        }),
+      },
       toolConfig: { askUserQuestion: { previewFormat: 'markdown' } },
       systemPrompt: { type: 'preset', preset: 'claude_code', append: 'extra prompt' },
       pathToClaudeCodeExecutable: '/usr/bin/claude',

@@ -2,6 +2,7 @@ import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentSettingSource } from '../config.js';
 import type { EffortLevel } from '../utils/types.js';
 import { buildSubprocessEnv, SAFE_PERMISSIONS } from './claude-shared.js';
+import { tliveMcpAllowedClaudeTools, tliveMcpServersForClaude } from './tlive-mcp.js';
 import type {
   AskUserQuestionHandler,
   DeferredToolHandler,
@@ -65,10 +66,14 @@ export function buildClaudeQueryOptions(params: ClaudeQueryOptionsParams): Recor
     settingSources: params.settingSources,
     settings: {
       permissions: {
-        allow: params.allowPermissions ?? SAFE_PERMISSIONS,
+        allow: [
+          ...(params.allowPermissions ?? SAFE_PERMISSIONS),
+          ...tliveMcpAllowedClaudeTools(),
+        ],
       },
     },
     env: buildSubprocessEnv(),
+    mcpServers: tliveMcpServersForClaude(),
     ...(params.toolConfig ? { toolConfig: params.toolConfig } : {}),
     ...(params.appendSystemPrompt
       ? {

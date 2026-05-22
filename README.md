@@ -58,14 +58,8 @@ tlive start
 
 Then send `/tlive` in Feishu/Lark to open the workbench.
 
-For agent-side callbacks such as sending files or images back to the current Feishu/Lark topic,
-register the bundled MCP server in your agent client:
-
-```bash
-tlive install mcp
-```
-
-This registers command `tlive` with args `mcp`. The MCP server exposes tools such as
+TLive SDK sessions automatically load the bundled MCP server for agent-side callbacks.
+The MCP server exposes tools such as
 `tlive_send_file`, `tlive_send_image`, `tlive_inject_prompt`, and `tlive_status`.
 
 ## Architecture
