@@ -17,16 +17,24 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
     steps:
       - id: tag
         run: |
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            TAG="${GITHUB_REF#refs/tags/}"
           elif [[ -n "${{ inputs.tag }}" ]]; then
-            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+            TAG="${{ inputs.tag }}"
           else
             echo "::error::No tag specified"
             exit 1
+          fi
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          if [[ "$TAG" == *-* ]]; then
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "prerelease=false" >> $GITHUB_OUTPUT
           fi
 
   build:
@@ -86,15 +94,23 @@ jobs:
       - name: Create release if not exists
         env:
           GH_TOKEN: ${{ github.token }}
+          IS_PRERELEASE: ${{ needs.get-tag.outputs.prerelease }}
         run: |
+          PRERELEASE_FLAG=""
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
           gh release view "${{ env.TAG }}" --repo ${{ github.repository }} 2>/dev/null \
             || gh release create "${{ env.TAG }}" \
                  --repo ${{ github.repository }} \
                  --title "${{ env.TAG }}" \
-                 --generate-notes
+                 --generate-notes \
+                 $PRERELEASE_FLAG
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
+          prerelease: ${{ needs.get-tag.outputs.prerelease == 'true' }}
           files: ${{ env.TARBALL }}
