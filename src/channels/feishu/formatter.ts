@@ -237,7 +237,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
     data: PermissionStatusData,
   ): FeishuRenderedMessage {
     const elements = buildPermStatusElements({ chatId, data, locale: this.locale });
-    const buttons = permStatusButtonsForMode(data.mode, this.locale);
+    const buttons = permStatusButtonsForMode(data.mode, this.locale, data.route);
     return this.createCardMessage(
       chatId,
       {

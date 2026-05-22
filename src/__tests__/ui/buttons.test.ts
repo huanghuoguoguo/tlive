@@ -8,14 +8,13 @@ import {
   taskSummaryButtons,
   helpButtons,
   topicDoneButtons,
-  topicCommandPaletteButtons,
   permStatusButtons,
   navNew,
   deferredSubmit,
   deferredSkip,
 } from '../../ui/buttons.js';
 import type { Locale } from '../../i18n/index.js';
-import { actionCallback, routedActionCallback } from '../../core/callbacks.js';
+import { actionCallback } from '../../core/callbacks.js';
 
 describe('ui/buttons', () => {
   describe('permissionButtons', () => {
@@ -145,45 +144,6 @@ describe('ui/buttons', () => {
       const buttons = topicDoneButtons('en');
 
       expect(buttons).toEqual([]);
-    });
-  });
-
-  describe('topicCommandPaletteButtons', () => {
-    it('shows status by default', () => {
-      const buttons = topicCommandPaletteButtons('en');
-
-      expect(buttons.map(b => b.callbackData)).toEqual([actionCallback('home')]);
-      expect(buttons[0].label).toContain('Topic');
-    });
-
-    it('adds only topic-local controls when supported by context', () => {
-      const buttons = topicCommandPaletteButtons('zh', {
-        isActive: true,
-        interactivePermissions: true,
-      });
-
-      expect(buttons.map(b => b.callbackData)).toEqual([
-        actionCallback('home'),
-        actionCallback('perm'),
-        actionCallback('stop'),
-      ]);
-    });
-
-    it('carries topic route context on palette actions', () => {
-      const route = {
-        scopeId: 'chat-1#thread:thread-1',
-        threadId: 'thread-1',
-        replyInThread: true,
-      };
-      const buttons = topicCommandPaletteButtons('zh', {
-        interactivePermissions: true,
-        route,
-      });
-
-      expect(buttons.map(b => b.callbackData)).toEqual([
-        routedActionCallback('home', route),
-        routedActionCallback('perm', route),
-      ]);
     });
   });
 

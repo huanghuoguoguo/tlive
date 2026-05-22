@@ -5,6 +5,7 @@
 
 import type { Button } from '../ui/types.js';
 import type { AgentProviderKind } from '../providers/kinds.js';
+import type { ActionCallbackRoute } from '../core/callbacks.js';
 import type { AgentProviderRuntimeMode } from '../providers/types.js';
 
 export interface ChannelInfo {
@@ -168,6 +169,7 @@ export interface HomeData {
 /** Permission status card for /perm command */
 export interface PermissionStatusData {
   mode: 'on' | 'off';
+  route?: ActionCallbackRoute;
   rememberedTools: number;
   rememberedBashPrefixes: number;
   pending?: {

@@ -236,14 +236,7 @@ export function topicCommandPaletteButtons(
     options.route
       ? routedActionCallback(name, options.route, ...args)
       : actionCallback(name, ...args);
-  const buttons: Button[] = [
-    {
-      label: locale === 'zh' ? '📊 本话题状态' : '📊 Topic status',
-      callbackData: action('home'),
-      style: 'default',
-      row: 0,
-    },
-  ];
+  const buttons: Button[] = [];
 
   if (options.interactivePermissions) {
     buttons.push({
@@ -269,20 +262,26 @@ export function helpButtons(locale: Locale): Button[] {
   return [{ ...navNew(locale), style: 'primary' as const, row: 0 }];
 }
 
-export function permStatusButtons(mode: 'on' | 'off', locale: Locale): Button[] {
+export function permStatusButtons(
+  mode: 'on' | 'off',
+  locale: Locale,
+  route?: ActionCallbackRoute,
+): Button[] {
+  const action = (name: string, ...args: Array<string | undefined>) =>
+    route ? routedActionCallback(name, route, ...args) : actionCallback(name, ...args);
   const toggle: Button =
     mode === 'on'
       ? {
           label: t(locale, 'perm.btnTurnOff'),
-          callbackData: actionCallback('perm', 'off'),
+          callbackData: action('perm', 'off'),
           style: 'danger',
           row: 0,
         }
       : {
           label: t(locale, 'perm.btnTurnOn'),
-          callbackData: actionCallback('perm', 'on'),
+          callbackData: action('perm', 'on'),
           style: 'primary',
           row: 0,
         };
-  return [toggle, navHome(locale)];
+  return route ? [toggle] : [toggle, navHome(locale)];
 }

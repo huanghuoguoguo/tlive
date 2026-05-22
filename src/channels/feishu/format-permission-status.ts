@@ -56,6 +56,10 @@ export function buildPermStatusElements(params: FormatPermStatusParams): FeishuC
   return elements;
 }
 
-export function permStatusButtonsForMode(mode: 'on' | 'off', locale: Locale): Button[] {
-  return permStatusButtons(mode, locale);
+export function permStatusButtonsForMode(
+  mode: 'on' | 'off',
+  locale: Locale,
+  route?: PermissionStatusData['route'],
+): Button[] {
+  return permStatusButtons(mode, locale, route);
 }
