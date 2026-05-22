@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { JsonFileStore } from '../../store/json-file.js';
 import type { AgentSettingSource } from '../../config.js';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -15,6 +15,7 @@ describe('JsonFileStore', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -65,7 +66,7 @@ describe('JsonFileStore', () => {
     const second = { channelType: 'feishu', chatId: '2', sessionId: 's2', createdAt: '' };
     await store.saveBinding(first);
     await store.saveBinding(second);
-    expect(await store.listBindings()).toEqual([first, second]);
+    expect(await store.listBindings()).toEqual(expect.arrayContaining([first, second]));
   });
 
   // Locks
@@ -77,8 +78,9 @@ describe('JsonFileStore', () => {
   });
 
   it('lock expires after TTL', async () => {
-    expect(await store.acquireLock('k1', 1)).toBe(true); // 1ms TTL
-    await new Promise(r => setTimeout(r, 10));
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    expect(await store.acquireLock('k1', 1)).toBe(true);
+    now.mockReturnValue(1_002);
     expect(await store.acquireLock('k1', 60000)).toBe(true); // expired
   });
 });

@@ -135,6 +135,73 @@ describe('bridge E2E harness', () => {
     expect(allRenderedText(harness.adapter)).toContain('当前会话');
   });
 
+  it('keeps topic permission controls scoped through real callback routes', async () => {
+    harness = createE2EHarness();
+    const topicInbound = {
+      text: '/',
+      threadId: 'thread-1',
+      scopeId: 'chat-1#thread:thread-1',
+      replyInThread: true,
+      replyTargetMessageId: 'topic-root',
+      threadRootMessageId: 'topic-root',
+    };
+
+    await harness.manager.handleInboundMessage(
+      harness.adapter,
+      harness.adapter.inbound(topicInbound),
+      'e2e-topic-perm-palette',
+    );
+
+    const permissionCallback = await waitFor(() =>
+      findLatestCallbackData(harness!.adapter, 'action:perm'),
+    );
+    expect(permissionCallback).toContain('%24route%3D');
+
+    const statusHandled = await harness.manager.handleInboundMessage(
+      harness.adapter,
+      harness.adapter.inbound({
+        text: '',
+        callbackData: permissionCallback,
+        messageId: 'topic-perm-button',
+      }),
+      'e2e-topic-perm-status',
+    );
+
+    const statusMessage = harness.adapter.sent.at(-1)?.message;
+    expect(statusHandled).toBe(true);
+    expect(statusMessage).toMatchObject({ threadId: 'thread-1', replyInThread: true });
+    expect(JSON.stringify(statusMessage)).not.toContain('action:home');
+
+    const turnOffCallback = await waitFor(() =>
+      findLatestCallbackData(harness!.adapter, 'action:perm:off'),
+    );
+    expect(turnOffCallback).toContain('%24route%3D');
+
+    const toggleHandled = await harness.manager.handleInboundMessage(
+      harness.adapter,
+      harness.adapter.inbound({
+        text: '',
+        callbackData: turnOffCallback,
+        messageId: 'topic-perm-off-button',
+      }),
+      'e2e-topic-perm-off',
+    );
+
+    expect(toggleHandled).toBe(true);
+    expect(harness.adapter.sent.at(-1)?.message).toMatchObject({
+      threadId: 'thread-1',
+      replyInThread: true,
+    });
+
+    await harness.manager.handleInboundMessage(
+      harness.adapter,
+      harness.adapter.inbound(topicInbound),
+      'e2e-topic-perm-palette-after-toggle',
+    );
+
+    expect(allRenderedText(harness.adapter)).toContain('本话题工具调用自动允许');
+  });
+
   it('renders internal workbench operation cards through real commands', async () => {
     harness = createE2EHarness();
 
@@ -563,4 +630,45 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
     }
   }
   throw lastError;
+}
+
+function findLatestCallbackData(
+  adapter: NonNullable<E2EHarness['adapter']>,
+  prefix: string,
+): string | undefined {
+  for (const entry of [...adapter.edits].reverse()) {
+    const found = findCallbackInObject(entry.message, prefix);
+    if (found) return found;
+  }
+  for (const entry of [...adapter.sent].reverse()) {
+    const found = findCallbackInObject(entry.message, prefix);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function findCallbackInObject(value: unknown, prefix: string): string | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findCallbackInObject(item, prefix);
+      if (found) return found;
+    }
+    return undefined;
+  }
+
+  for (const [key, nested] of Object.entries(value)) {
+    if (
+      (key === 'action' || key === 'callbackData') &&
+      typeof nested === 'string' &&
+      nested.startsWith(prefix)
+    ) {
+      return nested;
+    }
+    if (typeof nested === 'object') {
+      const found = findCallbackInObject(nested, prefix);
+      if (found) return found;
+    }
+  }
+  return undefined;
 }

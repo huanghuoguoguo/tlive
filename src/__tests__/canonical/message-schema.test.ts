@@ -1,91 +1,41 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { canonicalEventSchema, type CanonicalEvent } from '../../canonical/schema.js';
 
 describe('message-schema', () => {
-  describe('text events', () => {
-    it('validates text_delta', () => {
-      const event = { kind: 'text_delta', text: 'hello' };
-      const result = canonicalEventSchema.parse(event);
-      expect(result.kind).toBe('text_delta');
-      expect((result as any).text).toBe('hello');
-    });
-    it('validates thinking_delta', () => {
-      const event = { kind: 'thinking_delta', text: 'reasoning...' };
-      const result = canonicalEventSchema.parse(event);
-      expect(result.kind).toBe('thinking_delta');
-    });
-    it('strips unknown fields at the canonical boundary', () => {
-      const event = { kind: 'text_delta', text: 'hi', futureField: 42 };
-      const result = canonicalEventSchema.parse(event);
-      expect((result as any).futureField).toBeUndefined();
-    });
+  it('accepts every canonical event kind used at the provider boundary', () => {
+    const validEvents: Array<{ kind: CanonicalEvent['kind']; event: unknown }> = [
+      { kind: 'text_delta', event: { kind: 'text_delta', text: 'hello' } },
+      { kind: 'thinking_delta', event: { kind: 'thinking_delta', text: 'reasoning...' } },
+      { kind: 'tool_start', event: { kind: 'tool_start', id: 'tu_1', name: 'Bash', input: { command: 'ls' } } },
+      { kind: 'tool_result', event: { kind: 'tool_result', toolUseId: 'tu_1', content: 'output', isError: false } },
+      { kind: 'tool_progress', event: { kind: 'tool_progress', toolName: 'Bash', elapsed: 5.2 } },
+      { kind: 'agent_start', event: { kind: 'agent_start', description: 'Explore codebase', taskId: 'task_1' } },
+      { kind: 'agent_progress', event: { kind: 'agent_progress', description: 'Working...', lastTool: 'Read', usage: { toolUses: 5, durationMs: 3000 } } },
+      { kind: 'agent_complete', event: { kind: 'agent_complete', summary: 'Done', status: 'completed' } },
+      { kind: 'query_result', event: { kind: 'query_result', sessionId: 'sess_1', isError: false, usage: { inputTokens: 1000, outputTokens: 500, costUsd: 0.05 }, permissionDenials: [{ toolName: 'Bash', toolUseId: 'tu_1' }] } },
+      { kind: 'error', event: { kind: 'error', message: 'fail' } },
+      { kind: 'status', event: { kind: 'status', sessionId: 's' } },
+      { kind: 'session_info', event: { kind: 'session_info', sessionId: 's', model: 'claude', tools: ['Read'] } },
+      { kind: 'tool_use_summary', event: { kind: 'tool_use_summary', summary: 'Bash x1' } },
+      { kind: 'api_retry', event: { kind: 'api_retry', attempt: 1, maxRetries: 3, retryDelayMs: 500, error: '429' } },
+      { kind: 'compact_boundary', event: { kind: 'compact_boundary', trigger: 'auto', preTokens: 12000 } },
+      { kind: 'prompt_suggestion', event: { kind: 'prompt_suggestion', suggestion: 'Try this' } },
+      { kind: 'rate_limit', event: { kind: 'rate_limit', status: 'rejected', utilization: 0.95 } },
+      { kind: 'todo_update', event: { kind: 'todo_update', todos: [{ content: 'Ship it', status: 'completed' }] } },
+    ];
+
+    for (const { kind, event } of validEvents) {
+      expect(canonicalEventSchema.parse(event).kind).toBe(kind);
+    }
   });
 
-  describe('tool events', () => {
-    it('validates tool_start', () => {
-      const event = { kind: 'tool_start', id: 'tu_1', name: 'Bash', input: { command: 'ls' } };
-      expect(canonicalEventSchema.parse(event).kind).toBe('tool_start');
-    });
-    it('validates tool_result', () => {
-      const event = { kind: 'tool_result', toolUseId: 'tu_1', content: 'output', isError: false };
-      expect(canonicalEventSchema.parse(event).kind).toBe('tool_result');
-    });
-    it('validates tool_progress', () => {
-      const event = { kind: 'tool_progress', toolName: 'Bash', elapsed: 5.2 };
-      expect(canonicalEventSchema.parse(event).kind).toBe('tool_progress');
-    });
+  it('strips unknown fields at the canonical boundary', () => {
+    const result = canonicalEventSchema.parse({ kind: 'text_delta', text: 'hi', futureField: 42 });
+    expect((result as Record<string, unknown>).futureField).toBeUndefined();
   });
 
-  describe('agent events', () => {
-    it('validates agent_start', () => {
-      const event = { kind: 'agent_start', description: 'Explore codebase', taskId: 'task_1' };
-      expect(canonicalEventSchema.parse(event).kind).toBe('agent_start');
-    });
-    it('validates agent_progress', () => {
-      const event = { kind: 'agent_progress', description: 'Working...', lastTool: 'Read', usage: { toolUses: 5, durationMs: 3000 } };
-      expect(canonicalEventSchema.parse(event).kind).toBe('agent_progress');
-    });
-    it('validates agent_complete', () => {
-      const event = { kind: 'agent_complete', summary: 'Done', status: 'completed' };
-      expect(canonicalEventSchema.parse(event).kind).toBe('agent_complete');
-    });
-  });
-
-  describe('query result events', () => {
-    it('validates query_result', () => {
-      const event = { kind: 'query_result', sessionId: 'sess_1', isError: false, usage: { inputTokens: 1000, outputTokens: 500, costUsd: 0.05 } };
-      expect(canonicalEventSchema.parse(event).kind).toBe('query_result');
-    });
-    it('validates query_result with permission denials', () => {
-      const event = { kind: 'query_result', sessionId: 's', isError: false, usage: { inputTokens: 100, outputTokens: 50 }, permissionDenials: [{ toolName: 'Bash', toolUseId: 'tu_1' }] };
-      expect((canonicalEventSchema.parse(event) as any).permissionDenials).toHaveLength(1);
-    });
-    it('validates error', () => {
-      expect(canonicalEventSchema.parse({ kind: 'error', message: 'fail' }).kind).toBe('error');
-    });
-  });
-
-  describe('auxiliary events', () => {
-    it('validates status', () => {
-      expect(canonicalEventSchema.parse({ kind: 'status', sessionId: 's', model: 'claude-sonnet-4-5-20250514' }).kind).toBe('status');
-    });
-    it('allows status without model when provider SDK does not expose it', () => {
-      expect(canonicalEventSchema.parse({ kind: 'status', sessionId: 's' }).kind).toBe('status');
-    });
-    it('validates prompt_suggestion', () => {
-      expect(canonicalEventSchema.parse({ kind: 'prompt_suggestion', suggestion: 'Try this' }).kind).toBe('prompt_suggestion');
-    });
-    it('validates rate_limit', () => {
-      expect(canonicalEventSchema.parse({ kind: 'rate_limit', status: 'rejected', utilization: 0.95 }).kind).toBe('rate_limit');
-    });
-  });
-
-  describe('validation errors', () => {
-    it('rejects unknown kind', () => {
-      expect(() => canonicalEventSchema.parse({ kind: 'unknown' })).toThrow();
-    });
-    it('rejects missing required field', () => {
-      expect(() => canonicalEventSchema.parse({ kind: 'text_delta' })).toThrow();
-    });
+  it('rejects unknown kinds and missing required fields', () => {
+    expect(() => canonicalEventSchema.parse({ kind: 'unknown' })).toThrow();
+    expect(() => canonicalEventSchema.parse({ kind: 'text_delta' })).toThrow();
   });
 });

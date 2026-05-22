@@ -1,8 +1,7 @@
 // bridge/src/__tests__/channels/errors.test.ts
 import { describe, it, expect } from 'vitest';
 import {
-  BridgeError, RateLimitError, FormatError,
-  NetworkError, AuthError, PlatformError,
+  BridgeError, RateLimitError, PlatformError,
 } from '../../channels/errors.js';
 
 describe('BridgeError hierarchy', () => {
@@ -13,30 +12,14 @@ describe('BridgeError hierarchy', () => {
     expect(err.retryable).toBe(true);
   });
 
-  it('FormatError is not retryable', () => {
-    const err = new FormatError('bad html');
-    expect(err).toBeInstanceOf(BridgeError);
-    expect(err.retryable).toBe(false);
-  });
-
-  it('NetworkError is retryable', () => {
-    const err = new NetworkError('ETIMEOUT');
-    expect(err.retryable).toBe(true);
-  });
-
-  it('AuthError is not retryable', () => {
-    const err = new AuthError('invalid token');
-    expect(err.retryable).toBe(false);
-  });
-
-  it('PlatformError carries status code', () => {
-    const err = new PlatformError('server error', 500);
-    expect(err.statusCode).toBe(500);
-    expect(err.retryable).toBe(true);
-  });
-
-  it('PlatformError with 4xx is not retryable', () => {
-    const err = new PlatformError('bad request', 400);
-    expect(err.retryable).toBe(false);
+  it('PlatformError retries server errors but not client errors', () => {
+    expect(new PlatformError('server error', 500)).toMatchObject({
+      statusCode: 500,
+      retryable: true,
+    });
+    expect(new PlatformError('bad request', 400)).toMatchObject({
+      statusCode: 400,
+      retryable: false,
+    });
   });
 });

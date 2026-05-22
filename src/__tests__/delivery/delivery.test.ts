@@ -30,8 +30,7 @@ describe('fence-aware chunking', () => {
   it('handles text without code blocks normally', () => {
     const text = 'Hello\nWorld\nFoo\nBar';
     const chunks = chunkByParagraph(text, 12);
-    expect(chunks.join('\n')).toContain('Hello');
-    expect(chunks.join('\n')).toContain('Bar');
+    expect(chunks).toEqual(['Hello\nWorld', 'Foo\nBar']);
   });
 
   it('returns single chunk if within limit', () => {
@@ -39,7 +38,9 @@ describe('fence-aware chunking', () => {
   });
 
   it('splits long line without code block', () => {
+    const text = 'A'.repeat(300);
     const chunks = chunkByParagraph('A'.repeat(300), 100);
-    expect(chunks.length).toBe(3);
+    expect(chunks.every(chunk => chunk.length <= 100)).toBe(true);
+    expect(chunks.join('')).toBe(text);
   });
 });

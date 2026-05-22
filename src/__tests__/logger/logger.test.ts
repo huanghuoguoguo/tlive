@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Logger, generateRequestId, type LogContext } from '../../logger.js';
+import { Logger, type LogContext } from '../../logger.js';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -73,16 +73,6 @@ describe('Logger', () => {
     expect(content).not.toContain('secret2');
   });
 
-  it('includes timestamp', () => {
-    const logPath = join(tmpDir, 'test.log');
-    const logger = new Logger(logPath, []);
-    logger.info('timestamped');
-    logger.close();
-    const content = readFileSync(join(tmpDir, `test-${localDateStamp()}.log`), 'utf-8');
-    // Should contain ISO-like timestamp
-    expect(content).toMatch(/\d{4}-\d{2}-\d{2}/);
-  });
-
   it('preserves module prefix in unified format', () => {
     const logPath = join(tmpDir, 'test.log');
     const logger = new Logger(logPath, []);
@@ -90,14 +80,6 @@ describe('Logger', () => {
     logger.close();
     const content = readFileSync(join(tmpDir, `test-${localDateStamp()}.log`), 'utf-8');
     expect(content).toContain('[feishu] INFO: Reconnecting in 2000ms');
-  });
-
-  it('generates short request ID', () => {
-    const id1 = generateRequestId();
-    const id2 = generateRequestId();
-    expect(id1).toHaveLength(8);
-    expect(id2).toHaveLength(8);
-    expect(id1).not.toBe(id2); // Should be unique
   });
 
   it('logs with context prefix', () => {

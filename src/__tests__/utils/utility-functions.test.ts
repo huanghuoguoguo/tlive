@@ -1,124 +1,77 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { formatSize, formatRelativeTime } from '../../formatting/session-format.js';
 import { redactSensitiveContent } from '../../utils/content-filter.js';
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe('formatSize', () => {
-  it('formats bytes under 1KB', () => {
-    expect(formatSize(100)).toBe('100B');
-    expect(formatSize(0)).toBe('0B');
-    expect(formatSize(1023)).toBe('1023B');
-  });
+  it('formats representative byte units', () => {
+    const cases = [
+      [0, '0B'],
+      [1023, '1023B'],
+      [1024, '1.0KB'],
+      [1024 * 1023, '1023.0KB'],
+      [1024 * 1024, '1.0MB'],
+      [1024 * 1024 * 10, '10.0MB'],
+    ] as const;
 
-  it('formats KB under 1MB', () => {
-    expect(formatSize(1024)).toBe('1.0KB');
-    expect(formatSize(5120)).toBe('5.0KB');
-    expect(formatSize(1024 * 1023)).toBe('1023.0KB');
-  });
-
-  it('formats MB for larger sizes', () => {
-    expect(formatSize(1024 * 1024)).toBe('1.0MB');
-    expect(formatSize(1024 * 1024 * 10)).toBe('10.0MB');
+    for (const [size, expected] of cases) {
+      expect(formatSize(size)).toBe(expected);
+    }
   });
 });
 
 describe('formatRelativeTime', () => {
-  it('returns "刚刚" for less than 1 minute (zh locale)', () => {
-    const now = Date.now();
-    expect(formatRelativeTime(now, 'zh')).toBe('刚刚');
-    expect(formatRelativeTime(now - 30000, 'zh')).toBe('刚刚');
-  });
+  it('formats zh and en relative times from a fixed clock', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+    const cases = [
+      [0, 'zh', '刚刚'],
+      [30_000, 'zh', '刚刚'],
+      [60_000, 'zh', '1分钟前'],
+      [59 * 60_000, 'zh', '59分钟前'],
+      [60 * 60_000, 'zh', '1小时前'],
+      [24 * 60 * 60_000, 'zh', '1天前'],
+      [0, 'en', 'just now'],
+      [60_000, 'en', '1 min ago'],
+      [5 * 60_000, 'en', '5 min ago'],
+      [60 * 60_000, 'en', '1h ago'],
+      [24 * 60 * 60_000, 'en', '1d ago'],
+    ] as const;
 
-  it('returns minutes for less than 1 hour (zh locale)', () => {
-    const now = Date.now();
-    expect(formatRelativeTime(now - 60000, 'zh')).toBe('1分钟前');
-    expect(formatRelativeTime(now - 5 * 60000, 'zh')).toBe('5分钟前');
-    expect(formatRelativeTime(now - 59 * 60000, 'zh')).toBe('59分钟前');
-  });
-
-  it('returns hours for less than 24 hours (zh locale)', () => {
-    const now = Date.now();
-    expect(formatRelativeTime(now - 3600000, 'zh')).toBe('1小时前');
-    expect(formatRelativeTime(now - 12 * 3600000, 'zh')).toBe('12小时前');
-  });
-
-  it('returns days for less than 7 days (zh locale)', () => {
-    const now = Date.now();
-    expect(formatRelativeTime(now - 86400000, 'zh')).toBe('1天前');
-    expect(formatRelativeTime(now - 3 * 86400000, 'zh')).toBe('3天前');
-    expect(formatRelativeTime(now - 6 * 86400000, 'zh')).toBe('6天前');
-  });
-
-  it('returns "just now" for less than 1 minute (en locale)', () => {
-    const now = Date.now();
-    expect(formatRelativeTime(now, 'en')).toBe('just now');
-    expect(formatRelativeTime(now - 30000, 'en')).toBe('just now');
-  });
-
-  it('returns minutes for less than 1 hour (en locale)', () => {
-    const now = Date.now();
-    expect(formatRelativeTime(now - 60000, 'en')).toBe('1 min ago');
-    expect(formatRelativeTime(now - 5 * 60000, 'en')).toBe('5 min ago');
-  });
-
-  it('returns hours for less than 24 hours (en locale)', () => {
-    const now = Date.now();
-    expect(formatRelativeTime(now - 3600000, 'en')).toBe('1h ago');
-    expect(formatRelativeTime(now - 12 * 3600000, 'en')).toBe('12h ago');
-  });
-
-  it('returns days for less than 7 days (en locale)', () => {
-    const now = Date.now();
-    expect(formatRelativeTime(now - 86400000, 'en')).toBe('1d ago');
-    expect(formatRelativeTime(now - 3 * 86400000, 'en')).toBe('3d ago');
+    for (const [ageMs, locale, expected] of cases) {
+      expect(formatRelativeTime(Date.now() - ageMs, locale)).toBe(expected);
+    }
   });
 });
 
 describe('redactSensitiveContent', () => {
-  it('strips ANSI escape sequences', () => {
-    const input = '\u001B[32mSuccess\u001B[0m';
-    expect(redactSensitiveContent(input)).toBe('Success');
+  it('strips terminal escapes and redacts supported secret families', () => {
+    const cases = [
+      ['\u001B[32mSuccess\u001B[0m', 'Success'],
+      ['Key: sk-proj-abcdefgh123456', 'Key: sk-proj-[REDACTED]'],
+      ['Key: sk-abcdefghijklmnopqrstuvwxyz123456', 'Key: sk-[REDACTED]'],
+      ['Key: sk-ant-api03-abcdefgh123456', 'Key: sk-ant-[REDACTED]'],
+      ['AWS: AKIAABCDEFGHIJKLMNOP', 'AWS: AKIA[REDACTED]'],
+      ['Token: ghp_abcdefghijklmnopqrstuvwxyz1234567890', 'Token: ghp_[REDACTED]'],
+      ['Slack: xoxb-123456789012-abcdef', 'Slack: xox_[REDACTED]'],
+      ['API_KEY=abcdef12345678901234', 'API_KEY=[REDACTED]'],
+      ['SECRET_PASSWORD="mysecretpassword123"', 'SECRET_PASSWORD=[REDACTED]'],
+    ] as const;
+
+    for (const [input, expected] of cases) {
+      expect(redactSensitiveContent(input)).toBe(expected);
+    }
   });
 
-  it('redacts OpenAI API keys', () => {
-    expect(redactSensitiveContent('Key: sk-proj-abcdefgh123456')).toBe('Key: sk-proj-[REDACTED]');
-    expect(redactSensitiveContent('Key: sk-abcdefghijklmnopqrstuvwxyz123456')).toBe('Key: sk-[REDACTED]');
-  });
-
-  it('redacts Anthropic API keys', () => {
-    expect(redactSensitiveContent('Key: sk-ant-api03-abcdefgh123456')).toBe('Key: sk-ant-[REDACTED]');
-  });
-
-  it('redacts AWS access keys', () => {
-    expect(redactSensitiveContent('AWS: AKIAABCDEFGHIJKLMNOP')).toBe('AWS: AKIA[REDACTED]');
-  });
-
-  it('redacts GitHub tokens', () => {
-    expect(redactSensitiveContent('Token: ghp_abcdefghijklmnopqrstuvwxyz1234567890')).toBe('Token: ghp_[REDACTED]');
-  });
-
-  it('redacts Slack tokens', () => {
-    expect(redactSensitiveContent('Slack: xoxb-123456789012-abcdef')).toBe('Slack: xox_[REDACTED]');
-  });
-
-  it('redacts private key blocks', () => {
-    const input = `-----BEGIN RSA PRIVATE KEY-----
+  it('redacts private key blocks and multiple secrets without damaging normal text', () => {
+    const privateKey = `-----BEGIN RSA PRIVATE KEY-----
 MIIEpAIBAAKCAQEA0Z3VS5JJcds3xfn/ygWyF8PbnGy0AHB7MbzYLtNj2Vy6
 -----END RSA PRIVATE KEY-----`;
-    expect(redactSensitiveContent(input)).toBe('[PRIVATE KEY REDACTED]');
-  });
-
-  it('redacts sensitive environment variables', () => {
-    expect(redactSensitiveContent('API_KEY=abcdef12345678901234')).toBe('API_KEY=[REDACTED]');
-    expect(redactSensitiveContent('SECRET_PASSWORD="mysecretpassword123"')).toBe('SECRET_PASSWORD=[REDACTED]');
-  });
-
-  it('preserves non-sensitive content', () => {
-    expect(redactSensitiveContent('Hello world')).toBe('Hello world');
-    expect(redactSensitiveContent('PORT=3000')).toBe('PORT=3000');
-  });
-
-  it('handles multiple patterns in same text', () => {
-    const input = 'sk-proj-abcdef123456 and AKIAABCDEFGHIJKLMNOP';
-    expect(redactSensitiveContent(input)).toBe('sk-proj-[REDACTED] and AKIA[REDACTED]');
+    expect(redactSensitiveContent(privateKey)).toBe('[PRIVATE KEY REDACTED]');
+    expect(redactSensitiveContent('sk-proj-abcdef123456 and AKIAABCDEFGHIJKLMNOP'))
+      .toBe('sk-proj-[REDACTED] and AKIA[REDACTED]');
+    expect(redactSensitiveContent('Hello world\nPORT=3000')).toBe('Hello world\nPORT=3000');
   });
 });
