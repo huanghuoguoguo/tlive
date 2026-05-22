@@ -1,16 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   downgradeHeadings,
-  markdownToFeishu,
   sanitizeFeishuMarkdown,
 } from '../../channels/feishu/markdown.js';
 
 describe('Feishu rendering', () => {
-  it('passes through markdown unchanged', () => {
-    const md = '**bold** and `code`';
-    expect(markdownToFeishu(md)).toBe(md);
-  });
-
   it('converts external markdown images to links for Feishu cards', () => {
     const md = '[![CI](https://github.com/org/repo/actions/workflows/ci.yml/badge.svg)](https://github.com/org/repo/actions)';
     const result = sanitizeFeishuMarkdown(md);

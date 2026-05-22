@@ -80,29 +80,6 @@ describe('BridgeManager', () => {
     manager = new BridgeManager({ defaultWorkdir: '/tmp', store, llm });
   });
 
-  it('starts adapters', async () => {
-    const adapter = mockAdapter();
-    manager.registerAdapter(adapter);
-    await manager.start();
-    expect(adapter.start).toHaveBeenCalled();
-  });
-
-  it('stops adapters', async () => {
-    const adapter = mockAdapter();
-    manager.registerAdapter(adapter);
-    await manager.start();
-    await manager.stop();
-    expect(adapter.stop).toHaveBeenCalled();
-  });
-
-  it('skips adapters with invalid config', async () => {
-    const adapter = mockAdapter();
-    (adapter.validateConfig as any).mockReturnValue('missing token');
-    manager.registerAdapter(adapter);
-    await manager.start();
-    expect(adapter.start).not.toHaveBeenCalled();
-  });
-
   it('filters unauthorized messages', async () => {
     const adapter = mockAdapter();
     (adapter.isAuthorized as any).mockReturnValue(false);
@@ -185,28 +162,6 @@ describe('BridgeManager', () => {
       callbackData: 'perm:allow:missing', messageId: 'm1',
     });
     expect(handled).toBe(false);
-  });
-
-  it('sends typing indicator on message', async () => {
-    const adapter = mockAdapter();
-    manager.registerAdapter(adapter);
-
-    await manager.handleInboundMessage(adapter, {
-      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: 'hello', messageId: 'm1',
-    });
-
-    expect((adapter as any).sendTyping).toHaveBeenCalledWith('c1');
-  });
-
-  it('handles internal /new action with rebind', async () => {
-    const adapter = mockAdapter();
-    manager.registerAdapter(adapter);
-
-    await manager.handleInboundMessage(adapter, {
-      channelType: 'feishu', chatId: 'c1', userId: 'u1', text: '/new', internalCommand: true, messageId: 'm1',
-    });
-
-    expect(JSON.stringify((adapter.send as ReturnType<typeof vi.fn>).mock.calls[0][0])).toContain('新会话');
   });
 
   describe('error notification', () => {

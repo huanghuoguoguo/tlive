@@ -45,6 +45,7 @@ describe('bridge E2E harness', () => {
 
     const bindings = await harness.store.listBindings();
     expect(handled).toBe(true);
+    expect(harness.adapter.typing).toContain('chat-1');
     expect(bindings.some((binding) => binding.sdkSessionId === 'sdk-session-1')).toBe(true);
     expect(harness.claude.prompts[0]).toContain('please answer from fake Claude');
     expect(allRenderedText(harness.adapter)).toContain('E2E final answer');
@@ -87,6 +88,33 @@ describe('bridge E2E harness', () => {
     });
     expect(allRenderedText(harness.adapter)).toContain('已插入当前会话');
     await waitFor(() => allRenderedText(harness!.adapter).includes('Long turn finished'));
+  });
+
+  it('stops an active turn from inside the Feishu topic instead of falling back to workbench state', async () => {
+    harness = createE2EHarness(delayedTrace('This should eventually finish after stop'));
+    await harness.manager.start();
+
+    const first = harness.adapter.push({ text: 'start a slow task' });
+    await waitFor(() => harness!.claude.prompts.length > 0);
+
+    const threadId = `thread-${first.messageId}`;
+    const stopHandled = await harness.manager.handleInboundMessage(
+      harness.adapter,
+      harness.adapter.inbound({
+        text: '/stop',
+        threadId,
+        scopeId: `chat-1#thread:${threadId}`,
+        replyInThread: true,
+        replyTargetMessageId: first.messageId,
+        threadRootMessageId: first.messageId,
+      }),
+      'e2e-topic-stop',
+    );
+
+    expect(stopHandled).toBe(true);
+    expect(harness.claude.interruptCount).toBe(1);
+    expect(allRenderedText(harness.adapter)).toContain('Interrupted current execution');
+    expect(allRenderedText(harness.adapter)).not.toContain('No active execution to stop');
   });
 
   it('renders the workbench and handles a new-session button click as a real callback', async () => {

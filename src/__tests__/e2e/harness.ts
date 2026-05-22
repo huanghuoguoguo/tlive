@@ -153,6 +153,7 @@ class FakeLiveSession implements LiveSession {
     private readonly nextSessionId: () => string,
     private readonly onPrompt: (prompt: string) => void,
     private readonly onPriorityMessage: (text: string, priority: MessagePriority) => void,
+    private readonly onInterrupt: () => void,
   ) {}
 
   startTurn(prompt: string, params?: TurnParams): StreamChatResult {
@@ -183,7 +184,13 @@ class FakeLiveSession implements LiveSession {
         })();
       },
     });
-    return { stream };
+    return {
+      stream,
+      controls: {
+        interrupt: () => this.interruptTurn(),
+        stopTask: async () => {},
+      },
+    };
   }
 
   steerTurn(_text: string): void {}
@@ -193,6 +200,7 @@ class FakeLiveSession implements LiveSession {
   }
 
   async interruptTurn(): Promise<void> {
+    this.onInterrupt();
     this.isTurnActive = false;
   }
 
@@ -221,6 +229,7 @@ export class FakeClaudeProvider {
   };
   readonly prompts: string[] = [];
   readonly priorityMessages: Array<{ text: string; priority: MessagePriority }> = [];
+  interruptCount = 0;
   readonly createSession = vi.fn((params: { workingDirectory: string; sessionId?: string }) => {
     void params;
     return new FakeLiveSession(
@@ -231,6 +240,9 @@ export class FakeClaudeProvider {
       },
       (text, priority) => {
         this.priorityMessages.push({ text, priority });
+      },
+      () => {
+        this.interruptCount += 1;
       },
     );
   });
@@ -243,6 +255,9 @@ export class FakeClaudeProvider {
       },
       (text, priority) => {
         this.priorityMessages.push({ text, priority });
+      },
+      () => {
+        this.interruptCount += 1;
       },
     );
     return session.startTurn(params.prompt);

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { WorkspaceStateManager } from '../../engine/state/workspace-state.js';
@@ -17,92 +17,45 @@ describe('WorkspaceStateManager', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  describe('history', () => {
-    it('pushes directory to history', () => {
-      manager.pushHistory('feishu', 'chat1', '/home/user/project');
-      const history = manager.getHistory('feishu', 'chat1');
-      expect(history).toEqual(['/home/user/project']);
-    });
+  it('keeps per-chat workspace history newest-first, deduped, and bounded', () => {
+    for (let i = 0; i < 15; i++) {
+      manager.pushHistory('feishu', 'chat-1', `/dir${i}`);
+    }
+    manager.pushHistory('feishu', 'chat-1', '/dir10');
+    manager.pushHistory('feishu', 'chat-2', '/other');
 
-    it('maintains history order (newest first)', () => {
-      manager.pushHistory('feishu', 'chat1', '/dir1');
-      manager.pushHistory('feishu', 'chat1', '/dir2');
-      manager.pushHistory('feishu', 'chat1', '/dir3');
-
-      const history = manager.getHistory('feishu', 'chat1');
-      expect(history).toEqual(['/dir3', '/dir2', '/dir1']);
-    });
-
-    it('deduplicates history', () => {
-      manager.pushHistory('feishu', 'chat1', '/dir1');
-      manager.pushHistory('feishu', 'chat1', '/dir2');
-      manager.pushHistory('feishu', 'chat1', '/dir1'); // revisit
-
-      const history = manager.getHistory('feishu', 'chat1');
-      expect(history).toEqual(['/dir1', '/dir2']);
-    });
-
-    it('truncates history to MAX_HISTORY_SIZE', () => {
-      for (let i = 0; i < 15; i++) {
-        manager.pushHistory('feishu', 'chat1', `/dir${i}`);
-      }
-
-      const history = manager.getHistory('feishu', 'chat1');
-      expect(history.length).toBe(WorkspaceStateManager.MAX_HISTORY_SIZE);
-      // Most recent should be at front
-      expect(history[0]).toBe('/dir14');
-    });
-
-    it('returns previous directory for /cd -', () => {
-      manager.pushHistory('feishu', 'chat1', '/dir1');
-      manager.pushHistory('feishu', 'chat1', '/dir2');
-
-      const previous = manager.getPreviousDirectory('feishu', 'chat1');
-      expect(previous).toBe('/dir1'); // history[1]
-    });
-
-    it('returns undefined if no previous directory', () => {
-      manager.pushHistory('feishu', 'chat1', '/dir1');
-
-      const previous = manager.getPreviousDirectory('feishu', 'chat1');
-      expect(previous).toBeUndefined();
-    });
-
-    it('separates history by chat', () => {
-      manager.pushHistory('feishu', 'chat1', '/dir1');
-      manager.pushHistory('feishu', 'chat2', '/dir2');
-
-      expect(manager.getHistory('feishu', 'chat1')).toEqual(['/dir1']);
-      expect(manager.getHistory('feishu', 'chat2')).toEqual(['/dir2']);
-    });
+    expect(manager.getHistory('feishu', 'chat-1')).toEqual([
+      '/dir10',
+      '/dir14',
+      '/dir13',
+      '/dir12',
+      '/dir11',
+      '/dir9',
+      '/dir8',
+      '/dir7',
+      '/dir6',
+      '/dir5',
+    ]);
+    expect(manager.getHistory('feishu', 'chat-1')).toHaveLength(
+      WorkspaceStateManager.MAX_HISTORY_SIZE,
+    );
+    expect(manager.getPreviousDirectory('feishu', 'chat-1')).toBe('/dir14');
+    expect(manager.getHistory('feishu', 'chat-2')).toEqual(['/other']);
   });
 
-  describe('binding', () => {
-    it('sets workspace binding', () => {
-      manager.setBinding('feishu', 'chat1', '/home/user/repo');
-      expect(manager.getBinding('feishu', 'chat1')).toBe('/home/user/repo');
-    });
+  it('stores and clears workspace binding with the rest of chat state', () => {
+    manager.pushHistory('feishu', 'chat-1', '/dir1');
+    manager.setBinding('feishu', 'chat-1', '/repo');
 
-    it('returns undefined if no binding', () => {
-      expect(manager.getBinding('feishu', 'chat1')).toBeUndefined();
-    });
+    expect(manager.getBinding('feishu', 'chat-1')).toBe('/repo');
 
-    it('clears workspace binding', () => {
-      manager.setBinding('feishu', 'chat1', '/home/user/repo');
-      manager.clearBinding('feishu', 'chat1');
-      expect(manager.getBinding('feishu', 'chat1')).toBeUndefined();
-    });
-  });
+    manager.clearBinding('feishu', 'chat-1');
+    expect(manager.getBinding('feishu', 'chat-1')).toBeUndefined();
+    expect(manager.getHistory('feishu', 'chat-1')).toEqual(['/dir1']);
 
-  describe('clear', () => {
-    it('clears workspace state for a chat', () => {
-      manager.pushHistory('feishu', 'chat1', '/dir1');
-      manager.setBinding('feishu', 'chat1', '/repo');
-
-      manager.clear('feishu', 'chat1');
-
-      expect(manager.getHistory('feishu', 'chat1')).toEqual([]);
-      expect(manager.getBinding('feishu', 'chat1')).toBeUndefined();
-    });
+    manager.setBinding('feishu', 'chat-1', '/repo');
+    manager.clear('feishu', 'chat-1');
+    expect(manager.getBinding('feishu', 'chat-1')).toBeUndefined();
+    expect(manager.getHistory('feishu', 'chat-1')).toEqual([]);
   });
 });

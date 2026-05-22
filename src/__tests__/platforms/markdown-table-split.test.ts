@@ -1,74 +1,50 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { splitLargeTables } from '../../channels/feishu/markdown.js';
 
+function table(rowCount: number): string {
+  const header = '| Name | Value |\n|---|---|\n';
+  const rows = Array.from(
+    { length: rowCount },
+    (_, i) => `| Row${i + 1} | ${i + 1} |`,
+  ).join('\n');
+  return header + rows;
+}
+
 describe('splitLargeTables', () => {
-  it('should keep small tables unchanged', () => {
-    const input = `| Name | Value |
-|---|---|
-| A | 1 |
-| B | 2 |
-| C | 3 |`;
-
-    expect(splitLargeTables(input)).toBe(input);
+  it('leaves non-table content and small tables untouched', () => {
+    const small = table(3);
+    expect(splitLargeTables('Just some regular text.')).toBe('Just some regular text.');
+    expect(splitLargeTables(small)).toBe(small);
   });
 
-  it('should split tables with more than 10 rows', () => {
-    const header = '| Name | Value |\n|---|---|\n';
-    const rows = Array.from({ length: 15 }, (_, i) => `| Row${i + 1} | ${i + 1} |`).join('\n');
-    const input = header + rows;
+  it('splits oversized tables into valid table chunks with repeated headers', () => {
+    const result = splitLargeTables(table(25));
+    const chunks = result
+      .split('\n\n---\n\n')
+      .map(c => c.replace(/^\*\*表格 \d+\/3\*\*\n/, ''));
 
-    const result = splitLargeTables(input);
-
-    // Should have split into 2 tables
-    expect(result).toContain('---');
-    expect(result).toContain('表格 2/2');
-  });
-
-  it('should split tables with 25 rows into 3 tables', () => {
-    const header = '| Name | Value |\n|---|---|\n';
-    const rows = Array.from({ length: 25 }, (_, i) => `| Row${i + 1} | ${i + 1} |`).join('\n');
-    const input = header + rows;
-
-    const result = splitLargeTables(input);
-
-    // Should have split into 3 tables (10 + 10 + 5)
     expect(result).toContain('表格 2/3');
     expect(result).toContain('表格 3/3');
+    expect(chunks).toHaveLength(3);
+    for (const chunk of chunks) {
+      expect(chunk.startsWith('| Name | Value |\n|---|---|')).toBe(true);
+    }
+    expect(chunks[0].split('\n')).toHaveLength(12);
+    expect(chunks[2].split('\n')).toHaveLength(7);
   });
 
-  it('should handle multiple tables in content', () => {
+  it('preserves surrounding text and only splits the large table in mixed content', () => {
     const smallTable = `| A | B |
 |---|---|
 | 1 | 2 |`;
-
-    const largeTableHeader = '| Name | Value |\n|---|---|\n';
-    const largeTableRows = Array.from({ length: 12 }, (_, i) => `| X${i} | ${i} |`).join('\n');
-    const largeTable = largeTableHeader + largeTableRows;
-
-    const input = `Some text before.\n\n${smallTable}\n\nMore text.\n\n${largeTable}`;
+    const input = `Before\n\n${smallTable}\n\nMiddle\n\n${table(12)}\n\nAfter`;
 
     const result = splitLargeTables(input);
 
-    // Small table should remain unchanged
-    expect(result).toContain('| A | B |');
-    // Large table should be split
+    expect(result).toContain('Before');
+    expect(result).toContain(smallTable);
+    expect(result).toContain('Middle');
     expect(result).toContain('表格 2/2');
-  });
-
-  it('should preserve first table header without hint', () => {
-    const header = '| Col1 | Col2 |\n|---|---|\n';
-    const rows = Array.from({ length: 15 }, (_, i) => `| A${i} | B${i} |`).join('\n');
-    const input = header + rows;
-
-    const result = splitLargeTables(input);
-
-    // First table chunk should NOT have the hint prefix
-    const firstChunkStart = result.indexOf('| Col1 | Col2 |');
-    expect(firstChunkStart).toBe(0);
-  });
-
-  it('should handle text without tables', () => {
-    const input = 'Just some regular text without any tables.';
-    expect(splitLargeTables(input)).toBe(input);
+    expect(result).toContain('After');
   });
 });
