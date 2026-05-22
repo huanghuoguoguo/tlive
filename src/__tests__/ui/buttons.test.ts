@@ -156,23 +156,15 @@ describe('ui/buttons', () => {
       expect(buttons[0].label).toContain('Topic');
     });
 
-    it('adds settings, permission, provider, and stop controls when supported by context', () => {
+    it('adds only topic-local controls when supported by context', () => {
       const buttons = topicCommandPaletteButtons('zh', {
         isActive: true,
         interactivePermissions: true,
-        settingSources: true,
-        providers: [
-          { kind: 'claude', displayName: 'Claude Code', isDefault: true },
-          { kind: 'codex', displayName: 'Codex' },
-        ],
       });
 
       expect(buttons.map(b => b.callbackData)).toEqual([
         actionCallback('home'),
-        actionCallback('settings'),
         actionCallback('perm'),
-        actionCallback('new', 'claude'),
-        actionCallback('new', 'codex'),
         actionCallback('stop'),
       ]);
     });

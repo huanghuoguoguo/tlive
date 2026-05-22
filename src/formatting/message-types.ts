@@ -228,13 +228,11 @@ export interface TopicCommandPaletteData {
     replyTargetMessageId?: string;
     replyInThread?: boolean;
   };
-  providers?: HomeProviderEntry[];
   capabilities: {
     runtimeMode: AgentProviderRuntimeMode;
     nativeSteer: boolean;
     nativeQueue: boolean;
     interactivePermissions: boolean;
-    settingSources: boolean;
     sessionResume: boolean;
     imageInputs: boolean;
   };

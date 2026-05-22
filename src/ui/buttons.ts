@@ -229,8 +229,6 @@ export function topicCommandPaletteButtons(
   options: {
     isActive?: boolean;
     interactivePermissions?: boolean;
-    settingSources?: boolean;
-    providers?: readonly NewSessionButtonProvider[];
     route?: ActionCallbackRoute;
   } = {},
 ): Button[] {
@@ -247,15 +245,6 @@ export function topicCommandPaletteButtons(
     },
   ];
 
-  if (options.settingSources) {
-    buttons.push({
-      label: locale === 'zh' ? '⚙️ 设置源' : '⚙️ Settings',
-      callbackData: action('settings'),
-      style: 'default',
-      row: 0,
-    });
-  }
-
   if (options.interactivePermissions) {
     buttons.push({
       label: locale === 'zh' ? '🔐 工具审批' : t(locale, 'home.btnPermissions'),
@@ -265,21 +254,11 @@ export function topicCommandPaletteButtons(
     });
   }
 
-  const providers = options.providers ?? [];
-  for (const provider of providers) {
-    buttons.push({
-      label: locale === 'zh' ? `🆕 新 ${provider.displayName}` : `🆕 New ${provider.displayName}`,
-      callbackData: action('new', provider.kind),
-      style: provider.isDefault ? 'primary' : 'default',
-      row: 1,
-    });
-  }
-
   if (options.isActive) {
     buttons.push({
       ...navStop(locale),
       callbackData: action('stop'),
-      row: 1,
+      row: 0,
     });
   }
 

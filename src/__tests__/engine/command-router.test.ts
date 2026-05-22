@@ -366,9 +366,6 @@ describe('CommandRouter /settings', () => {
           threadId: 'thread-1',
           replyInThread: true,
         }),
-        providers: expect.arrayContaining([
-          expect.objectContaining({ kind: 'claude', displayName: 'Claude Code' }),
-        ]),
         capabilities: expect.objectContaining({
           runtimeMode: 'interactive',
         }),
