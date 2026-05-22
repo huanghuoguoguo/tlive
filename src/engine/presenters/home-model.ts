@@ -122,6 +122,7 @@ export function buildTopicEntries(opts: {
           preview: record.preview || record.title || 'Agent 会话',
           provider,
           providerDisplayName: opts.providerDisplayName?.(provider),
+          clientId: record.clientId,
           updatedAt: formatRelativeTime(new Date(record.updatedAt).getTime(), opts.locale),
           isCurrent:
             !!opts.binding?.sdkSessionId &&

@@ -3,7 +3,11 @@ import type { SessionStateManager } from '../state/session-state.js';
 import type { WorkspaceStateManager } from '../state/workspace-state.js';
 import type { SDKEngine } from '../sdk/engine.js';
 import type { PermissionCoordinator } from '../coordinators/permission.js';
-import type { HomeData, HomeProviderEntry } from '../../formatting/message-types.js';
+import type {
+  HomeClientEntry,
+  HomeData,
+  HomeProviderEntry,
+} from '../../formatting/message-types.js';
 import type { QueryControls } from '../../providers/base.js';
 import type { AgentProviderRegistry } from '../../providers/registry.js';
 import { agentSessionKey } from '../../providers/kinds.js';
@@ -49,6 +53,7 @@ export interface HomePayloadBuilderDeps {
   defaultWorkdir: string;
   providers: AgentProviderRegistry;
   topicSessions?: TopicSessionManager;
+  getExecutionClients?: () => HomeClientEntry[];
 }
 
 /**
@@ -72,6 +77,13 @@ export class HomePayloadBuilder {
     } = this.deps;
     const topicSessions = this.deps.topicSessions;
     const binding = await store.getBinding(channelType, chatId);
+    const clients = this.deps.getExecutionClients?.() ?? [];
+    const defaultClient =
+      binding?.clientId && clients.some((client) => client.clientId === binding.clientId)
+        ? binding.clientId
+        : clients.length === 1
+          ? clients[0].clientId
+          : undefined;
     const currentCwd = binding?.cwd || defaultWorkdir;
     const chatKey = state.stateKey(channelType, chatId);
     const now = Date.now();
@@ -129,6 +141,13 @@ export class HomePayloadBuilder {
         defaultKind: providers.defaultProviderKind,
         available: providers.availableForNewSession().map(homeProviderEntry),
         all: providers.list().map(homeProviderEntry),
+      },
+      clients: {
+        defaultClientId: defaultClient,
+        entries: clients.map((client) => ({
+          ...client,
+          isDefault: client.clientId === defaultClient,
+        })),
       },
       workspace: {
         cwd: shortPath(currentCwd),

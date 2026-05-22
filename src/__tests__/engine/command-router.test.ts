@@ -200,7 +200,7 @@ describe('CommandRouter /settings', () => {
     );
   });
 
-  it('rejects registered non-public slash commands from direct chat input', async () => {
+  it('allows restored workbench slash commands from direct chat input', async () => {
     const handled = await router.handle(adapter, {
       channelType: 'feishu',
       chatId: 'c1',
@@ -211,7 +211,7 @@ describe('CommandRouter /settings', () => {
 
     expect(handled).toBe(true);
     expect(adapter.send).toHaveBeenCalledWith(
-      expect.objectContaining({ text: expect.stringContaining('工作台命令') }),
+      expect.objectContaining({ text: expect.stringContaining('Settings') }),
     );
     expect(adapter.format).not.toHaveBeenCalled();
   });

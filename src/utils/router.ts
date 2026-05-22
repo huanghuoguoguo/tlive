@@ -29,6 +29,7 @@ export class ChannelRouter {
     opts?: {
       sdkSessionId?: string;
       provider?: AgentProviderKind;
+      clientId?: string;
       cwd?: string;
       agentSettingSources?: AgentSettingSource[];
       projectName?: string;
@@ -40,6 +41,7 @@ export class ChannelRouter {
       sessionId,
       sdkSessionId: opts?.sdkSessionId,
       provider: opts?.provider,
+      clientId: opts?.clientId,
       cwd: opts?.cwd,
       agentSettingSources: opts?.agentSettingSources,
       projectName: opts?.projectName,

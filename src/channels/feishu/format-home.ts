@@ -7,13 +7,12 @@ import { t } from '../../i18n/index.js';
 import type { FeishuCardElement } from './card-builder.js';
 import type { HomeData } from '../../formatting/message-types.js';
 import type { Button } from '../../ui/types.js';
-import { newSessionButtons, type NewSessionButtonProvider } from '../../ui/buttons.js';
+import type { NewSessionButtonProvider } from '../../ui/buttons.js';
 import { truncate } from '../../core/string.js';
 import { actionCallback } from '../../core/callbacks.js';
 import {
   buttonElements,
   collapsiblePanel,
-  formElement,
   markdownElement,
 } from './card-elements.js';
 
@@ -38,15 +37,15 @@ export interface FormatHomeParams {
 }
 
 export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[] {
-  const { data, locale } = params;
+  const { data } = params;
   const elements: FeishuCardElement[] = [];
 
   elements.push(
     markdownElement(
-      `**新会话默认工作区**\n\`${data.workspace.cwd}\``,
+      `**工作台**\n默认执行节点: ${data.clients?.defaultClientId ? `\`${data.clients.defaultClientId}\`` : '未选择'} · 默认工作区: \`${data.workspace.cwd}\``,
     ),
   );
-  elements.push(...buildNewSessionControls(data, locale));
+  elements.push(...buildClientControls(data));
 
   // Recent topic-backed conversations.
   if (data.session.topics?.length) {
@@ -56,9 +55,10 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
       const currentMark = topic.isCurrent ? ' ◀' : '';
       const sdkShort = topic.sdkSessionId ? topic.sdkSessionId.slice(0, 8) : '-';
       const providerLabel = topic.providerDisplayName ?? 'Agent';
+      const clientLabel = topic.clientId ? ` · ${topic.clientId}` : '';
       topicPanelElements.push(
         markdownElement(
-          `**${topic.index}. ${status} ${truncate(topic.title, 36)}${currentMark}**\n${providerLabel} \`${sdkShort}\` · \`${topic.cwd}\` · ${topic.updatedAt}\n${truncate(topic.preview, 90)}`,
+          `**${topic.index}. ${status} ${truncate(topic.title, 36)}${currentMark}**\n${providerLabel}${clientLabel} \`${sdkShort}\` · \`${topic.cwd}\` · ${topic.updatedAt}\n${truncate(topic.preview, 90)}`,
         ),
       );
       if (topic.sdkSessionId) {
@@ -113,7 +113,6 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
   }
 
   elements.push(collapsiblePanel('🛠️ 诊断', buildDiagnosticsControls()));
-  elements.push(buildWorkbenchCommandForm());
 
   return elements;
 }
@@ -125,25 +124,62 @@ export function homeButtons(
   return [];
 }
 
-function buildNewSessionControls(
-  data: HomeData,
-  locale: Locale,
-): FeishuCardElement[] {
+function buildClientControls(data: HomeData): FeishuCardElement[] {
+  const clients = data.clients?.entries ?? [];
+  if (!clients.length) {
+    return [
+      markdownElement('⚠️ 当前没有可用执行节点。请启动 `tlive client` 或启用本机 local client。'),
+    ];
+  }
+
+  const elements: FeishuCardElement[] = [];
+  for (const client of clients) {
+    const title = `${client.online ? '🟢' : '🔴'} ${client.name || client.clientId}${client.isDefault ? ' ◀' : ''}`;
+    const workspace =
+      client.workspaces.find((entry) => entry.isDefault)?.path ?? client.workspaces[0]?.path ?? '-';
+    const providers = client.providers
+      .filter((provider) => provider.available)
+      .map((provider) => provider.displayName)
+      .join(' / ') || 'none';
+    const body: FeishuCardElement[] = [
+      markdownElement(
+        `ID: \`${client.clientId}\`${client.isLocal ? ' · local' : ''}\nProvider: ${providers}\n工作区: \`${workspace}\`\n并发: ${client.activeTurns}/${client.maxConcurrency}${client.version ? ` · ${client.version}` : ''}`,
+      ),
+    ];
+    const buttons: Button[] = [
+      {
+        label: '设为默认',
+        callbackData: actionCallback('use', client.clientId),
+        style: client.isDefault ? 'default' : 'primary',
+        row: 0,
+      },
+      ...client.providers
+        .filter((provider) => provider.available)
+        .map((provider, index) => ({
+          label: `新建 ${provider.displayName}`,
+          callbackData: actionCallback('new', provider.kind, client.clientId),
+          style: 'default' as const,
+          row: Math.floor(index / 2) + 1,
+        })),
+    ];
+    body.push(...buttonElements(buttons));
+    elements.push(collapsiblePanel(title, body));
+  }
+
   const buttons: Button[] = [
-    ...newSessionButtons(locale, data.providers?.available ?? [], 0),
     {
       label: '查看最近会话',
       callbackData: actionCallback('home-topics'),
-      row: 1,
+      row: 0,
     },
     {
       label: '查看本地历史',
       callbackData: actionCallback('home-history'),
-      row: 1,
+      row: 0,
     },
   ];
-
-  return buttonElements(buttons);
+  elements.push(...buttonElements(buttons));
+  return elements;
 }
 
 function buildDiagnosticsControls(): FeishuCardElement[] {
@@ -151,22 +187,4 @@ function buildDiagnosticsControls(): FeishuCardElement[] {
     { label: 'Bridge 状态', callbackData: actionCallback('status'), row: 0 },
     { label: '内部诊断', callbackData: actionCallback('diagnose'), row: 0 },
   ]);
-}
-
-function buildWorkbenchCommandForm(): FeishuCardElement {
-  return formElement(
-    'form_tlive_command',
-    [
-      {
-        tag: 'input',
-        name: '_tlive_command',
-        placeholder: {
-          tag: 'plain_text',
-          content: '输入 TLive 命令，例如 cd /repo、bash pwd',
-        },
-        required: false,
-      },
-    ],
-    [{ label: '执行', callbackData: 'form:tlive_command', style: 'primary', row: 0 }],
-  );
 }

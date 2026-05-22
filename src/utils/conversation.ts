@@ -116,6 +116,7 @@ export function preparePromptWithFileAttachments(
 
 interface ProcessMessageParams {
   sdkSessionId?: string;
+  clientId?: string;
   workingDirectory: string;
   text: string;
   attachments?: FileAttachment[];
@@ -236,6 +237,7 @@ export class ConversationEngine {
           workingDirectory: params.workingDirectory,
           model: params.model,
           sessionId: params.sdkSessionId,
+          clientId: params.clientId,
           attachments: imageAttachments?.length ? imageAttachments : undefined,
           onPermissionRequest: params.sdkPermissionHandler,
           onAskUserQuestion: params.sdkAskQuestionHandler,

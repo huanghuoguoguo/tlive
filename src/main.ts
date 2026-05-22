@@ -4,6 +4,9 @@ import { JsonFileStore } from './store/json-file.js';
 import { createAgentProviderRegistry } from './providers/factory.js';
 import { BridgeManager } from './engine/coordinators/bridge-manager.js';
 import { FeishuAdapter } from './channels/feishu/adapter.js';
+import { RemoteClientRegistry } from './server/client-registry.js';
+import { LOCAL_CLIENT_ID } from './server/client-agent-provider.js';
+import type { HomeClientEntry } from './formatting/message-types.js';
 import {
   checkForUpdates,
   getCurrentVersion,
@@ -348,19 +351,88 @@ export async function main() {
   logger.info('Enabled channel: feishu');
 
   const startedAt = new Date().toISOString();
+  const remoteClients = config.remote.server.enabled
+    ? new RemoteClientRegistry({
+        port: config.remote.server.port,
+        path: config.remote.server.path,
+        token: config.remote.server.token,
+        heartbeatIntervalMs: config.remote.server.heartbeatIntervalMs,
+        clientTimeoutMs: config.remote.server.clientTimeoutMs,
+      })
+    : undefined;
+  remoteClients?.start();
 
   // Write startup status
   writeStatusFile({
     pid: process.pid,
     startedAt,
     channels: ['feishu'],
+    remoteServer: config.remote.server.enabled
+      ? {
+          port: config.remote.server.port,
+          path: config.remote.server.path,
+          providers: config.remote.server.providers,
+        }
+      : undefined,
     version: getCurrentVersion(),
   });
 
   // Initialize components
   const store = new JsonFileStore(join(tliveHome, 'data'));
-  const providers = createAgentProviderRegistry(config);
+  const providers = createAgentProviderRegistry(config, { remoteClientRegistry: remoteClients });
   const llm = providers.defaultProvider;
+  const getExecutionClients = (): HomeClientEntry[] => {
+    const localProviders = providers
+      .availableForNewSession()
+      .filter(() => config.remote.server.localClientEnabled)
+      .map((provider) => ({
+        kind: provider.kind,
+        displayName: provider.displayName,
+        available: provider.available,
+        isDefault: provider.isDefault,
+        reason: provider.reason,
+      }));
+    const localClient: HomeClientEntry[] =
+      config.remote.server.localClientEnabled && localProviders.length
+        ? [
+            {
+              clientId: LOCAL_CLIENT_ID,
+              name: 'local',
+              online: true,
+              isDefault: false,
+              isLocal: true,
+              activeTurns: 0,
+              maxConcurrency: 1,
+              workspaces: [{ path: config.defaultWorkdir, isDefault: true }],
+              providers: localProviders,
+              version: getCurrentVersion(),
+            },
+          ]
+        : [];
+    const remote = remoteClients?.listClients().map((client) => ({
+      clientId: client.clientId,
+      name: client.name,
+      online: true,
+      isDefault: false,
+      activeTurns: client.activeTurns,
+      maxConcurrency: client.maxConcurrency,
+      workspaces: client.workspaces.map((workspace, index) => ({
+        path: workspace.path,
+        label: workspace.label,
+        isDefault: index === 0,
+      })),
+      providers: client.providers.map((provider) => ({
+        kind: provider.kind,
+        displayName: provider.displayName,
+        available: provider.available,
+        isDefault: false,
+        reason: provider.reason,
+      })),
+      lastSeenAt: new Date(client.lastSeenAt).toISOString(),
+      version: client.version,
+    })) ?? [];
+    return [...localClient, ...remote];
+  };
 
   // Start Bridge Manager with enabled IM adapters
   const manager = new BridgeManager({
@@ -369,6 +441,7 @@ export async function main() {
     providers,
     defaultWorkdir: config.defaultWorkdir,
     config,
+    getExecutionClients,
   });
   manager.registerAdapter(
     new FeishuAdapter(config.feishu, {
@@ -385,6 +458,13 @@ export async function main() {
     startedAt,
     readyAt: new Date().toISOString(),
     channels: ['feishu'],
+    remoteServer: config.remote.server.enabled
+      ? {
+          port: config.remote.server.port,
+          path: config.remote.server.path,
+          providers: config.remote.server.providers,
+        }
+      : undefined,
     version: getCurrentVersion(),
   });
 
@@ -484,6 +564,7 @@ export async function main() {
       exitReason: reason,
     });
     await manager.stop();
+    remoteClients?.stop();
     logger.close();
     process.exit(0);
   };

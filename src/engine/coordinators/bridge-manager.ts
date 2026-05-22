@@ -14,6 +14,7 @@ import {
   type AutomationPromptResult,
 } from '../automation/prompt-injector.js';
 import type { BridgeStore } from '../../store/interface.js';
+import type { HomeClientEntry } from '../../formatting/message-types.js';
 import type { AgentProvider } from '../../providers/base.js';
 import type { AgentProviderRegistry } from '../../providers/registry.js';
 import {
@@ -36,6 +37,7 @@ interface BridgeManagerDeps {
   providers?: AgentProviderRegistry;
   defaultWorkdir: string;
   config?: Config;
+  getExecutionClients?: () => HomeClientEntry[];
 }
 
 export class BridgeManager implements AutomationBridge {
@@ -72,6 +74,7 @@ export class BridgeManager implements AutomationBridge {
       defaultWorkdir,
       config,
       getAdapters: () => this.adapters,
+      getExecutionClients: deps.getExecutionClients,
       appendSystemPrompt,
     };
     this.components = createBridgeComponents(factoryDeps);

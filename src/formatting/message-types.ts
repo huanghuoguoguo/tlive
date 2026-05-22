@@ -89,6 +89,7 @@ export interface HomeTopicEntry {
   preview: string;
   provider?: AgentProviderKind;
   providerDisplayName?: string;
+  clientId?: string;
   updatedAt: string;
   isCurrent: boolean;
   isActive: boolean;
@@ -124,12 +125,30 @@ export interface HomeProviderEntry {
   reason?: string;
 }
 
+export interface HomeClientEntry {
+  clientId: string;
+  name: string;
+  online: boolean;
+  isDefault: boolean;
+  isLocal?: boolean;
+  activeTurns: number;
+  maxConcurrency: number;
+  workspaces: Array<{ path: string; label?: string; isDefault?: boolean }>;
+  providers: HomeProviderEntry[];
+  lastSeenAt?: string;
+  version?: string;
+}
+
 /** Home screen for /home command */
 export interface HomeData {
   providers?: {
     defaultKind: AgentProviderKind;
     available: HomeProviderEntry[];
     all: HomeProviderEntry[];
+  };
+  clients?: {
+    defaultClientId?: string;
+    entries: HomeClientEntry[];
   };
   workspace: {
     cwd: string;

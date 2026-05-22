@@ -39,7 +39,7 @@ describe('bridge E2E harness', () => {
 
     const handled = await harness.manager.handleInboundMessage(
       harness.adapter,
-      harness.adapter.inbound({ text: 'please answer from fake Claude' }),
+      harness.adapter.inbound(topicMessage('please answer from fake Claude')),
       'e2e-query',
     );
 
@@ -51,11 +51,25 @@ describe('bridge E2E harness', () => {
     expect(allRenderedText(harness.adapter)).toContain('E2E final answer');
   });
 
+  it('treats plain workbench text as command-only guidance instead of starting a session', async () => {
+    harness = createE2EHarness('This should not run');
+
+    const handled = await harness.manager.handleInboundMessage(
+      harness.adapter,
+      harness.adapter.inbound({ text: 'please answer from the workbench' }),
+      'e2e-workbench-plain-text',
+    );
+
+    expect(handled).toBe(true);
+    expect(harness.claude.prompts).toHaveLength(0);
+    expect(allRenderedText(harness.adapter)).toContain('主窗口只处理 TLive 命令');
+  });
+
   it('polls the adapter loop after manager start and dispatches queued inbound messages', async () => {
     harness = createE2EHarness('Loop final answer');
     await harness.manager.start();
 
-    harness.adapter.push({ text: 'message from adapter queue' });
+    harness.adapter.push(topicMessage('message from adapter queue'));
 
     await waitFor(() => allRenderedText(harness!.adapter).includes('Loop final answer'));
     const bindings = await harness.store.listBindings();
@@ -63,18 +77,16 @@ describe('bridge E2E harness', () => {
     expect(bindings.some((binding) => binding.sdkSessionId === 'sdk-session-1')).toBe(true);
   });
 
-  it('routes follow-up messages through the auto-created topic while a turn is active', async () => {
+  it('routes follow-up messages through the topic while a turn is active', async () => {
     harness = createE2EHarness(delayedTrace('Long turn finished'));
     await harness.manager.start();
 
-    const first = harness.adapter.push({ text: 'start a slow task' });
+    const first = harness.adapter.push(topicMessage('start a slow task'));
     await waitFor(() => harness!.claude.prompts.length > 0);
-    const threadId = `thread-${first.messageId}`;
-    const topicScopeId = `chat-1#thread:${threadId}`;
     harness.adapter.push({
       text: 'please add this while running',
-      threadId,
-      scopeId: topicScopeId,
+      threadId: first.threadId,
+      scopeId: first.scopeId,
       replyInThread: true,
       replyTargetMessageId: first.messageId,
       threadRootMessageId: first.messageId,
@@ -94,16 +106,15 @@ describe('bridge E2E harness', () => {
     harness = createE2EHarness(delayedTrace('This should eventually finish after stop'));
     await harness.manager.start();
 
-    const first = harness.adapter.push({ text: 'start a slow task' });
+    const first = harness.adapter.push(topicMessage('start a slow task'));
     await waitFor(() => harness!.claude.prompts.length > 0);
 
-    const threadId = `thread-${first.messageId}`;
     const stopHandled = await harness.manager.handleInboundMessage(
       harness.adapter,
       harness.adapter.inbound({
         text: '/stop',
-        threadId,
-        scopeId: `chat-1#thread:${threadId}`,
+        threadId: first.threadId,
+        scopeId: first.scopeId,
         replyInThread: true,
         replyTargetMessageId: first.messageId,
         threadRootMessageId: first.messageId,
@@ -271,7 +282,7 @@ describe('bridge E2E harness', () => {
 
     const queryPromise = harness.manager.handleInboundMessage(
       harness.adapter,
-      harness.adapter.inbound({ text: 'update README after approval' }),
+      harness.adapter.inbound(topicMessage('update README after approval')),
       'e2e-permission',
     );
 
@@ -320,7 +331,7 @@ describe('bridge E2E harness', () => {
 
     const handled = await harness.manager.handleInboundMessage(
       harness.adapter,
-      harness.adapter.inbound({ text: 'run pwd' }),
+      harness.adapter.inbound(topicMessage('run pwd')),
       'e2e-tool-events',
     );
 
@@ -336,7 +347,7 @@ describe('bridge E2E harness', () => {
 
     const handled = await harness.manager.handleInboundMessage(
       harness.adapter,
-      harness.adapter.inbound({ text: 'produce a long answer' }),
+      harness.adapter.inbound(topicMessage('produce a long answer')),
       'e2e-long-output',
     );
 
@@ -369,7 +380,7 @@ describe('bridge E2E harness', () => {
 
     const handled = await harness.manager.handleInboundMessage(
       harness.adapter,
-      harness.adapter.inbound({ text: 'resume stale session' }),
+      harness.adapter.inbound(topicMessage('resume stale session')),
       'e2e-stale-session',
     );
 
@@ -437,7 +448,7 @@ describe('bridge E2E harness', () => {
 
     const queryPromise = harness.manager.handleInboundMessage(
       harness.adapter,
-      harness.adapter.inbound({ text: 'ask me a question first' }),
+      harness.adapter.inbound(topicMessage('ask me a question first')),
       'e2e-question',
     );
 
@@ -479,7 +490,7 @@ describe('bridge E2E harness', () => {
 
     const queryPromise = harness.manager.handleInboundMessage(
       harness.adapter,
-      harness.adapter.inbound({ text: 'enter plan mode' }),
+      harness.adapter.inbound(topicMessage('enter plan mode')),
       'e2e-deferred',
     );
 
@@ -578,6 +589,17 @@ describe('bridge E2E harness', () => {
     }
   });
 });
+
+function topicMessage(text: string) {
+  return {
+    text,
+    threadId: 'thread-1',
+    scopeId: 'chat-1#thread:thread-1',
+    replyInThread: true,
+    replyTargetMessageId: 'topic-root',
+    threadRootMessageId: 'topic-root',
+  };
+}
 
 async function* longRunningTrace(text: string): AsyncIterable<import('../../canonical/schema.js').CanonicalEvent> {
   yield {

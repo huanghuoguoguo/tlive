@@ -134,6 +134,7 @@ export class QueryOrchestrator {
             sdkSessionId: sessionTarget.sdkSessionId,
             cwd: sessionTarget.workdir,
             provider: sessionTarget.provider ?? binding.provider,
+            clientId: sessionTarget.clientId ?? binding.clientId,
           };
 
     ctx.sessionId = routeBinding.sessionId;

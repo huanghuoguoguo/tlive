@@ -39,7 +39,7 @@ function findFirstTaggedElement(elements: any[], tag: string): any | undefined {
 
 describe('command presenter', () => {
   describe('presentHome', () => {
-    it('renders the workbench operation form without losing defaults', () => {
+    it('renders the workbench client controls without losing defaults', () => {
       const msg = presentHome('chat-1', {
         workspace: { cwd: '/home/user/project' },
         task: { active: false },
@@ -47,7 +47,31 @@ describe('command presenter', () => {
         bridge: { healthy: true },
         session: {
           recent: [
-            { index: 1, date: '1月1日 12:00', preview: 'Recent task', isCurrent: true, cwd: '/home/user/project' },
+            {
+              index: 1,
+              date: '1月1日 12:00',
+              preview: 'Recent task',
+              isCurrent: true,
+              cwd: '/home/user/project',
+            },
+          ],
+        },
+        clients: {
+          defaultClientId: 'local',
+          entries: [
+            {
+              clientId: 'local',
+              name: 'local',
+              online: true,
+              isDefault: true,
+              isLocal: true,
+              activeTurns: 0,
+              maxConcurrency: 1,
+              workspaces: [{ path: '/home/user/project', isDefault: true }],
+              providers: [
+                { kind: 'claude', displayName: 'Claude', available: true, isDefault: true },
+              ],
+            },
           ],
         },
       });
@@ -55,19 +79,12 @@ describe('command presenter', () => {
       expect(formatted.feishuHeader?.template).toBe('blue');
       expect(formatted.feishuElements?.[0]).toMatchObject({
         tag: 'markdown',
-        content: expect.stringContaining('新会话默认工作区'),
+        content: expect.stringContaining('工作台'),
       });
 
-      const commandForm = formatted.feishuElements?.at(-1) as any;
-      expect(commandForm).toMatchObject({ tag: 'form', name: 'form_tlive_command' });
-      expect(commandForm?.elements).toContainEqual(expect.objectContaining({
-        tag: 'input',
-        name: '_tlive_command',
-      }));
-      expect(findFirstTaggedElement(commandForm?.elements ?? [], 'button')).toMatchObject({
-        name: 'tlive_command',
-        form_action_type: 'submit',
-      });
+      const rendered = JSON.stringify(formatted.feishuElements);
+      expect(rendered).toContain('local');
+      expect(rendered).toContain('新建 Claude');
     });
 
     it('keeps Feishu home card under the platform element limit', () => {

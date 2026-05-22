@@ -43,6 +43,7 @@ export interface TopicSessionBindingSnapshot {
   cwd?: string;
   sdkSessionId?: string;
   provider?: ChannelBinding['provider'];
+  clientId?: string;
 }
 
 interface ClaimedThreadSession {
@@ -120,6 +121,7 @@ export class TopicConversationService {
       lastMessageId: updates.lastMessageId ?? msg.replyTargetMessageId ?? msg.messageId,
       sdkSessionId: updates.sdkSessionId ?? binding.sdkSessionId,
       provider: binding.provider,
+      clientId: binding.clientId,
       cwd: binding.cwd || this.options.defaultWorkdir,
       title: preview,
       preview,
@@ -198,6 +200,7 @@ export class TopicConversationService {
         sessionId: moved.bindingSessionId,
         sdkSessionId: moved.sdkSessionId,
         provider: moved.provider ?? oldBinding?.provider ?? binding.provider,
+        clientId: oldBinding?.clientId ?? binding.clientId,
         cwd: moved.workdir,
         agentSettingSources: oldBinding?.agentSettingSources ?? binding.agentSettingSources,
         projectName: oldBinding?.projectName ?? binding.projectName,

@@ -10,7 +10,7 @@ import type { ChannelRouter } from '../../utils/router.js';
 import type { SDKEngine, SessionCleanupReason } from '../sdk/engine.js';
 import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { AgentSettingSource, ProjectsValidationResult } from '../../config.js';
-import type { HelpCommandEntry, HomeData } from '../../formatting/message-types.js';
+import type { HelpCommandEntry, HomeClientEntry, HomeData } from '../../formatting/message-types.js';
 import type { Locale } from '../../i18n/index.js';
 import type { HelpCategoryId } from './help-categories.js';
 import type { TopicSessionManager } from '../state/topic-sessions.js';
@@ -58,6 +58,7 @@ export interface CommandServices {
   defaultAgentSettingSources: AgentSettingSource[];
   getAdapters: () => Map<string, BaseChannelAdapter>;
   topicSessions?: TopicSessionManager;
+  getExecutionClients?: () => HomeClientEntry[];
 }
 
 /** Context passed to each command handler */

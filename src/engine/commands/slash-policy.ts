@@ -1,6 +1,23 @@
 import type { CommandHandler } from './types.js';
 
-const PUBLIC_TEXT_COMMANDS = new Set(['/tlive', '/home', '/stop']);
+const PUBLIC_TEXT_COMMANDS = new Set([
+  '/tlive',
+  '/home',
+  '/stop',
+  '/use',
+  '/new',
+  '/cd',
+  '/pwd',
+  '/bash',
+  '/status',
+  '/diagnose',
+  '/help',
+  '/perm',
+  '/settings',
+  '/restart',
+  '/upgrade',
+  '/continue',
+]);
 
 export function isPublicTextCommand(commandName: string): boolean {
   return PUBLIC_TEXT_COMMANDS.has(commandName.toLowerCase());

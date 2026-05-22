@@ -114,6 +114,28 @@ TL_PROVIDER=codex
 
 工作台只会显示检测到本地 CLI 的新会话按钮。安装 `claude` 后可创建 Claude Code 会话，安装 `codex` 后可创建 Codex 会话。
 
+### 远端 Worker
+
+中心机器可以只运行飞书 Bot 和调度层，多台工作机通过 WebSocket 连接回来执行本机 Claude/Codex 会话。
+
+中心机器：
+
+```env
+TL_REMOTE_SERVER_ENABLED=true
+TL_REMOTE_TOKEN=change-this-token
+TL_REMOTE_PROVIDERS=claude,codex
+```
+
+```bash
+tlive server
+```
+
+工作机：
+
+```bash
+tlive client --server ws://your-server:8787/tlive --token change-this-token --workspace /path/to/project
+```
+
 Codex runtime 配置：
 
 ```env

@@ -13,6 +13,7 @@ import { HelpCommand } from './help.js';
 import { UpgradeCommand } from './upgrade.js';
 import { RestartCommand } from './restart.js';
 import { DiagnoseCommand } from './diagnose.js';
+import { UseCommand } from './use.js';
 
 /** Register all built-in commands */
 export function registerAllCommands(): void {
@@ -33,6 +34,7 @@ export function registerAllCommands(): void {
   commandRegistry.register(new UpgradeCommand());
   commandRegistry.register(new RestartCommand());
   commandRegistry.register(new DiagnoseCommand());
+  commandRegistry.register(new UseCommand());
 }
 
 export { commandRegistry } from './registry.js';

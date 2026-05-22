@@ -302,6 +302,20 @@ export function createE2EHarness(scenario?: Scenario): E2EHarness {
     llm: claude as unknown as ClaudeSDKProvider,
     defaultWorkdir: root,
     config,
+    getExecutionClients: () => [
+      {
+        clientId: 'local',
+        name: 'local',
+        online: true,
+        isDefault: true,
+        isLocal: true,
+        activeTurns: 0,
+        maxConcurrency: 1,
+        workspaces: [{ path: root, isDefault: true }],
+        providers: [{ kind: 'claude', displayName: 'Claude', available: true, isDefault: true }],
+        version: 'test',
+      },
+    ],
   });
   manager.registerAdapter(adapter);
 
@@ -395,6 +409,28 @@ function testConfig(root: string): Config {
     },
     ui: {
       doneButtons: ['home'],
+    },
+    remote: {
+      server: {
+        enabled: false,
+        localClientEnabled: true,
+        port: 8787,
+        path: '/tlive',
+        token: 'remote-token',
+        providers: ['claude', 'codex'],
+        heartbeatIntervalMs: 30_000,
+        clientTimeoutMs: 90_000,
+      },
+      client: {
+        serverUrl: 'ws://127.0.0.1:8787/tlive',
+        token: 'remote-token',
+        clientId: 'test-client',
+        name: 'test-client',
+        providers: ['claude', 'codex'],
+        workspaces: [root],
+        maxConcurrency: 1,
+        reconnectIntervalMs: 3000,
+      },
     },
   };
 }

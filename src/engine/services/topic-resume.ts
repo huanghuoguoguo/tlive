@@ -129,6 +129,7 @@ export class TopicResumeService {
       {
         sdkSessionId: target.sdkSessionId,
         provider: target.provider,
+        clientId: existing?.clientId ?? source?.clientId ?? record.clientId,
         cwd: target.cwd,
         agentSettingSources: existing?.agentSettingSources ?? source?.agentSettingSources,
         projectName: existing?.projectName ?? source?.projectName,
@@ -160,6 +161,7 @@ export class TopicResumeService {
       ...record,
       sdkSessionId: target.sdkSessionId,
       provider: target.provider,
+      clientId: record.clientId,
       cwd: target.cwd,
       title: record.title || target.preview,
       preview: target.preview,
@@ -190,6 +192,7 @@ export class TopicResumeService {
     await this.ctx.services.router.rebind(this.ctx.msg.channelType, scopeId, generateSessionId(), {
       sdkSessionId: target.sdkSessionId,
       provider: target.provider,
+      clientId: currentBinding?.clientId,
       cwd: target.cwd,
       agentSettingSources: currentBinding?.agentSettingSources,
       projectName: currentBinding?.projectName,
@@ -205,6 +208,7 @@ export class TopicResumeService {
       lastMessageId: topic.lastMessageId,
       sdkSessionId: target.sdkSessionId,
       provider: target.provider,
+      clientId: currentBinding?.clientId,
       cwd: target.cwd,
       title: topicTitle,
       preview: target.preview,

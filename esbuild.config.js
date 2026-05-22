@@ -15,6 +15,7 @@ const common = {
   external: [
     '@anthropic-ai/*',
     '@larksuiteoapi/*',
+    'ws',
     'undici',
   ],
   sourcemap: true,
@@ -25,6 +26,7 @@ const common = {
 
 const entryPoints = [
   { entry: 'src/main.ts', outfile: 'dist/main.mjs' },
+  { entry: 'src/client/main.ts', outfile: 'dist/client.mjs' },
   { entry: 'src/providers/claude-setup-wizard.ts', outfile: 'dist/setup.mjs' },
 ];
 

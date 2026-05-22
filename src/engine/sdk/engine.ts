@@ -62,6 +62,7 @@ export interface ResolvedSessionTarget {
   workdir: string;
   sdkSessionId?: string;
   provider?: AgentProviderKind;
+  clientId?: string;
   source: 'reply' | 'current';
 }
 
@@ -178,6 +179,7 @@ export class SDKEngine {
       cwd?: string;
       sdkSessionId?: string;
       provider?: AgentProviderKind;
+      clientId?: string;
     },
     defaultWorkdir: string,
     replyToMessageId?: string,
@@ -198,6 +200,7 @@ export class SDKEngine {
           workdir: managed.workdir,
           sdkSessionId: managed.sdkSessionId,
           provider: managed.provider,
+          clientId: managed.clientId,
           source: 'reply',
         },
       };
@@ -210,7 +213,7 @@ export class SDKEngine {
       binding.sessionId,
       workdir,
       binding.sdkSessionId,
-      { setAsCurrent: true, provider: binding.provider },
+      { setAsCurrent: true, provider: binding.provider, clientId: binding.clientId },
     );
     return {
       target: {
@@ -218,8 +221,9 @@ export class SDKEngine {
         bindingSessionId: binding.sessionId,
         workdir,
         sdkSessionId: binding.sdkSessionId,
-        provider: binding.provider,
-        source: 'current',
+          provider: binding.provider,
+          clientId: binding.clientId,
+          source: 'current',
       },
     };
   }

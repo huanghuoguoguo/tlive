@@ -122,6 +122,34 @@ export interface Config {
     /** Buttons shown on completed/failed task cards and task summary cards. */
     doneButtons: QuickButtonName[];
   };
+  /** Remote client/server split configuration. */
+  remote: {
+    server: {
+      enabled: boolean;
+      localClientEnabled: boolean;
+      port: number;
+      path: string;
+      token: string;
+      providers: AgentProviderKind[];
+      heartbeatIntervalMs: number;
+      clientTimeoutMs: number;
+    };
+    client: {
+      serverUrl: string;
+      token: string;
+      clientId: string;
+      name: string;
+      providers: AgentProviderKind[];
+      workspaces: string[];
+      maxConcurrency: number;
+      reconnectIntervalMs: number;
+    };
+  };
+}
+
+export interface LoadConfigOptions {
+  /** Set false for tlive client workers, which do not need Feishu credentials. */
+  validateBridge?: boolean;
 }
 
 /** Validate a single project config */
@@ -256,6 +284,13 @@ function normalizeProvider(value: string | undefined): ProviderKind {
   return value === 'codex' ? 'codex' : DEFAULT_AGENT_PROVIDER_KIND;
 }
 
+function normalizeProviderList(value: string | undefined): AgentProviderKind[] {
+  const providers = parseList(value)
+    .map((item) => normalizeProvider(item))
+    .filter((item, index, arr) => arr.indexOf(item) === index);
+  return providers.length ? providers : [DEFAULT_AGENT_PROVIDER_KIND];
+}
+
 function normalizeCodexSandboxMode(value: string | undefined): CodexSandboxMode {
   if (value === 'read-only' || value === 'danger-full-access') return value;
   return 'workspace-write';
@@ -317,7 +352,7 @@ function loadEnvFile(path: string): Record<string, string> {
   }
 }
 
-export function loadConfig(): Config {
+export function loadConfig(options: LoadConfigOptions = {}): Config {
   // 1. Load env file
   const envFile = loadEnvFile(join(getTliveHome(), 'config.env'));
 
@@ -334,6 +369,8 @@ export function loadConfig(): Config {
     process.env[key] ?? envFile[key] ?? defaultValue;
 
   const port = parseInt(get('TL_PORT', '8080'), 10);
+  const remoteToken = get('TL_REMOTE_TOKEN', get('TL_TOKEN'));
+  const remoteProviders = normalizeProviderList(get('TL_REMOTE_PROVIDERS', 'claude,codex'));
 
   const config: Config = {
     port,
@@ -388,14 +425,50 @@ export function loadConfig(): Config {
     ui: {
       doneButtons: normalizeQuickButtonNames(get('TL_DONE_BUTTONS', 'home')),
     },
+    remote: {
+      server: {
+        enabled: get('TL_REMOTE_SERVER_ENABLED', 'false') === 'true',
+        localClientEnabled: get('TL_LOCAL_CLIENT_ENABLED', 'true') !== 'false',
+        port: parseInt(get('TL_REMOTE_SERVER_PORT', '8787'), 10),
+        path: normalizeWebhookPath(get('TL_REMOTE_SERVER_PATH', '/tlive')),
+        token: remoteToken,
+        providers: remoteProviders,
+        heartbeatIntervalMs: Math.max(
+          5_000,
+          Number.parseInt(get('TL_REMOTE_HEARTBEAT_MS', '30000'), 10) || 30_000,
+        ),
+        clientTimeoutMs: Math.max(
+          10_000,
+          Number.parseInt(get('TL_REMOTE_CLIENT_TIMEOUT_MS', '90000'), 10) || 90_000,
+        ),
+      },
+      client: {
+        serverUrl: get('TL_REMOTE_SERVER_URL', 'ws://127.0.0.1:8787/tlive'),
+        token: remoteToken,
+        clientId: get('TL_REMOTE_CLIENT_ID'),
+        name: get('TL_REMOTE_CLIENT_NAME'),
+        providers: normalizeProviderList(get('TL_REMOTE_CLIENT_PROVIDERS', remoteProviders.join(','))),
+        workspaces: parseList(get('TL_REMOTE_WORKSPACES', get('TL_DEFAULT_WORKDIR', process.cwd()))),
+        maxConcurrency: Math.max(
+          1,
+          Number.parseInt(get('TL_REMOTE_MAX_CONCURRENCY', '1'), 10) || 1,
+        ),
+        reconnectIntervalMs: Math.max(
+          500,
+          Number.parseInt(get('TL_REMOTE_RECONNECT_MS', '3000'), 10) || 3000,
+        ),
+      },
+    },
   };
 
   // Validate required fields
-  if (!config.token) {
+  if (options.validateBridge !== false && !config.token) {
     throw new Error('Config error: TL_TOKEN is required');
   }
 
-  validateFeishuConfig(config);
+  if (options.validateBridge !== false) {
+    validateFeishuConfig(config);
+  }
 
   return config;
 }

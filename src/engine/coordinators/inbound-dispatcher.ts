@@ -3,6 +3,7 @@ import type { InboundMessage } from '../../channels/types.js';
 import { generateRequestId, type LogContext } from '../../logger.js';
 import type { CommandRouter } from '../command-router.js';
 import { publicTextCommandName } from '../commands/slash-policy.js';
+import { conversationSurface } from '../conversations/surface-policy.js';
 import { handleCallbackMessage } from '../messages/callback-dispatcher.js';
 import type { TextDispatcher } from '../messages/text-dispatcher.js';
 import type { SDKEngine } from '../sdk/engine.js';
@@ -107,6 +108,18 @@ export class InboundDispatcher {
         console.log(`[bridge] ${ctx.requestId} CMD ${msg.text.split(' ')[0]}`);
         return true;
       }
+    }
+
+    if (conversationSurface({ threadId: msg.threadId, scopeId: msg.scopeId }) === 'workbench') {
+      await adapter
+        .send(
+          {
+            chatId: msg.chatId,
+            text: '⚠️ 主窗口只处理 TLive 命令。请用 /home 打开工作台并点击新建会话，或使用 /new claude 创建话题。',
+          },
+        )
+        .catch(() => {});
+      return true;
     }
 
     return query.run(adapter, msg, ctx.requestId);

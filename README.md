@@ -112,6 +112,28 @@ TL_PROVIDER=codex
 
 The workbench shows new-session buttons only for detected local CLIs. Install `claude` for Claude Code sessions and `codex` for Codex sessions.
 
+### Remote Workers
+
+One machine can run the Feishu bot and scheduler while worker machines connect over WebSocket and run local Claude/Codex sessions.
+
+Server machine:
+
+```env
+TL_REMOTE_SERVER_ENABLED=true
+TL_REMOTE_TOKEN=change-this-token
+TL_REMOTE_PROVIDERS=claude,codex
+```
+
+```bash
+tlive server
+```
+
+Worker machine:
+
+```bash
+tlive client --server ws://your-server:8787/tlive --token change-this-token --workspace /path/to/project
+```
+
 Codex runtime options:
 
 ```env

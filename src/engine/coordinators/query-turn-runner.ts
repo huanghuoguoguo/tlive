@@ -76,6 +76,7 @@ export class QueryTurnRunner {
         workdir,
         options: {
           sessionId: binding.sdkSessionId,
+          clientId: binding.clientId,
           settingSources,
           appendSystemPrompt: this.options.appendSystemPrompt,
           setAsCurrent:
@@ -108,6 +109,7 @@ export class QueryTurnRunner {
       provider,
       sdkSessionId: binding.sdkSessionId,
       workingDirectory: workdir,
+      clientId: binding.clientId,
       settingSources,
       text: promptText,
       attachments: imageAttachments,

@@ -50,6 +50,8 @@ export interface StreamChatParams {
   workingDirectory: string;
   model?: string;
   sessionId?: string;
+  /** Execution client id selected by the control plane. */
+  clientId?: string;
   permissionMode?: 'acceptEdits' | 'plan' | 'default';
   attachments?: FileAttachment[];
   abortSignal?: AbortSignal;
@@ -68,6 +70,8 @@ export interface StreamChatParams {
 export interface CreateSessionParams {
   workingDirectory: string;
   sessionId?: string;
+  /** Execution client id selected by the control plane. */
+  clientId?: string;
   effort?: EffortLevel;
   model?: string;
   settingSources?: AgentSettingSource[];

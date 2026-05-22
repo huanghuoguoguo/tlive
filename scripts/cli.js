@@ -17,6 +17,7 @@ const RUNTIME_DIR = join(TLIVE_HOME, 'runtime');
 const LOG_DIR = join(TLIVE_HOME, 'logs');
 const BRIDGE_PID = join(RUNTIME_DIR, 'bridge.pid');
 const BRIDGE_ENTRY = join(PACKAGE_ROOT, 'dist', 'main.mjs');
+const CLIENT_ENTRY = join(PACKAGE_ROOT, 'dist', 'client.mjs');
 const CONFIG_FILE = join(TLIVE_HOME, 'config.env');
 const UPGRADE_RESULT_FILE = join(RUNTIME_DIR, 'upgrade-result.json');
 const STATUS_FILE = join(RUNTIME_DIR, 'status.json');
@@ -627,6 +628,8 @@ Setup (one-time):
 
 Service Management:
   tlive start                Start Feishu/Lark bridge
+  tlive server               Start Feishu/Lark bridge (alias of start)
+  tlive client [options]     Run a remote worker client in the foreground
   tlive stop                 Stop IM Bridge daemon
   tlive restart              Restart IM Bridge daemon
   tlive status               Show Bridge status
@@ -646,7 +649,7 @@ In Claude Code (AI-guided):
   /tlive reconfigure         Modify specific config fields
 `;
 
-const NODE_COMMANDS = new Set(['setup', 'start', 'stop', 'restart', 'status', 'logs', 'version', 'update', 'upgrade']);
+const NODE_COMMANDS = new Set(['setup', 'start', 'server', 'client', 'stop', 'restart', 'status', 'logs', 'version', 'update', 'upgrade']);
 const CORE_COMMANDS = new Set(['install']);
 
 function run(cmd, opts = {}) {
@@ -685,7 +688,8 @@ switch (command) {
     break;
   }
 
-  case 'start': {
+  case 'start':
+  case 'server': {
     if (args.includes('--runtime')) {
       console.error('Runtime selection has been removed. Configure TL_PROVIDER=claude or codex.');
       process.exit(1);
@@ -696,6 +700,21 @@ switch (command) {
       console.error(`Failed to start bridge: ${err.message || err}`);
       process.exit(1);
     }
+    break;
+  }
+
+  case 'client': {
+    if (!existsSync(CLIENT_ENTRY)) {
+      console.error(`Client worker not built: ${CLIENT_ENTRY}`);
+      process.exit(1);
+    }
+    const env = {
+      ...process.env,
+      ...loadConfigEnv(),
+      TL_DEFAULT_WORKDIR: process.env.TL_DEFAULT_WORKDIR || process.cwd(),
+    };
+    const r = spawnSync(process.execPath, [CLIENT_ENTRY, ...args], { stdio: 'inherit', env });
+    if (r.status) process.exit(r.status);
     break;
   }
 
@@ -966,7 +985,7 @@ switch (command) {
 
   default: {
     // Check for typos of known commands before failing
-    const known = ['setup', 'start', 'stop', 'restart', 'status', 'logs', 'install', 'help', 'version', 'update', 'upgrade'];
+    const known = ['setup', 'start', 'server', 'client', 'stop', 'restart', 'status', 'logs', 'install', 'help', 'version', 'update', 'upgrade'];
     const similar = known.find(k => {
       if (Math.abs(k.length - command.length) > 2) return false;
       let diff = 0;

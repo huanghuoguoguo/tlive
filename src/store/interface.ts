@@ -7,6 +7,8 @@ export interface ChannelBinding {
   sessionId: string; // internal key (used for locks, dedup)
   sdkSessionId?: string; // Provider runtime session UUID (for resume)
   provider?: AgentProviderKind; // agent runtime for this logical session
+  /** Execution client for this logical session. Omitted means local/default. */
+  clientId?: string;
   cwd?: string; // current working directory for this chat
   agentSettingSources?: AgentSettingSource[]; // per-chat provider settings override
   /** Project binding (optional, for multi-project support) */

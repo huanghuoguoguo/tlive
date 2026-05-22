@@ -153,11 +153,14 @@ describe('InboundDispatcher', () => {
     expect(query.run).not.toHaveBeenCalled();
   });
 
-  it('keeps unknown slash input on the agent path when there is no pending interaction', async () => {
+  it('keeps unknown slash input on the agent path inside a topic', async () => {
     const harness = createTextHarness('none');
     const { dispatcher, commands, query } = createDispatcher(harness);
     const adapter = createAdapter();
-    const msg = createMessage('/agent-native-command arg');
+    const msg = createMessage('/agent-native-command arg', {
+      threadId: 'thread-1',
+      scopeId: 'chat-1#thread:thread-1',
+    });
 
     const handled = await dispatcher.handle(adapter, msg, 'req-settings');
 

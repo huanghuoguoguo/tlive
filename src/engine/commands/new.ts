@@ -12,6 +12,11 @@ interface NewSessionProviderChoice {
   displayName: string;
 }
 
+interface NewSessionClientChoice {
+  clientId?: string;
+  cwd?: string;
+}
+
 export class NewCommand extends BaseCommand {
   readonly name = '/new';
   readonly quick = true;
@@ -25,6 +30,8 @@ export class NewCommand extends BaseCommand {
     const previousBinding = await ctx.services.store.getBinding(ctx.msg.channelType, scopeId);
     const providerChoice = await this.resolveProviderChoice(ctx, previousBinding);
     if (!providerChoice) return true;
+    const clientChoice = await this.resolveClientChoice(ctx, previousBinding);
+    if (!clientChoice) return true;
     const hadActiveSession = previousBinding
       ? (ctx.services.sdkEngine?.hasSessionContext?.(
           ctx.msg.channelType,
@@ -36,13 +43,22 @@ export class NewCommand extends BaseCommand {
       : false;
 
     const newSessionId = generateSessionId();
-    if (await this.openWorkbenchTopic(ctx, previousBinding, newSessionId, providerChoice)) {
+    if (
+      await this.openWorkbenchTopic(
+        ctx,
+        previousBinding,
+        newSessionId,
+        providerChoice,
+        clientChoice,
+      )
+    ) {
       return true;
     }
 
     await ctx.services.router.rebind(ctx.msg.channelType, scopeId, newSessionId, {
       provider: providerChoice.kind,
-      cwd: previousBinding?.cwd,
+      clientId: clientChoice.clientId,
+      cwd: clientChoice.cwd ?? previousBinding?.cwd,
       agentSettingSources: previousBinding?.agentSettingSources,
       projectName: previousBinding?.projectName,
     });
@@ -57,7 +73,10 @@ export class NewCommand extends BaseCommand {
     const feedbackText = hadActiveSession ? t(ctx.locale, 'newSession.feedbackText') : undefined;
     await this.send(
       ctx,
-      presentNewSession(ctx.msg.chatId, { cwd: previousBinding?.cwd, feedbackText }),
+      presentNewSession(ctx.msg.chatId, {
+        cwd: clientChoice.cwd ?? previousBinding?.cwd,
+        feedbackText,
+      }),
     );
 
     if (ctx.surface === 'workbench') {
@@ -66,6 +85,36 @@ export class NewCommand extends BaseCommand {
       await this.send(ctx, presentHome(ctx.msg.chatId, homeData));
     }
     return true;
+  }
+
+  private async resolveClientChoice(
+    ctx: CommandContext,
+    previousBinding: ChannelBinding | null,
+  ): Promise<NewSessionClientChoice | null> {
+    const clients = ctx.services.getExecutionClients?.() ?? [];
+    const requested = ctx.parts[2]?.trim();
+    if (requested) {
+      const client = clients.find((entry) => entry.clientId === requested);
+      if (!client) {
+        await this.send(ctx, { chatId: ctx.msg.chatId, text: `⚠️ 未找到 client: ${requested}` });
+        return null;
+      }
+      return {
+        clientId: client.clientId,
+        cwd: client.workspaces.find((workspace) => workspace.isDefault)?.path ?? previousBinding?.cwd,
+      };
+    }
+
+    const selected =
+      (previousBinding?.clientId &&
+        clients.find((entry) => entry.clientId === previousBinding.clientId)) ||
+      (clients.length === 1 ? clients[0] : undefined);
+    return {
+      clientId: selected?.clientId ?? previousBinding?.clientId,
+      cwd:
+        selected?.workspaces.find((workspace) => workspace.isDefault)?.path ??
+        previousBinding?.cwd,
+    };
   }
 
   private async resolveProviderChoice(
@@ -112,8 +161,9 @@ export class NewCommand extends BaseCommand {
     previousBinding: Awaited<ReturnType<CommandContext['services']['store']['getBinding']>>,
     newSessionId: string,
     providerChoice: NewSessionProviderChoice,
+    clientChoice: NewSessionClientChoice,
   ): Promise<boolean> {
-    const cwd = previousBinding?.cwd || ctx.services.defaultWorkdir;
+    const cwd = clientChoice.cwd || previousBinding?.cwd || ctx.services.defaultWorkdir;
     const title = `新 ${providerChoice.displayName} 会话`;
     const intro = `💬 已开启新话题，请在本话题内继续发送消息。`;
     const topic = await startWorkbenchTopic(ctx, title, intro);
@@ -122,6 +172,7 @@ export class NewCommand extends BaseCommand {
     const topicScopeId = topic.scopeId;
     await ctx.services.router.rebind(ctx.msg.channelType, topicScopeId, newSessionId, {
       provider: providerChoice.kind,
+      clientId: clientChoice.clientId,
       cwd,
       agentSettingSources: previousBinding?.agentSettingSources,
       projectName: previousBinding?.projectName,
@@ -142,6 +193,7 @@ export class NewCommand extends BaseCommand {
       rootMessageId: topic.rootMessageId,
       lastMessageId: topic.lastMessageId,
       provider: providerChoice.kind,
+      clientId: clientChoice.clientId,
       cwd,
       title,
       preview: title,

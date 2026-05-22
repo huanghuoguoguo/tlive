@@ -25,6 +25,7 @@ export interface ManagedSession {
   workdir: string;
   sdkSessionId?: string;
   provider?: AgentProviderKind;
+  clientId?: string;
   lastActiveAt: number;
   session?: LiveSession;
 }
@@ -39,6 +40,7 @@ export interface ManagedSessionSnapshot {
   bindingSessionId: string;
   sdkSessionId?: string;
   provider?: AgentProviderKind;
+  clientId?: string;
   isCurrent: boolean;
   queueDepth: number;
 }
@@ -50,6 +52,7 @@ export interface ManagedSessionOptions {
   settingSources?: AgentSettingSource[];
   appendSystemPrompt?: string;
   setAsCurrent?: boolean;
+  clientId?: string;
 }
 
 export interface SessionLifecycleHooks {
@@ -216,7 +219,7 @@ export class SessionManager {
     bindingSessionId: string,
     workdir: string,
     sdkSessionId?: string,
-    opts?: { setAsCurrent?: boolean; provider?: AgentProviderKind },
+    opts?: { setAsCurrent?: boolean; provider?: AgentProviderKind; clientId?: string },
   ): string {
     const key = this.sessionKey(channelType, chatId, bindingSessionId);
     const existing = this.registry.get(key);
@@ -226,6 +229,7 @@ export class SessionManager {
       existing.workdir = workdir;
       existing.sdkSessionId = sdkSessionId ?? existing.sdkSessionId;
       existing.provider = opts?.provider ?? existing.provider;
+      existing.clientId = opts?.clientId ?? existing.clientId;
       existing.lastActiveAt = now;
     } else {
       this.registry.set(key, {
@@ -235,6 +239,7 @@ export class SessionManager {
         workdir,
         sdkSessionId,
         provider: opts?.provider,
+        clientId: opts?.clientId,
         lastActiveAt: now,
       });
     }
@@ -412,7 +417,7 @@ export class SessionManager {
       bindingSessionId,
       workdir,
       options.sessionId,
-      { setAsCurrent: options.setAsCurrent !== false, provider: llm.kind },
+      { setAsCurrent: options.setAsCurrent !== false, provider: llm.kind, clientId: options.clientId },
     );
     const managed = this.registry.get(key);
     if (!managed) return undefined;
@@ -449,6 +454,7 @@ export class SessionManager {
     managed.workdir = workdir;
     managed.sdkSessionId = options.sessionId ?? managed.sdkSessionId;
     managed.provider = llm.kind;
+    managed.clientId = options.clientId ?? managed.clientId;
     managed.lastActiveAt = Date.now();
 
     // Notify callback for recent projects tracking

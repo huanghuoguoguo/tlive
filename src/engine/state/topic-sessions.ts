@@ -14,6 +14,7 @@ export interface TopicSessionRecord {
   lastMessageId?: string;
   sdkSessionId?: string;
   provider?: AgentProviderKind;
+  clientId?: string;
   cwd?: string;
   title?: string;
   preview?: string;

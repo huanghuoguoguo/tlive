@@ -4,6 +4,7 @@ import { singleProviderRegistry, type AgentProviderRegistry } from '../providers
 import type { Config, ProjectsValidationResult } from '../config.js';
 import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';
+import type { HomeClientEntry } from '../formatting/message-types.js';
 import { ChannelRouter } from '../utils/router.js';
 import { PendingPermissions } from '../permissions/gateway.js';
 import { SessionStateManager } from './state/session-state.js';
@@ -56,6 +57,7 @@ export interface BridgeFactoryDeps {
   defaultWorkdir: string;
   config: Config;
   getAdapters?: () => Map<string, BaseChannelAdapter>;
+  getExecutionClients?: () => HomeClientEntry[];
   appendSystemPrompt?: string;
 }
 
@@ -157,6 +159,7 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
     sdkEngine,
     projectsConfig,
     topicSessions,
+    deps.getExecutionClients,
   );
 
   return {

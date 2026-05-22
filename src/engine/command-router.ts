@@ -9,7 +9,11 @@ import type { AgentProviderRegistry } from '../providers/registry.js';
 import type { SDKEngine, SessionCleanupReason } from './sdk/engine.js';
 import type { ProjectsValidationResult, AgentSettingSource } from '../config.js';
 import type { BridgeStore, ChannelBinding } from '../store/interface.js';
-import type { HomeData, TopicCommandPaletteData } from '../formatting/message-types.js';
+import type {
+  HomeClientEntry,
+  HomeData,
+  TopicCommandPaletteData,
+} from '../formatting/message-types.js';
 import type { RouterHelpers, CommandServices } from './commands/types.js';
 import type { PermissionCoordinator } from './coordinators/permission.js';
 import type { Locale } from '../i18n/index.js';
@@ -49,6 +53,7 @@ export class CommandRouter {
     private sdkEngine?: SDKEngine,
     projectsConfig?: ProjectsValidationResult,
     topicSessions?: TopicSessionManager,
+    getExecutionClients?: () => HomeClientEntry[],
   ) {
     this.projectsConfig = projectsConfig;
     this.services = {
@@ -66,6 +71,7 @@ export class CommandRouter {
       defaultAgentSettingSources,
       getAdapters,
       topicSessions,
+      getExecutionClients,
     };
     this.homePayloadBuilder = new HomePayloadBuilder({
       store,
@@ -78,6 +84,7 @@ export class CommandRouter {
       defaultWorkdir,
       providers,
       topicSessions,
+      getExecutionClients,
     });
   }
 
