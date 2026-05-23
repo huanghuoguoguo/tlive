@@ -87,19 +87,18 @@ describe('FeishuAdapter', () => {
       appSecret: 'secret_abc',
       verificationToken: 'verify_token',
       encryptKey: '',
-      webhookPort: 0,
       allowedUsers: ['user1', 'user2'],
     });
   });
 
   describe('validateConfig()', () => {
     it('returns error when appId is missing', () => {
-      const bad = new FeishuAdapter({ appId: '', appSecret: 'sec', verificationToken: '', encryptKey: '', webhookPort: 0, allowedUsers: [] });
+      const bad = new FeishuAdapter({ appId: '', appSecret: 'sec', verificationToken: '', encryptKey: '', allowedUsers: [] });
       expect(bad.validateConfig()).toContain('TL_FS_APP_ID');
     });
 
     it('returns error when appSecret is missing', () => {
-      const bad = new FeishuAdapter({ appId: 'id', appSecret: '', verificationToken: '', encryptKey: '', webhookPort: 0, allowedUsers: [] });
+      const bad = new FeishuAdapter({ appId: 'id', appSecret: '', verificationToken: '', encryptKey: '', allowedUsers: [] });
       expect(bad.validateConfig()).toContain('TL_FS_APP_SECRET');
     });
 
@@ -136,7 +135,7 @@ describe('FeishuAdapter', () => {
     });
 
     it('allows all users when allowedUsers is empty', () => {
-      const open = new FeishuAdapter({ appId: 'id', appSecret: 'sec', verificationToken: '', encryptKey: '', webhookPort: 0, allowedUsers: [] });
+      const open = new FeishuAdapter({ appId: 'id', appSecret: 'sec', verificationToken: '', encryptKey: '', allowedUsers: [] });
       expect(open.isAuthorized('anyone', 'anychat')).toBe(true);
     });
   });
@@ -337,7 +336,6 @@ describe('FeishuAdapter', () => {
         appSecret: 'secret_abc',
         verificationToken: 'verify_token',
         encryptKey: '',
-        webhookPort: 0,
         allowedUsers: [],
       }, { autoPinTopics: true });
       mockMessageReply.mockResolvedValueOnce({

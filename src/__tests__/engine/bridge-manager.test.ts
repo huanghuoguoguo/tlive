@@ -232,46 +232,6 @@ describe('BridgeManager', () => {
     });
   });
 
-  it('rotates the default session when automation changes workdir', async () => {
-    const adapter = mockAdapter();
-    manager.registerAdapter(adapter);
-
-    const binding = {
-      channelType: 'feishu',
-      chatId: 'c1',
-      sessionId: 'binding-1',
-      sdkSessionId: 'sdk-old',
-      cwd: '/repo/old',
-      projectName: 'old-project',
-      createdAt: '',
-    };
-    store.getBinding.mockImplementation(async () => binding);
-    store.saveBinding.mockImplementation(async (nextBinding: typeof binding) => {
-      Object.assign(binding, nextBinding);
-    });
-
-    const cleanupSpy = vi.spyOn(manager.getSdkEngine(), 'cleanupSession');
-    const clearWhitelistSpy = vi.spyOn(manager.getPermissions(), 'clearSessionWhitelist');
-    const queryRunSpy = vi.spyOn(manager.getQuery(), 'run').mockResolvedValue(true);
-
-    const result = await manager.injectAutomationPrompt({
-      channelType: 'feishu',
-      chatId: 'c1',
-      text: 'analyze',
-      workdir: '/repo/new',
-      projectName: 'new-project',
-    });
-
-    expect(cleanupSpy).not.toHaveBeenCalled();
-    expect(clearWhitelistSpy).not.toHaveBeenCalled();
-    expect(binding.sdkSessionId).toBeUndefined();
-    expect(binding.sessionId).not.toBe('binding-1');
-    expect(binding.cwd).toBe('/repo/new');
-    expect(binding.projectName).toBe('new-project');
-    expect(queryRunSpy).toHaveBeenCalled();
-    expect(result.sessionId).toBe(binding.sessionId);
-  });
-
   it('continues topic messages after 30 minutes of inactivity', async () => {
     vi.useFakeTimers();
     const adapter = mockAdapter();

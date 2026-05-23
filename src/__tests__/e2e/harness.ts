@@ -378,13 +378,12 @@ function testConfig(root: string): Config {
     defaultWorkdir: root,
     defaultModel: '',
     agentSettingSources: ['user', 'project', 'local'],
-    webhook: {
+    mcp: {
       enabled: false,
-      token: 'webhook-token',
-      port: 0,
-      path: '/webhook',
-      sessionStrategy: 'create',
-      rateLimitPerMinute: 0,
+      port: 8081,
+      path: '/mcp',
+      token: 'mcp-token',
+      maxFileSizeBytes: 20 * 1024 * 1024,
     },
     exec: {
       enabled: false,
@@ -397,7 +396,6 @@ function testConfig(root: string): Config {
       appSecret: 'secret',
       verificationToken: 'verify',
       encryptKey: '',
-      webhookPort: 0,
       allowedUsers: ['user-1', 'webhook'],
       autoPinTopics: false,
     },
@@ -407,7 +405,6 @@ function testConfig(root: string): Config {
     remote: {
       server: {
         enabled: false,
-        localClientEnabled: true,
         port: 8787,
         path: '/tlive',
         token: 'remote-token',

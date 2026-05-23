@@ -138,12 +138,11 @@ describe('CodexSDKProvider', () => {
       config: {
         mcp_servers: {
           tlive: expect.objectContaining({
-            command: expect.any(String),
-            args: expect.any(Array),
+            type: 'http',
+            url: 'http://127.0.0.1:8081/mcp',
             tools: {
               tlive_send_file: { approval_mode: 'approve' },
               tlive_send_image: { approval_mode: 'approve' },
-              tlive_inject_prompt: { approval_mode: 'approve' },
               tlive_status: { approval_mode: 'approve' },
             },
           }),
