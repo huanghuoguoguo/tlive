@@ -529,6 +529,7 @@ function daemonStart(options = {}) {
     ...process.env,
     ...config,
     TL_DEFAULT_WORKDIR: process.env.TL_DEFAULT_WORKDIR || process.cwd(),
+    ...(options.standalone ? { TL_SERVER_STANDALONE: 'true' } : {}),
   };
 
   const child = spawn(process.execPath, [BRIDGE_ENTRY], {

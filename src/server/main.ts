@@ -7,6 +7,7 @@ import { FeishuAdapter } from './channels/feishu/adapter.js';
 import { RemoteClientRegistry } from './clients/client-registry.js';
 import type { HomeClientEntry } from '../shared/formatting/message-types.js';
 import { t, setGlobalLocale } from '../shared/i18n/index.js';
+import { spawn } from 'node:child_process';
 import {
   checkForUpdates,
   getCurrentVersion,
@@ -33,6 +34,8 @@ import {
 
 // Cached config (loaded once at startup)
 let cachedConfig: ReturnType<typeof loadConfig> | null = null;
+
+const LOCAL_CLIENT_FALLBACK_DELAY_MS = 1500;
 
 export function writeStatusFile(data: Record<string, unknown>): void {
   try {
@@ -281,6 +284,65 @@ function registerPidCleanup(pidFile: string): void {
   process.on('exit', cleanPid);
 }
 
+function localRemoteServerUrl(config: ReturnType<typeof loadConfig>): string {
+  return `ws://127.0.0.1:${config.remote.server.port}${config.remote.server.path}`;
+}
+
+function getLocalClientPid(): number | null {
+  try {
+    const pid = Number.parseInt(
+      readFileSync(join(getTliveRuntimeDir(), 'client.pid'), 'utf-8').trim(),
+      10,
+    );
+    if (!Number.isSafeInteger(pid) || pid <= 0) return null;
+    process.kill(pid, 0);
+    return pid;
+  } catch {
+    return null;
+  }
+}
+
+function shouldFallbackStartLocalClient(): boolean {
+  if (process.env.NODE_ENV === 'test') return false;
+  if (process.env.TL_SERVER_STANDALONE === 'true') return false;
+  if (process.env.TL_LOCAL_CLIENT_DISABLED === 'true') return false;
+  return true;
+}
+
+function scheduleLocalClientFallback(
+  config: ReturnType<typeof loadConfig>,
+  logger: Logger,
+): ReturnType<typeof setTimeout> | null {
+  if (!shouldFallbackStartLocalClient()) return null;
+  return setTimeout(() => {
+    if (getLocalClientPid()) return;
+    const entryArg = process.argv[1];
+    if (!entryArg) return;
+    const clientEntry = join(dirname(entryArg), 'client.mjs');
+    if (!existsSync(clientEntry)) {
+      logger.warn(`Local client fallback skipped; client entry not found: ${clientEntry}`);
+      return;
+    }
+
+    const env = {
+      ...process.env,
+      TL_TOKEN: config.token,
+      TL_REMOTE_TOKEN: config.remote.server.token,
+      TL_DEFAULT_WORKDIR: config.defaultWorkdir,
+      TL_REMOTE_SERVER_URL: localRemoteServerUrl(config),
+    };
+    const child = spawn(process.execPath, [clientEntry, '--name', 'local'], {
+      detached: true,
+      windowsHide: true,
+      stdio: 'ignore',
+      env,
+    });
+    writeFileSync(join(getTliveRuntimeDir(), 'client.pid'), String(child.pid));
+    child.unref();
+    logger.info(`Local client fallback started (PID ${child.pid})`);
+  }, LOCAL_CLIENT_FALLBACK_DELAY_MS);
+}
+
 /**
  * Ensure only one bridge instance runs at a time.
  * Uses an atomically-created PID file and validates live processes before killing.
@@ -360,6 +422,7 @@ export async function main() {
     clientTimeoutMs: config.remote.server.clientTimeoutMs,
   });
   remoteClients.start();
+  const localClientFallbackTimer = scheduleLocalClientFallback(config, logger);
 
   // Write startup status
   writeStatusFile({
@@ -538,6 +601,7 @@ export async function main() {
   // Graceful shutdown
   const shutdown = async (reason = 'signal') => {
     logger.info('Shutting down...');
+    if (localClientFallbackTimer) clearTimeout(localClientFallbackTimer);
     clearInterval(versionCheckInterval);
     clearInterval(keepAliveInterval);
     // Clean up restart marker if not a restart handoff
