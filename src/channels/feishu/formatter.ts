@@ -56,10 +56,7 @@ import {
   buildMultiSelectElements,
   buildMultiSelectButtons,
 } from './format-interactions.js';
-import {
-  buildPermStatusElements,
-  permStatusButtonsForMode,
-} from './format-permission-status.js';
+import { buildPermStatusElements, permStatusButtonsForMode } from './format-permission-status.js';
 import {
   buildProgressTimelineElements,
   buildProgressContentElements,
@@ -153,7 +150,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
   }
 
   private footerActionPanel(footerLine: string, buttons: Button[]): FeishuCardElement {
-    return collapsiblePanel(this.locale === 'zh' ? '运行信息' : 'Run info', [
+    return collapsiblePanel(t(this.locale, 'formatter.runInfo'), [
       this.md(`<font color='grey'>${footerLine}</font>`),
       ...buttonElements(buttons),
     ]);
@@ -199,10 +196,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
     );
   }
 
-  formatDeferredToolInput(
-    chatId: string,
-    data: DeferredToolInputData,
-  ): FeishuRenderedMessage {
+  formatDeferredToolInput(chatId: string, data: DeferredToolInputData): FeishuRenderedMessage {
     const elements = buildDeferredToolElements({ chatId, data, locale: this.locale });
     return this.createCardMessage(
       chatId,
@@ -227,10 +221,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
     );
   }
 
-  formatPermissionStatus(
-    chatId: string,
-    data: PermissionStatusData,
-  ): FeishuRenderedMessage {
+  formatPermissionStatus(chatId: string, data: PermissionStatusData): FeishuRenderedMessage {
     const elements = buildPermStatusElements({ chatId, data, locale: this.locale });
     const buttons = permStatusButtonsForMode(data.mode, this.locale, data.route);
     return this.createCardMessage(
@@ -315,71 +306,55 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
     return this.createCardMessage(
       chatId,
       { template: 'blue', title: t(this.locale, 'home.btnHelp') },
-      buildHelpElements(data),
+      buildHelpElements(data, this.locale),
       data.actionButtons ?? helpButtons(this.locale),
     );
   }
 
-  formatTopicCommandPalette(
-    chatId: string,
-    data: TopicCommandPaletteData,
-  ): FeishuRenderedMessage {
-    const isZh = this.locale === 'zh';
-    const sdkSession = data.sdkSessionId ? data.sdkSessionId.slice(0, 8) : isZh ? '未建立' : 'none';
-    const status = data.isActive ? (isZh ? '执行中' : 'running') : isZh ? '空闲' : 'idle';
+  formatTopicCommandPalette(chatId: string, data: TopicCommandPaletteData): FeishuRenderedMessage {
+    const sdkSession = data.sdkSessionId
+      ? data.sdkSessionId.slice(0, 8)
+      : t(this.locale, 'formatter.sessionNone');
+    const status = data.isActive
+      ? t(this.locale, 'formatter.sessionRunningLabel')
+      : t(this.locale, 'formatter.sessionIdleLabel');
     const runtimeMode =
       data.capabilities.runtimeMode === 'interactive'
-        ? isZh
-          ? '交互式'
-          : 'interactive'
-        : isZh
-          ? '按回合'
-          : 'turn-based';
+        ? t(this.locale, 'formatter.interactiveMode')
+        : t(this.locale, 'formatter.turnBasedMode');
     const permissionStatus =
       data.permissionMode === 'on'
-        ? isZh
-          ? '工具调用需要确认'
-          : 'tool approval required'
-        : isZh
-          ? '工具调用自动允许'
-          : 'tool calls auto-allowed';
+        ? t(this.locale, 'formatter.toolApprovalRequired')
+        : t(this.locale, 'formatter.toolCallsAutoAllowed');
     const permissionLine = data.capabilities.interactivePermissions
-      ? isZh
-        ? `本话题${permissionStatus}。`
-        : `This topic has ${permissionStatus}.`
+      ? t(this.locale, 'formatter.topicPermissionStatus').replace('{status}', permissionStatus)
       : data.provider === 'codex'
-        ? isZh
-          ? 'Codex 的权限由 sandbox / approval policy 控制，不提供 Claude 式逐工具审批。'
-          : 'Codex permissions are controlled by sandbox / approval policy.'
+        ? t(this.locale, 'formatter.codexPermissionNote')
         : '';
     const slashLine =
       data.provider === 'codex'
-        ? isZh
-          ? 'Codex SDK 当前不暴露 CLI 里的 slash 自动补全；这里显示 TLive 能控制的会话操作。'
-          : 'The Codex SDK does not expose CLI slash autocomplete; this card shows TLive controls.'
-        : isZh
-          ? '其它 slash 命令会透传给当前 Agent。'
-          : 'Other slash commands pass through to the current agent.';
+        ? t(this.locale, 'formatter.codexSlashNote')
+        : t(this.locale, 'formatter.otherSlashPassThrough');
     const capabilityLabels = [
-      data.capabilities.imageInputs ? (isZh ? '图片输入' : 'images') : undefined,
-      data.capabilities.nativeSteer ? (isZh ? '即时插话' : 'steer') : undefined,
-      data.capabilities.nativeQueue ? (isZh ? '队列' : 'queue') : undefined,
+      data.capabilities.imageInputs ? t(this.locale, 'formatter.imageInput') : undefined,
+      data.capabilities.nativeSteer ? t(this.locale, 'formatter.instantSteer') : undefined,
+      data.capabilities.nativeQueue ? t(this.locale, 'formatter.queueCapability') : undefined,
     ].filter(Boolean);
 
     const elements: FeishuCardElement[] = [
       this.md(
-        `**${isZh ? '当前会话' : 'Current session'}**\n${data.providerDisplayName} · ${runtimeMode} · \`${sdkSession}\` · ${status}`,
+        `**${t(this.locale, 'formatter.currentSession')}**\n${data.providerDisplayName} · ${runtimeMode} · \`${sdkSession}\` · ${status}`,
       ),
-      this.md(`**${isZh ? '目录' : 'Directory'}**\n\`${data.cwd}\``),
+      this.md(`**${t(this.locale, 'formatter.directory')}**\n\`${data.cwd}\``),
       this.md(
-        `**${isZh ? '能力' : 'Capabilities'}**\n${capabilityLabels.join(' · ') || (isZh ? '基础对话' : 'chat')}`,
+        `**${t(this.locale, 'formatter.capabilities')}**\n${capabilityLabels.join(' · ') || t(this.locale, 'formatter.basicChat')}`,
       ),
       this.md(`${slashLine}${permissionLine ? `\n${permissionLine}` : ''}`),
     ];
 
     return this.createCardMessage(
       chatId,
-      { template: 'blue', title: isZh ? '⌘ 会话操作' : '⌘ Session actions' },
+      { template: 'blue', title: t(this.locale, 'formatter.sessionActions') },
       elements,
       topicCommandPaletteButtons(this.locale, {
         isActive: data.isActive,
@@ -398,10 +373,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
     );
   }
 
-  formatError(
-    chatId: string,
-    data: { title: string; message: string },
-  ): FeishuRenderedMessage {
+  formatError(chatId: string, data: { title: string; message: string }): FeishuRenderedMessage {
     return this.createCardMessage(chatId, { template: 'red', title: `❌ ${data.title}` }, [
       this.md(data.message),
     ]);
@@ -489,10 +461,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
     );
   }
 
-  formatMultiSelectToggle(
-    chatId: string,
-    data: MultiSelectToggleData,
-  ): FeishuRenderedMessage {
+  formatMultiSelectToggle(chatId: string, data: MultiSelectToggleData): FeishuRenderedMessage {
     const elements = buildMultiSelectElements({ chatId, data, locale: this.locale });
     const buttons = buildMultiSelectButtons(data.permId, data.sessionId, data.options, this.locale);
     buttons.forEach((btn, idx) => {

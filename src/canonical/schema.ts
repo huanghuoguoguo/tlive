@@ -93,10 +93,14 @@ const sessionInfoSchema = z.object({
   sessionId: z.string(),
   model: z.string(),
   tools: z.array(z.string()).optional(),
-  mcpServers: z.array(z.object({
-    name: z.string(),
-    status: z.string(),
-  })).optional(),
+  mcpServers: z
+    .array(
+      z.object({
+        name: z.string(),
+        status: z.string(),
+      }),
+    )
+    .optional(),
   skills: z.array(z.string()).optional(),
 });
 
@@ -133,10 +137,12 @@ const rateLimitSchema = z.object({
 
 const todoUpdateSchema = z.object({
   kind: z.literal('todo_update'),
-  todos: z.array(z.object({
-    content: z.string(),
-    status: z.enum(['pending', 'in_progress', 'completed']),
-  })),
+  todos: z.array(
+    z.object({
+      content: z.string(),
+      status: z.enum(['pending', 'in_progress', 'completed']),
+    }),
+  ),
 });
 
 export const canonicalEventSchema = z.discriminatedUnion('kind', [

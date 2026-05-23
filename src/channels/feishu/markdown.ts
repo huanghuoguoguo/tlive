@@ -1,3 +1,5 @@
+import { t, type Locale } from '../../i18n/index.js';
+
 export function markdownToFeishu(text: string): string {
   let result = text;
   result = result.replace(/<b>(.*?)<\/b>/g, '**$1**');
@@ -66,14 +68,17 @@ const MAX_TABLE_ROWS = 10;
  * 2. Splits tables with more than MAX_TABLE_ROWS into multiple tables
  * 3. Adds a separator hint between split tables
  */
-export function splitLargeTables(text: string): string {
+export function splitLargeTables(text: string, locale: Locale = 'zh'): string {
   // Match markdown tables: header row + separator + data rows
   // Table pattern: | cell | cell | ... | followed by |---|---|...| and data rows
   const tableRegex = /^(\|.*\|)\n(\|[-:| ]+\|)\n((?:\|.*\|\n?)+)/gm;
 
   return text.replace(tableRegex, (match, headerRow, separatorRow, dataRows) => {
     // Parse data rows
-    const rows = dataRows.trim().split('\n').filter((r: string) => r.trim().startsWith('|'));
+    const rows = dataRows
+      .trim()
+      .split('\n')
+      .filter((r: string) => r.trim().startsWith('|'));
 
     if (rows.length <= MAX_TABLE_ROWS) {
       // Table is within limit, keep as-is
@@ -94,7 +99,10 @@ export function splitLargeTables(text: string): string {
         tables.push(header + chunk.join('\n'));
       } else {
         // Add continuation hint as table note
-        const hint = `**表格 ${chunkIndex + 1}/${totalChunks}**\n`;
+        const hint =
+          t(locale, 'markdown.tableChunk')
+            .replace('{index}', String(chunkIndex + 1))
+            .replace('{total}', String(totalChunks)) + '\n';
         tables.push(hint + header + chunk.join('\n'));
       }
     }

@@ -35,17 +35,22 @@ type ConversationInput = Pick<InboundMessage, 'channelType' | 'chatId'> &
     >
   >;
 
-export function conversationScopeId(input: Pick<InboundMessage, 'chatId' | 'scopeId' | 'threadId'>): string {
+export function conversationScopeId(
+  input: Pick<InboundMessage, 'chatId' | 'scopeId' | 'threadId'>,
+): string {
   return messageScopeId(input);
 }
 
-export function conversationSurfaceFor(input: Pick<InboundMessage, 'scopeId' | 'threadId'>): ConversationSurface {
+export function conversationSurfaceFor(
+  input: Pick<InboundMessage, 'scopeId' | 'threadId'>,
+): ConversationSurface {
   return input.threadId || isThreadScopeId(input.scopeId) ? 'topic' : 'workbench';
 }
 
 export function conversationRouteFromInbound(input: ConversationInput): ConversationRoute {
   const logicalScopeId = conversationScopeId(input);
-  const threadId = input.threadId ?? (input.scopeId ? threadIdFromScope(input.chatId, input.scopeId) : undefined);
+  const threadId =
+    input.threadId ?? (input.scopeId ? threadIdFromScope(input.chatId, input.scopeId) : undefined);
   const replyTargetMessageId = input.replyTargetMessageId ?? input.replyToMessageId;
   const replyInThread = input.replyInThread ?? (threadId ? true : undefined);
 

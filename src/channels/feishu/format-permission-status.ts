@@ -45,7 +45,9 @@ export function buildPermStatusElements(params: FormatPermStatusParams): FeishuC
     );
   } else {
     elements.push(
-      markdownElement(`**${t(locale, 'perm.pendingApproval')}**\n${t(locale, 'perm.labelNoPending')}`),
+      markdownElement(
+        `**${t(locale, 'perm.pendingApproval')}**\n${t(locale, 'perm.labelNoPending')}`,
+      ),
     );
   }
 

@@ -2,6 +2,7 @@ import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentStopResult } from '../messages/presenter.js';
 import { chatKey } from '../../core/key.js';
+import { t } from '../../i18n/index.js';
 
 export class StopCommand extends BaseCommand {
   readonly name = '/stop';
@@ -15,14 +16,14 @@ export class StopCommand extends BaseCommand {
     const explicitSessionKey = ctx.parts.slice(1).join(' ').trim();
     if (explicitSessionKey && ctx.services.sdkEngine?.interruptSession) {
       const interrupted = await ctx.services.sdkEngine.interruptSession(explicitSessionKey);
-      await this.send(ctx, presentStopResult(ctx.msg.chatId, interrupted));
+      await this.send(ctx, presentStopResult(ctx.msg.chatId, interrupted, ctx.locale));
       return true;
     }
 
     if (ctx.surface === 'workbench') {
       await this.send(ctx, {
         chatId: ctx.msg.chatId,
-        text: '⚠️ /stop 只中断具体话题内的当前任务。请进入正在执行的话题后停止。',
+        text: t(ctx.locale, 'cmd.stop.workbenchHint'),
       });
       return true;
     }
@@ -31,7 +32,7 @@ export class StopCommand extends BaseCommand {
     const interrupted = ctx.services.sdkEngine?.interruptChat
       ? await ctx.services.sdkEngine.interruptChat(key)
       : await this.interruptLegacy(ctx, key);
-    await this.send(ctx, presentStopResult(ctx.msg.chatId, interrupted));
+    await this.send(ctx, presentStopResult(ctx.msg.chatId, interrupted, ctx.locale));
     return true;
   }
 

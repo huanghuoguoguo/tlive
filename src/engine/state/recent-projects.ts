@@ -60,7 +60,7 @@ export class RecentProjectsManager {
    */
   recordSession(workdir: string): void {
     const now = new Date().toISOString();
-    const existing = this.projects.find(p => p.workdir === workdir);
+    const existing = this.projects.find((p) => p.workdir === workdir);
 
     if (existing) {
       existing.useCount++;
@@ -89,7 +89,7 @@ export class RecentProjectsManager {
    * Remove a directory from recent projects.
    */
   remove(workdir: string): void {
-    const index = this.projects.findIndex(p => p.workdir === workdir);
+    const index = this.projects.findIndex((p) => p.workdir === workdir);
     if (index !== -1) {
       this.projects.splice(index, 1);
       this.debouncedSave();
@@ -114,14 +114,14 @@ export class RecentProjectsManager {
    * Check if a directory is in recent projects.
    */
   has(workdir: string): boolean {
-    return this.projects.some(p => p.workdir === workdir);
+    return this.projects.some((p) => p.workdir === workdir);
   }
 
   /**
    * Get project by workdir.
    */
   get(workdir: string): RecentProject | undefined {
-    return this.projects.find(p => p.workdir === workdir);
+    return this.projects.find((p) => p.workdir === workdir);
   }
 
   /**
@@ -141,8 +141,10 @@ export class RecentProjectsManager {
   private calculateScore(project: RecentProject): number {
     const recencyScore = this.calculateRecencyScore(project.lastUsedAt);
     const frequencyScore = this.calculateFrequencyScore(project.useCount);
-    return RecentProjectsManager.RECENCY_WEIGHT * recencyScore
-      + RecentProjectsManager.FREQUENCY_WEIGHT * frequencyScore;
+    return (
+      RecentProjectsManager.RECENCY_WEIGHT * recencyScore +
+      RecentProjectsManager.FREQUENCY_WEIGHT * frequencyScore
+    );
   }
 
   /**
@@ -199,7 +201,7 @@ export class RecentProjectsManager {
       if (Array.isArray(data)) {
         // Validate and migrate old entries without useCount
         this.projects = data
-          .map(p => ({
+          .map((p) => ({
             workdir: p.workdir,
             name: p.name || basename(p.workdir),
             useCount: p.useCount ?? 1,

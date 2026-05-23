@@ -213,6 +213,8 @@ export interface Translations {
   // --- adapter ---
   'adapter.submitted': string;
   'adapter.processing': string;
+  'adapter.acceptedImage': string;
+  'adapter.processingImage': string;
 
   // --- input recognition ---
   'input.skip': string;
@@ -221,6 +223,8 @@ export interface Translations {
   'input.deny': string;
   'input.skipped': string;
   'input.submitted': string;
+  'input.allowKeywords': string;
+  'input.denyKeywords': string;
 
   // --- recent projects ---
   'recentProjects.hint': string;
@@ -229,6 +233,244 @@ export interface Translations {
   'error.title': string;
   'error.requestId': string;
 
+  // --- formatter ---
+  'formatter.runInfo': string;
+  'formatter.sessionNone': string;
+  'formatter.sessionRunningLabel': string;
+  'formatter.sessionIdleLabel': string;
+  'formatter.interactiveMode': string;
+  'formatter.turnBasedMode': string;
+  'formatter.toolApprovalRequired': string;
+  'formatter.toolCallsAutoAllowed': string;
+  'formatter.topicPermissionStatus': string;
+  'formatter.codexPermissionNote': string;
+  'formatter.codexSlashNote': string;
+  'formatter.otherSlashPassThrough': string;
+  'formatter.currentSession': string;
+  'formatter.capabilities': string;
+  'formatter.basicChat': string;
+  'formatter.imageInput': string;
+  'formatter.instantSteer': string;
+  'formatter.queueCapability': string;
+  'formatter.sessionActions': string;
+  'formatter.directory': string;
+
+  // --- format-home ---
+  'home.newSessionDefaultWorkspace': string;
+  'home.statusCanContinue': string;
+  'home.btnBackToTopic': string;
+  'home.btnResumeToTopic': string;
+  'home.panelRecentTopics': string;
+  'home.panelRecentLocalSessions': string;
+  'home.panelDiagnostics': string;
+  'home.btnViewRecentSessions': string;
+  'home.btnViewLocalHistory': string;
+  'home.btnBridgeStatus': string;
+  'home.btnInternalDiagnose': string;
+  'home.commandPlaceholder': string;
+  'home.btnExecute': string;
+
+  // --- message-loop ---
+  'msgLoop.replyTargetMissing': string;
+  'msgLoop.sendFailed': string;
+  'msgLoop.busyUnsupported': string;
+  'msgLoop.noActiveSession': string;
+  'msgLoop.queueFull': string;
+  'msgLoop.processFailed': string;
+  'msgLoop.inserted': string;
+  'msgLoop.queued': string;
+
+  // --- presenter ---
+  'presenter.currentDir': string;
+  'presenter.workspaceBinding': string;
+  'presenter.dirHistory': string;
+  'presenter.totalCount': string;
+  'presenter.cdHint': string;
+  'presenter.settingsUnavailable': string;
+  'presenter.stopInterrupted': string;
+  'presenter.stopNoExecution': string;
+
+  // --- cost-tracker ---
+  'cost.input': string;
+  'cost.output': string;
+  'cost.reasoning': string;
+  'cost.cached': string;
+
+  // --- format-session-list ---
+  'sessionList.stateRunning': string;
+  'sessionList.stateCurrent': string;
+  'sessionList.stateCanContinue': string;
+  'sessionList.roleAssistant': string;
+  'sessionList.roleUser': string;
+  'sessionList.recentMessages': string;
+  'sessionList.topic': string;
+  'sessionList.workspace': string;
+  'sessionList.preview': string;
+
+  // --- home-command ---
+  'homeCmd.description': string;
+  'homeCmd.helpDesc': string;
+  'homeCmd.tliveDescription': string;
+  'homeCmd.tliveHelpDesc': string;
+  'homeCmd.recentTopicsTitle': string;
+  'homeCmd.recentTopicsEmpty': string;
+  'homeCmd.btnBackToTopic': string;
+  'homeCmd.recentLocalTitle': string;
+  'homeCmd.recentLocalEmpty': string;
+  'homeCmd.btnResumeToTopic': string;
+
+  // --- topic-resume ---
+  'topicResume.sessionPreview': string;
+  'topicResume.connected': string;
+  'topicResume.sessionNotFound': string;
+  'topicResume.resumed': string;
+  'topicResume.anchorMissing': string;
+  'topicResume.fromWorkbench': string;
+  'topicResume.createFailed': string;
+
+  // --- progress-builder ---
+  'progress.engineLabel': string;
+  'progress.thinkingLabel': string;
+  'progress.continueExec': string;
+
+  // --- markdown ---
+  'markdown.tableChunk': string;
+
+  // --- upgrade command ---
+  'cmd.upgrade.description': string;
+  'cmd.upgrade.helpDesc': string;
+  'cmd.upgrade.notesHint': string;
+  'cmd.upgrade.checkFailed': string;
+  'cmd.upgrade.alreadyLatest': string;
+  'cmd.upgrade.gitCheckout': string;
+  'cmd.upgrade.starting': string;
+  'cmd.upgrade.failed': string;
+
+  // --- new command ---
+  'cmd.new.description': string;
+  'cmd.new.helpDesc': string;
+  'cmd.new.unsupportedType': string;
+  'cmd.new.providerUnavailable': string;
+  'cmd.new.reason': string;
+  'cmd.new.topicTitle': string;
+  'cmd.new.topicIntro': string;
+
+  // --- cd command ---
+  'cmd.cd.description': string;
+  'cmd.cd.helpDesc': string;
+  'cmd.cd.noHistory': string;
+  'cmd.cd.switchedBack': string;
+  'cmd.cd.switchedRepo': string;
+
+  // --- stop command ---
+  'cmd.stop.description': string;
+  'cmd.stop.helpDesc': string;
+  'cmd.stop.workbenchHint': string;
+
+  // --- perm command ---
+  'cmd.perm.description': string;
+  'cmd.perm.helpDesc': string;
+
+  // --- deferred-tool ---
+  'deferred.hint': string;
+  'deferred.btnLabel': string;
+
+  // --- policy ---
+  'policy.imageAccepted': string;
+  'policy.imageRejected': string;
+  'policy.imageRejectedReason': string;
+
+  // --- session-format ---
+  'format.minAgo': string;
+  'format.hourAgo': string;
+  'format.dayAgo': string;
+
+  // --- main ---
+  'main.upgradeSuccess': string;
+  'main.upgradeFailed': string;
+
+  // --- buttons ---
+  'btn.stopExec': string;
+  'btn.newSession': string;
+  'btn.newProviderSession': string;
+
+  // --- surface-policy ---
+  'surface.steerUnsupported': string;
+  'surface.queueUnsupported': string;
+  'surface.tliveRejection': string;
+  'surface.homeRejection': string;
+  'surface.continueRejection': string;
+
+  // --- topic-conversation ---
+  'topic.agentSession': string;
+  'topic.started': string;
+
+  // --- home-model ---
+  'homeModel.bound': string;
+  'homeModel.unbound': string;
+  'homeModel.agentSession': string;
+
+  // --- command-router ---
+  'router.unknownCommand': string;
+  'router.workbenchCommandHint': string;
+
+  // --- sdk-perm-tracker ---
+  'sdkPerm.tracking': string;
+  'sdkPerm.notTracking': string;
+
+  // --- form-callbacks ---
+  'formCmd.executed': string;
+  'formCmd.enterCommand': string;
+
+  // --- query ---
+  'query.replyMissing': string;
+
+  // --- query-recovery ---
+  'queryRecovery.sessionMissing': string;
+  'queryRecovery.staleSessionFallback': string;
+
+  // --- continue command ---
+  'cmd.continue.description': string;
+  'cmd.continue.usage': string;
+
+  // --- help-categories ---
+  'helpCat.session': string;
+  'helpCat.status': string;
+  'helpCat.system': string;
+  'helpCat.agent': string;
+  'helpCat.other': string;
+  'helpCat.sessionDesc': string;
+  'helpCat.statusDesc': string;
+  'helpCat.systemDesc': string;
+  'helpCat.agentDesc': string;
+
+  // --- help format ---
+  'help.exampleLabel': string;
+
+  // --- other commands ---
+  'cmd.status.description': string;
+  'cmd.settings.description': string;
+  'cmd.restart.description': string;
+  'cmd.pwd.description': string;
+  'cmd.help.description': string;
+  'cmd.diagnose.description': string;
+  'cmd.bash.description': string;
+
+  // --- feishu adapter ---
+  'feishu.topicProcessing': string;
+  'feishu.topicContinue': string;
+
+  // --- deferred-tool handler ---
+  'deferredTool.planModePrompt': string;
+  'deferredTool.planModePlaceholder': string;
+  'deferredTool.worktreePrompt': string;
+  'deferredTool.worktreePlaceholder': string;
+  'deferredTool.toolInputPrompt': string;
+  'deferredTool.toolInputPlaceholder': string;
+
+  // --- form validation ---
+  'form.invalidSelection': string;
+  'form.submitWithoutAnswer': string;
 }
 
 export type TranslationKey = keyof Translations;

@@ -148,7 +148,9 @@ export class WorkspaceStateManager {
   private loadPersisted(): void {
     if (!this.persistPath) return;
     try {
-      const data: Record<string, WorkspaceState> = JSON.parse(readFileSync(this.persistPath, 'utf-8'));
+      const data: Record<string, WorkspaceState> = JSON.parse(
+        readFileSync(this.persistPath, 'utf-8'),
+      );
       for (const [key, state] of Object.entries(data)) {
         // Validate state structure — ignore projectName for backward compatibility
         if (Array.isArray(state.history)) {

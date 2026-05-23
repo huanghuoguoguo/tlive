@@ -10,7 +10,7 @@ export function buildSubprocessEnv(): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (v === undefined) continue;
-    if (ENV_ALWAYS_STRIP.some(prefix => k.startsWith(prefix))) continue;
+    if (ENV_ALWAYS_STRIP.some((prefix) => k.startsWith(prefix))) continue;
     out[k] = v;
   }
   return out;

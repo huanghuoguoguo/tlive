@@ -27,11 +27,7 @@ export interface SessionKeyParts {
  *
  * Only split on the first and last separator: chatId/scopeId may itself contain ':'.
  */
-export function sessionKey(
-  channelType: string,
-  chatId: string,
-  bindingSessionId: string,
-): string {
+export function sessionKey(channelType: string, chatId: string, bindingSessionId: string): string {
   return `${channelType}:${chatId}:${bindingSessionId}`;
 }
 

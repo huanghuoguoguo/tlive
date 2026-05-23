@@ -1,11 +1,5 @@
-import type {
-  CallbackHandlerContext,
-  CallbackHandlerResult,
-} from './callback-context.js';
-import {
-  parseDeferredSkipCallback,
-  parseDeferredSubmitCallback,
-} from './callback-utils.js';
+import type { CallbackHandlerContext, CallbackHandlerResult } from './callback-context.js';
+import { parseDeferredSkipCallback, parseDeferredSubmitCallback } from './callback-utils.js';
 
 export function handleDeferredCallback(ctx: CallbackHandlerContext): CallbackHandlerResult {
   const { adapter, msg, deps, callbackData } = ctx;
@@ -43,4 +37,3 @@ export function handleDeferredCallback(ctx: CallbackHandlerContext): CallbackHan
 
   return undefined;
 }
-

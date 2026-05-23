@@ -21,6 +21,7 @@ import {
 import type { ChannelBinding } from '../../store/interface.js';
 import type { Locale } from '../../i18n/index.js';
 import type { TopicSessionManager } from '../state/topic-sessions.js';
+import { t } from '../../i18n/index.js';
 
 export type BoundInfo = {
   channelType: string;
@@ -112,14 +113,15 @@ export function buildTopicEntries(opts: {
       })
       .map((record, index) => {
         const provider = normalizeAgentProviderKind(record.provider);
+        const agentSessionLabel = t(opts.locale, 'homeModel.agentSession');
         return {
           index: index + 1,
           sdkSessionId: record.sdkSessionId,
           scopeId: record.scopeId,
           threadId: record.threadId,
           cwd: shortPath(record.cwd || opts.currentCwd),
-          title: record.title || record.preview || 'Agent 会话',
-          preview: record.preview || record.title || 'Agent 会话',
+          title: record.title || record.preview || agentSessionLabel,
+          preview: record.preview || record.title || agentSessionLabel,
           provider,
           providerDisplayName: opts.providerDisplayName?.(provider),
           clientId: record.clientId,

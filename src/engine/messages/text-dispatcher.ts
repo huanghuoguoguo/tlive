@@ -45,15 +45,15 @@ export class TextDispatcher {
       return false;
     }
 
-    if (msg.text && await this.handlePermissionText(adapter, msg)) {
+    if (msg.text && (await this.handlePermissionText(adapter, msg))) {
       return true;
     }
 
-    if (msg.text && await this.handleDeferredToolInput(adapter, msg)) {
+    if (msg.text && (await this.handleDeferredToolInput(adapter, msg))) {
       return true;
     }
 
-    if (msg.text && await this.handleQuestionReply(msg)) {
+    if (msg.text && (await this.handleQuestionReply(msg))) {
       return true;
     }
 
@@ -72,7 +72,10 @@ export class TextDispatcher {
       .findPendingDeferredTool(chatId, this.options.permissions.getGateway());
   }
 
-  private async handleDeferredToolInput(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
+  private async handleDeferredToolInput(
+    adapter: BaseChannelAdapter,
+    msg: InboundMessage,
+  ): Promise<boolean> {
     const pendingDeferred = this.findPendingDeferredTool(conversationScopeId(msg));
     if (!pendingDeferred) {
       return false;
@@ -83,21 +86,33 @@ export class TextDispatcher {
     if (matchesLocalizedInput(trimmed, 'input.skip')) {
       this.options.permissions.getGateway().resolve(pendingDeferred.permId, 'deny', 'Skipped');
       this.options.sdkEngine.getInteractionState().cleanupDeferredTool(pendingDeferred.permId);
-      await adapter.send(withInboundReplyContext({ chatId: msg.chatId, text: t(locale, 'input.skipped') }, msg));
+      await adapter.send(
+        withInboundReplyContext({ chatId: msg.chatId, text: t(locale, 'input.skipped') }, msg),
+      );
       return true;
     }
 
     // Store user input and resolve permission
-    this.options.sdkEngine.getInteractionState().setDeferredToolInput(pendingDeferred.permId, trimmed);
+    this.options.sdkEngine
+      .getInteractionState()
+      .setDeferredToolInput(pendingDeferred.permId, trimmed);
     this.options.permissions.getGateway().resolve(pendingDeferred.permId, 'allow');
-    await adapter.send(withInboundReplyContext({
-      chatId: msg.chatId,
-      text: `${t(locale, 'input.submitted')} ${trimmed.slice(0, 50)}${trimmed.length > 50 ? '...' : ''}`,
-    }, msg));
+    await adapter.send(
+      withInboundReplyContext(
+        {
+          chatId: msg.chatId,
+          text: `${t(locale, 'input.submitted')} ${trimmed.slice(0, 50)}${trimmed.length > 50 ? '...' : ''}`,
+        },
+        msg,
+      ),
+    );
     return true;
   }
 
-  private async handlePermissionText(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
+  private async handlePermissionText(
+    adapter: BaseChannelAdapter,
+    msg: InboundMessage,
+  ): Promise<boolean> {
     const decision = this.options.permissions.parsePermissionText(msg.text);
     if (!decision) {
       return false;
@@ -123,18 +138,16 @@ export class TextDispatcher {
 
     const optionIndex = this.getValidOptionIndex(trimmed, pendingSdkQuestion);
     if (optionIndex !== null) {
-      this.options.sdkEngine.getInteractionState().setSdkQuestionOptionAnswer(
-        pendingSdkQuestion.permId,
-        optionIndex,
-      );
+      this.options.sdkEngine
+        .getInteractionState()
+        .setSdkQuestionOptionAnswer(pendingSdkQuestion.permId, optionIndex);
       this.options.permissions.getGateway().resolve(pendingSdkQuestion.permId, 'allow');
       return true;
     }
 
-    this.options.sdkEngine.getInteractionState().setSdkQuestionTextAnswer(
-      pendingSdkQuestion.permId,
-      trimmed,
-    );
+    this.options.sdkEngine
+      .getInteractionState()
+      .setSdkQuestionTextAnswer(pendingSdkQuestion.permId, trimmed);
     this.options.permissions.getGateway().resolve(pendingSdkQuestion.permId, 'allow');
     return true;
   }

@@ -28,6 +28,7 @@ import { HomePayloadBuilder } from './presenters/home-payload-builder.js';
 import { conversationScopeId } from '../channels/conversation-context.js';
 import { commandRejectionForSurface, conversationSurface } from './conversations/surface-policy.js';
 import { withInboundReplyContext } from '../channels/reply-context.js';
+import { t } from '../i18n/index.js';
 
 // Register all commands on module load
 registerAllCommands();
@@ -181,30 +182,28 @@ export class CommandRouter {
     const cmd = parts[0].toLowerCase();
     const scopeId = conversationScopeId(msg);
     const surface = conversationSurface({ threadId: msg.threadId, scopeId });
+    const locale = adapter.getLocale();
 
-	    const handler = commandRegistry.get(cmd);
-	    if (handler) {
-	      if (opts.requirePublicTextCommand && !isPublicTextCommand(handler.name)) {
-	        await adapter.send(
-	          withInboundReplyContext(
-	            {
-	              chatId: msg.chatId,
-	              text: `⚠️ ${handler.name} 是 TLive 工作台命令。请在 /tlive 工作台的命令输入框或按钮中执行。`,
-	            },
-	            msg,
-	          ),
-	        );
-	        return true;
-	      }
-      const rejection = commandRejectionForSurface(cmd, surface);
-      if (rejection) {
+    const handler = commandRegistry.get(cmd);
+    if (handler) {
+      if (opts.requirePublicTextCommand && !isPublicTextCommand(handler.name)) {
         await adapter.send(
-          withInboundReplyContext({ chatId: msg.chatId, text: rejection }, msg),
+          withInboundReplyContext(
+            {
+              chatId: msg.chatId,
+              text: t(locale, 'router.workbenchCommandHint').replace('{cmd}', handler.name),
+            },
+            msg,
+          ),
         );
         return true;
       }
+      const rejection = commandRejectionForSurface(cmd, surface, locale);
+      if (rejection) {
+        await adapter.send(withInboundReplyContext({ chatId: msg.chatId, text: rejection }, msg));
+        return true;
+      }
 
-      const locale = typeof adapter.getLocale === 'function' ? adapter.getLocale() : 'zh';
       const ctx = {
         adapter,
         msg,
@@ -221,7 +220,7 @@ export class CommandRouter {
     if (!opts.requirePublicTextCommand) {
       await adapter.send(
         withInboundReplyContext(
-          { chatId: msg.chatId, text: `⚠️ 未知 TLive 命令: ${cmd}` },
+          { chatId: msg.chatId, text: t(locale, 'router.unknownCommand').replace('{cmd}', cmd) },
           msg,
         ),
       );

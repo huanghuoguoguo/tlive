@@ -29,7 +29,11 @@ export type DeferredToolHandler = (
   toolName: string,
   toolInput: Record<string, unknown>,
   signal?: AbortSignal,
-) => Promise<{ behavior: 'allow' | 'deny'; updatedInput?: Record<string, unknown>; message?: string }>;
+) => Promise<{
+  behavior: 'allow' | 'deny';
+  updatedInput?: Record<string, unknown>;
+  message?: string;
+}>;
 
 /** Controls for an active query. */
 export interface QueryControls {

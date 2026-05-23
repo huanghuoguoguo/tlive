@@ -12,6 +12,7 @@ import type {
   DiagnoseData,
   FormattableMessage,
 } from '../../formatting/message-types.js';
+import { t, type Locale } from '../../i18n/index.js';
 
 export function presentStatus(chatId: string, data: StatusData): FormattableMessage {
   return { type: 'status', chatId, data };
@@ -25,7 +26,10 @@ export function presentHome(chatId: string, data: HomeData): FormattableMessage 
   return { type: 'home', chatId, data };
 }
 
-export function presentPermissionStatus(chatId: string, data: PermissionStatusData): FormattableMessage {
+export function presentPermissionStatus(
+  chatId: string,
+  data: PermissionStatusData,
+): FormattableMessage {
   return { type: 'permissionStatus', chatId, data };
 }
 
@@ -35,11 +39,25 @@ export function presentHelp(chatId: string, data: HelpData): FormattableMessage 
 
 // --- Simple text messages (no platform-specific formatting needed) ---
 
-export function presentStopResult(chatId: string, interrupted: boolean): { chatId: string; text: string } {
-  return { chatId, text: interrupted ? '⏹ Interrupted current execution' : '⚠️ No active execution to stop' };
+export function presentStopResult(
+  chatId: string,
+  interrupted: boolean,
+  locale: Locale = 'zh',
+): { chatId: string; text: string } {
+  return {
+    chatId,
+    text: interrupted
+      ? t(locale, 'presenter.stopInterrupted')
+      : t(locale, 'presenter.stopNoExecution'),
+  };
 }
 
-export function presentDirectory(chatId: string, cwd: string, withIcon = false, feedbackText?: string): { chatId: string; text: string } {
+export function presentDirectory(
+  chatId: string,
+  cwd: string,
+  withIcon = false,
+  feedbackText?: string,
+): { chatId: string; text: string } {
   const lines = [];
   if (feedbackText) lines.push(feedbackText);
   lines.push(withIcon ? `📂 ${cwd}` : cwd);
@@ -51,39 +69,49 @@ export function presentDirectoryHistory(
   current: string,
   history: string[],
   workspaceBinding?: string,
+  locale: Locale = 'zh',
 ): { chatId: string; text: string } {
-  const lines = [`📂 当前目录：${current}`];
+  const lines = [t(locale, 'presenter.currentDir') + current];
 
   if (workspaceBinding && workspaceBinding !== current) {
-    lines.push(`🏠 工作区绑定：${workspaceBinding}`);
+    lines.push(t(locale, 'presenter.workspaceBinding') + workspaceBinding);
   }
 
   if (history.length > 1) {
     lines.push('');
-    lines.push('📋 目录历史：');
+    lines.push(t(locale, 'presenter.dirHistory'));
     history.slice(0, 5).forEach((dir, i) => {
       const marker = i === 0 ? '●' : `${i}.`;
       lines.push(`  ${marker} ${dir}`);
     });
     if (history.length > 5) {
-      lines.push(`  ... 共 ${history.length} 个`);
+      lines.push(t(locale, 'presenter.totalCount').replace('{count}', String(history.length)));
     }
     lines.push('');
-    lines.push('💡 使用 /cd - 返回上一目录');
+    lines.push(t(locale, 'presenter.cdHint'));
   }
 
   return { chatId, text: lines.join('\n') };
 }
 
-export function presentDirectoryNotFound(chatId: string, path: string): { chatId: string; text: string } {
+export function presentDirectoryNotFound(
+  chatId: string,
+  path: string,
+): { chatId: string; text: string } {
   return { chatId, text: `❌ Directory not found: ${path}` };
 }
 
-export function presentSettingsUnavailable(chatId: string): { chatId: string; text: string } {
-  return { chatId, text: '⚠️ 当前执行引擎不支持设置源切换' };
+export function presentSettingsUnavailable(
+  chatId: string,
+  locale: Locale = 'zh',
+): { chatId: string; text: string } {
+  return { chatId, text: t(locale, 'presenter.settingsUnavailable') };
 }
 
-export function presentSettingsChanged(chatId: string, label: string): { chatId: string; text: string } {
+export function presentSettingsChanged(
+  chatId: string,
+  label: string,
+): { chatId: string; text: string } {
   return { chatId, text: `⚙️ Settings: ${label}` };
 }
 
@@ -101,7 +129,10 @@ export function presentSettingsStatus(
 
 // --- Version/Upgrade messages ---
 
-function getManualInstallCommand(platform: NodeJS.Platform = process.platform, version?: string): string {
+function getManualInstallCommand(
+  platform: NodeJS.Platform = process.platform,
+  version?: string,
+): string {
   const normalizedVersion = version?.trim() ? version.trim().replace(/^v/i, '') : '';
   if (platform === 'win32') {
     const versionArg = normalizedVersion ? ` '${normalizedVersion}'` : '';
@@ -113,7 +144,10 @@ function getManualInstallCommand(platform: NodeJS.Platform = process.platform, v
     : 'curl -fsSL https://raw.githubusercontent.com/huanghuoguoguo/tlive/main/install.sh | bash';
 }
 
-export function presentUpgradeCommand(chatId: string, platform: NodeJS.Platform = process.platform): { chatId: string; text: string } {
+export function presentUpgradeCommand(
+  chatId: string,
+  platform: NodeJS.Platform = process.platform,
+): { chatId: string; text: string } {
   const cmd = getManualInstallCommand(platform);
   return { chatId, text: `Manual upgrade:\n\`\`\`\n${cmd}\n\`\`\`` };
 }

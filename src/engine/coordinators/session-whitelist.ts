@@ -17,7 +17,11 @@ export class SessionWhitelist {
   // --- Tool whitelist ---
 
   /** Check if a tool is allowed by the dynamic session whitelist */
-  isToolAllowed(sessionId: string | undefined, toolName: string, toolInput: Record<string, unknown>): boolean {
+  isToolAllowed(
+    sessionId: string | undefined,
+    toolName: string,
+    toolInput: Record<string, unknown>,
+  ): boolean {
     if (!sessionId) return false;
     const exactCommands = this.exactCommandsBySession.get(sessionId);
     if (exactCommands?.has(this.commandKey(toolName, toolInput))) return true;
@@ -130,7 +134,7 @@ export class SessionWhitelist {
       return JSON.stringify(value);
     }
     if (Array.isArray(value)) {
-      return `[${value.map(item => this.stableStringify(item)).join(',')}]`;
+      return `[${value.map((item) => this.stableStringify(item)).join(',')}]`;
     }
     const entries = Object.entries(value as Record<string, unknown>)
       .sort(([a], [b]) => a.localeCompare(b))

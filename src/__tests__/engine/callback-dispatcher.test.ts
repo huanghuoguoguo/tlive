@@ -7,6 +7,7 @@ function createAdapter() {
     channelType: 'feishu',
     send: vi.fn().mockResolvedValue({}),
     editCardResolution: vi.fn().mockResolvedValue(undefined),
+    getLocale: () => 'zh',
   } as any;
 }
 
@@ -105,7 +106,7 @@ describe('handleCallbackMessage form submissions', () => {
     expect(adapter.editCardResolution).not.toHaveBeenCalled();
     expect(adapter.send).toHaveBeenCalledWith({
       chatId: 'chat-1',
-      text: '⚠️ Please enter an answer or choose an option before submitting.',
+      text: '⚠️ 请先输入答案或选择选项后再提交。',
     });
   });
 
@@ -127,7 +128,7 @@ describe('handleCallbackMessage form submissions', () => {
     expect(adapter.editCardResolution).not.toHaveBeenCalled();
     expect(adapter.send).toHaveBeenCalledWith({
       chatId: 'chat-1',
-      text: '⚠️ Invalid selection, please try again.',
+      text: '⚠️ 选择无效，请重试。',
     });
   });
 

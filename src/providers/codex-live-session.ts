@@ -259,7 +259,10 @@ export function resolveCodexSessionOptions(options: CodexSessionOptions): CodexS
 }
 
 function readCodexUserDefaults(): Pick<CodexRuntimeOptions, 'model' | 'modelReasoningEffort'> {
-  const configPath = join(process.env.CODEX_HOME?.trim() || join(homedir(), '.codex'), 'config.toml');
+  const configPath = join(
+    process.env.CODEX_HOME?.trim() || join(homedir(), '.codex'),
+    'config.toml',
+  );
   if (!existsSync(configPath)) return {};
 
   try {

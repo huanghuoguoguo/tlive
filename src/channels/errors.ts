@@ -16,15 +16,21 @@ export class RateLimitError extends BridgeError {
 }
 
 export class FormatError extends BridgeError {
-  constructor(message: string) { super(message, false); }
+  constructor(message: string) {
+    super(message, false);
+  }
 }
 
 export class NetworkError extends BridgeError {
-  constructor(message: string) { super(message, true); }
+  constructor(message: string) {
+    super(message, true);
+  }
 }
 
 export class AuthError extends BridgeError {
-  constructor(message: string) { super(message, false); }
+  constructor(message: string) {
+    super(message, false);
+  }
 }
 
 export class PlatformError extends BridgeError {
@@ -47,5 +53,8 @@ export function classifyDefaultError(err: unknown): BridgeError {
     return new NetworkError(message);
   }
 
-  return new PlatformError(message, (e?.response as { statusCode?: number })?.statusCode ?? (e?.status as number));
+  return new PlatformError(
+    message,
+    (e?.response as { statusCode?: number })?.statusCode ?? (e?.status as number),
+  );
 }

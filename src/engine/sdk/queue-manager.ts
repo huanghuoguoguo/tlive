@@ -41,7 +41,9 @@ export class QueueManager {
   /** Set the max queue depth (configurable) */
   setMaxQueueDepth(depth: number): void {
     if (depth < 1 || depth > 10) {
-      console.warn(`[tlive:engine] Invalid max queue depth: ${depth}, keeping current value ${this.maxQueueDepth}`);
+      console.warn(
+        `[tlive:engine] Invalid max queue depth: ${depth}, keeping current value ${this.maxQueueDepth}`,
+      );
       return;
     }
     this.maxQueueDepth = depth;

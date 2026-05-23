@@ -4,6 +4,7 @@ import {
   type ConversationSurface,
 } from '../../channels/conversation-context.js';
 import type { Locale } from '../../i18n/index.js';
+import { t } from '../../i18n/index.js';
 import { progressRunningButtons, topicDoneButtons } from '../../ui/buttons.js';
 import type { Button } from '../../ui/types.js';
 import type { MessageRendererState } from '../messages/renderer-types.js';
@@ -13,13 +14,6 @@ export type { ConversationSurface } from '../../channels/conversation-context.js
 type SurfaceInput = Pick<InboundMessage, 'threadId' | 'scopeId'>;
 
 const WORKBENCH_ONLY_COMMANDS = new Set(['tlive', 'home', 'continue']);
-
-const WORKBENCH_ONLY_REJECTIONS: Record<string, string> = {
-  tlive:
-    '⚠️ /tlive 是工作台命令，只能在主会话使用。当前话题已绑定一个 Agent 会话，请直接在本话题内继续对话。',
-  home: '⚠️ /home 是工作台命令，只能在主会话使用。当前话题已绑定一个 Agent 会话，请直接在本话题内继续对话。',
-  continue: '⚠️ 话题内固定绑定当前 Agent 会话，不支持切换到其他会话。',
-};
 
 export function conversationSurface(input: SurfaceInput): ConversationSurface {
   return conversationSurfaceFor(input);
@@ -36,9 +30,14 @@ export function isCommandAllowedOnSurface(command: string, surface: Conversation
 export function commandRejectionForSurface(
   command: string,
   surface: ConversationSurface,
+  locale: Locale = 'zh',
 ): string | undefined {
   if (surface !== 'topic') return undefined;
-  return WORKBENCH_ONLY_REJECTIONS[normalizeCommandName(command)];
+  const cmd = normalizeCommandName(command);
+  if (cmd === 'tlive') return t(locale, 'surface.tliveRejection');
+  if (cmd === 'home') return t(locale, 'surface.homeRejection');
+  if (cmd === 'continue') return t(locale, 'surface.continueRejection');
+  return undefined;
 }
 
 export function helpEntriesForSurface<T extends { cmd: string }>(

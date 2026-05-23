@@ -5,26 +5,26 @@ export type HelpCategoryId = 'session' | 'status' | 'system' | 'other';
 export const HELP_CATEGORIES: Record<HelpCategoryId, HelpCategoryInfo> = {
   session: {
     id: 'session',
-    title: '会话管理',
+    title: 'helpCat.session',
     icon: '📁',
     order: 10,
     expandedByDefault: true,
   },
   status: {
     id: 'status',
-    title: '状态查看',
+    title: 'helpCat.status',
     icon: '📡',
     order: 20,
   },
   system: {
     id: 'system',
-    title: '系统控制',
+    title: 'helpCat.system',
     icon: '🛠️',
     order: 30,
   },
   other: {
     id: 'other',
-    title: '其他',
+    title: 'helpCat.other',
     icon: '📦',
     order: 90,
   },

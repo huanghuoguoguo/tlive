@@ -73,8 +73,14 @@ export async function runSetupWizard(): Promise<void> {
     console.log(`  Port: ${existing.TL_PORT || '8080'}`);
     console.log('');
 
-    const mode = await ask('What do you want to do?\n  1. Update existing config\n  2. Start fresh\n  3. Cancel\nChoice', '1');
-    if (mode === '3') { console.log('Cancelled.'); return; }
+    const mode = await ask(
+      'What do you want to do?\n  1. Update existing config\n  2. Start fresh\n  3. Cancel\nChoice',
+      '1',
+    );
+    if (mode === '3') {
+      console.log('Cancelled.');
+      return;
+    }
     if (mode === '2') {
       // Clear existing, start fresh
       for (const key of Object.keys(existing)) {
@@ -92,11 +98,17 @@ export async function runSetupWizard(): Promise<void> {
   console.log('\n--- Feishu ---');
   config.TL_FS_APP_ID = await ask('App ID', config.TL_FS_APP_ID || '');
   config.TL_FS_APP_SECRET = await ask('App Secret', config.TL_FS_APP_SECRET || '');
-  config.TL_FS_ALLOWED_USERS = await ask('Allowed user IDs (comma-separated, blank = all)', config.TL_FS_ALLOWED_USERS || '');
+  config.TL_FS_ALLOWED_USERS = await ask(
+    'Allowed user IDs (comma-separated, blank = all)',
+    config.TL_FS_ALLOWED_USERS || '',
+  );
 
   // General
   console.log('\n--- General ---');
-  config.TL_PUBLIC_URL = await ask('Public URL for web links (blank = local only)', config.TL_PUBLIC_URL || '');
+  config.TL_PUBLIC_URL = await ask(
+    'Public URL for web links (blank = local only)',
+    config.TL_PUBLIC_URL || '',
+  );
 
   // Write
   mkdirSync(TERMLIVE_HOME, { recursive: true });

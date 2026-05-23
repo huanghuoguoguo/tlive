@@ -85,10 +85,12 @@ export class QueryTurnRunner {
     }
 
     if (liveSession) {
-      renderer.setRuntimeInfo(liveSession.runtimeInfo ?? {
-        provider: provider.kind,
-        displayName: provider.displayName,
-      });
+      renderer.setRuntimeInfo(
+        liveSession.runtimeInfo ?? {
+          provider: provider.kind,
+          displayName: provider.displayName,
+        },
+      );
       streamResult = liveSession.startTurn(promptText, {
         onPermissionRequest: sdkPermissionHandler,
         onAskUserQuestion: sdkAskQuestionHandler,

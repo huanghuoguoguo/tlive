@@ -3,6 +3,8 @@ import { truncate } from '../../core/string.js';
 import type { SessionListData, SessionListEntry } from '../../formatting/message-types.js';
 import type { Button } from '../../ui/types.js';
 import type { FeishuCardElement } from './card-builder.js';
+import type { Locale } from '../../i18n/index.js';
+import { t } from '../../i18n/index.js';
 import { buttonElements, collapsiblePanel, markdownElement } from './card-elements.js';
 
 function sessionIdLabel(sessionId?: string): string {
@@ -15,28 +17,37 @@ function providerToken(entry: SessionListEntry): string {
   return `${entry.provider ? `${entry.provider}:` : ''}${entry.sdkSessionId ?? ''}`;
 }
 
-function panelTitle(entry: SessionListEntry): string {
+function panelTitle(entry: SessionListEntry, locale: Locale): string {
   const provider = entry.providerDisplayName ?? 'Agent';
-  const state = entry.isActive ? '执行中' : entry.isCurrent ? '当前' : '可继续';
+  const state = entry.isActive
+    ? t(locale, 'sessionList.stateRunning')
+    : entry.isCurrent
+      ? t(locale, 'sessionList.stateCurrent')
+      : t(locale, 'sessionList.stateCanContinue');
   const subject = truncate(entry.title || entry.preview, 28);
   return `${entry.index}. ${state} ${provider} ${sessionIdLabel(entry.sdkSessionId)} · ${entry.date} · ${subject}`;
 }
 
-function transcriptPreview(entry: SessionListEntry): string {
+function transcriptPreview(entry: SessionListEntry, locale: Locale): string {
   const transcript = entry.transcript ?? [];
   if (!transcript.length) return '';
   const lines = transcript.slice(-4).map((message) => {
-    const role = message.role === 'assistant' ? '助手' : '用户';
+    const role =
+      message.role === 'assistant'
+        ? t(locale, 'sessionList.roleAssistant')
+        : t(locale, 'sessionList.roleUser');
     return `- ${role}: ${truncate(message.text, 110)}`;
   });
-  return `\n\n**最近消息**\n${lines.join('\n')}`;
+  return `\n\n${t(locale, 'sessionList.recentMessages')}\n${lines.join('\n')}`;
 }
 
-function panelBody(entry: SessionListEntry): string {
-  const titleLine = entry.title ? `**话题**\n${truncate(entry.title, 120)}\n\n` : '';
+function panelBody(entry: SessionListEntry, locale: Locale): string {
+  const titleLine = entry.title
+    ? `${t(locale, 'sessionList.topic')}\n${truncate(entry.title, 120)}\n\n`
+    : '';
   return [
-    `${titleLine}**工作区**\n\`${entry.cwd}\``,
-    `**更新预览**\n${truncate(entry.preview, 220)}${transcriptPreview(entry)}`,
+    `${titleLine}${t(locale, 'sessionList.workspace')}\n\`${entry.cwd}\``,
+    `${t(locale, 'sessionList.preview')}\n${truncate(entry.preview, 220)}${transcriptPreview(entry, locale)}`,
   ].join('\n\n');
 }
 
@@ -51,16 +62,19 @@ function entryButton(entry: SessionListEntry): Button[] {
   ];
 }
 
-function sessionPanel(entry: SessionListEntry): FeishuCardElement {
-  return collapsiblePanel(panelTitle(entry), [
-    markdownElement(panelBody(entry)),
+function sessionPanel(entry: SessionListEntry, locale: Locale): FeishuCardElement {
+  return collapsiblePanel(panelTitle(entry, locale), [
+    markdownElement(panelBody(entry, locale)),
     ...buttonElements(entryButton(entry)),
   ]);
 }
 
-export function buildSessionListElements(data: SessionListData): FeishuCardElement[] {
+export function buildSessionListElements(
+  data: SessionListData,
+  locale: Locale = 'zh',
+): FeishuCardElement[] {
   if (!data.entries.length) {
     return [markdownElement(data.emptyText)];
   }
-  return data.entries.map(sessionPanel);
+  return data.entries.map((entry) => sessionPanel(entry, locale));
 }

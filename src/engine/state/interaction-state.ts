@@ -121,7 +121,10 @@ export class InteractionState {
     return this.deferredToolData.get(permId);
   }
 
-  findPendingDeferredTool(chatId: string, gateway: PendingPermissions): { permId: string; toolName: string } | null {
+  findPendingDeferredTool(
+    chatId: string,
+    gateway: PendingPermissions,
+  ): { permId: string; toolName: string } | null {
     for (const [permId, data] of this.deferredToolData) {
       if (data.chatId === chatId && gateway.isPending(permId)) {
         return { permId, toolName: data.toolName };

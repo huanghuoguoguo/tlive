@@ -165,7 +165,8 @@ function resolveFileSendTarget(
   if (requestedRoute) return { route: requestedRoute };
 
   return {
-    error: 'Missing file delivery target. Include the current turn routeToken, or specify channelType and chatId explicitly.',
+    error:
+      'Missing file delivery target. Include the current turn routeToken, or specify channelType and chatId explicitly.',
   };
 }
 

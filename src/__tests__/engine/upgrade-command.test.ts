@@ -61,6 +61,7 @@ describe('UpgradeCommand', () => {
       adapter: { send },
       msg: { chatId: 'chat-1' },
       parts: ['/upgrade', 'notes'],
+      locale: 'zh',
     } as any);
 
     expect(send).toHaveBeenCalledWith(
@@ -78,6 +79,7 @@ describe('UpgradeCommand', () => {
     await command.execute({
       adapter: { send },
       msg: { chatId: 'chat-1' },
+      locale: 'zh',
       parts: ['/upgrade'],
     } as any);
 
@@ -98,6 +100,7 @@ describe('UpgradeCommand', () => {
       adapter: { send },
       msg: { chatId: 'chat-1' },
       parts: ['/upgrade'],
+      locale: 'zh',
     } as any);
 
     expect(spawnMock).toHaveBeenCalledWith(
@@ -134,6 +137,7 @@ describe('UpgradeCommand', () => {
       adapter: { send },
       msg: { chatId: 'chat-1' },
       parts: ['/upgrade'],
+      locale: 'zh',
     } as any);
 
     expect(spawnMock).not.toHaveBeenCalled();
@@ -153,6 +157,7 @@ describe('UpgradeCommand', () => {
       adapter: { send },
       msg: { chatId: 'chat-1' },
       parts: ['/upgrade'],
+      locale: 'zh',
     } as any);
 
     expect(spawnMock).not.toHaveBeenCalled();

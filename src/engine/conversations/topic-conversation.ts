@@ -13,6 +13,7 @@ import {
 import { generateSessionId } from '../../core/id.js';
 import { truncate } from '../../core/string.js';
 import { Logger } from '../../logger.js';
+import { t } from '../../i18n/index.js';
 
 type SessionTargetFailureReason =
   | 'no_session'
@@ -108,10 +109,14 @@ export class TopicConversationService {
     msg: InboundMessage,
     binding: TopicSessionBindingSnapshot,
     updates: { sdkSessionId?: string; lastMessageId?: string } = {},
+    locale: string = 'zh',
   ): void {
     if (!msg.threadId || !this.options.topicSessions) return;
     const scopeId = conversationScopeId(msg);
-    const preview = truncate((msg.text || '').trim() || 'Agent 会话', 120);
+    const preview = truncate(
+      (msg.text || '').trim() || t(locale as 'zh' | 'en', 'topic.agentSession'),
+      120,
+    );
     this.options.topicSessions.upsert({
       channelType: msg.channelType,
       chatId: msg.chatId,
@@ -131,6 +136,7 @@ export class TopicConversationService {
   private async ensureTopicScope(
     adapter: BaseChannelAdapter,
     msg: InboundMessage,
+    locale: string = 'zh',
   ): Promise<InboundMessage> {
     if (
       msg.threadId ||
@@ -142,7 +148,7 @@ export class TopicConversationService {
     }
 
     const started = await adapter
-      .startThreadFromMessage(msg.chatId, msg.messageId, '💬 已开启话题，正在处理...')
+      .startThreadFromMessage(msg.chatId, msg.messageId, t(locale as 'zh' | 'en', 'topic.started'))
       .catch((err) => {
         console.warn(`[query] start thread failed: ${Logger.formatError(err)}`);
         return null;

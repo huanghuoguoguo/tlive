@@ -89,7 +89,10 @@ export class PermissionCoordinator {
     this.sdkTracker.clearPendingPermissionSnapshot(chatKey, permissionId);
   }
 
-  getPermissionStatus(chatKey: string, sessionId?: string): {
+  getPermissionStatus(
+    chatKey: string,
+    sessionId?: string,
+  ): {
     rememberedTools: number;
     rememberedBashPrefixes: number;
     pending?: { toolName: string; input: string };
@@ -115,7 +118,12 @@ export class PermissionCoordinator {
 
   // --- Permission message tracking (delegated to SdkPermTracker) ---
 
-  trackPermissionMessage(messageId: string, permissionId: string, sessionId: string, channelType: string): void {
+  trackPermissionMessage(
+    messageId: string,
+    permissionId: string,
+    sessionId: string,
+    channelType: string,
+  ): void {
     this.sdkTracker.trackPermissionMessage(messageId, permissionId, sessionId, channelType);
   }
 
@@ -134,14 +142,16 @@ export class PermissionCoordinator {
     this.questionResolver.storeQuestionData(interactionId, questions, contextSuffix);
   }
 
-  getQuestionData(interactionId: string): {
-    questions: Array<{
-      question: string;
-      header: string;
-      options: Array<{ label: string; description?: string }>;
-      multiSelect: boolean;
-    }>;
-  } | undefined {
+  getQuestionData(interactionId: string):
+    | {
+        questions: Array<{
+          question: string;
+          header: string;
+          options: Array<{ label: string; description?: string }>;
+          multiSelect: boolean;
+        }>;
+      }
+    | undefined {
     return this.questionResolver.getQuestionData(interactionId);
   }
 
@@ -178,7 +188,11 @@ export class PermissionCoordinator {
 
   // --- Dynamic session whitelist (delegated to SessionWhitelist) ---
 
-  isToolAllowed(sessionId: string | undefined, toolName: string, toolInput: Record<string, unknown>): boolean {
+  isToolAllowed(
+    sessionId: string | undefined,
+    toolName: string,
+    toolInput: Record<string, unknown>,
+  ): boolean {
     return this.whitelist.isToolAllowed(sessionId, toolName, toolInput);
   }
 

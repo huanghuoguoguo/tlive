@@ -16,8 +16,15 @@ export interface SDKMessage {
 }
 
 const HIDDEN_TOOLS = new Set([
-  'ToolSearch', 'TodoRead', 'TodoWrite',
-  'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'TaskStop', 'TaskOutput',
+  'ToolSearch',
+  'TodoRead',
+  'TodoWrite',
+  'TaskCreate',
+  'TaskUpdate',
+  'TaskList',
+  'TaskGet',
+  'TaskStop',
+  'TaskOutput',
 ]);
 
 interface ClaudeUsage {
@@ -51,12 +58,15 @@ export class ClaudeAdapter {
   private hasStreamedText = false;
   private hiddenToolUseIds = new Set<string>();
   private streamedToolUseIds = new Set<string>();
-  private streamToolBlocks = new Map<number, {
-    id: string;
-    name: string;
-    inputBuffer: string;
-    emitted: boolean;
-  }>();
+  private streamToolBlocks = new Map<
+    number,
+    {
+      id: string;
+      name: string;
+      inputBuffer: string;
+      emitted: boolean;
+    }
+  >();
 
   /** Reset state between queries. */
   reset(): void {
@@ -114,7 +124,7 @@ export class ClaudeAdapter {
     }
 
     // Validate every event through Zod
-    return events.map(e => canonicalEventSchema.parse(e));
+    return events.map((e) => canonicalEventSchema.parse(e));
   }
 
   // ── stream_event ──
@@ -191,7 +201,11 @@ export class ClaudeAdapter {
           };
           events.push(ev);
         }
-      } else if (delta.type === 'input_json_delta' && typeof delta.partial_json === 'string' && typeof index === 'number') {
+      } else if (
+        delta.type === 'input_json_delta' &&
+        typeof delta.partial_json === 'string' &&
+        typeof index === 'number'
+      ) {
         const state = this.streamToolBlocks.get(index);
         if (state) {
           state.inputBuffer += delta.partial_json;
@@ -248,7 +262,12 @@ export class ClaudeAdapter {
           input: (b.input as Record<string, unknown>) ?? {},
         };
         events.push(ev);
-      } else if (b.type === 'text' && typeof b.text === 'string' && b.text && !this.hasStreamedText) {
+      } else if (
+        b.type === 'text' &&
+        typeof b.text === 'string' &&
+        b.text &&
+        !this.hasStreamedText
+      ) {
         this.hasStreamedText = true;
         const ev: CanonicalEvent = {
           kind: 'text_delta',
@@ -263,7 +282,9 @@ export class ClaudeAdapter {
     if (!inputBuffer.trim()) return {};
     try {
       const parsed = JSON.parse(inputBuffer);
-      return typeof parsed === 'object' && parsed !== null ? parsed as Record<string, unknown> : {};
+      return typeof parsed === 'object' && parsed !== null
+        ? (parsed as Record<string, unknown>)
+        : {};
     } catch {
       return {};
     }
@@ -287,9 +308,8 @@ export class ClaudeAdapter {
         if (this.hiddenToolUseIds.has(toolUseId)) continue;
 
         const rawContent = b.content;
-        const contentStr = typeof rawContent === 'string'
-          ? rawContent
-          : JSON.stringify(rawContent ?? '');
+        const contentStr =
+          typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent ?? '');
 
         const ev: CanonicalEvent = {
           kind: 'tool_result',
@@ -304,16 +324,13 @@ export class ClaudeAdapter {
 
   // ── result ──
 
-  private handleResult(
-    msg: SDKMessage,
-    events: CanonicalEvent[],
-  ): void {
+  private handleResult(msg: SDKMessage, events: CanonicalEvent[]): void {
     const usage = msg.usage as ClaudeUsage | undefined;
     const denials = Array.isArray(msg.permission_denials)
-      ? (msg.permission_denials as Array<{ tool_name: string; tool_use_id: string }>).map(d => ({
-        toolName: d.tool_name,
-        toolUseId: d.tool_use_id,
-      }))
+      ? (msg.permission_denials as Array<{ tool_name: string; tool_use_id: string }>).map((d) => ({
+          toolName: d.tool_name,
+          toolUseId: d.tool_use_id,
+        }))
       : undefined;
 
     if (msg.subtype === 'success') {
@@ -327,12 +344,18 @@ export class ClaudeAdapter {
       events.push(ev);
     } else {
       // Check if this is a user-initiated interrupt (e.g. /stop command)
-      const errors = Array.isArray(msg.errors) ? msg.errors as string[] : [];
-      const isInterrupt = errors.some(e => typeof e === 'string' && e.includes('result_type=user'));
+      const errors = Array.isArray(msg.errors) ? (msg.errors as string[]) : [];
+      const isInterrupt = errors.some(
+        (e) => typeof e === 'string' && e.includes('result_type=user'),
+      );
 
       // For errors, emit a single error event with usage data included
       // This prevents double flush (query_result + error both triggering renderer)
-      const errorMsg = isInterrupt ? 'Interrupted' : (errors.length > 0 ? errors.join('; ') : 'Unknown error');
+      const errorMsg = isInterrupt
+        ? 'Interrupted'
+        : errors.length > 0
+          ? errors.join('; ')
+          : 'Unknown error';
       const ev: CanonicalEvent = {
         kind: 'query_result',
         sessionId: msg.session_id as string,
@@ -364,11 +387,11 @@ export class ClaudeAdapter {
         events.push(statusEv);
 
         // Emit enriched session_info event with skills, MCP servers, tools
-        const tools = Array.isArray(msg.tools) ? msg.tools as string[] : undefined;
+        const tools = Array.isArray(msg.tools) ? (msg.tools as string[]) : undefined;
         const mcpServers = Array.isArray(msg.mcp_servers)
           ? (msg.mcp_servers as Array<{ name: string; status: string }>)
           : undefined;
-        const skills = Array.isArray(msg.skills) ? msg.skills as string[] : undefined;
+        const skills = Array.isArray(msg.skills) ? (msg.skills as string[]) : undefined;
         if (tools?.length || mcpServers?.length || skills?.length) {
           const infoEv: CanonicalEvent = {
             kind: 'session_info',
@@ -396,7 +419,9 @@ export class ClaudeAdapter {
       }
 
       case 'compact_boundary': {
-        const metadata = msg.compact_metadata as { trigger?: string; pre_tokens?: number } | undefined;
+        const metadata = msg.compact_metadata as
+          | { trigger?: string; pre_tokens?: number }
+          | undefined;
         const ev: CanonicalEvent = {
           kind: 'compact_boundary',
           trigger: (metadata?.trigger === 'manual' ? 'manual' : 'auto') as 'manual' | 'auto',
@@ -462,10 +487,7 @@ export class ClaudeAdapter {
 
   // ── tool_use_summary ──
 
-  private handleToolUseSummary(
-    msg: SDKMessage,
-    events: CanonicalEvent[],
-  ): void {
+  private handleToolUseSummary(msg: SDKMessage, events: CanonicalEvent[]): void {
     const summary = msg.summary as string | undefined;
     if (!summary) return;
 
@@ -478,15 +500,14 @@ export class ClaudeAdapter {
 
   // ── rate_limit_event ──
 
-  private handleRateLimit(
-    msg: SDKMessage,
-    events: CanonicalEvent[],
-  ): void {
-    const info = msg.rate_limit_info as {
-      status?: string;
-      utilization?: number;
-      resetsAt?: number;
-    } | undefined;
+  private handleRateLimit(msg: SDKMessage, events: CanonicalEvent[]): void {
+    const info = msg.rate_limit_info as
+      | {
+          status?: string;
+          utilization?: number;
+          resetsAt?: number;
+        }
+      | undefined;
 
     if (!info) return;
     if (info.status !== 'rejected' && info.status !== 'allowed_warning') return;
@@ -502,10 +523,7 @@ export class ClaudeAdapter {
 
   // ── prompt_suggestion ──
 
-  private handlePromptSuggestion(
-    msg: SDKMessage,
-    events: CanonicalEvent[],
-  ): void {
+  private handlePromptSuggestion(msg: SDKMessage, events: CanonicalEvent[]): void {
     const suggestion = msg.suggestion as string | undefined;
     if (!suggestion) return;
 

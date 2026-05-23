@@ -84,6 +84,7 @@ describe('CommandRouter /settings', () => {
       format: vi.fn((msg: any) => msg),
       send: vi.fn().mockResolvedValue(undefined),
       sendFormatted: vi.fn().mockResolvedValue(undefined),
+      getLocale: () => 'zh',
     };
 
     // Minimal SDKEngine mock for command routing tests
@@ -279,7 +280,7 @@ describe('CommandRouter /settings', () => {
     );
     expect(adapter.send).toHaveBeenCalledWith(expect.objectContaining({
       chatId: 'chat-1',
-      text: '⏹ Interrupted current execution',
+      text: '⏹ 已中断当前执行',
     }));
   });
 

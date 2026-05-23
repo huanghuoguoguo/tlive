@@ -88,7 +88,13 @@ export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = Ren
   }
 
   /** Platform reaction set used for lifecycle/status updates. */
-  getLifecycleReactions(): { processing: string; done: string; error: string; stalled: string; permission: string } {
+  getLifecycleReactions(): {
+    processing: string;
+    done: string;
+    error: string;
+    stalled: string;
+    permission: string;
+  } {
     const r = this.policy.reactions;
     return {
       processing: r.processing,

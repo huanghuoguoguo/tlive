@@ -73,6 +73,7 @@ export class QuerySdkInteractionsFactory {
       binding,
       permissions: this.options.permissions,
       interactionState: this.options.interactionState,
+      locale: adapter.getLocale(),
     });
 
     askQuestionHandler.setOnApproved(() => permissionHandler.setAskQuestionApproved(true));

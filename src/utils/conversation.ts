@@ -107,7 +107,9 @@ export function preparePromptWithFileAttachments(
         parts.push(`\n[File: ${att.name} (${mimeType})]${pathLine}\n\`\`\`\n${decoded}\n\`\`\``);
       }
     } else {
-      parts.push(`\n[Attached file: ${att.name} (${mimeType}) — saved for agent to inspect]${pathLine}`);
+      parts.push(
+        `\n[Attached file: ${att.name} (${mimeType}) — saved for agent to inspect]${pathLine}`,
+      );
     }
   }
 

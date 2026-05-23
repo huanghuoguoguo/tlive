@@ -124,8 +124,8 @@ describe('bridge E2E harness', () => {
 
     expect(stopHandled).toBe(true);
     expect(harness.claude.interruptCount).toBe(1);
-    expect(allRenderedText(harness.adapter)).toContain('Interrupted current execution');
-    expect(allRenderedText(harness.adapter)).not.toContain('No active execution to stop');
+    expect(allRenderedText(harness.adapter)).toContain('已中断当前执行');
+    expect(allRenderedText(harness.adapter)).not.toContain('无活跃执行可停止');
   });
 
   it('renders the workbench and handles a new-session button click as a real callback', async () => {

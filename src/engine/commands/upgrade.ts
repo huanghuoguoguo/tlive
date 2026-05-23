@@ -4,8 +4,12 @@ import { checkForUpdates } from '../../utils/version-checker.js';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { getTliveHome } from '../../core/path.js';
+import { t } from '../../i18n/index.js';
 
-function resolvePackageRoot(entryPath = process.argv[1], override = process.env.TLIVE_PACKAGE_ROOT): string {
+function resolvePackageRoot(
+  entryPath = process.argv[1],
+  override = process.env.TLIVE_PACKAGE_ROOT,
+): string {
   if (override?.trim()) return override.trim();
   if (!entryPath) {
     return join(getTliveHome(), 'app');
@@ -38,7 +42,7 @@ export class UpgradeCommand extends BaseCommand {
     if (subCmd === 'notes') {
       await this.send(ctx, {
         chatId: ctx.msg.chatId,
-        text: '📋 查看更新内容：\nhttps://github.com/huanghuoguoguo/tlive/releases',
+        text: t(ctx.locale, 'cmd.upgrade.notesHint'),
       });
       return true;
     }
@@ -49,7 +53,7 @@ export class UpgradeCommand extends BaseCommand {
     if (!info) {
       await this.send(ctx, {
         chatId: ctx.msg.chatId,
-        text: '⚠️ 无法检查更新，请稍后重试',
+        text: t(ctx.locale, 'cmd.upgrade.checkFailed'),
       });
       return true;
     }
@@ -57,7 +61,7 @@ export class UpgradeCommand extends BaseCommand {
     if (!info.hasUpdate) {
       await this.send(ctx, {
         chatId: ctx.msg.chatId,
-        text: `✅ 已是最新版本 v${info.current}`,
+        text: t(ctx.locale, 'cmd.upgrade.alreadyLatest').replace('{version}', info.current),
       });
       return true;
     }
@@ -70,7 +74,7 @@ export class UpgradeCommand extends BaseCommand {
       if (existsSync(join(packageRoot, '.git'))) {
         await this.send(ctx, {
           chatId: ctx.msg.chatId,
-          text: '⚠️ 当前运行自 git checkout，请手动用 git 更新，或改用 release 安装版。',
+          text: t(ctx.locale, 'cmd.upgrade.gitCheckout'),
         });
         return true;
       }
@@ -82,7 +86,9 @@ export class UpgradeCommand extends BaseCommand {
 
       await this.send(ctx, {
         chatId: ctx.msg.chatId,
-        text: `🔄 开始升级：v${info.current} → v${info.latest}\n服务将自动重启...`,
+        text: t(ctx.locale, 'cmd.upgrade.starting')
+          .replace('{current}', info.current)
+          .replace('{latest}', info.latest),
       });
 
       const child = spawn(process.execPath, [cliPath, 'upgrade', info.latest], {
@@ -102,7 +108,10 @@ export class UpgradeCommand extends BaseCommand {
     } catch (err: any) {
       await this.send(ctx, {
         chatId: ctx.msg.chatId,
-        text: `❌ 升级失败：${err?.message || 'Unknown error'}`,
+        text: t(ctx.locale, 'cmd.upgrade.failed').replace(
+          '{error}',
+          err?.message || 'Unknown error',
+        ),
       });
     }
     return true;

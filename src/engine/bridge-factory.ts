@@ -136,10 +136,7 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
     onConversationMessageResolved: async (msg, rawMsg) => {
       ingress.recordDeliveryTarget(msg);
       if (conversationScopeId(msg) === conversationScopeId(rawMsg)) return;
-      loop.aliasProcessingKey(
-        await resolveProcessingKey(rawMsg),
-        await resolveProcessingKey(msg),
-      );
+      loop.aliasProcessingKey(await resolveProcessingKey(rawMsg), await resolveProcessingKey(msg));
     },
   });
 

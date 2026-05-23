@@ -7,31 +7,24 @@ import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage } from '../../channels/types.js';
 import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { InteractionState } from '../state/interaction-state.js';
+import type { Locale, TranslationKey } from '../../i18n/index.js';
 import { truncate } from '../../core/string.js';
 import { generateId } from '../../core/id.js';
 import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../../core/timing.js';
 import { conversationScopeId } from '../../channels/conversation-context.js';
 import { withInboundReplyContext } from '../../channels/reply-context.js';
 import { isDeferredToolName, type DeferredToolName } from '../../providers/deferred-tools.js';
+import { t } from '../../i18n/index.js';
 
-/** Configuration for each deferred tool's input requirements */
-const DEFERRED_TOOL_CONFIG: Record<DeferredToolName, {
-  prompt: string;
-  inputRequired: boolean;
-  inputPlaceholder: string;
-  defaultValue?: string;
-}> = {
+/** Translation keys for deferred tool prompts */
+const DEFERRED_TOOL_PROMPT_KEYS: Record<DeferredToolName, { prompt: TranslationKey; placeholder: TranslationKey }> = {
   EnterPlanMode: {
-    prompt: 'Agent 想要进入 Plan 模式来规划任务。请输入你的计划内容，或直接确认进入计划模式。',
-    inputRequired: false,
-    inputPlaceholder: '输入计划内容（可选）...',
-    defaultValue: '',
+    prompt: 'deferredTool.planModePrompt',
+    placeholder: 'deferredTool.planModePlaceholder',
   },
   EnterWorktree: {
-    prompt: 'Agent 想要创建一个新的 git worktree 来隔离工作。请输入分支名称（可选）。',
-    inputRequired: false,
-    inputPlaceholder: '输入分支名称（可选）...',
-    defaultValue: '',
+    prompt: 'deferredTool.worktreePrompt',
+    placeholder: 'deferredTool.worktreePlaceholder',
   },
 };
 
@@ -41,6 +34,7 @@ interface SDKDeferredToolHandlerContext {
   binding: { sessionId: string; sdkSessionId?: string };
   permissions: PermissionCoordinator;
   interactionState: InteractionState;
+  locale: Locale;
 }
 
 export class SDKDeferredToolHandler {
@@ -56,9 +50,13 @@ export class SDKDeferredToolHandler {
     return isDeferredToolName(toolName);
   }
 
-  /** Get config for a deferred tool */
-  static getToolConfig(toolName: DeferredToolName): typeof DEFERRED_TOOL_CONFIG[DeferredToolName] {
-    return DEFERRED_TOOL_CONFIG[toolName];
+  /** Get prompt and placeholder for a deferred tool */
+  static getToolPrompt(toolName: DeferredToolName, locale: Locale): { prompt: string; placeholder: string } {
+    const keys = DEFERRED_TOOL_PROMPT_KEYS[toolName];
+    return {
+      prompt: t(locale, keys.prompt),
+      placeholder: t(locale, keys.placeholder),
+    };
   }
 
   /** Cleanup helper — guards against double cleanup */
@@ -74,16 +72,25 @@ export class SDKDeferredToolHandler {
     toolName: DeferredToolName | string,
     toolInput: Record<string, unknown>,
     signal?: AbortSignal,
-  ): Promise<{ behavior: 'allow' | 'deny'; updatedInput?: Record<string, unknown>; message?: string }> {
-    const { adapter, msg, binding, permissions, interactionState } = this.context;
+  ): Promise<{
+    behavior: 'allow' | 'deny';
+    updatedInput?: Record<string, unknown>;
+    message?: string;
+  }> {
+    const { adapter, msg, binding, permissions, interactionState, locale } = this.context;
     const permId = generateId('defer');
 
-    const config = DEFERRED_TOOL_CONFIG[toolName as DeferredToolName] ?? {
-      prompt: `工具 ${toolName} 需要用户输入。请提供输入内容。`,
-      inputRequired: false,
-      inputPlaceholder: '输入内容...',
-      defaultValue: '',
-    };
+    let prompt: string;
+    let inputPlaceholder: string;
+
+    if (isDeferredToolName(toolName)) {
+      const toolPrompt = SDKDeferredToolHandler.getToolPrompt(toolName, locale);
+      prompt = toolPrompt.prompt;
+      inputPlaceholder = toolPrompt.placeholder;
+    } else {
+      prompt = t(locale, 'deferredTool.toolInputPrompt').replace('{toolName}', toolName);
+      inputPlaceholder = t(locale, 'deferredTool.toolInputPlaceholder');
+    }
 
     // Track pending deferred tool state (only in InteractionState, not PermissionCoordinator)
     interactionState.beginDeferredTool(permId, toolName, conversationScopeId(msg));
@@ -107,27 +114,34 @@ export class SDKDeferredToolHandler {
       chatId: msg.chatId,
       data: {
         toolName,
-        prompt: config.prompt,
+        prompt,
         permId,
         sessionId: binding.sessionId.slice(-4),
-        inputRequired: config.inputRequired,
-        inputPlaceholder: config.inputPlaceholder,
-        defaultValue: config.defaultValue,
+        inputRequired: false,
+        inputPlaceholder,
+        defaultValue: '',
       },
     });
 
     const sendResult = await adapter.send(withInboundReplyContext(outMsg, msg));
-    permissions.trackPermissionMessage(sendResult.messageId, permId, binding.sessionId, msg.channelType);
+    permissions.trackPermissionMessage(
+      sendResult.messageId,
+      permId,
+      binding.sessionId,
+      msg.channelType,
+    );
 
     const result = await waitPromise;
     signal?.removeEventListener('abort', abortCleanup);
 
     if (result.behavior === 'deny') {
       this.cleanup(permId, result.message ?? 'Denied');
-      adapter.editCardResolution(msg.chatId, sendResult.messageId, {
-        resolution: 'skipped',
-        label: '⏭ Skipped',
-      }).catch(() => {});
+      adapter
+        .editCardResolution(msg.chatId, sendResult.messageId, {
+          resolution: 'skipped',
+          label: '⏭ Skipped',
+        })
+        .catch(() => {});
       return { behavior: 'deny', message: 'User skipped' };
     }
 
@@ -135,10 +149,12 @@ export class SDKDeferredToolHandler {
     const userInput = interactionState.consumeDeferredToolInput(permId);
     interactionState.cleanupDeferredTool(permId);
 
-    adapter.editCardResolution(msg.chatId, sendResult.messageId, {
-      resolution: 'answered',
-      label: userInput ? `✅ ${truncate(userInput, 50)}` : '✅ Confirmed',
-    }).catch(() => {});
+    adapter
+      .editCardResolution(msg.chatId, sendResult.messageId, {
+        resolution: 'answered',
+        label: userInput ? `✅ ${truncate(userInput, 50)}` : '✅ Confirmed',
+      })
+      .catch(() => {});
 
     // Merge user input into tool input based on tool type
     const updatedInput = this.mergeUserInput(toolName, toolInput, userInput);

@@ -25,15 +25,20 @@ const API_KEY_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
   // Slack
   { pattern: /xox[boaprs]-[0-9A-Za-z-]{10,}/g, replacement: 'xox_[REDACTED]' },
   // Bearer / JWT tokens
-  { pattern: /Bearer\s+eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, replacement: 'Bearer [REDACTED]' },
+  {
+    pattern: /Bearer\s+eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
+    replacement: 'Bearer [REDACTED]',
+  },
 ];
 
 // Private key blocks
-const PRIVATE_KEY_PATTERN = /-----BEGIN\s+(RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----[\s\S]*?-----END\s+(RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----/g;
+const PRIVATE_KEY_PATTERN =
+  /-----BEGIN\s+(RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----[\s\S]*?-----END\s+(RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----/g;
 
 // Environment variable patterns — only for sensitive-looking variable names
 // Matches: SOMETHING_PASSWORD="value", SECRET_KEY=value, API_TOKEN='value'
-const SENSITIVE_ENV_PATTERN = /\b([A-Z_]*(?:PASSWORD|SECRET|TOKEN|API_KEY|PRIVATE_KEY|ACCESS_KEY|AUTH)[A-Z_]*)=["']?([^\s"']{12,})["']?/g;
+const SENSITIVE_ENV_PATTERN =
+  /\b([A-Z_]*(?:PASSWORD|SECRET|TOKEN|API_KEY|PRIVATE_KEY|ACCESS_KEY|AUTH)[A-Z_]*)=["']?([^\s"']{12,})["']?/g;
 
 /**
  * Redact sensitive content (API keys, tokens, passwords, private keys)

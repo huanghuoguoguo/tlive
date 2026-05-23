@@ -2,6 +2,7 @@ import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentHome } from '../messages/presenter.js';
 import type { FormattableMessage } from '../../formatting/message-types.js';
+import { t } from '../../i18n/index.js';
 
 async function buildHomeMessage(ctx: CommandContext): Promise<FormattableMessage> {
   return presentHome(
@@ -57,8 +58,8 @@ export class HomeTopicsCommand extends BaseCommand {
       type: 'sessionList',
       chatId: ctx.msg.chatId,
       data: {
-        title: '最近会话话题',
-        emptyText: '暂无可继续的话题会话',
+        title: t(ctx.locale, 'homeCmd.recentTopicsTitle'),
+        emptyText: t(ctx.locale, 'homeCmd.recentTopicsEmpty'),
         entries: shown.map((topic) => ({
           index: topic.index,
           provider: topic.provider,
@@ -70,7 +71,7 @@ export class HomeTopicsCommand extends BaseCommand {
           preview: topic.preview,
           isCurrent: topic.isCurrent,
           isActive: topic.isActive,
-          actionLabel: '回到话题',
+          actionLabel: t(ctx.locale, 'homeCmd.btnBackToTopic'),
           actionStyle: topic.isCurrent ? 'default' : 'primary',
         })),
       },
@@ -95,8 +96,8 @@ export class HomeHistoryCommand extends BaseCommand {
       type: 'sessionList',
       chatId: ctx.msg.chatId,
       data: {
-        title: '最近本地会话',
-        emptyText: '暂无可恢复的本地历史会话',
+        title: t(ctx.locale, 'homeCmd.recentLocalTitle'),
+        emptyText: t(ctx.locale, 'homeCmd.recentLocalEmpty'),
         entries: shown.map((session) => ({
           index: session.index,
           provider: session.provider,
@@ -107,7 +108,7 @@ export class HomeHistoryCommand extends BaseCommand {
           preview: session.preview,
           transcript: session.transcript,
           isCurrent: session.isCurrent,
-          actionLabel: '恢复到话题',
+          actionLabel: t(ctx.locale, 'homeCmd.btnResumeToTopic'),
           actionStyle: 'primary',
         })),
       },

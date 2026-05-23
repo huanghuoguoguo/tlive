@@ -227,4 +227,277 @@ export const zh: Translations = {
   'error.title': '❌ 处理失败',
   'error.requestId': '请求ID',
 
+  // --- formatter ---
+  'formatter.runInfo': '运行信息',
+  'formatter.sessionNone': '未建立',
+  'formatter.sessionRunningLabel': '执行中',
+  'formatter.sessionIdleLabel': '空闲',
+  'formatter.interactiveMode': '交互式',
+  'formatter.turnBasedMode': '按回合',
+  'formatter.toolApprovalRequired': '工具调用需要确认',
+  'formatter.toolCallsAutoAllowed': '工具调用自动允许',
+  'formatter.topicPermissionStatus': '本话题{status}。',
+  'formatter.codexPermissionNote':
+    'Codex 的权限由 sandbox / approval policy 控制，不提供 Claude 式逐工具审批。',
+  'formatter.codexSlashNote':
+    'Codex SDK 当前不暴露 CLI 里的 slash 自动补全；这里显示 TLive 能控制的会话操作。',
+  'formatter.otherSlashPassThrough': '其它 slash 命令会透传给当前 Agent。',
+  'formatter.currentSession': '当前会话',
+  'formatter.capabilities': '能力',
+  'formatter.basicChat': '基础对话',
+  'formatter.imageInput': '图片输入',
+  'formatter.instantSteer': '即时插话',
+  'formatter.queueCapability': '队列',
+  'formatter.sessionActions': '⌘ 会话操作',
+  'formatter.directory': '目录',
+
+  // --- format-home ---
+  'home.newSessionDefaultWorkspace': '**新会话默认工作区**',
+  'home.statusCanContinue': '✅ 可继续',
+  'home.btnBackToTopic': '回到话题',
+  'home.btnResumeToTopic': '恢复到话题',
+  'home.panelRecentTopics': '💬 最近会话话题',
+  'home.panelRecentLocalSessions': '🧭 最近本地会话',
+  'home.panelDiagnostics': '🛠️ 诊断',
+  'home.btnViewRecentSessions': '查看最近会话',
+  'home.btnViewLocalHistory': '查看本地历史',
+  'home.btnBridgeStatus': 'Bridge 状态',
+  'home.btnInternalDiagnose': '内部诊断',
+  'home.commandPlaceholder': '输入 TLive 命令，例如 cd /repo、bash pwd',
+  'home.btnExecute': '执行',
+
+  // --- message-loop ---
+  'msgLoop.replyTargetMissing': '⚠️ 引用的会话已失效，请直接发送消息或切换会话后重试',
+  'msgLoop.sendFailed': '⚠️ 会话注入失败，请稍后重试',
+  'msgLoop.busyUnsupported': '⚠️ 当前 provider 不支持执行中插入消息，请等待完成或使用 /stop',
+  'msgLoop.noActiveSession': '⚠️ 无活跃会话，请先开始任务',
+  'msgLoop.queueFull': '⚠️ 排队已满（{depth}/{maxDepth}），请稍后再发',
+  'msgLoop.processFailed': '⚠️ 会话处理失败，请稍后重试',
+  'msgLoop.inserted': '💬 已插入当前会话',
+  'msgLoop.queued': '📥 已排队（位置 {position}/{maxDepth}），当前任务结束后继续处理',
+
+  // --- presenter ---
+  'presenter.currentDir': '📂 当前目录：',
+  'presenter.workspaceBinding': '🏠 工作区绑定：',
+  'presenter.dirHistory': '📋 目录历史：',
+  'presenter.totalCount': '共 {count} 个',
+  'presenter.cdHint': '💡 使用 /cd - 返回上一目录',
+  'presenter.settingsUnavailable': '⚠️ 当前执行引擎不支持设置源切换',
+
+  // --- cost-tracker ---
+  'cost.input': '输入',
+  'cost.output': '输出',
+  'cost.reasoning': '推理',
+  'cost.cached': '缓存',
+
+  // --- format-session-list ---
+  'sessionList.stateRunning': '执行中',
+  'sessionList.stateCurrent': '当前',
+  'sessionList.stateCanContinue': '可继续',
+  'sessionList.roleAssistant': '助手',
+  'sessionList.roleUser': '用户',
+  'sessionList.recentMessages': '**最近消息**',
+  'sessionList.topic': '**话题**',
+  'sessionList.workspace': '**工作区**',
+  'sessionList.preview': '**更新预览**',
+
+  // --- home-command ---
+  'homeCmd.description': '显示主界面',
+  'homeCmd.helpDesc':
+    '显示主控制面板，包括当前会话状态、历史会话列表、工作区切换按钮等。是查看和管理工作区的主要入口。',
+  'homeCmd.tliveDescription': '打开工作台',
+  'homeCmd.tliveHelpDesc':
+    '打开 TLive 工作台。主窗口用于新建会话、回到话题和诊断；/stop 只在具体话题内中断任务。',
+  'homeCmd.recentTopicsTitle': '最近会话话题',
+  'homeCmd.recentTopicsEmpty': '暂无可继续的话题会话',
+  'homeCmd.btnBackToTopic': '回到话题',
+  'homeCmd.recentLocalTitle': '最近本地会话',
+  'homeCmd.recentLocalEmpty': '暂无可恢复的本地历史会话',
+  'homeCmd.btnResumeToTopic': '恢复到话题',
+
+  // --- topic-resume ---
+  'topicResume.sessionPreview': '{provider} 会话',
+  'topicResume.connected':
+    '💬 已连接 {provider} 会话 `{sessionId}` · {cwd}\n\n请在本话题内继续发送消息。',
+  'topicResume.sessionNotFound': '⚠️ 未找到该 {provider} 会话，可能已被清理。',
+  'topicResume.resumed': '▶️ 已回到 {provider} 会话 `{sessionId}`\n\n请在本话题内发送消息继续。',
+  'topicResume.anchorMissing': '⚠️ 已找到会话记录，但缺少话题消息锚点，请从工作台重新开启话题。',
+  'topicResume.fromWorkbench': '⚠️ 请从工作台恢复历史会话。',
+  'topicResume.createFailed': '⚠️ 无法创建话题，未恢复历史会话。',
+
+  // --- progress-builder ---
+  'progress.engineLabel': '引擎 {name}',
+  'progress.thinkingLabel': '思考 {effort}',
+  'progress.continueExec': '🔄 继续执行... ({steps} 步已完成)',
+
+  // --- markdown ---
+  'markdown.tableChunk': '**表格 {index}/{total}**',
+
+  // --- upgrade command ---
+  'cmd.upgrade.description': '升级版本',
+  'cmd.upgrade.helpDesc': '检查并升级到最新版本。服务会自动重启。notes 查看更新日志。',
+  'cmd.upgrade.notesHint': '📋 查看更新内容：\nhttps://github.com/huanghuoguoguo/tlive/releases',
+  'cmd.upgrade.checkFailed': '⚠️ 无法检查更新，请稍后重试',
+  'cmd.upgrade.alreadyLatest': '✅ 已是最新版本 v{version}',
+  'cmd.upgrade.gitCheckout':
+    '⚠️ 当前运行自 git checkout，请手动用 git 更新，或改用 release 安装版。',
+  'cmd.upgrade.starting': '🔄 开始升级：v{current} → v{latest}\n服务将自动重启...',
+  'cmd.upgrade.failed': '❌ 升级失败：{error}',
+
+  // --- new command ---
+  'cmd.new.description': '新建会话',
+  'cmd.new.helpDesc': '在工作台中新建一个话题会话；可用 /new <engine> 选择执行引擎。',
+  'cmd.new.unsupportedType': '⚠️ 不支持的会话类型: {type}。可用: {available}',
+  'cmd.new.providerUnavailable': '⚠️ {provider} provider 当前不可用。',
+  'cmd.new.reason': '原因: {reason}',
+  'cmd.new.topicTitle': '新 {provider} 会话',
+  'cmd.new.topicIntro': '💬 已开启新话题，请在本话题内继续发送消息。',
+
+  // --- cd command ---
+  'cmd.cd.description': '切换目录',
+  'cmd.cd.helpDesc':
+    '切换当前 IM session 的工作目录，影响后续 bash 执行的目录。不修改执行引擎配置。若要在新工作区开始工作，请先 /cd 切换目录，再执行 /new。',
+  'cmd.cd.noHistory': '⚠️ 没有历史目录可返回',
+  'cmd.cd.switchedBack': '🔙 已切换到上一目录',
+  'cmd.cd.switchedRepo': '🧭 已保留旧仓库会话，默认切到新目录',
+
+  // --- stop command ---
+  'cmd.stop.description': '中断执行',
+  'cmd.stop.helpDesc': '中断当前正在执行的任务。用于停止长时间运行的命令或 AI 回复生成。',
+  'cmd.stop.workbenchHint': '⚠️ /stop 只中断具体话题内的当前任务。请进入正在执行的话题后停止。',
+
+  // --- perm command ---
+  'cmd.perm.description': '权限模式',
+  'cmd.perm.helpDesc': '查看或切换权限提示模式。on 表示每次工具调用需确认，off 表示自动允许。',
+
+  // --- deferred-tool ---
+  'deferred.hint': '💬 输入内容或回复 "{skip}"',
+  'deferred.btnLabel': '{icon} {action}',
+
+  // --- policy ---
+  'policy.imageAccepted': '✅ 图片已接受',
+  'policy.imageRejected': '❌ 图片被拒绝',
+  'policy.imageRejectedReason': '❌ 图片被拒绝：{reason}',
+
+  // --- session-format ---
+  'format.minAgo': '{count}分钟前',
+  'format.hourAgo': '{count}小时前',
+  'format.dayAgo': '{count}天前',
+
+  // --- main ---
+  'main.upgradeSuccess':
+    '✅ 升级成功\n版本: v{previous} → v{version}\n查看更新: https://github.com/huanghuoguoguo/tlive/releases',
+  'main.upgradeFailed': '❌ 升级失败\n错误: {error}\n版本: v{previous}',
+
+  // --- buttons ---
+  'btn.stopExec': '⏹ 停止执行',
+  'btn.newSession': '🆕 新会话',
+
+  // --- adapter ---
+  'adapter.acceptedImage': '✅ 图片已接受',
+  'adapter.processingImage': '处理图片中...',
+
+  // --- surface-policy ---
+  'surface.steerUnsupported': '⚠️ 当前 provider 不支持即时插话',
+  'surface.queueUnsupported': '⚠️ 当前 provider 不支持消息队列',
+
+  // --- topic-conversation ---
+  'topic.agentSession': 'Agent 会话',
+  'topic.started': '💬 已开启话题，正在处理...',
+
+  // --- home-model ---
+  'homeModel.bound': '绑定',
+  'homeModel.unbound': '未绑定',
+
+  // --- command-router ---
+  'router.unknownCommand': '❓ 未知命令: {cmd}',
+  'router.workbenchCommandHint':
+    '⚠️ {cmd} 是 TLive 工作台命令。请在 /tlive 工作台的命令输入框或按钮中执行。',
+
+  // --- sdk-perm-tracker ---
+  'sdkPerm.tracking': '正在跟踪',
+  'sdkPerm.notTracking': '未跟踪',
+
+  // --- form-callbacks ---
+  'formCmd.executed': '✅ 已执行命令',
+
+  // --- query ---
+  'query.replyMissing': '⚠️ 引用的会话已失效，请直接发送消息或切换会话后重试',
+
+  // --- query-recovery ---
+  'queryRecovery.sessionMissing': '⚠️ 无活跃会话，请先开始任务',
+
+  // --- continue command ---
+  'cmd.continue.description': '继续话题',
+
+  // --- help-categories ---
+  'helpCat.session': '会话',
+  'helpCat.status': '状态',
+  'helpCat.system': '系统',
+  'helpCat.agent': 'Agent',
+  'helpCat.other': '其他',
+  'helpCat.sessionDesc': '会话管理',
+  'helpCat.statusDesc': '查看状态',
+  'helpCat.systemDesc': '系统控制',
+  'helpCat.agentDesc': 'Agent 相关',
+
+  // --- other commands ---
+  'cmd.status.description': 'Bridge 状态',
+  'cmd.settings.description': '设置源',
+  'cmd.restart.description': '重启服务',
+  'cmd.pwd.description': '当前目录',
+  'cmd.help.description': '显示帮助',
+  'cmd.diagnose.description': '内部诊断',
+  'cmd.bash.description': '执行命令',
+
+  // --- feishu adapter ---
+  'feishu.topicProcessing': '💬 已开启话题，正在处理...',
+  'feishu.topicContinue': '💬 已开启话题，请在本话题内继续...',
+
+  // --- ui buttons ---
+  'btn.newProviderSession': '🆕 新 {provider} 会话',
+
+  // --- surface rejection ---
+  'surface.tliveRejection':
+    '⚠️ /tlive 是工作台命令，只能在主会话使用。当前话题已绑定一个 Agent 会话，请直接在本话题内继续对话。',
+  'surface.homeRejection':
+    '⚠️ /home 是工作台命令，只能在主会话使用。当前话题已绑定一个 Agent 会话，请直接在本话题内继续对话。',
+  'surface.continueRejection': '⚠️ 话题内固定绑定当前 Agent 会话，不支持切换到其他会话。',
+
+  // --- deferred-tool handler ---
+  'deferredTool.planModePrompt':
+    'Agent 想要进入 Plan 模式来规划任务。请输入你的计划内容，或直接确认进入计划模式。',
+  'deferredTool.planModePlaceholder': '输入计划内容（可选）...',
+  'deferredTool.worktreePrompt':
+    'Agent 想要创建一个新的 git worktree 来隔离工作。请输入分支名称（可选）。',
+  'deferredTool.worktreePlaceholder': '输入分支名称（可选）...',
+  'deferredTool.toolInputPrompt': '工具 {toolName} 需要用户输入。请提供输入内容。',
+  'deferredTool.toolInputPlaceholder': '输入内容...',
+
+  // --- help format ---
+  'help.exampleLabel': '📌 示例',
+
+  // --- form callbacks ---
+  'formCmd.enterCommand': '⚠️ 请输入 TLive 命令。',
+
+  // --- permission input keywords ---
+  'input.allowKeywords': '通过',
+  'input.denyKeywords': '否',
+
+  // --- presenter stop ---
+  'presenter.stopInterrupted': '⏹ 已中断当前执行',
+  'presenter.stopNoExecution': '⚠️ 无活跃执行可停止',
+
+  // --- continue command ---
+  'cmd.continue.usage': '⚠️ 用法: /continue <provider>:<sdkSessionId>',
+
+  // --- form validation ---
+  'form.invalidSelection': '⚠️ 选择无效，请重试。',
+  'form.submitWithoutAnswer': '⚠️ 请先输入答案或选择选项后再提交。',
+
+  // --- query recovery ---
+  'queryRecovery.staleSessionFallback': '🔄 旧会话无法恢复，已为你开启新会话',
+
+  // --- home model ---
+  'homeModel.agentSession': 'Agent 会话',
 };

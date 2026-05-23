@@ -19,12 +19,15 @@ export class PwdCommand extends BaseCommand {
     const workspaceBinding = ctx.services.workspace.getBinding(ctx.msg.channelType, scopeId);
 
     if (history.length > 1 || workspaceBinding) {
-      await this.send(ctx, presentDirectoryHistory(
-        ctx.msg.chatId,
-        shortPath(current),
-        history.map(shortPath),
-        workspaceBinding ? shortPath(workspaceBinding) : undefined,
-      ));
+      await this.send(
+        ctx,
+        presentDirectoryHistory(
+          ctx.msg.chatId,
+          shortPath(current),
+          history.map(shortPath),
+          workspaceBinding ? shortPath(workspaceBinding) : undefined,
+        ),
+      );
     } else {
       await this.send(ctx, presentDirectory(ctx.msg.chatId, shortPath(current)));
     }

@@ -3,11 +3,13 @@ import { truncate } from '../../core/string.js';
 import type { CallbackHandlerContext, CallbackHandlerResult } from './callback-context.js';
 import { parseFormCallback } from './callback-utils.js';
 import { submitMultiSelectAnswer } from './question-callbacks.js';
+import { t } from '../../i18n/index.js';
 
 export async function handleFormCallback(
   ctx: CallbackHandlerContext,
 ): Promise<CallbackHandlerResult> {
   const { adapter, msg, deps, callbackData } = ctx;
+  const locale = adapter.getLocale();
   const formParsed = parseFormCallback(callbackData);
   if (!formParsed) return undefined;
 
@@ -23,7 +25,7 @@ export async function handleFormCallback(
         withInboundReplyContext(
           {
             chatId: msg.chatId,
-            text: '⚠️ 请输入 TLive 命令。',
+            text: t(locale, 'formCmd.enterCommand'),
           },
           msg,
         ),
@@ -97,7 +99,7 @@ export async function handleFormCallback(
         withInboundReplyContext(
           {
             chatId: msg.chatId,
-            text: '⚠️ Invalid selection, please try again.',
+            text: t(locale, 'form.invalidSelection'),
           },
           msg,
         ),
@@ -115,7 +117,7 @@ export async function handleFormCallback(
       withInboundReplyContext(
         {
           chatId: msg.chatId,
-          text: '⚠️ Please enter an answer or choose an option before submitting.',
+          text: t(locale, 'form.submitWithoutAnswer'),
         },
         msg,
       ),

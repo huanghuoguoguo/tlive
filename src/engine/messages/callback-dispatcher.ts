@@ -5,16 +5,11 @@ import type {
   CallbackHandlerContext,
   CallbackHandlerResult,
 } from './callback-context.js';
-import {
-  inferThreadContextFromBubble,
-} from './callback-context.js';
+import { inferThreadContextFromBubble } from './callback-context.js';
 import { handleCommandCallback } from './command-callbacks.js';
 import { handleDeferredCallback } from './deferred-callbacks.js';
 import { handleFormCallback } from './form-callbacks.js';
-import {
-  handleLegacyQuestionCallback,
-  handleQuestionCallback,
-} from './question-callbacks.js';
+import { handleLegacyQuestionCallback, handleQuestionCallback } from './question-callbacks.js';
 
 type CallbackHandler = (
   ctx: CallbackHandlerContext,

@@ -32,18 +32,21 @@ export class DiagnoseCommand extends BaseCommand {
     const memUsage = process.memoryUsage();
     const memoryUsage = `${formatSize(memUsage.heapUsed)} / ${formatSize(memUsage.heapTotal)}`;
 
-    await this.send(ctx, presentDiagnose(ctx.msg.chatId, {
-      activeSessions,
-      totalBubbleMappings,
-      persistedBindings,
-      persistedTopicSessions,
-      persistedTopicSessionsInChat,
-      queueStats,
-      totalQueuedMessages,
-      memoryUsage,
-      processingChats,
-      idleSessions,
-    }));
+    await this.send(
+      ctx,
+      presentDiagnose(ctx.msg.chatId, {
+        activeSessions,
+        totalBubbleMappings,
+        persistedBindings,
+        persistedTopicSessions,
+        persistedTopicSessionsInChat,
+        queueStats,
+        totalQueuedMessages,
+        memoryUsage,
+        processingChats,
+        idleSessions,
+      }),
+    );
     return true;
   }
 }

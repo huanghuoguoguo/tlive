@@ -25,7 +25,11 @@ export class RestartCommand extends BaseCommand {
     writeRestartRequest(process.pid);
 
     // Delete PID file to let new process write its own
-    try { unlinkSync(pidFile); } catch { /* ignore */ }
+    try {
+      unlinkSync(pidFile);
+    } catch {
+      /* ignore */
+    }
 
     // Spawn new process with same environment
     const entry = process.argv[1];

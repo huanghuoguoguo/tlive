@@ -64,7 +64,7 @@ export class PermissionTracker {
   /** Remove resolved permission from queue */
   resolve(permId?: string): void {
     if (permId) {
-      const idx = this.queue.findIndex(p => p.permId === permId);
+      const idx = this.queue.findIndex((p) => p.permId === permId);
       if (idx !== -1) this.queue.splice(idx, 1);
     } else {
       this.queue.shift();

@@ -29,10 +29,7 @@ import {
 import { QueueManager, type QueueStats } from './queue-manager.js';
 import { splitChatKey } from '../../core/key.js';
 import type { DeliveryRoute, FileDeliveryRoute } from '../../channels/delivery-route.js';
-import {
-  TurnControlRegistry,
-  type TurnControlCleanupOptions,
-} from './turn-control-registry.js';
+import { TurnControlRegistry, type TurnControlCleanupOptions } from './turn-control-registry.js';
 import { FileDeliveryRegistry } from './file-delivery-registry.js';
 
 // Re-export for backward compatibility

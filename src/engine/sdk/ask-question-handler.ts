@@ -89,7 +89,12 @@ export class SDKAskQuestionHandler {
         },
       });
       const sendResult = await adapter.send(withInboundReplyContext(outMsg, msg));
-      permissions.trackPermissionMessage(sendResult.messageId, permId, binding.sessionId, msg.channelType);
+      permissions.trackPermissionMessage(
+        sendResult.messageId,
+        permId,
+        binding.sessionId,
+        msg.channelType,
+      );
 
       const result = await waitPromise;
       signal?.removeEventListener('abort', abortCleanup);
@@ -97,9 +102,12 @@ export class SDKAskQuestionHandler {
       if (result.behavior === 'deny') {
         interactionState.cleanupSdkQuestion(permId);
         permissions.cleanupQuestion(permId);
-        adapter.editCardResolution(msg.chatId, sendResult.messageId, {
-          resolution: 'skipped', label: '⏭ Skipped',
-        }).catch(() => {});
+        adapter
+          .editCardResolution(msg.chatId, sendResult.messageId, {
+            resolution: 'skipped',
+            label: '⏭ Skipped',
+          })
+          .catch(() => {});
         throw new Error('User skipped question');
       }
 
@@ -108,9 +116,12 @@ export class SDKAskQuestionHandler {
       permissions.cleanupQuestion(permId);
 
       if (textAnswer !== undefined) {
-        adapter.editCardResolution(msg.chatId, sendResult.messageId, {
-          resolution: 'answered', label: `✅ Answer: ${truncate(textAnswer, 50)}`,
-        }).catch(() => {});
+        adapter
+          .editCardResolution(msg.chatId, sendResult.messageId, {
+            resolution: 'answered',
+            label: `✅ Answer: ${truncate(textAnswer, 50)}`,
+          })
+          .catch(() => {});
         answers[q.question] = textAnswer;
         continue;
       }
@@ -119,9 +130,12 @@ export class SDKAskQuestionHandler {
       const answerLabel = selected?.label ?? '';
 
       if (!selected) {
-        adapter.editCardResolution(msg.chatId, sendResult.messageId, {
-          resolution: 'answered', label: '✅ Answered',
-        }).catch(() => {});
+        adapter
+          .editCardResolution(msg.chatId, sendResult.messageId, {
+            resolution: 'answered',
+            label: '✅ Answered',
+          })
+          .catch(() => {});
       }
 
       answers[q.question] = answerLabel;

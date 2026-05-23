@@ -5,6 +5,7 @@ import type { SessionStateManager } from '../state/session-state.js';
 import type { SDKEngine, SendWithContextResult } from '../sdk/engine.js';
 import { conversationScopeId } from '../../channels/conversation-context.js';
 import { withInboundReplyContext } from '../../channels/reply-context.js';
+import { t, type Locale } from '../../i18n/index.js';
 
 interface MessageLoopCoordinatorOptions {
   state: SessionStateManager;
@@ -13,6 +14,7 @@ interface MessageLoopCoordinatorOptions {
   quickCommands: Set<string>;
   hasPendingSdkQuestion: (msg: InboundMessage) => boolean;
   resolveProcessingKey: (msg: InboundMessage) => Promise<string>;
+  locale?: Locale;
 }
 
 interface SlowMessageDispatchOptions {
@@ -115,24 +117,21 @@ export class MessageLoopCoordinator {
 
   /**
    * Format user feedback based on sendWithContext result.
-   * - Steer: "已插入当前会话"
-   * - Queue with position: "已排队（位置 X/Y）"
-   * - Queue full: "排队已满，请稍后再发"
-   * - No session: "无活跃会话，请先开始任务"
    */
   private formatQueueFeedback(result: SendWithContextResult): string | null {
+    const locale = this.options.locale ?? 'zh';
     if (!result.sent) {
       if (result.mode === 'none') {
         if (result.failureReason === 'reply_target_missing') {
-          return '⚠️ 引用的会话已失效，请直接发送消息或切换会话后重试';
+          return t(locale, 'msgLoop.replyTargetMissing');
         }
         if (result.failureReason === 'send_failed') {
-          return '⚠️ 会话注入失败，请稍后重试';
+          return t(locale, 'msgLoop.sendFailed');
         }
         if (result.failureReason === 'busy_unsupported') {
-          return '⚠️ 当前 provider 不支持执行中插入消息，请等待完成或使用 /stop';
+          return t(locale, 'msgLoop.busyUnsupported');
         }
-        return '⚠️ 无活跃会话，请先开始任务';
+        return t(locale, 'msgLoop.noActiveSession');
       }
       if (result.queueFull) {
         const maxDepth =
@@ -141,13 +140,15 @@ export class MessageLoopCoordinator {
             ? this.options.sdkEngine.getMaxQueueDepth()
             : 3);
         const depth = result.queueDepth ?? maxDepth;
-        return `⚠️ 排队已满（${depth}/${maxDepth}），请稍后再发`;
+        return t(locale, 'msgLoop.queueFull')
+          .replace('{depth}', String(depth))
+          .replace('{maxDepth}', String(maxDepth));
       }
-      return '⚠️ 会话处理失败，请稍后重试';
+      return t(locale, 'msgLoop.processFailed');
     }
 
     if (result.mode === 'steer') {
-      return '💬 已插入当前会话';
+      return t(locale, 'msgLoop.inserted');
     }
 
     if (result.mode === 'queue' && result.queuePosition !== undefined) {
@@ -156,7 +157,9 @@ export class MessageLoopCoordinator {
         (typeof this.options.sdkEngine.getMaxQueueDepth === 'function'
           ? this.options.sdkEngine.getMaxQueueDepth()
           : 3);
-      return `📥 已排队（位置 ${result.queuePosition}/${maxDepth}），当前任务结束后继续处理`;
+      return t(locale, 'msgLoop.queued')
+        .replace('{position}', String(result.queuePosition))
+        .replace('{maxDepth}', String(maxDepth));
     }
 
     return null;

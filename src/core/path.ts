@@ -28,10 +28,17 @@ export interface RestartRequest {
 export function writeRestartRequest(oldPid: number): void {
   const file = getRestartRequestFile();
   mkdirSync(getTliveRuntimeDir(), { recursive: true });
-  writeFileSync(file, JSON.stringify({
-    timestamp: new Date().toISOString(),
-    oldPid,
-  }, null, 2));
+  writeFileSync(
+    file,
+    JSON.stringify(
+      {
+        timestamp: new Date().toISOString(),
+        oldPid,
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 /** Read restart request marker file */
@@ -48,7 +55,11 @@ export function readRestartRequest(): RestartRequest | null {
 /** Delete restart request marker file */
 export function deleteRestartRequest(): void {
   const file = getRestartRequestFile();
-  try { unlinkSync(file); } catch { /* ignore */ }
+  try {
+    unlinkSync(file);
+  } catch {
+    /* ignore */
+  }
 }
 
 /** Expand ~ in path to actual home directory */

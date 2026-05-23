@@ -32,6 +32,7 @@ function createAdapter() {
   return {
     format: vi.fn().mockImplementation((message) => message),
     send: vi.fn().mockResolvedValue({ messageId: 'out-1', success: true }),
+    getLocale: () => 'zh',
   };
 }
 

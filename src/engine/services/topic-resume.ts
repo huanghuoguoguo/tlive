@@ -8,6 +8,7 @@ import { scanAgentSessions, type ScannedSession } from '../../providers/session-
 import type { TopicSessionRecord } from '../state/topic-sessions.js';
 import type { CommandContext } from '../commands/types.js';
 import { startWorkbenchTopic } from './topic-starter.js';
+import { t } from '../../i18n/index.js';
 
 type AgentSessionTarget = Pick<
   ScannedSession,
@@ -38,16 +39,23 @@ function providerDisplayName(ctx: CommandContext, provider: AgentProviderKind | 
   return ctx.services.providers.descriptor(normalized)?.displayName ?? normalized;
 }
 
-function buildTopicTitle(target: AgentSessionTarget): string {
+function buildTopicTitle(target: AgentSessionTarget, locale: string): string {
   const preview = target.preview.replace(/\s+/g, ' ').trim();
   return truncate(
-    preview || `${target.providerDisplayName} 会话 ${target.sdkSessionId.slice(0, 8)}`,
+    preview ||
+      t(locale as 'zh' | 'en', 'topicResume.sessionPreview').replace(
+        '{provider}',
+        target.providerDisplayName,
+      ),
     120,
   );
 }
 
-function buildThreadIntro(target: AgentSessionTarget): string {
-  return `💬 已连接 ${target.providerDisplayName} 会话 \`${target.sdkSessionId.slice(0, 8)}\` · ${shortPath(target.cwd)}\n\n请在本话题内继续发送消息。`;
+function buildThreadIntro(target: AgentSessionTarget, locale: string): string {
+  return t(locale as 'zh' | 'en', 'topicResume.connected')
+    .replace('{provider}', target.providerDisplayName)
+    .replace('{sessionId}', target.sdkSessionId.slice(0, 8))
+    .replace('{cwd}', shortPath(target.cwd));
 }
 
 async function sendPlain(ctx: CommandContext, text: string): Promise<void> {
@@ -67,18 +75,23 @@ export class TopicResumeService {
     const displayName = target?.providerDisplayName ?? providerDisplayName(this.ctx, provider);
 
     if (!target && !topic) {
-      await sendPlain(this.ctx, `⚠️ 未找到该 ${displayName} 会话，可能已被清理。`);
+      await sendPlain(
+        this.ctx,
+        t(this.ctx.locale, 'topicResume.sessionNotFound').replace('{provider}', displayName),
+      );
       return true;
     }
 
-    const resolvedTarget: AgentSessionTarget =
-      target ?? {
-        provider,
-        providerDisplayName: displayName,
-        sdkSessionId: parsed.sdkSessionId,
-        cwd: topic?.cwd || this.ctx.services.defaultWorkdir,
-        preview: topic?.preview || topic?.title || `${displayName} 会话`,
-      };
+    const resolvedTarget: AgentSessionTarget = target ?? {
+      provider,
+      providerDisplayName: displayName,
+      sdkSessionId: parsed.sdkSessionId,
+      cwd: topic?.cwd || this.ctx.services.defaultWorkdir,
+      preview:
+        topic?.preview ||
+        topic?.title ||
+        t(this.ctx.locale, 'topicResume.sessionPreview').replace('{provider}', displayName),
+    };
 
     if (topic) {
       await this.bindExistingTopic(topic, resolvedTarget);
@@ -91,11 +104,7 @@ export class TopicResumeService {
   }
 
   private findScannedTarget(parsed: ParsedResumeToken): AgentSessionTarget | undefined {
-    return scanAgentSessions(
-      50,
-      undefined,
-      historyProviderKinds(this.ctx.services.providers),
-    ).find(
+    return scanAgentSessions(50, undefined, historyProviderKinds(this.ctx.services.providers)).find(
       (session) =>
         session.sdkSessionId === parsed.sdkSessionId &&
         (!parsed.provider || session.provider === parsed.provider),
@@ -144,10 +153,12 @@ export class TopicResumeService {
     target: AgentSessionTarget,
   ): Promise<void> {
     const sdkShort = target.sdkSessionId.slice(0, 8);
-    const text = `▶️ 已回到 ${target.providerDisplayName} 会话 \`${sdkShort}\`\n\n请在本话题内发送消息继续。`;
+    const text = t(this.ctx.locale, 'topicResume.resumed')
+      .replace('{provider}', target.providerDisplayName)
+      .replace('{sessionId}', sdkShort);
     const replyTarget = record.lastMessageId ?? record.rootMessageId;
     if (!replyTarget) {
-      await sendPlain(this.ctx, '⚠️ 已找到会话记录，但缺少话题消息锚点，请从工作台重新开启话题。');
+      await sendPlain(this.ctx, t(this.ctx.locale, 'topicResume.anchorMissing'));
       return;
     }
 
@@ -171,16 +182,16 @@ export class TopicResumeService {
 
   private async openNewTopic(target: AgentSessionTarget): Promise<void> {
     if (this.ctx.surface !== 'workbench' || !this.ctx.msg.messageId) {
-      await sendPlain(this.ctx, '⚠️ 请从工作台恢复历史会话。');
+      await sendPlain(this.ctx, t(this.ctx.locale, 'topicResume.fromWorkbench'));
       return;
     }
 
-    const topicTitle = buildTopicTitle(target);
-    const introText = buildThreadIntro(target);
+    const topicTitle = buildTopicTitle(target, this.ctx.locale);
+    const introText = buildThreadIntro(target, this.ctx.locale);
     const topic = await startWorkbenchTopic(this.ctx, topicTitle, introText);
 
     if (!topic) {
-      await sendPlain(this.ctx, '⚠️ 无法创建话题，未恢复历史会话。');
+      await sendPlain(this.ctx, t(this.ctx.locale, 'topicResume.createFailed'));
       return;
     }
 

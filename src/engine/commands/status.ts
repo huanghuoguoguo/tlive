@@ -9,7 +9,8 @@ export class StatusCommand extends BaseCommand {
   readonly quick = true;
   readonly helpCategory = 'status' as const;
   readonly description = 'Bridge 状态';
-  readonly helpDesc = '查看 Bridge 运行状态，包括通道连接、活跃会话数、内存使用、运行时间等系统信息。';
+  readonly helpDesc =
+    '查看 Bridge 运行状态，包括通道连接、活跃会话数、内存使用、运行时间等系统信息。';
   readonly helpExample = '/status';
 
   async execute(ctx: CommandContext): Promise<boolean> {
@@ -37,17 +38,20 @@ export class StatusCommand extends BaseCommand {
     // Version
     const version = getCurrentVersion();
 
-    await this.send(ctx, presentStatus(ctx.msg.chatId, {
-      healthy: true,
-      channels: channelList.split(', '),
-      channelInfo,
-      activeSessions,
-      idleSessions,
-      sessionSnapshots,
-      memoryUsage,
-      uptimeSeconds,
-      version,
-    }));
+    await this.send(
+      ctx,
+      presentStatus(ctx.msg.chatId, {
+        healthy: true,
+        channels: channelList.split(', '),
+        channelInfo,
+        activeSessions,
+        idleSessions,
+        sessionSnapshots,
+        memoryUsage,
+        uptimeSeconds,
+        version,
+      }),
+    );
     return true;
   }
 }

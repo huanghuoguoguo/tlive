@@ -47,7 +47,11 @@ export function normalizeQuickButtonNames(
   value: string | undefined,
   defaultButtons: readonly QuickButtonName[] = DEFAULT_DONE_BUTTONS,
 ): QuickButtonName[] {
-  const rawItems = value?.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) ?? [];
+  const rawItems =
+    value
+      ?.split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean) ?? [];
   const items = rawItems.length ? rawItems : [...defaultButtons];
   const buttons: QuickButtonName[] = [];
 
@@ -56,7 +60,7 @@ export function normalizeQuickButtonNames(
     if (!normalized) {
       throw new Error(
         `Config error: TL_DONE_BUTTONS contains unsupported button '${item}'. ` +
-        `Supported: ${supportedQuickButtonsText()}`,
+          `Supported: ${supportedQuickButtonsText()}`,
       );
     }
     if (normalized === 'none') {

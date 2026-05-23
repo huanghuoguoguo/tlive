@@ -6,6 +6,7 @@ import type { ChannelBinding, BridgeStore } from '../../store/interface.js';
 import type { SDKEngine, ResolvedSessionTarget } from '../sdk/engine.js';
 import type { SessionStateManager } from '../state/session-state.js';
 import { SessionStaleError } from '../state/session-stale-error.js';
+import { t } from '../../i18n/index.js';
 
 interface QueryRecoveryPolicyOptions {
   defaultWorkdir: string;
@@ -91,7 +92,7 @@ export class QueryRecoveryPolicy {
     return {
       routeBinding,
       sessionTarget: recoveredTarget,
-      resumeFallbackMessage: '🔄 旧会话无法恢复，已为你开启新会话',
+      resumeFallbackMessage: t(adapter.getLocale(), 'queryRecovery.staleSessionFallback'),
     };
   }
 }

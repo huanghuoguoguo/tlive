@@ -91,7 +91,9 @@ export class WebhookRouteResolver {
       };
     }
 
-    for (const channelType of this.options.bridge.getAdapters().map((adapter) => adapter.channelType)) {
+    for (const channelType of this.options.bridge
+      .getAdapters()
+      .map((adapter) => adapter.channelType)) {
       const lastChatId = this.options.bridge.getLastChatId(channelType);
       if (lastChatId) {
         console.log(
@@ -107,7 +109,9 @@ export class WebhookRouteResolver {
       }
     }
 
-    console.warn(`[webhook] Project '${projectName}' has no webhookDefaultChat and no recent chats`);
+    console.warn(
+      `[webhook] Project '${projectName}' has no webhookDefaultChat and no recent chats`,
+    );
     return null;
   }
 

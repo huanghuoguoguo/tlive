@@ -5,5 +5,7 @@ export function generateSessionId(): string {
 
 /** Generate a unique ID with custom prefix (general utility) */
 export function generateId(prefix: string, randomLen = 6): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 2 + randomLen)}`;
+  return `${prefix}-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 2 + randomLen)}`;
 }

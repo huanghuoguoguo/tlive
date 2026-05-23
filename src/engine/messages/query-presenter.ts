@@ -102,7 +102,11 @@ export class QueryExecutionPresenter {
         return;
       }
 
-      outMsg = this.adapter.format({ type: 'progress', chatId: this.inbound.chatId, data: progressData });
+      outMsg = this.adapter.format({
+        type: 'progress',
+        chatId: this.inbound.chatId,
+        data: progressData,
+      });
     } else {
       outMsg = this.adapter.formatContent(this.inbound.chatId, content, castButtons(buttons));
     }
@@ -120,13 +124,18 @@ export class QueryExecutionPresenter {
       await this.adapter.editMessage(
         this.inbound.chatId,
         this.getMessageId()!,
-        withInboundReplyContext(this.adapter.formatContent(this.inbound.chatId, chunks[0]), this.inbound),
+        withInboundReplyContext(
+          this.adapter.formatContent(this.inbound.chatId, chunks[0]),
+          this.inbound,
+        ),
       );
       for (let i = 1; i < chunks.length; i++) {
-        await this.adapter.send(withInboundReplyContext(
-          this.adapter.formatContent(this.inbound.chatId, chunks[i]),
-          this.inbound,
-        ));
+        await this.adapter.send(
+          withInboundReplyContext(
+            this.adapter.formatContent(this.inbound.chatId, chunks[i]),
+            this.inbound,
+          ),
+        );
       }
       return;
     }
@@ -159,8 +168,8 @@ export class QueryExecutionPresenter {
     const summary = truncate(summarySource || t(locale, 'format.taskCompleted'), 5000);
     const changedFileKeys = new Set(
       state.toolLogs
-        .filter(log => ['Edit', 'Write', 'MultiEdit'].includes(log.name) && log.input.trim())
-        .map(log => log.input.trim()),
+        .filter((log) => ['Edit', 'Write', 'MultiEdit'].includes(log.name) && log.input.trim())
+        .map((log) => log.input.trim()),
     );
     const hasError = !!state.errorMessage;
 

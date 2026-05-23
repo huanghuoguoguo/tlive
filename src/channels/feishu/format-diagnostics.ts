@@ -3,7 +3,10 @@ import { t, type Locale } from '../../i18n/index.js';
 import type { FeishuCardElement } from './card-builder.js';
 import { markdownElement } from './card-elements.js';
 
-export function buildDiagnoseElements(data: DiagnoseData, locale: Locale): {
+export function buildDiagnoseElements(
+  data: DiagnoseData,
+  locale: Locale,
+): {
   elements: FeishuCardElement[];
   saturatedSessions: number;
 } {
@@ -41,13 +44,17 @@ export function buildDiagnoseElements(data: DiagnoseData, locale: Locale): {
     lines.push(`**${t(locale, 'diagnose.labelPersistedBindings')}** ${data.persistedBindings}`);
   }
   if (queueUtilizationRatio !== undefined) {
-    lines.push(`**${t(locale, 'diagnose.labelQueueUtilization')}** ${Math.round(queueUtilizationRatio * 100)}%`);
+    lines.push(
+      `**${t(locale, 'diagnose.labelQueueUtilization')}** ${Math.round(queueUtilizationRatio * 100)}%`,
+    );
   }
   if (saturatedSessions > 0) {
     lines.push(`**${t(locale, 'diagnose.labelSaturatedSessions')}** ${saturatedSessions}`);
   }
   if (busiestSession) {
-    lines.push(`**${t(locale, 'diagnose.labelBusiestSession')}** ${busiestSession.depth}/${busiestSession.maxDepth}`);
+    lines.push(
+      `**${t(locale, 'diagnose.labelBusiestSession')}** ${busiestSession.depth}/${busiestSession.maxDepth}`,
+    );
   }
   if (data.memoryUsage) {
     lines.push(`**${t(locale, 'format.labelMemory')}** ${data.memoryUsage}`);

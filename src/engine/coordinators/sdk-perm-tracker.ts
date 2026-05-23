@@ -37,7 +37,10 @@ export class SdkPermTracker {
   /** Recent pending / resolved SDK permission snapshots per chat */
   private permissionSnapshotsByChat = new Map<string, PermissionSnapshotState>();
   /** Track interactive permission/question messages. */
-  private permissionMessages = new Map<string, { permissionId: string; sessionId: string; timestamp: number }>();
+  private permissionMessages = new Map<
+    string,
+    { permissionId: string; sessionId: string; timestamp: number }
+  >();
 
   constructor(gateway: PendingPermissions) {
     this.gateway = gateway;
@@ -105,27 +108,34 @@ export class SdkPermTracker {
     }
   }
 
-  getPermissionStatus(chatKey: string, sessionId?: string): {
+  getPermissionStatus(
+    chatKey: string,
+    sessionId?: string,
+  ): {
     rememberedTools: number;
     rememberedBashPrefixes: number;
     pending?: { toolName: string; input: string };
     lastDecision?: { toolName: string; decision: PermissionDecision };
   } {
     const snapshot = this.permissionSnapshotsByChat.get(chatKey);
-    const pending = snapshot?.pending
-      && (!sessionId || !snapshot.pending.sessionId || snapshot.pending.sessionId === sessionId)
-      ? {
-          toolName: snapshot.pending.toolName,
-          input: snapshot.pending.input,
-        }
-      : undefined;
-    const lastDecision = snapshot?.lastDecision
-      && (!sessionId || !snapshot.lastDecision.sessionId || snapshot.lastDecision.sessionId === sessionId)
-      ? {
-          toolName: snapshot.lastDecision.toolName,
-          decision: snapshot.lastDecision.decision,
-        }
-      : undefined;
+    const pending =
+      snapshot?.pending &&
+      (!sessionId || !snapshot.pending.sessionId || snapshot.pending.sessionId === sessionId)
+        ? {
+            toolName: snapshot.pending.toolName,
+            input: snapshot.pending.input,
+          }
+        : undefined;
+    const lastDecision =
+      snapshot?.lastDecision &&
+      (!sessionId ||
+        !snapshot.lastDecision.sessionId ||
+        snapshot.lastDecision.sessionId === sessionId)
+        ? {
+            toolName: snapshot.lastDecision.toolName,
+            decision: snapshot.lastDecision.decision,
+          }
+        : undefined;
     return {
       rememberedTools: 0, // Will be filled by SessionWhitelist in facade
       rememberedBashPrefixes: 0,
@@ -144,14 +154,16 @@ export class SdkPermTracker {
     const denyVariants = getLocalizedVariants('input.deny');
     const alwaysVariants = getLocalizedVariants('input.allowAlways');
 
-    // Include common English abbreviations
-    const allAllow = [...allowVariants, 'a', 'yes', 'y', '通过'];
-    const allDeny = [...denyVariants, 'd', 'no', 'n', '否'];
+    // Include common English abbreviations and localized variants
+    const extraAllow = getLocalizedVariants('input.allowKeywords');
+    const extraDeny = getLocalizedVariants('input.denyKeywords');
+    const allAllow = [...allowVariants, 'a', 'yes', 'y', ...extraAllow];
+    const allDeny = [...denyVariants, 'd', 'no', 'n', ...extraDeny];
     const allAlways = [...alwaysVariants];
 
-    if (allAllow.some(v => v.toLowerCase() === normalized)) return 'allow';
-    if (allDeny.some(v => v.toLowerCase() === normalized)) return 'deny';
-    if (allAlways.some(v => v.toLowerCase() === normalized)) return 'allow_always';
+    if (allAllow.some((v) => v.toLowerCase() === normalized)) return 'allow';
+    if (allDeny.some((v) => v.toLowerCase() === normalized)) return 'deny';
+    if (allAlways.some((v) => v.toLowerCase() === normalized)) return 'allow_always';
     return null;
   }
 
@@ -161,9 +173,12 @@ export class SdkPermTracker {
   tryResolveByText(chatKey: string, decision: TextPermissionDecision): boolean {
     const pendingPermId = this.pendingSdkPerms.get(chatKey);
     if (!pendingPermId) return false;
-    const gwDecision = decision === 'deny' ? 'deny' as const
-      : decision === 'allow_always' ? 'allow_always' as const
-      : 'allow' as const;
+    const gwDecision =
+      decision === 'deny'
+        ? ('deny' as const)
+        : decision === 'allow_always'
+          ? ('allow_always' as const)
+          : ('allow' as const);
     if (this.gateway.resolve(pendingPermId, gwDecision)) {
       this.pendingSdkPerms.delete(chatKey);
       return true;
@@ -174,7 +189,12 @@ export class SdkPermTracker {
   // --- Permission message tracking ---
 
   /** Track an interactive permission/question message. */
-  trackPermissionMessage(messageId: string, permissionId: string, sessionId: string, _channelType: string): void {
+  trackPermissionMessage(
+    messageId: string,
+    permissionId: string,
+    sessionId: string,
+    _channelType: string,
+  ): void {
     this.permissionMessages.set(messageId, { permissionId, sessionId, timestamp: Date.now() });
   }
 

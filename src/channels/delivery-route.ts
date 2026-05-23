@@ -39,10 +39,7 @@ export function deliveryRouteFromInbound(msg: InboundMessage): DeliveryRoute {
   };
 }
 
-export function applyDeliveryRoute<T extends RoutableMessage>(
-  message: T,
-  route: DeliveryRoute,
-): T {
+export function applyDeliveryRoute<T extends RoutableMessage>(message: T, route: DeliveryRoute): T {
   return {
     ...message,
     chatId: route.chatId,

@@ -12,12 +12,7 @@ const common = {
   platform: 'node',
   target: 'node22',
   format: 'esm',
-  external: [
-    '@anthropic-ai/*',
-    '@larksuiteoapi/*',
-    'ws',
-    'undici',
-  ],
+  external: ['@anthropic-ai/*', '@larksuiteoapi/*', 'undici'],
   sourcemap: true,
   define: {
     'process.env.npm_package_version': JSON.stringify(packageJson.version),
@@ -33,7 +28,5 @@ const entryPoints = [
 
 // Build all entry points
 await Promise.all(
-  entryPoints.map(({ entry, outfile }) =>
-    build({ ...common, entryPoints: [entry], outfile })
-  )
+  entryPoints.map(({ entry, outfile }) => build({ ...common, entryPoints: [entry], outfile })),
 );

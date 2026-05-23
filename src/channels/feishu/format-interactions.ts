@@ -32,8 +32,7 @@ export function buildQuestionElements(params: FormatQuestionParams): FeishuCardE
   if (!useSelectDropdown) {
     const optionsList = options
       .map(
-        (opt, i) =>
-          `${i + 1}. **${opt.label}**${opt.description ? ` — ${opt.description}` : ''}`,
+        (opt, i) => `${i + 1}. **${opt.label}**${opt.description ? ` — ${opt.description}` : ''}`,
       )
       .join('\n');
     cardElements.push(markdownElement(`**${t(locale, 'perm.labelOptions')}**\n${optionsList}`));
@@ -51,7 +50,7 @@ export function buildQuestionElements(params: FormatQuestionParams): FeishuCardE
       tag: 'select_static',
       name: '_select',
       placeholder: { tag: 'plain_text', content: t(locale, 'perm.placeholderSelect') },
-      options: options.map(opt => ({
+      options: options.map((opt) => ({
         text: { tag: 'plain_text', content: opt.label },
         value: opt.label,
       })),
@@ -71,7 +70,9 @@ export function buildQuestionElements(params: FormatQuestionParams): FeishuCardE
     required: false,
   } as FeishuCardElement);
 
-  cardElements.push(formElement(`form_${permId}`, formElements, buildQuestionButtons(data, locale)));
+  cardElements.push(
+    formElement(`form_${permId}`, formElements, buildQuestionButtons(data, locale)),
+  );
 
   return cardElements;
 }
@@ -82,7 +83,12 @@ function buildQuestionButtons(data: QuestionData, locale: Locale): Button[] {
 
   if (useSelectDropdown) {
     return [
-      { label: t(locale, 'perm.btnSubmit'), callbackData: `form:${permId}`, style: 'primary', row: 0 },
+      {
+        label: t(locale, 'perm.btnSubmit'),
+        callbackData: `form:${permId}`,
+        style: 'primary',
+        row: 0,
+      },
       {
         label: t(locale, 'perm.btnSkip'),
         callbackData: `askq_skip:${permId}:${sessionId}`,
@@ -143,9 +149,7 @@ export interface FormatDeferredToolParams {
   locale: Locale;
 }
 
-export function buildDeferredToolElements(
-  params: FormatDeferredToolParams,
-): FeishuCardElement[] {
+export function buildDeferredToolElements(params: FormatDeferredToolParams): FeishuCardElement[] {
   const { data, locale } = params;
   const { toolName, prompt, permId, sessionId, inputPlaceholder } = data;
 
@@ -169,7 +173,12 @@ export function buildDeferredToolElements(
   ];
 
   const formButtons: Button[] = [
-    { label: t(locale, 'perm.btnSubmit'), callbackData: `form:${permId}`, style: 'primary', row: 0 },
+    {
+      label: t(locale, 'perm.btnSubmit'),
+      callbackData: `form:${permId}`,
+      style: 'primary',
+      row: 0,
+    },
     {
       label: t(locale, 'perm.btnSkip'),
       callbackData: `deferred:skip:${permId}`,

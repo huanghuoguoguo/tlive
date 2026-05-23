@@ -1,6 +1,11 @@
 import type { PermissionDecision } from '../permissions/gateway.js';
 
-export type ProgressPhase = 'starting' | 'executing' | 'waiting_permission' | 'completed' | 'failed';
+export type ProgressPhase =
+  | 'starting'
+  | 'executing'
+  | 'waiting_permission'
+  | 'completed'
+  | 'failed';
 
 export interface ProgressTraceStats {
   thinkingEntries: number;

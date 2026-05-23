@@ -55,9 +55,12 @@ const FEISHU_REACTIONS: ReactionPolicy = {
   permission: 'Pin',
   getPermissionDecision: (decision: PermissionDecision) => {
     switch (decision) {
-      case 'deny': return 'No';
-      case 'allow_always': return 'DONE';
-      default: return 'OK';
+      case 'deny':
+        return 'No';
+      case 'allow_always':
+        return 'DONE';
+      default:
+        return 'OK';
     }
   },
 };

@@ -21,7 +21,11 @@ const PERMISSION_CALLBACKS: Array<{
   grantScope?: PermissionGrantScope;
 }> = [
   { prefix: CALLBACK_PREFIXES.PERM_ALLOW_SAME, decision: 'allow', grantScope: 'same_command' },
-  { prefix: CALLBACK_PREFIXES.PERM_ALLOW_ALL_SESSION, decision: 'allow', grantScope: 'session_all' },
+  {
+    prefix: CALLBACK_PREFIXES.PERM_ALLOW_ALL_SESSION,
+    decision: 'allow',
+    grantScope: 'session_all',
+  },
   { prefix: CALLBACK_PREFIXES.PERM_ALLOW, decision: 'allow' },
   { prefix: CALLBACK_PREFIXES.PERM_DENY, decision: 'deny' },
 ];
@@ -46,10 +50,13 @@ export interface WaitForOptions {
 }
 
 export class PendingPermissions {
-  private pending = new Map<string, {
-    resolve: (r: PermissionResult) => void;
-    timer: NodeJS.Timeout;
-  }>();
+  private pending = new Map<
+    string,
+    {
+      resolve: (r: PermissionResult) => void;
+      timer: NodeJS.Timeout;
+    }
+  >();
   private timeoutMs = 5 * 60 * 1000; // 5 minutes
 
   waitFor(toolUseId: string, options?: WaitForOptions): Promise<PermissionResult> {
@@ -73,9 +80,10 @@ export class PendingPermissions {
     const entry = this.pending.get(permissionRequestId);
     if (!entry) return false;
     clearTimeout(entry.timer);
-    const result: PermissionResult = decision === 'deny'
-      ? { behavior: 'deny', message: message || 'Denied by user' }
-      : { behavior: decision, ...(grantScope ? { grantScope } : {}) };
+    const result: PermissionResult =
+      decision === 'deny'
+        ? { behavior: 'deny', message: message || 'Denied by user' }
+        : { behavior: decision, ...(grantScope ? { grantScope } : {}) };
     entry.resolve(result);
     this.pending.delete(permissionRequestId);
     return true;

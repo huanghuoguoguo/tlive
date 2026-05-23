@@ -1,3 +1,5 @@
+import { t, type Locale } from '../i18n/index.js';
+
 export interface ModelUsageEntry {
   inputTokens: number;
   outputTokens: number;
@@ -40,10 +42,12 @@ function formatModelBreakdown(modelUsage?: Record<string, ModelUsageEntry>): str
   if (!modelUsage) return null;
   const entries = Object.entries(modelUsage).filter(([, u]) => u.costUSD && u.costUSD > 0);
   if (entries.length <= 1) return null;
-  return entries.map(([model, u]) => {
-    const short = model.replace(/-\d{8}$/, '');
-    return `${short} $${u.costUSD!.toFixed(2)}`;
-  }).join(' + ');
+  return entries
+    .map(([model, u]) => {
+      const short = model.replace(/-\d{8}$/, '');
+      return `${short} $${u.costUSD!.toFixed(2)}`;
+    })
+    .join(' + ');
 }
 
 export class CostTracker {
@@ -64,9 +68,10 @@ export class CostTracker {
     model_usage?: Record<string, ModelUsageEntry>;
   }): UsageStats {
     const durationMs = Date.now() - this.startTime;
-    const estimatedCost = usage.cost_usd === undefined
-      ? this.estimateCost(usage.input_tokens, usage.output_tokens)
-      : undefined;
+    const estimatedCost =
+      usage.cost_usd === undefined
+        ? this.estimateCost(usage.input_tokens, usage.output_tokens)
+        : undefined;
     const costUsd = usage.cost_usd ?? estimatedCost ?? 0;
     this._queryCount++;
     this.sessionTotal += costUsd;
@@ -88,9 +93,11 @@ export class CostTracker {
     };
   }
 
-  get queryCount(): number { return this._queryCount; }
+  get queryCount(): number {
+    return this._queryCount;
+  }
 
-  static format(stats: UsageStats): string {
+  static format(stats: UsageStats, locale: Locale = 'zh'): string {
     const duration = formatDuration(stats.durationMs);
     // When tokens are 0, show only duration.
     if (stats.inputTokens === 0 && stats.outputTokens === 0) {
@@ -101,14 +108,14 @@ export class CostTracker {
     const freshInputTokens = Math.max(0, stats.inputTokens - cachedInputTokens);
     const reasoningOutputTokens = positiveNumber(stats.reasoningOutputTokens);
     const tokenParts = [
-      `输入 ${formatTokens(freshInputTokens)}`,
-      `输出 ${formatTokens(stats.outputTokens)}`,
+      `${t(locale, 'cost.input')} ${formatTokens(freshInputTokens)}`,
+      `${t(locale, 'cost.output')} ${formatTokens(stats.outputTokens)}`,
     ];
     if (reasoningOutputTokens > 0) {
-      tokenParts.push(`推理 ${formatTokens(reasoningOutputTokens)}`);
+      tokenParts.push(`${t(locale, 'cost.reasoning')} ${formatTokens(reasoningOutputTokens)}`);
     }
     if (cachedInputTokens > 0) {
-      tokenParts.push(`缓存 ${formatTokens(cachedInputTokens)}`);
+      tokenParts.push(`${t(locale, 'cost.cached')} ${formatTokens(cachedInputTokens)}`);
     }
     const tokens = tokenParts.join(' / ');
 

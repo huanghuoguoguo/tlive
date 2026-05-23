@@ -10,7 +10,12 @@ import type { Button } from '../../ui/types.js';
 import type { AgentRuntimeInfo } from '../../providers/base.js';
 import { ProgressContentBuilder } from './progress-builder.js';
 import type { RenderInput } from './progress-builder.js';
-import type { ToolLogEntry, TimelineEntry, CurrentTool, MessageRendererState } from './renderer-types.js';
+import type {
+  ToolLogEntry,
+  TimelineEntry,
+  CurrentTool,
+  MessageRendererState,
+} from './renderer-types.js';
 import { PermissionTracker } from './permission-tracker.js';
 import { ProgressWatcher } from './progress-watcher.js';
 import { formatToolInput } from './tool-formatter.js';
@@ -43,8 +48,15 @@ export interface MessageRendererOptions {
 
 /** Tools silently ignored */
 const HIDDEN_TOOLS = new Set([
-  'TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet',
-  'TaskStop', 'TaskOutput', 'ToolSearch', 'TodoRead',
+  'TodoWrite',
+  'TaskCreate',
+  'TaskUpdate',
+  'TaskList',
+  'TaskGet',
+  'TaskStop',
+  'TaskOutput',
+  'ToolSearch',
+  'TodoRead',
 ]);
 
 /** Split thresholds */
@@ -70,9 +82,18 @@ export class MessageRenderer {
   private toolIdToTimelineIndex = new Map<string, number>();
   private lastTimelineIsText = false;
   private splitPending = false;
-  private sessionInfo?: { tools?: string[]; mcpServers?: Array<{ name: string; status: string }>; skills?: string[] };
+  private sessionInfo?: {
+    tools?: string[];
+    mcpServers?: Array<{ name: string; status: string }>;
+    skills?: string[];
+  };
   private toolUseSummaryText?: string;
-  private apiRetryState?: { attempt: number; maxRetries: number; retryDelayMs: number; error?: string };
+  private apiRetryState?: {
+    attempt: number;
+    maxRetries: number;
+    retryDelayMs: number;
+    error?: string;
+  };
   private compacting = false;
 
   // Flush management
@@ -203,7 +224,11 @@ export class MessageRenderer {
     this.scheduleFlush();
   }
 
-  onSessionInfo(info: { tools?: string[]; mcpServers?: Array<{ name: string; status: string }>; skills?: string[] }): void {
+  onSessionInfo(info: {
+    tools?: string[];
+    mcpServers?: Array<{ name: string; status: string }>;
+    skills?: string[];
+  }): void {
     this.sessionInfo = info;
     this.forceFlush = true;
     this.scheduleFlush();
@@ -215,7 +240,12 @@ export class MessageRenderer {
     this.scheduleFlush();
   }
 
-  onApiRetry(data: { attempt: number; maxRetries: number; retryDelayMs: number; error?: string }): void {
+  onApiRetry(data: {
+    attempt: number;
+    maxRetries: number;
+    retryDelayMs: number;
+    error?: string;
+  }): void {
     this.apiRetryState = data;
     this.forceFlush = true;
     this.scheduleFlush();
@@ -329,7 +359,9 @@ export class MessageRenderer {
   }
 
   getDebugSnapshot(): { thinkingEntries: number; textEntries: number; toolEntries: number } {
-    let thinkingEntries = 0, textEntries = 0, toolEntries = 0;
+    let thinkingEntries = 0,
+      textEntries = 0,
+      toolEntries = 0;
     for (const entry of this.timeline) {
       if (entry.kind === 'thinking') thinkingEntries++;
       else if (entry.kind === 'text') textEntries++;
@@ -349,11 +381,16 @@ export class MessageRenderer {
   private getRenderInput(): RenderInput {
     const permissionQueue = this.permissionTracker?.getQueue() ?? [];
     return {
-      phase: permissionQueue.length > 0 ? 'waiting_permission'
-        : this.completed ? 'completed'
-        : this.errorMessage ? 'failed'
-        : this.totalTools === 0 && !this.responseText && this.todoItems.length === 0 ? 'starting'
-        : 'executing',
+      phase:
+        permissionQueue.length > 0
+          ? 'waiting_permission'
+          : this.completed
+            ? 'completed'
+            : this.errorMessage
+              ? 'failed'
+              : this.totalTools === 0 && !this.responseText && this.todoItems.length === 0
+                ? 'starting'
+                : 'executing',
       responseText: this.responseText,
       thinkingText: this.thinkingText,
       elapsedSeconds: this.elapsedSeconds,
@@ -394,7 +431,9 @@ export class MessageRenderer {
           phase: renderInput.phase,
           hasMessage: !!this._messageId,
         })
-      : this._messageId ? this.throttleMs : 0;
+      : this._messageId
+        ? this.throttleMs
+        : 0;
     this.timer = setTimeout(() => {
       this.timer = null;
       const content = this.contentBuilder.render(this.getRenderInput());
@@ -403,8 +442,14 @@ export class MessageRenderer {
   }
 
   private stopTimers(): void {
-    if (this.timer) { clearTimeout(this.timer); this.timer = null; }
-    if (this.elapsedTimer) { clearInterval(this.elapsedTimer); this.elapsedTimer = null; }
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    if (this.elapsedTimer) {
+      clearInterval(this.elapsedTimer);
+      this.elapsedTimer = null;
+    }
     this.permissionTracker?.dispose();
     this.progressWatcher?.dispose();
   }
@@ -423,13 +468,17 @@ export class MessageRenderer {
     if (!this.forceFlush) {
       const contentChanged = content !== this.lastRenderedContent;
       const timeSinceLastFlush = now - this.lastFlushTime;
-      const elapsedOnlyUpdate = this.lastRenderedContent &&
+      const elapsedOnlyUpdate =
+        this.lastRenderedContent &&
         content.replace(/\d+s\)/, '') === this.lastRenderedContent.replace(/\d+s\)/, '');
       if (elapsedOnlyUpdate && timeSinceLastFlush < this.elapsedUpdateInterval) return;
       if (!contentChanged) return;
     }
 
-    if (this.flushing) { this.pendingFlush = true; return; }
+    if (this.flushing) {
+      this.pendingFlush = true;
+      return;
+    }
 
     this.lastRenderedContent = content;
     this.lastFlushTime = now;
@@ -446,21 +495,29 @@ export class MessageRenderer {
         this.adaptiveFlush?.recordFlushLatency(Date.now() - flushStartedAt);
       } catch (err: any) {
         const code = err?.code ?? '';
-        const retryable = err?.retryable || ['ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'UND_ERR_SOCKET'].includes(code);
+        const retryable =
+          err?.retryable || ['ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'UND_ERR_SOCKET'].includes(code);
         const retryAfterMs = getRateLimitRetryAfterMs(err);
-        const phase = this.errorMessage ? 'failed' : this.completed ? 'completed'
-          : (this.permissionTracker?.getQueueLength() ?? 0) > 0 ? 'waiting_permission' : 'executing';
+        const phase = this.errorMessage
+          ? 'failed'
+          : this.completed
+            ? 'completed'
+            : (this.permissionTracker?.getQueueLength() ?? 0) > 0
+              ? 'waiting_permission'
+              : 'executing';
         const contentPreview = content.slice(0, 100);
 
         if (retryable) {
           if (retryAfterMs) this.adaptiveFlush?.recordRateLimit(retryAfterMs);
-          await new Promise(r => setTimeout(r, retryAfterMs ?? 1000));
+          await new Promise((r) => setTimeout(r, retryAfterMs ?? 1000));
           try {
             const retryStartedAt = Date.now();
             result = await this.flushCallback(content, isEdit, flushButtons, state);
             this.adaptiveFlush?.recordFlushLatency(Date.now() - retryStartedAt);
+          } catch (_retryErr) {
+            console.error('[renderer] Failed after retry:', err);
+            this.onFlushError?.(err, { phase, contentPreview });
           }
-          catch (_retryErr) { console.error('[renderer] Failed after retry:', err); this.onFlushError?.(err, { phase, contentPreview }); }
         } else {
           console.error('[renderer] Failed:', err);
           this.onFlushError?.(err, { phase, contentPreview });
@@ -472,7 +529,9 @@ export class MessageRenderer {
         this.splitPending = false;
       } else if (this.splitPending) {
         this.splitPending = false;
-        console.log(`[renderer] Bubble split after ${this.bubbleToolCount} tools, ${this.bubbleTimelineCount} timeline entries`);
+        console.log(
+          `[renderer] Bubble split after ${this.bubbleToolCount} tools, ${this.bubbleTimelineCount} timeline entries`,
+        );
         this.resetBubbleState();
         this.pendingFlush = true;
       }
@@ -513,10 +572,16 @@ export class MessageRenderer {
 
   private shouldSplitBubble(): boolean {
     if (this.shouldSplitState) {
-      const state = this.contentBuilder.getStateSnapshot(this.getRenderInput(), this.contentBuilder.render(this.getRenderInput()));
+      const state = this.contentBuilder.getStateSnapshot(
+        this.getRenderInput(),
+        this.contentBuilder.render(this.getRenderInput()),
+      );
       return this.shouldSplitState(state);
     }
-    return this.bubbleToolCount >= SPLIT_TOOL_THRESHOLD || this.bubbleTimelineCount >= SPLIT_TIMELINE_THRESHOLD;
+    return (
+      this.bubbleToolCount >= SPLIT_TOOL_THRESHOLD ||
+      this.bubbleTimelineCount >= SPLIT_TIMELINE_THRESHOLD
+    );
   }
 }
 
@@ -525,7 +590,8 @@ function getRateLimitRetryAfterMs(err: any): number | undefined {
   const retryAfterMs = Number(err.retryAfterMs);
   if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) return retryAfterMs;
   if (err.name === 'RateLimitError' || err.code === 230020 || err.code === 99991400) return 2000;
-  const statusCode = err.statusCode ?? err.status ?? err.response?.statusCode ?? err.response?.status;
+  const statusCode =
+    err.statusCode ?? err.status ?? err.response?.statusCode ?? err.response?.status;
   if (statusCode === 429) return 2000;
   return undefined;
 }

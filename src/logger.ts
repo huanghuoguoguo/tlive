@@ -40,7 +40,11 @@ export class Logger {
   /** Bound context for child loggers */
   private context?: LogContext;
 
-  constructor(logPath: string, secrets: string[], mirrorToConsole = process.stdout.isTTY || process.stderr.isTTY) {
+  constructor(
+    logPath: string,
+    secrets: string[],
+    mirrorToConsole = process.stdout.isTTY || process.stderr.isTTY,
+  ) {
     this.logDir = dirname(logPath);
     this.logExt = extname(logPath) || '.log';
     this.logBase = basename(logPath, this.logExt);
@@ -58,26 +62,48 @@ export class Logger {
 
   /** Create a child logger with bound context (requestId, chatId, sessionId) */
   child(context: LogContext): Logger {
-    const childLogger = new Logger(join(this.logDir, this.logBase + this.logExt), this.secrets, this.mirrorToConsole);
+    const childLogger = new Logger(
+      join(this.logDir, this.logBase + this.logExt),
+      this.secrets,
+      this.mirrorToConsole,
+    );
     childLogger.context = context;
     childLogger.rawConsole = this.rawConsole;
     return childLogger;
   }
 
-  info(msg: string): void { this.write('INFO', msg); }
-  warn(msg: string): void { this.write('WARN', msg); }
-  error(msg: string): void { this.write('ERROR', msg); }
-  debug(msg: string): void { this.write('DEBUG', msg); }
-  close(): void { this.closed = true; }
+  info(msg: string): void {
+    this.write('INFO', msg);
+  }
+  warn(msg: string): void {
+    this.write('WARN', msg);
+  }
+  error(msg: string): void {
+    this.write('ERROR', msg);
+  }
+  debug(msg: string): void {
+    this.write('DEBUG', msg);
+  }
+  close(): void {
+    this.closed = true;
+  }
 
   /** Log INFO with context prefix */
-  infoCtx(ctx: LogContext, msg: string): void { this.writeCtx('INFO', ctx, msg); }
+  infoCtx(ctx: LogContext, msg: string): void {
+    this.writeCtx('INFO', ctx, msg);
+  }
   /** Log WARN with context prefix */
-  warnCtx(ctx: LogContext, msg: string): void { this.writeCtx('WARN', ctx, msg); }
+  warnCtx(ctx: LogContext, msg: string): void {
+    this.writeCtx('WARN', ctx, msg);
+  }
   /** Log ERROR with context prefix */
-  errorCtx(ctx: LogContext, msg: string): void { this.writeCtx('ERROR', ctx, msg); }
+  errorCtx(ctx: LogContext, msg: string): void {
+    this.writeCtx('ERROR', ctx, msg);
+  }
   /** Log DEBUG with context prefix */
-  debugCtx(ctx: LogContext, msg: string): void { this.writeCtx('DEBUG', ctx, msg); }
+  debugCtx(ctx: LogContext, msg: string): void {
+    this.writeCtx('DEBUG', ctx, msg);
+  }
 
   /** Format an error with stack trace for logging */
   static formatError(err: unknown): string {
@@ -178,13 +204,14 @@ export class Logger {
   }
 
   private getConsoleMethod(level: LogLevel): (...args: unknown[]) => void {
-    const method: ConsoleMethod = level === 'ERROR'
-      ? 'error'
-      : level === 'WARN'
-        ? 'warn'
-        : level === 'DEBUG'
-          ? 'debug'
-          : 'info';
+    const method: ConsoleMethod =
+      level === 'ERROR'
+        ? 'error'
+        : level === 'WARN'
+          ? 'warn'
+          : level === 'DEBUG'
+            ? 'debug'
+            : 'info';
     return this.rawConsole[method];
   }
 

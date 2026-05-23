@@ -8,10 +8,7 @@ import { FeishuFormatter } from './formatter.js';
 import { FEISHU_POLICY } from './policy.js';
 import type { FeishuRenderedMessage } from './types.js';
 import type { QuickButtonName } from '../../ui/buttons.js';
-import {
-  feishuMessageEventToInbound,
-  type FeishuMessageReceiveEvent,
-} from './inbound.js';
+import { feishuMessageEventToInbound, type FeishuMessageReceiveEvent } from './inbound.js';
 import { feishuCardActionToInbound, feishuMenuEventToInbound } from './events.js';
 import {
   editFeishuMessage,
@@ -21,6 +18,7 @@ import {
   startFeishuThreadFromMessage,
   startFeishuThreadWithTitle,
 } from './sender.js';
+import { t } from '../../i18n/index.js';
 
 export interface FeishuConfig {
   appId: string;
@@ -128,7 +126,7 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
   override async startThreadFromMessage(
     chatId: string,
     messageId: string,
-    text = '💬 已开启话题，正在处理...',
+    text = t('zh', 'feishu.topicProcessing'),
   ): Promise<ThreadStartResult | null> {
     return startFeishuThreadFromMessage(this.client, {
       chatId,
@@ -142,7 +140,7 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
   override async startThreadWithTitle(
     chatId: string,
     title: string,
-    text = '💬 已开启话题，请在本话题内继续...',
+    text = t('zh', 'feishu.topicContinue'),
   ): Promise<ThreadStartResult | null> {
     return startFeishuThreadWithTitle(this.client, {
       chatId,

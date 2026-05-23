@@ -2,6 +2,7 @@ import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { withInboundReplyContext } from '../../channels/reply-context.js';
 import { TopicResumeService } from '../services/topic-resume.js';
+import { t } from '../../i18n/index.js';
 
 async function sendPlain(ctx: CommandContext, text: string): Promise<void> {
   await ctx.adapter.send(withInboundReplyContext({ chatId: ctx.msg.chatId, text }, ctx.msg));
@@ -17,7 +18,7 @@ export class ContinueSessionCommand extends BaseCommand {
   async execute(ctx: CommandContext): Promise<boolean> {
     const token = ctx.parts[1]?.trim();
     if (!token) {
-      await sendPlain(ctx, '⚠️ 用法: /continue <provider>:<sdkSessionId>');
+      await sendPlain(ctx, t(ctx.locale, 'cmd.continue.usage'));
       return true;
     }
 

@@ -55,9 +55,7 @@ export class FeishuStreamingSession {
         },
       },
       body: {
-        elements: [
-          { tag: 'markdown', content: initialText, element_id: 'content' },
-        ],
+        elements: [{ tag: 'markdown', content: initialText, element_id: 'content' }],
       },
     };
 
@@ -121,7 +119,7 @@ export class FeishuStreamingSession {
       const now = Date.now();
       const elapsed = now - this.lastUpdateTime;
       if (elapsed < this.throttleMs) {
-        await new Promise(r => setTimeout(r, this.throttleMs - elapsed));
+        await new Promise((r) => setTimeout(r, this.throttleMs - elapsed));
       }
 
       this.sequence++;

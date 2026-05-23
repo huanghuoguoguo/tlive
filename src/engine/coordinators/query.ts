@@ -15,6 +15,7 @@ import type { AgentProvider } from '../../providers/base.js';
 import { singleProviderRegistry, type AgentProviderRegistry } from '../../providers/registry.js';
 import { QueryContext } from './query-context.js';
 import { withInboundReplyContext } from '../../channels/reply-context.js';
+import { t } from '../../i18n/index.js';
 import {
   TopicConversationService,
   type TopicSessionBindingSnapshot,
@@ -39,7 +40,10 @@ interface QueryOrchestratorOptions {
   defaultAgentSettingSources: AgentSettingSource[];
   port: number;
   appendSystemPrompt?: string;
-  onConversationMessageResolved?: (msg: InboundMessage, rawMsg: InboundMessage) => void | Promise<void>;
+  onConversationMessageResolved?: (
+    msg: InboundMessage,
+    rawMsg: InboundMessage,
+  ) => void | Promise<void>;
 }
 
 /**
@@ -114,7 +118,7 @@ export class QueryOrchestrator {
           withInboundReplyContext(
             {
               chatId: msg.chatId,
-              text: '⚠️ 引用的会话已失效，请直接发送消息或切换会话后重试',
+              text: t('zh', 'query.replyMissing'),
             },
             msg,
           ),

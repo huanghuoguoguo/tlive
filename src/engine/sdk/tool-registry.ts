@@ -2,13 +2,28 @@ import { basename } from 'node:path';
 import { truncate } from '../../core/string.js';
 
 const TOOL_ICONS: Record<string, string> = {
-  Read: '📖', Edit: '✏️', Write: '📝',
-  Bash: '🖥️', Grep: '🔍', Glob: '📂',
-  Agent: '🤖', WebSearch: '🌐', WebFetch: '🌐',
+  Read: '📖',
+  Edit: '✏️',
+  Write: '📝',
+  Bash: '🖥️',
+  Grep: '🔍',
+  Glob: '📂',
+  Agent: '🤖',
+  WebSearch: '🌐',
+  WebFetch: '🌐',
 };
 
 /** Tools whose results are not shown in the terminal card */
-const SILENT_RESULT_TOOLS = new Set(['Read', 'Glob', 'Grep', 'Write', 'Edit', 'Agent', 'WebSearch', 'WebFetch']);
+const SILENT_RESULT_TOOLS = new Set([
+  'Read',
+  'Glob',
+  'Grep',
+  'Write',
+  'Edit',
+  'Agent',
+  'WebSearch',
+  'WebFetch',
+]);
 
 /** Max lines of tool output to show in preview */
 export const TOOL_RESULT_MAX_LINES = 3;
@@ -54,7 +69,9 @@ export function getToolTitle(name: string, input: Record<string, unknown>): stri
 export function getToolCommand(name: string, input: Record<string, unknown>): string {
   const str = (v: unknown): string => (typeof v === 'string' ? v : '');
   switch (name) {
-    case 'Read': case 'Edit': case 'Write':
+    case 'Read':
+    case 'Edit':
+    case 'Write':
       return str(input.file_path);
     case 'Grep':
       return `"${str(input.pattern)}" in ${str(input.path) || '.'}`;

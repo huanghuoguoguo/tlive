@@ -13,7 +13,9 @@ export class SessionStaleError extends Error {
  * Check if an error message indicates a stale session.
  */
 export function isStaleSessionError(err: string): boolean {
-  return err.includes('No conversation found')
-    || err.includes('session ID')
-    || (err.includes('Invalid') && err.includes('signature'));
+  return (
+    err.includes('No conversation found') ||
+    err.includes('session ID') ||
+    (err.includes('Invalid') && err.includes('signature'))
+  );
 }

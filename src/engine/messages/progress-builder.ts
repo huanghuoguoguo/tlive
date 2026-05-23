@@ -9,6 +9,7 @@ import { shortPath } from '../../core/path.js';
 import type { TodoStatus } from '../../utils/types.js';
 import type { ToolLogEntry, TimelineEntry, MessageRendererState } from './renderer-types.js';
 import type { Button } from '../../ui/types.js';
+import { t, type Locale } from '../../i18n/index.js';
 
 const SEPARATOR = '───────────────';
 
@@ -67,19 +68,20 @@ export class ProgressContentBuilder {
     if (input.errorMessage && input.totalTools === 0) {
       return this.applyPlatformLimit(
         redactSensitiveContent(`❌ ${input.errorMessage}`),
-        input.platformLimit
+        input.platformLimit,
       );
     }
 
     // Permission phase — show queue head, full command
     if (input.permissionQueue.length > 0) {
       const p = input.permissionQueue[0];
-      const queueHint = input.permissionQueue.length > 1
-        ? `\n⏳ +${input.permissionQueue.length - 1} more pending`
-        : '';
+      const queueHint =
+        input.permissionQueue.length > 1
+          ? `\n⏳ +${input.permissionQueue.length - 1} more pending`
+          : '';
       return this.applyPlatformLimit(
         redactSensitiveContent(`🔐 ${p.toolName}: ${p.input}${queueHint}`),
-        input.platformLimit
+        input.platformLimit,
       );
     }
 
@@ -95,15 +97,16 @@ export class ProgressContentBuilder {
   getStateSnapshot(input: RenderInput, content: string): MessageRendererState {
     const currentPermission = input.permissionQueue[0];
     return {
-      phase: input.permissionQueue.length > 0
-        ? 'waiting_permission'
-        : input.completed
-          ? 'completed'
-          : input.errorMessage
-            ? 'failed'
-            : input.totalTools === 0 && !input.responseText && input.todoItems.length === 0
-              ? 'starting'
-              : 'executing',
+      phase:
+        input.permissionQueue.length > 0
+          ? 'waiting_permission'
+          : input.completed
+            ? 'completed'
+            : input.errorMessage
+              ? 'failed'
+              : input.totalTools === 0 && !input.responseText && input.todoItems.length === 0
+                ? 'starting'
+                : 'executing',
       renderedText: content,
       responseText: input.responseText,
       elapsedSeconds: input.elapsedSeconds,
@@ -133,15 +136,15 @@ export class ProgressContentBuilder {
     };
   }
 
-  buildFooter(input: RenderInput): string {
+  buildFooter(input: RenderInput, locale: Locale = 'zh'): string {
     const parts: string[] = [];
     if (input.model) {
       parts.push(`[${input.model}]`);
     } else if (input.engineName) {
-      parts.push(`引擎 ${input.engineName}`);
+      parts.push(t(locale, 'progress.engineLabel').replace('{name}', input.engineName));
     }
     if (input.reasoningEffort) {
-      parts.push(`思考 ${input.reasoningEffort}`);
+      parts.push(t(locale, 'progress.thinkingLabel').replace('{effort}', input.reasoningEffort));
     }
     if (input.cwd) {
       parts.push(shortPath(input.cwd));
@@ -158,11 +161,11 @@ export class ProgressContentBuilder {
 
   // --- Private helpers ---
 
-  private renderExecuting(input: RenderInput): string {
+  private renderExecuting(input: RenderInput, locale: Locale = 'zh'): string {
     // After bubble split: show continuation hint
     if (input.bubbleToolCount === 0 && input.totalTools > 0) {
       const lines: string[] = [];
-      lines.push(`🔄 继续执行... (${input.totalTools} 步已完成)`);
+      lines.push(t(locale, 'progress.continueExec').replace('{steps}', String(input.totalTools)));
       if (input.todoItems.length > 0) {
         lines.push('');
         lines.push(this.renderTodoProgress(input.todoItems));
@@ -171,10 +174,7 @@ export class ProgressContentBuilder {
         const elapsed = input.currentTool.elapsed > 0 ? ` (${input.currentTool.elapsed}s)` : '';
         lines.push(`   └─ ${input.currentTool.name}: ${input.currentTool.input}${elapsed}`);
       }
-      return this.applyPlatformLimit(
-        redactSensitiveContent(lines.join('\n')),
-        input.platformLimit
-      );
+      return this.applyPlatformLimit(redactSensitiveContent(lines.join('\n')), input.platformLimit);
     }
 
     if (input.totalTools === 0 && !input.responseText && input.todoItems.length === 0) {
@@ -199,15 +199,13 @@ export class ProgressContentBuilder {
       lines.push(`⏳ ${toolSummary} (${input.totalTools} tools · ${elapsed})`);
 
       if (input.currentTool?.input) {
-        const currentElapsed = input.currentTool.elapsed > 0 ? ` (${input.currentTool.elapsed}s)` : '';
+        const currentElapsed =
+          input.currentTool.elapsed > 0 ? ` (${input.currentTool.elapsed}s)` : '';
         lines.push(`   └─ ${input.currentTool.name}: ${input.currentTool.input}${currentElapsed}`);
       }
     }
 
-    return this.applyPlatformLimit(
-      redactSensitiveContent(lines.join('\n')),
-      input.platformLimit
-    );
+    return this.applyPlatformLimit(redactSensitiveContent(lines.join('\n')), input.platformLimit);
   }
 
   private renderDone(input: RenderInput): string {
@@ -229,10 +227,7 @@ export class ProgressContentBuilder {
       if (input.footerLine) {
         lines.push(input.footerLine);
       }
-      return this.applyPlatformLimit(
-        redactSensitiveContent(lines.join('\n')),
-        input.platformLimit
-      );
+      return this.applyPlatformLimit(redactSensitiveContent(lines.join('\n')), input.platformLimit);
     }
 
     // Completed — no platform limit here
@@ -267,9 +262,9 @@ export class ProgressContentBuilder {
 
   private renderTodoProgress(todoItems: Array<{ content: string; status: TodoStatus }>): string {
     if (todoItems.length === 0) return '';
-    const done = todoItems.filter(t => t.status === 'completed').length;
+    const done = todoItems.filter((t) => t.status === 'completed').length;
     const header = `📋 Progress (${done}/${todoItems.length})`;
-    const lines = todoItems.map(t => {
+    const lines = todoItems.map((t) => {
       const icon = t.status === 'completed' ? '✅' : t.status === 'in_progress' ? '🔧' : '⬜';
       return `${icon} ${t.content}`;
     });

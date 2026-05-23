@@ -59,7 +59,9 @@ interface ParsedVersion {
 
 function parseVersion(v: string): ParsedVersion {
   const [core, prerelease = ''] = normalizeVersion(v).split('-', 2);
-  const [major = 0, minor = 0, patch = 0] = core.split('.').map((part) => Number.parseInt(part, 10) || 0);
+  const [major = 0, minor = 0, patch = 0] = core
+    .split('.')
+    .map((part) => Number.parseInt(part, 10) || 0);
   return {
     major,
     minor,
@@ -127,7 +129,7 @@ export function selectUpdateRelease(
 async function fetchRelease(url: string, current: string): Promise<GitHubRelease | null> {
   const resp = await fetch(url, {
     headers: {
-      'Accept': 'application/vnd.github.v3+json',
+      Accept: 'application/vnd.github.v3+json',
       'User-Agent': `tlive/${current}`,
     },
     signal: AbortSignal.timeout(10000),
@@ -138,13 +140,13 @@ async function fetchRelease(url: string, current: string): Promise<GitHubRelease
     return null;
   }
 
-  return await resp.json() as GitHubRelease;
+  return (await resp.json()) as GitHubRelease;
 }
 
 async function fetchReleases(current: string): Promise<GitHubRelease[] | null> {
   const resp = await fetch(GITHUB_RELEASES_API, {
     headers: {
-      'Accept': 'application/vnd.github.v3+json',
+      Accept: 'application/vnd.github.v3+json',
       'User-Agent': `tlive/${current}`,
     },
     signal: AbortSignal.timeout(10000),
@@ -155,7 +157,7 @@ async function fetchReleases(current: string): Promise<GitHubRelease[] | null> {
     return null;
   }
 
-  return await resp.json() as GitHubRelease[];
+  return (await resp.json()) as GitHubRelease[];
 }
 
 /**

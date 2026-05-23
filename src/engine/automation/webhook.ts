@@ -16,10 +16,7 @@ import type { AutomationBridge } from '../types/automation-bridge.js';
 import type { ProjectConfig } from '../../config.js';
 import { generateRequestId, Logger } from '../../logger.js';
 import { handleFileSendRequest } from './file-send-api.js';
-import {
-  WebhookRouteResolver,
-  type ResolvedWebhookRoute,
-} from './webhook-route-resolver.js';
+import { WebhookRouteResolver, type ResolvedWebhookRoute } from './webhook-route-resolver.js';
 import {
   WebhookPromptDeliverer,
   type WebhookPromptDeliveryResult,

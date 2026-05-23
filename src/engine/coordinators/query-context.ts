@@ -19,8 +19,21 @@ export class QueryContext {
     readonly sessionKey: string,
     readonly renderer: MessageRenderer,
     readonly costTracker: CostTracker,
-    readonly sdkPermissionHandler: (toolName: string, toolInput: Record<string, unknown>, promptSentence: string, signal?: AbortSignal) => Promise<'allow' | 'allow_always' | 'deny'>,
-    readonly sdkAskQuestionHandler: (questions: Array<{ question: string; header: string; options: Array<{ label: string; description?: string }>; multiSelect: boolean }>, signal?: AbortSignal) => Promise<Record<string, string>>,
+    readonly sdkPermissionHandler: (
+      toolName: string,
+      toolInput: Record<string, unknown>,
+      promptSentence: string,
+      signal?: AbortSignal,
+    ) => Promise<'allow' | 'allow_always' | 'deny'>,
+    readonly sdkAskQuestionHandler: (
+      questions: Array<{
+        question: string;
+        header: string;
+        options: Array<{ label: string; description?: string }>;
+        multiSelect: boolean;
+      }>,
+      signal?: AbortSignal,
+    ) => Promise<Record<string, string>>,
     readonly sdkDeferredToolHandler: DeferredToolHandler,
     readonly ctx: LogContext,
   ) {}

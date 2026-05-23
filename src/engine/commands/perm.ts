@@ -23,13 +23,14 @@ export class PermCommand extends BaseCommand {
       ctx.services.state.setPermMode(ctx.msg.channelType, scopeId, sessionId, sub);
     }
     const chatKey = ctx.services.state.stateKey(ctx.msg.channelType, scopeId);
-    const route = ctx.surface === 'topic'
-      ? {
-          scopeId,
-          threadId: ctx.msg.threadId,
-          replyInThread: ctx.msg.replyInThread ?? !!ctx.msg.threadId,
-        }
-      : undefined;
+    const route =
+      ctx.surface === 'topic'
+        ? {
+            scopeId,
+            threadId: ctx.msg.threadId,
+            replyInThread: ctx.msg.replyInThread ?? !!ctx.msg.threadId,
+          }
+        : undefined;
     await this.send(
       ctx,
       presentPermissionStatus(ctx.msg.chatId, {

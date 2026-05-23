@@ -35,7 +35,11 @@ export function chunkByParagraph(text: string, limit: number): string[] {
   const MIN_CHUNK = 80;
   const merged: string[] = [];
   for (const chunk of result) {
-    if (merged.length > 0 && chunk.length < MIN_CHUNK && merged[merged.length - 1].length + chunk.length + 2 <= limit) {
+    if (
+      merged.length > 0 &&
+      chunk.length < MIN_CHUNK &&
+      merged[merged.length - 1].length + chunk.length + 2 <= limit
+    ) {
       merged[merged.length - 1] += '\n\n' + chunk;
     } else {
       merged.push(chunk);
@@ -70,8 +74,9 @@ function chunkMarkdown(text: string, limit: number, maxLines?: number): string[]
     const separator = current ? '\n' : '';
     const addition = separator + line;
     const lineCount = current.split('\n').length;
-    const wouldExceed = current.length + addition.length + (inCodeBlock ? 4 : 0) > limit
-      || (maxLines && lineCount >= maxLines && current.length > 0);
+    const wouldExceed =
+      current.length + addition.length + (inCodeBlock ? 4 : 0) > limit ||
+      (maxLines && lineCount >= maxLines && current.length > 0);
 
     if (wouldExceed && current) {
       flush();

@@ -10,6 +10,7 @@ import { generateSessionId } from '../../core/id.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { isSameRepoRoot } from '../../utils/repo.js';
+import { t } from '../../i18n/index.js';
 
 export class CdCommand extends BaseCommand {
   readonly name = '/cd';
@@ -37,6 +38,7 @@ export class CdCommand extends BaseCommand {
           shortPath(current),
           history.map(shortPath),
           workspaceBinding ? shortPath(workspaceBinding) : undefined,
+          ctx.locale,
         ),
       );
       return true;
@@ -46,7 +48,7 @@ export class CdCommand extends BaseCommand {
     if (path === '-') {
       const previousDir = ctx.services.workspace.getPreviousDirectory(ctx.msg.channelType, scopeId);
       if (!previousDir) {
-        await this.send(ctx, { chatId: ctx.msg.chatId, text: '⚠️ 没有历史目录可返回' });
+        await this.send(ctx, { chatId: ctx.msg.chatId, text: t(ctx.locale, 'cmd.cd.noHistory') });
         return true;
       }
 
@@ -74,7 +76,7 @@ export class CdCommand extends BaseCommand {
       ctx.services.workspace.pushHistory(ctx.msg.channelType, scopeId, previousDir);
       ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, scopeId, previousDir);
 
-      const feedbackText = `🔙 已切换到上一目录`;
+      const feedbackText = t(ctx.locale, 'cmd.cd.switchedBack');
       await this.send(
         ctx,
         presentDirectory(ctx.msg.chatId, shortPath(previousDir), true, feedbackText),
@@ -120,7 +122,7 @@ export class CdCommand extends BaseCommand {
     ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, scopeId, resolvedPath);
 
     const feedbackText =
-      hadActiveSession && switchedRepo ? `🧭 已保留旧仓库会话，默认切到新目录` : undefined;
+      hadActiveSession && switchedRepo ? t(ctx.locale, 'cmd.cd.switchedRepo') : undefined;
     await this.send(
       ctx,
       presentDirectory(ctx.msg.chatId, shortPath(resolvedPath), true, feedbackText),

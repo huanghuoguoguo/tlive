@@ -1,8 +1,5 @@
 import { withInboundReplyContext } from '../../channels/reply-context.js';
-import type {
-  CallbackHandlerContext,
-  CallbackHandlerResult,
-} from './callback-context.js';
+import type { CallbackHandlerContext, CallbackHandlerResult } from './callback-context.js';
 import {
   parseAskqSkipCallback,
   parseAskqSubmitCallback,
@@ -109,9 +106,7 @@ export async function handleQuestionCallback(
   return undefined;
 }
 
-export function handleLegacyQuestionCallback(
-  ctx: CallbackHandlerContext,
-): CallbackHandlerResult {
+export function handleLegacyQuestionCallback(ctx: CallbackHandlerContext): CallbackHandlerResult {
   const { adapter, msg, deps, callbackData } = ctx;
 
   if (callbackData.includes(':askq:')) {
@@ -158,4 +153,3 @@ export function handleLegacyQuestionCallback(
 
   return undefined;
 }
-

@@ -27,7 +27,7 @@ export interface TimelineEntry {
 /** Current tool execution state for progress display */
 export interface CurrentTool {
   name: string;
-  input: string;  // Brief description of what's being done
+  input: string; // Brief description of what's being done
   elapsed: number; // Seconds
 }
 

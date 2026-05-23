@@ -59,8 +59,7 @@ function navNewForProvider(
   provider: NewSessionButtonProvider,
   row: number,
 ): Button {
-  const label =
-    locale === 'zh' ? `🆕 新 ${provider.displayName} 会话` : `🆕 New ${provider.displayName}`;
+  const label = t(locale, 'btn.newProviderSession').replace('{provider}', provider.displayName);
   return {
     label,
     callbackData: actionCallback('new', provider.kind),
@@ -240,7 +239,7 @@ export function topicCommandPaletteButtons(
 
   if (options.interactivePermissions) {
     buttons.push({
-      label: locale === 'zh' ? '🔐 工具审批' : t(locale, 'home.btnPermissions'),
+      label: t(locale, 'home.btnPermissions'),
       callbackData: action('perm'),
       style: 'default',
       row: 0,
