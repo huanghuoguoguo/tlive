@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import type { Input, RunStreamedResult, ThreadEvent, TurnOptions } from '@openai/codex-sdk';
 
 const codexSdkMocks = vi.hoisted(() => ({
+  codexConstructor: vi.fn(),
   resumeThread: vi.fn(),
   runStreamed: vi.fn(),
   startThread: vi.fn(),
@@ -12,6 +13,10 @@ const codexSdkMocks = vi.hoisted(() => ({
 
 vi.mock('@openai/codex-sdk', () => ({
   Codex: class MockCodex {
+    constructor(options?: unknown) {
+      codexSdkMocks.codexConstructor(options);
+    }
+
     startThread(options?: unknown): unknown {
       return codexSdkMocks.startThread(options);
     }
@@ -88,6 +93,27 @@ describe('CodexSDKProvider', () => {
     expect(resolved.model).toBe('gpt-5.4');
     expect(resolved.modelReasoningEffort).toBe('medium');
     rmSync(codexHome, { recursive: true, force: true });
+  });
+
+  it('injects TLive MCP only into the SDK-created Codex process', () => {
+    new CodexLiveSession({ workingDirectory: '/repo' });
+
+    expect(codexSdkMocks.codexConstructor).toHaveBeenCalledWith({
+      config: {
+        mcp_servers: {
+          tlive: expect.objectContaining({
+            command: expect.any(String),
+            args: expect.any(Array),
+            tools: {
+              tlive_send_file: { approval_mode: 'approve' },
+              tlive_send_image: { approval_mode: 'approve' },
+              tlive_inject_prompt: { approval_mode: 'approve' },
+              tlive_status: { approval_mode: 'approve' },
+            },
+          }),
+        },
+      },
+    });
   });
 
   it('keeps an aborted turn from closing a newer turn stream', async () => {

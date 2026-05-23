@@ -49,26 +49,17 @@ TL_FS_ALLOWED_USERS=
 chmod 600 ~/.tlive/config.env
 ```
 
-## 安装 Claude Code 集成
+## MCP 集成
 
-```bash
-tlive install skills
-```
-
-也可以在 Claude Code 里运行：
-
-```text
-/tlive setup
-```
-
-引导流程会帮你填写飞书凭证并启动 bridge。
+TLive SDK 会话会自动加载内置 MCP server。由 TLive 启动的 agent 可以回调
+TLive 发送文件/图片或注入自动化 prompt，同时飞书话题路由和权限仍由 bridge 统一管理。
 
 ## 启动
 
-在 Claude Code 中：
+启动 bridge：
 
-```text
-/tlive
+```bash
+tlive start
 ```
 
 然后在飞书 / Lark 里给机器人发任务：

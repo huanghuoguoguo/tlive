@@ -1,6 +1,6 @@
 /**
  * LLM Provider using @anthropic-ai/claude-agent-sdk query() function.
- * Based on Claude-to-IM-skill's implementation.
+ * Based on the original Claude-to-IM bridge implementation.
  */
 
 import { existsSync, unlinkSync, readdirSync, statSync } from 'node:fs';

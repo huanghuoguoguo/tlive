@@ -37,7 +37,7 @@ See [Feishu Setup Guide](setup-feishu.md).
 ```env
 # Settings sources loaded by default for new chats
 # user    = ~/.claude/settings.json
-# project = .claude/settings.json + CLAUDE.md + MCP + skills
+# project = .claude/settings.json + CLAUDE.md + project MCP config
 # local   = .claude/settings.local.json
 TL_AGENT_SETTINGS=user,project,local
 ```

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// postinstall: copy reference docs to ~/.tlive/docs/
-import { mkdirSync, existsSync, copyFileSync, rmSync } from 'node:fs';
+// postinstall: copy lightweight reference files to ~/.tlive/docs/
+import { mkdirSync, existsSync, copyFileSync, rmSync, unlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
@@ -12,16 +12,6 @@ function copyReferenceDocs() {
   const docsDir = join(TLIVE_HOME, 'docs');
   mkdirSync(docsDir, { recursive: true });
 
-  const refsDir = join(__dirname, '..', '.claude', 'skills', 'tlive', 'references');
-  const docs = ['setup-guides.md', 'token-validation.md', 'troubleshooting.md'];
-  for (const doc of docs) {
-    const src = join(refsDir, doc);
-    const dest = join(docsDir, doc);
-    if (existsSync(src)) {
-      copyFileSync(src, dest);
-    }
-  }
-  // Copy config template so the skill can reference exact variable names
   const configExample = join(__dirname, '..', 'config.env.example');
   const configDest = join(docsDir, 'config.env.example');
   if (existsSync(configExample)) {
@@ -32,13 +22,18 @@ function copyReferenceDocs() {
 }
 
 function removeRetiredSkills() {
-  const retiredSkills = ['tlive-cron'];
+  const retiredSkills = ['tlive', 'tlive-troubleshoot', 'tlive-cron'];
   for (const skill of retiredSkills) {
     const skillDir = join(homedir(), '.claude', 'skills', skill);
     if (existsSync(skillDir)) {
       rmSync(skillDir, { recursive: true, force: true });
       console.log(`Removed retired Claude Code skill: ${skillDir}`);
     }
+  }
+  const commandFile = join(homedir(), '.claude', 'commands', 'tlive.md');
+  if (existsSync(commandFile)) {
+    unlinkSync(commandFile);
+    console.log(`Removed retired Claude Code command: ${commandFile}`);
   }
 }
 
@@ -49,7 +44,7 @@ async function main() {
   console.log('\nTLive setup complete.');
   console.log('Next steps:');
   console.log('  1. tlive setup              — configure Feishu/Lark');
-  console.log('  2. tlive install skills     — install Claude Code skill');
+  console.log('  2. tlive start              — start the bridge');
 }
 
 main().catch(console.error);

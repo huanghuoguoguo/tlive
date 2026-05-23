@@ -60,18 +60,9 @@ tlive start
 
 然后在飞书 / Lark 中发送 `/tlive` 打开工作台。
 
-如果你希望在 Claude Code 中引导配置，可以先安装 skill，再询问 Claude：
-
-```bash
-tlive install skills
-claude
-```
-
-```text
-help me setup tlive
-```
-
-配置流程会引导你填写飞书应用凭证、生成本地配置并启动 bridge。
+TLive SDK 会话会自动加载内置 MCP server，用于 agent 回调 TLive。
+MCP server 会暴露 `tlive_send_file`、
+`tlive_send_image`、`tlive_inject_prompt`、`tlive_status` 等工具。
 
 ## 架构
 

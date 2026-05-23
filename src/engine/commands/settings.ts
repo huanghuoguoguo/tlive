@@ -15,7 +15,7 @@ const PRESETS: Record<string, AgentSettingSource[]> = {
 
 const LABELS: Record<string, string> = {
   user: '👤 user — current chat uses global auth/model only',
-  full: '📦 full — current chat loads project rules, MCP, and skills',
+  full: '📦 full — current chat loads project rules and MCP config',
   isolated: '🔒 isolated — current chat ignores external settings',
 };
 

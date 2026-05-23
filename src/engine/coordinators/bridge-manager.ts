@@ -5,10 +5,6 @@ import type { AutomationBridge } from '../types/automation-bridge.js';
 import { loadConfig, type Config } from '../../config.js';
 import { WebhookServer } from '../automation/webhook.js';
 import {
-  buildFileSendSystemPrompt,
-  configureFileSendEnvironment,
-} from '../automation/file-send-prompt.js';
-import {
   AutomationPromptInjector,
   type AutomationPromptOptions,
   type AutomationPromptResult,
@@ -55,16 +51,6 @@ export class BridgeManager implements AutomationBridge {
   constructor(deps: BridgeManagerDeps) {
     const config = deps.config ?? loadConfig();
     const { store, llm, defaultWorkdir, providers } = deps;
-    configureFileSendEnvironment({
-      enabled: config.webhook.enabled,
-      port: config.webhook.port,
-      token: config.webhook.token,
-    });
-    const appendSystemPrompt = buildFileSendSystemPrompt({
-      enabled: config.webhook.enabled,
-      port: config.webhook.port,
-      token: config.webhook.token,
-    });
 
     // Create all engine components via factory
     const factoryDeps: BridgeFactoryDeps = {
@@ -75,7 +61,6 @@ export class BridgeManager implements AutomationBridge {
       config,
       getAdapters: () => this.adapters,
       getExecutionClients: deps.getExecutionClients,
-      appendSystemPrompt,
     };
     this.components = createBridgeComponents(factoryDeps);
     this.inbound = new InboundDispatcher({

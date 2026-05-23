@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // preuninstall: clean up installed binaries, scripts, and docs from ~/.tlive/
 // Preserves user data: config.env, data/, logs/, runtime/
-import { existsSync, unlinkSync, readdirSync, rmdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, unlinkSync, readdirSync, rmdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { execSync } from 'node:child_process';
@@ -54,7 +54,7 @@ function cleanBinDir() {
 // Remove reference docs installed by postinstall
 function cleanDocs() {
   if (!existsSync(DOCS_DIR)) return;
-  const docs = ['setup-guides.md', 'token-validation.md', 'troubleshooting.md'];
+  const docs = ['setup-guides.md', 'token-validation.md', 'troubleshooting.md', 'config.env.example'];
   for (const doc of docs) {
     const p = join(DOCS_DIR, doc);
     if (existsSync(p)) unlinkSync(p);
@@ -64,6 +64,21 @@ function cleanDocs() {
     if (readdirSync(DOCS_DIR).length === 0) rmdirSync(DOCS_DIR);
   } catch {}
   console.log(`Removed reference docs from ${DOCS_DIR}`);
+}
+
+function cleanSkills() {
+  for (const skill of ['tlive', 'tlive-troubleshoot', 'tlive-cron']) {
+    const skillDir = join(homedir(), '.claude', 'skills', skill);
+    if (existsSync(skillDir)) {
+      rmSync(skillDir, { recursive: true, force: true });
+      console.log(`Removed Claude Code skill: ${skillDir}`);
+    }
+  }
+  const commandFile = join(homedir(), '.claude', 'commands', 'tlive.md');
+  if (existsSync(commandFile)) {
+    unlinkSync(commandFile);
+    console.log(`Removed Claude Code command: ${commandFile}`);
+  }
 }
 
 // Remove Claude Code hooks that point to our scripts
@@ -100,5 +115,6 @@ console.log('Cleaning up TLive...');
 stopBridge();
 cleanBinDir();
 cleanDocs();
+cleanSkills();
 await cleanHooks();
 console.log('TLive uninstalled. User data preserved in ~/.tlive/ (config, sessions, logs).');

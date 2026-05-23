@@ -24,6 +24,7 @@ import { preparePromptWithImages } from './prompt-media.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { tliveMcpConfigForCodex } from './tlive-mcp.js';
 
 export interface CodexRuntimeOptions {
   codexPath?: string;
@@ -63,6 +64,7 @@ export class CodexLiveSession implements LiveSession {
     this.options = resolveCodexSessionOptions(options);
     this.codex = new Codex({
       ...(this.options.codexPath ? { codexPathOverride: this.options.codexPath } : {}),
+      config: tliveMcpConfigForCodex(),
     });
     const threadOptions = this.buildThreadOptions(this.options);
     this.runtimeInfo = {

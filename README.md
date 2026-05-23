@@ -58,18 +58,9 @@ tlive start
 
 Then send `/tlive` in Feishu/Lark to open the workbench.
 
-If you prefer guided setup inside Claude Code, install the skill and ask Claude:
-
-```bash
-tlive install skills
-claude
-```
-
-```text
-help me setup tlive
-```
-
-The setup flow will guide you through Feishu app credentials, local config, and bridge startup.
+TLive SDK sessions automatically load the bundled MCP server for agent-side callbacks.
+The MCP server exposes tools such as
+`tlive_send_file`, `tlive_send_image`, `tlive_inject_prompt`, and `tlive_status`.
 
 ## Architecture
 

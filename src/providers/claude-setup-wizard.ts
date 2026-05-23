@@ -46,7 +46,7 @@ function maskSecret(value: string): string {
 
 function printNextSteps(): void {
   console.log('\nNext steps:');
-  console.log('  tlive install skills    Install Claude Code skill');
+  console.log('  tlive mcp               Run local MCP server for debugging');
   console.log('  tlive start             Start services');
 
   console.log('\nFeishu first-run checklist:');
@@ -58,7 +58,7 @@ function printNextSteps(): void {
 
 export async function runSetupWizard(): Promise<void> {
   if (isClaudeCodeEnvironment()) {
-    console.error('Setup wizard should be run via /tlive setup in Claude Code.');
+    console.error('Setup wizard should be run from a terminal with `tlive setup`.');
     process.exit(1);
   }
 
