@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildClaudeQueryOptions } from '../../providers/claude-query-options.js';
+import { buildClaudeQueryOptions } from '../../client/providers/claude-query-options.js';
 
 describe('buildClaudeQueryOptions', () => {
   it('builds shared Claude SDK options without hiding call-site policy', () => {

@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import type { BaseChannelAdapter } from '../../channels/base.js';
-import { FeishuFormatter } from '../../channels/feishu/formatter.js';
-import { QueryOrchestrator } from '../../engine/coordinators/query.js';
-import { SessionStateManager } from '../../engine/state/session-state.js';
+import type { BaseChannelAdapter } from '../../server/channels/base.js';
+import { FeishuFormatter } from '../../server/channels/feishu/formatter.js';
+import { QueryOrchestrator } from '../../server/engine/coordinators/query.js';
+import { SessionStateManager } from '../../server/engine/state/session-state.js';
 
 const feishuFormatter = new FeishuFormatter('zh');
 const defaultBinding = {

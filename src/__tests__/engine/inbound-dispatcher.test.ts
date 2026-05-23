@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { BaseChannelAdapter } from '../../channels/base.js';
-import type { InboundMessage } from '../../channels/types.js';
-import { InboundDispatcher } from '../../engine/coordinators/inbound-dispatcher.js';
-import { TextDispatcher } from '../../engine/messages/text-dispatcher.js';
-import { SessionStateManager } from '../../engine/state/session-state.js';
+import type { BaseChannelAdapter } from '../../server/channels/base.js';
+import type { InboundMessage } from '../../server/channels/types.js';
+import { InboundDispatcher } from '../../server/engine/coordinators/inbound-dispatcher.js';
+import { TextDispatcher } from '../../server/engine/messages/text-dispatcher.js';
+import { SessionStateManager } from '../../server/engine/state/session-state.js';
 
 function createAdapter(): BaseChannelAdapter {
   return {

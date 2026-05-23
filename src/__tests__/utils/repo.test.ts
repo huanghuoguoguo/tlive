@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { findGitRoot, isSameRepoRoot } from '../../utils/repo.js';
+import { findGitRoot, isSameRepoRoot } from '../../shared/utils/repo.js';
 
 describe('repo utilities', () => {
   let tmpDir: string;

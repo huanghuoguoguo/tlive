@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { preparePromptWithFileAttachments } from '../../utils/conversation.js';
-import type { FileAttachment } from '../../providers/base.js';
+import { preparePromptWithFileAttachments } from '../../server/engine/conversation-engine.js';
+import type { FileAttachment } from '../../shared/providers/base.js';
 
 function tempTliveHome(): string {
   return join(tmpdir(), `tlive-conversation-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);

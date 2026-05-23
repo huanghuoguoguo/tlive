@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { formatSize, formatRelativeTime } from '../../formatting/session-format.js';
-import { redactSensitiveContent } from '../../utils/content-filter.js';
+import { formatSize, formatRelativeTime } from '../../shared/formatting/session-format.js';
+import { redactSensitiveContent } from '../../shared/utils/content-filter.js';
 
 afterEach(() => {
   vi.restoreAllMocks();

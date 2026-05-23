@@ -6,7 +6,7 @@ import {
   readStatus,
   sendFile,
   type TliveToolResponse,
-} from '../../mcp/client.js';
+} from '../../client/mcp/client.js';
 
 describe('TLive MCP client', () => {
   const servers: Array<{ close: () => void }> = [];

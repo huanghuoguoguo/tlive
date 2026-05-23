@@ -4,7 +4,7 @@ import {
   getToolIcon,
   getToolResultPreview,
   getToolTitle,
-} from '../../engine/sdk/tool-registry.js';
+} from '../../server/engine/sdk/tool-registry.js';
 
 describe('tool-registry', () => {
   it('formats representative tool icons, titles, and commands', () => {

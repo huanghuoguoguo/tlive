@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MessageRenderer } from '../../engine/messages/renderer.js';
+import { MessageRenderer } from '../../server/engine/messages/renderer.js';
 import {
   AdaptiveFlushController,
   type AdaptiveFlushOptions,
-} from '../../engine/messages/adaptive-flush.js';
+} from '../../server/engine/messages/adaptive-flush.js';
 
 describe('MessageRenderer', () => {
   let flushCallback: ReturnType<typeof vi.fn>;

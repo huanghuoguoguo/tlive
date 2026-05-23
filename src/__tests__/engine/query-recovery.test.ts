@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { QueryRecoveryPolicy } from '../../engine/coordinators/query-recovery.js';
+import { QueryRecoveryPolicy } from '../../server/engine/coordinators/query-recovery.js';
 
 function createPolicy() {
   const sdkEngine = {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ThreadEvent } from '@openai/codex-sdk';
-import { CodexAdapter } from '../../providers/codex-adapter.js';
+import { CodexAdapter } from '../../client/providers/codex-adapter.js';
 
 describe('CodexAdapter', () => {
   it('maps thread lifecycle and turn completion', () => {

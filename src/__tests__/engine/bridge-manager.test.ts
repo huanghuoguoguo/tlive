@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { BridgeManager } from '../../engine/coordinators/bridge-manager.js';
-import type { BaseChannelAdapter } from '../../channels/base.js';
-import type { RenderedMessage } from '../../channels/types.js';
-import type { FormattableMessage } from '../../formatting/message-types.js';
-import { FeishuFormatter } from '../../channels/feishu/formatter.js';
+import { BridgeManager } from '../../server/engine/coordinators/bridge-manager.js';
+import type { BaseChannelAdapter } from '../../server/channels/base.js';
+import type { RenderedMessage } from '../../server/channels/types.js';
+import type { FormattableMessage } from '../../shared/formatting/message-types.js';
+import { FeishuFormatter } from '../../server/channels/feishu/formatter.js';
 
 const feishuFormatter = new FeishuFormatter('zh');
 

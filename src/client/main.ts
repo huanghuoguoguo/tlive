@@ -1,9 +1,9 @@
-import { loadConfig } from '../config.js';
-import { createAgentProviderRegistry } from '../providers/factory.js';
-import { getCurrentVersion } from '../utils/version-checker.js';
-import { generateId } from '../core/id.js';
+import { loadConfig } from '../shared/config.js';
+import { createAgentProviderRegistry } from './providers/factory.js';
+import { getCurrentVersion } from '../shared/utils/version-checker.js';
+import { generateId } from '../shared/core/id.js';
 import { defaultRemoteClientName, RemoteClientWorker } from './worker.js';
-import type { AgentProviderKind } from '../providers/kinds.js';
+import type { AgentProviderKind } from '../shared/providers/kinds.js';
 import { pathToFileURL } from 'node:url';
 
 interface ClientCliArgs {

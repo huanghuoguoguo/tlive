@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { FeishuFormatter } from '../../channels/feishu/formatter.js';
-import type { ProgressData } from '../../formatting/message-types.js';
-import { actionCallback } from '../../core/callbacks.js';
+import { FeishuFormatter } from '../../server/channels/feishu/formatter.js';
+import type { ProgressData } from '../../shared/formatting/message-types.js';
+import { actionCallback } from '../../shared/core/callbacks.js';
 
 function createProgressData(overrides: Partial<ProgressData> = {}): ProgressData {
   return {

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FeishuFormatter } from '../../channels/feishu/formatter.js';
-import { QueryExecutionPresenter } from '../../engine/messages/query-presenter.js';
-import type { MessageRendererState } from '../../engine/messages/renderer.js';
+import { FeishuFormatter } from '../../server/channels/feishu/formatter.js';
+import { QueryExecutionPresenter } from '../../server/engine/messages/query-presenter.js';
+import type { MessageRendererState } from '../../server/engine/messages/renderer.js';
 
 function collectActions(message: any): string[] {
   const actions: string[] = [];

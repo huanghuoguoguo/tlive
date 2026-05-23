@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   downgradeHeadings,
   sanitizeFeishuMarkdown,
-} from '../../channels/feishu/markdown.js';
+} from '../../server/channels/feishu/markdown.js';
 
 describe('Feishu rendering', () => {
   it('converts external markdown images to links for Feishu cards', () => {

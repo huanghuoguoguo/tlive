@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   parsePermissionCallback,
   PendingPermissions,
-} from '../../permissions/gateway.js';
+} from '../../server/permissions/gateway.js';
 
 describe('PendingPermissions', () => {
   let gateway: PendingPermissions;

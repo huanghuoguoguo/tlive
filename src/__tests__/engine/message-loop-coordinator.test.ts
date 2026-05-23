@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { BaseChannelAdapter } from '../../channels/base.js';
-import type { InboundMessage } from '../../channels/types.js';
-import { MessageLoopCoordinator } from '../../engine/coordinators/message-loop.js';
-import { SessionStateManager } from '../../engine/state/session-state.js';
-import type { SendWithContextResult } from '../../engine/sdk/engine.js';
-import { conversationScopeId } from '../../channels/conversation-context.js';
+import type { BaseChannelAdapter } from '../../server/channels/base.js';
+import type { InboundMessage } from '../../server/channels/types.js';
+import { MessageLoopCoordinator } from '../../server/engine/coordinators/message-loop.js';
+import { SessionStateManager } from '../../server/engine/state/session-state.js';
+import type { SendWithContextResult } from '../../server/engine/sdk/engine.js';
+import { conversationScopeId } from '../../server/channels/conversation-context.js';
 
 function createAdapter(channelType = 'feishu'): BaseChannelAdapter {
   return {

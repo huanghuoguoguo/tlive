@@ -2,8 +2,8 @@ import { createServer } from 'node:net';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { WebhookServer, type WebhookResponse } from '../../engine/automation/webhook.js';
-import type { TurnParams } from '../../providers/base.js';
+import { WebhookServer, type WebhookResponse } from '../../server/engine/automation/webhook.js';
+import type { TurnParams } from '../../shared/providers/base.js';
 import {
   allRenderedText,
   createE2EHarness,
@@ -601,7 +601,7 @@ function topicMessage(text: string) {
   };
 }
 
-async function* longRunningTrace(text: string): AsyncIterable<import('../../canonical/schema.js').CanonicalEvent> {
+async function* longRunningTrace(text: string): AsyncIterable<import('../../shared/canonical/schema.js').CanonicalEvent> {
   yield {
     kind: 'tool_start',
     id: 'tool-long',
@@ -624,7 +624,7 @@ async function* longRunningTrace(text: string): AsyncIterable<import('../../cano
   };
 }
 
-async function* delayedTrace(text: string): AsyncIterable<import('../../canonical/schema.js').CanonicalEvent> {
+async function* delayedTrace(text: string): AsyncIterable<import('../../shared/canonical/schema.js').CanonicalEvent> {
   yield {
     kind: 'tool_start',
     id: 'tool-delay',

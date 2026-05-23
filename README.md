@@ -134,6 +134,9 @@ Worker machine:
 tlive client --server ws://your-server:8787/tlive --token change-this-token --workspace /path/to/project
 ```
 
+See [Server / Client Architecture](docs/architecture.md) for the control-plane and execution-plane
+state ownership model.
+
 Codex runtime options:
 
 ```env

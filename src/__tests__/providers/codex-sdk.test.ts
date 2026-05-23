@@ -27,8 +27,8 @@ vi.mock('@openai/codex-sdk', () => ({
   },
 }));
 
-import { CodexLiveSession, resolveCodexSessionOptions } from '../../providers/codex-live-session.js';
-import { CodexSDKProvider, toCodexReasoningEffort } from '../../providers/codex-sdk.js';
+import { CodexLiveSession, resolveCodexSessionOptions } from '../../client/providers/codex-live-session.js';
+import { CodexSDKProvider, toCodexReasoningEffort } from '../../client/providers/codex-sdk.js';
 
 describe('CodexSDKProvider', () => {
   const originalCodexHome = process.env.CODEX_HOME;

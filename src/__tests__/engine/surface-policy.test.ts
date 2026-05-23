@@ -7,8 +7,8 @@ import {
   isCommandAllowedOnSurface,
   progressButtonsForSurface,
   taskSummaryButtonsForSurface,
-} from '../../engine/conversations/surface-policy.js';
-import { chatScopeId } from '../../core/key.js';
+} from '../../server/engine/conversations/surface-policy.js';
+import { chatScopeId } from '../../shared/core/key.js';
 
 describe('conversation surface policy', () => {
   it('classifies workbench and topic scopes', () => {

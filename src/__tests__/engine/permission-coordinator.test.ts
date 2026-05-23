@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PermissionCoordinator } from '../../engine/coordinators/permission.js';
-import { PendingPermissions } from '../../permissions/gateway.js';
+import { PermissionCoordinator } from '../../server/engine/coordinators/permission.js';
+import { PendingPermissions } from '../../server/permissions/gateway.js';
 
 describe('PermissionCoordinator', () => {
   let gateway: PendingPermissions;

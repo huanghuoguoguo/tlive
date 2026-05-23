@@ -10,13 +10,13 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { acquireSingletonLock } from '../../main.js';
+import { acquireSingletonLock } from '../../server/main.js';
 import {
   getTliveRuntimeDir,
   getRestartRequestFile,
   writeRestartRequest,
   deleteRestartRequest,
-} from '../../core/path.js';
+} from '../../shared/core/path.js';
 
 const originalTliveHome = process.env.TLIVE_HOME;
 const originalProcRoot = process.env.TLIVE_PROC_ROOT;

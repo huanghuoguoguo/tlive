@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   BridgeError, RateLimitError, PlatformError,
-} from '../../channels/errors.js';
+} from '../../server/channels/errors.js';
 
 describe('BridgeError hierarchy', () => {
   it('RateLimitError has retryAfterMs', () => {

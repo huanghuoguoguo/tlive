@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { DeliveryRoute } from '../../channels/delivery-route.js';
-import type { QueryControls } from '../../providers/base.js';
-import { FileDeliveryRegistry } from '../../engine/sdk/file-delivery-registry.js';
-import { TurnControlRegistry } from '../../engine/sdk/turn-control-registry.js';
+import type { DeliveryRoute } from '../../server/channels/delivery-route.js';
+import type { QueryControls } from '../../shared/providers/base.js';
+import { FileDeliveryRegistry } from '../../server/engine/sdk/file-delivery-registry.js';
+import { TurnControlRegistry } from '../../server/engine/sdk/turn-control-registry.js';
 
 function createControls(): QueryControls {
   return {

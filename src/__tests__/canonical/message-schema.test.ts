@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalEventSchema, type CanonicalEvent } from '../../canonical/schema.js';
+import { canonicalEventSchema, type CanonicalEvent } from '../../shared/canonical/schema.js';
 
 describe('message-schema', () => {
   it('accepts every canonical event kind used at the provider boundary', () => {

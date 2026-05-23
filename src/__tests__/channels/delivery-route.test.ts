@@ -4,8 +4,8 @@ import {
   applyInboundReplyContext,
   deliveryRouteFromInbound,
   type DeliveryRoute,
-} from '../../channels/delivery-route.js';
-import type { InboundMessage } from '../../channels/types.js';
+} from '../../server/channels/delivery-route.js';
+import type { InboundMessage } from '../../server/channels/types.js';
 
 function inbound(overrides: Partial<InboundMessage> = {}): InboundMessage {
   return {

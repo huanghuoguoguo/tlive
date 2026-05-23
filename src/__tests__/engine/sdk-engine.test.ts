@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { SDKEngine } from '../../engine/sdk/engine.js';
-import type { LiveSession } from '../../providers/base.js';
-import type { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
+import { SDKEngine } from '../../server/engine/sdk/engine.js';
+import type { LiveSession } from '../../shared/providers/base.js';
+import type { ClaudeSDKProvider } from '../../client/providers/claude-sdk.js';
 
 function createMockSession(isAlive = true, isTurnActive = false): LiveSession {
   let callbacks: { onTurnComplete?: () => void } | undefined;

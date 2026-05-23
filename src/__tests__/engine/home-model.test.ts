@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { chatScopeId } from '../../core/key.js';
+import { chatScopeId } from '../../shared/core/key.js';
 import {
   buildActiveSdkSessionBindings,
   buildHomeSessionEntries,
   buildRecentProjects,
   buildTopicEntries,
   hasActiveTaskInConversation,
-} from '../../engine/presenters/home-model.js';
-import { TopicSessionManager } from '../../engine/state/topic-sessions.js';
-import type { ScannedSession } from '../../providers/session-scanner.js';
-import type { ChannelBinding } from '../../store/interface.js';
+} from '../../server/engine/presenters/home-model.js';
+import { TopicSessionManager } from '../../server/engine/state/topic-sessions.js';
+import type { ScannedSession } from '../../client/providers/session-scanner.js';
+import type { ChannelBinding } from '../../server/store/interface.js';
 
 const stateKey = (channelType: string, chatId: string) => `${channelType}:${chatId}`;
 
@@ -93,7 +93,7 @@ describe('home model helpers', () => {
     });
   });
 
-  it('builds workbench topic entries from the topic session index', () => {
+  it('builds workbench topic entries only when a client reports the sdk session', () => {
     const topicSessions = new TopicSessionManager();
     const scopeId = chatScopeId('chat-1', 'thread-1');
     topicSessions.upsert({
@@ -116,6 +116,15 @@ describe('home model helpers', () => {
       activeControls: new Map([[stateKey('feishu', scopeId), {} as any]]),
       stateKey,
       locale: 'zh',
+      resolveClientSession: () => ({
+        provider: 'claude',
+        providerDisplayName: 'Claude',
+        clientId: 'worker-1',
+        sdkSessionId: 'sdk-1',
+        cwd: '/repo/topic',
+        mtime: Date.UTC(2026, 0, 1),
+        preview: 'Client preview',
+      }),
     });
 
     expect(entries).toHaveLength(1);
@@ -124,8 +133,37 @@ describe('home model helpers', () => {
       threadId: 'thread-1',
       cwd: '/repo/topic',
       title: 'Topic title',
+      preview: 'Client preview',
+      clientId: 'worker-1',
       isCurrent: true,
       isActive: true,
     });
+  });
+
+  it('does not expose stale topic records that no client currently reports', () => {
+    const topicSessions = new TopicSessionManager();
+    const scopeId = chatScopeId('chat-1', 'thread-1');
+    topicSessions.upsert({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      scopeId,
+      threadId: 'thread-1',
+      sdkSessionId: 'sdk-1',
+      cwd: '/tmp/tlive-remote-smoke',
+      title: 'Remote topic',
+      preview: 'Remote topic',
+    });
+
+    const entries = buildTopicEntries({
+      topicSessions,
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      currentCwd: '/repo',
+      activeControls: new Map(),
+      stateKey,
+      locale: 'zh',
+    });
+
+    expect(entries).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { splitLargeTables } from '../../channels/feishu/markdown.js';
+import { splitLargeTables } from '../../server/channels/feishu/markdown.js';
 
 function table(rowCount: number): string {
   const header = '| Name | Value |\n|---|---|\n';

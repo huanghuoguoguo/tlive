@@ -12,7 +12,7 @@ const common = {
   platform: 'node',
   target: 'node22',
   format: 'esm',
-  external: ['@anthropic-ai/*', '@larksuiteoapi/*', 'undici'],
+  external: ['@anthropic-ai/*', '@larksuiteoapi/*', 'undici', 'ws', 'better-sqlite3'],
   sourcemap: true,
   define: {
     'process.env.npm_package_version': JSON.stringify(packageJson.version),
@@ -20,10 +20,10 @@ const common = {
 };
 
 const entryPoints = [
-  { entry: 'src/main.ts', outfile: 'dist/main.mjs' },
+  { entry: 'src/server/main.ts', outfile: 'dist/main.mjs' },
   { entry: 'src/client/main.ts', outfile: 'dist/client.mjs' },
-  { entry: 'src/mcp/main.ts', outfile: 'dist/mcp.mjs' },
-  { entry: 'src/providers/claude-setup-wizard.ts', outfile: 'dist/setup.mjs' },
+  { entry: 'src/client/mcp/main.ts', outfile: 'dist/mcp.mjs' },
+  { entry: 'src/client/providers/claude-setup-wizard.ts', outfile: 'dist/setup.mjs' },
 ];
 
 // Build all entry points

@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { WebhookServer, injectPayload } from '../../engine/automation/webhook.js';
-import type { BridgeManager } from '../../engine/coordinators/bridge-manager.js';
-import type { ProjectConfig } from '../../config.js';
+import { WebhookServer, injectPayload } from '../../server/engine/automation/webhook.js';
+import type { BridgeManager } from '../../server/engine/coordinators/bridge-manager.js';
+import type { ProjectConfig } from '../../shared/config.js';
 
 // Mock fetch for callback tests
 const mockFetch = vi.fn();

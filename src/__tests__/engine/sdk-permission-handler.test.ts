@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SDKPermissionHandler } from '../../engine/sdk/permission-handler.js';
-import { SessionStateManager } from '../../engine/state/session-state.js';
+import { SDKPermissionHandler } from '../../server/engine/sdk/permission-handler.js';
+import { SessionStateManager } from '../../server/engine/state/session-state.js';
 
 function createHandler(
   waitForResult: { behavior: 'allow' | 'allow_always' | 'deny'; grantScope?: 'same_command' | 'session_all' },

@@ -2,20 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { CommandRouter } from '../../engine/command-router.js';
-import { SessionStateManager } from '../../engine/state/session-state.js';
-import { WorkspaceStateManager } from '../../engine/state/workspace-state.js';
-import { RecentProjectsManager } from '../../engine/state/recent-projects.js';
-import { TopicSessionManager } from '../../engine/state/topic-sessions.js';
-import { ChannelRouter } from '../../utils/router.js';
-import { JsonFileStore } from '../../store/json-file.js';
-import { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
-import { AgentProviderRegistry, singleProviderRegistry } from '../../providers/registry.js';
-import { loadProjectsConfig, type AgentSettingSource } from '../../config.js';
-import type { SDKEngine } from '../../engine/sdk/engine.js';
-import type { PermissionCoordinator } from '../../engine/coordinators/permission.js';
-import * as sessionScanner from '../../providers/session-scanner.js';
-import { chatScopeId } from '../../core/key.js';
+import { CommandRouter } from '../../server/engine/command-router.js';
+import { SessionStateManager } from '../../server/engine/state/session-state.js';
+import { WorkspaceStateManager } from '../../server/engine/state/workspace-state.js';
+import { RecentProjectsManager } from '../../server/engine/state/recent-projects.js';
+import { TopicSessionManager } from '../../server/engine/state/topic-sessions.js';
+import { ChannelRouter } from '../../server/engine/channel-router.js';
+import { JsonFileStore } from '../../server/store/json-file.js';
+import { ClaudeSDKProvider } from '../../client/providers/claude-sdk.js';
+import { AgentProviderRegistry, singleProviderRegistry } from '../../client/providers/registry.js';
+import { loadProjectsConfig, type AgentSettingSource } from '../../shared/config.js';
+import type { SDKEngine } from '../../server/engine/sdk/engine.js';
+import type { PermissionCoordinator } from '../../server/engine/coordinators/permission.js';
+import { chatScopeId } from '../../shared/core/key.js';
+import type { HomeClientEntry } from '../../shared/formatting/message-types.js';
 
 /** Create a minimal PermissionCoordinator mock for tests */
 function createMockPermissions(): PermissionCoordinator {
@@ -130,6 +130,7 @@ describe('CommandRouter /settings', () => {
     state?: SessionStateManager;
     providers?: AgentProviderRegistry;
     topicSessions?: TopicSessionManager;
+    getExecutionClients?: () => HomeClientEntry[];
   } = {}) {
     const state = options.state ?? new SessionStateManager();
     const topicSessions = options.topicSessions ?? new TopicSessionManager();
@@ -152,6 +153,7 @@ describe('CommandRouter /settings', () => {
         sdkEngine as SDKEngine,
         undefined,
         topicSessions,
+        options.getExecutionClients,
       ),
     };
   }
@@ -322,6 +324,73 @@ describe('CommandRouter /settings', () => {
       replyToMessageId: 'topic-card',
       replyInThread: true,
     }));
+  });
+
+  it('includes topic-bound remote sessions in node history', async () => {
+    const topicSessions = new TopicSessionManager();
+    topicSessions.upsert({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      scopeId: chatScopeId('chat-1', 'thread-remote'),
+      threadId: 'thread-remote',
+      provider: 'claude',
+      sdkSessionId: 'remote-topic-session',
+      cwd: '/tmp/tlive-remote-smoke',
+      title: 'Remote topic',
+      preview: 'Remote topic preview',
+    });
+    const { router: topicRouter } = createTopicRouter({
+      topicSessions,
+      getExecutionClients: () => [
+        {
+          clientId: 'vm-0-16-ubuntu',
+          name: 'vm-0-16-ubuntu',
+          online: true,
+          isDefault: true,
+          activeTurns: 0,
+          maxConcurrency: 1,
+          workspaces: [{ path: '/tmp/tlive-remote-smoke', isDefault: true }],
+          providers: [
+            { kind: 'claude', displayName: 'Claude', available: true, isDefault: true },
+          ],
+          sessions: [
+            {
+              provider: 'claude',
+              providerDisplayName: 'Claude',
+              sdkSessionId: 'remote-topic-session',
+              cwd: '/tmp/tlive-remote-smoke',
+              mtime: Date.UTC(2026, 4, 22),
+              preview: 'Remote history preview',
+            },
+          ],
+        },
+      ],
+    });
+
+    await topicRouter.handle(adapter, {
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      scopeId: 'chat-1',
+      userId: 'u1',
+      text: '/home-history vm-0-16-ubuntu',
+      internalCommand: true,
+      messageId: 'm-history',
+    } as any);
+
+    const formatted = adapter.format.mock.calls.at(-1)?.[0];
+    expect(formatted).toMatchObject({
+      type: 'sessionList',
+      data: {
+        title: 'vm-0-16-ubuntu 最近会话',
+        entries: [
+          expect.objectContaining({
+            clientId: 'vm-0-16-ubuntu',
+            sdkSessionId: 'remote-topic-session',
+            actionLabel: '回到话题',
+          }),
+        ],
+      },
+    });
   });
 
   it('rejects hidden continue callbacks inside a Feishu topic', async () => {
@@ -611,19 +680,31 @@ describe('CommandRouter /settings', () => {
     mkdirSync(join(repoA, '.git'), { recursive: true });
     mkdirSync(join(repoB, '.git'), { recursive: true });
 
-    const scanSpy = vi.spyOn(sessionScanner, 'scanAgentSessions').mockReturnValue([
-      {
-        provider: 'claude',
-        providerDisplayName: 'Claude',
-        sdkSessionId: 'sdk-target',
-        projectDir: 'repo-b',
-        filePath: join(repoB, 'sdk-target.jsonl'),
-        cwd: repoB,
-        preview: 'target session',
-        mtime: Date.now(),
-        size: 1024,
-      },
-    ] as any);
+    const topic = createTopicRouter({
+      getExecutionClients: () => [
+        {
+          clientId: 'worker-1',
+          name: 'worker-1',
+          online: true,
+          isDefault: false,
+          activeTurns: 0,
+          maxConcurrency: 1,
+          workspaces: [{ path: repoB }],
+          providers: [{ kind: 'claude', displayName: 'Claude', available: true, isDefault: true }],
+          sessions: [
+            {
+              provider: 'claude',
+              providerDisplayName: 'Claude',
+              sdkSessionId: 'sdk-target',
+              cwd: repoB,
+              preview: 'target session',
+              mtime: Date.now(),
+              size: 1024,
+            },
+          ],
+        },
+      ],
+    });
 
     await store.saveBinding({
       channelType: 'feishu',
@@ -636,7 +717,7 @@ describe('CommandRouter /settings', () => {
     });
     workspace.setBinding('feishu', 'c1', repoA);
 
-    await router.handle(adapter, {
+    await topic.router.handle(adapter, {
       channelType: 'feishu',
       chatId: 'c1',
       userId: 'u1',
@@ -656,27 +737,36 @@ describe('CommandRouter /settings', () => {
     expect(adapter.send).toHaveBeenCalledWith(expect.objectContaining({
       text: expect.stringContaining('无法创建话题'),
     }));
-
-    scanSpy.mockRestore();
   });
 
   it('opens a fresh Feishu topic from a Claude history title when continuing by sdk id', async () => {
     const repoDir = join(tmpDir, 'repo-topic');
     mkdirSync(repoDir, { recursive: true });
-    const topic = createTopicRouter();
-    const scanSpy = vi.spyOn(sessionScanner, 'scanAgentSessions').mockReturnValue([
-      {
-        provider: 'claude',
-        providerDisplayName: 'Claude',
-        sdkSessionId: '5049209e-session',
-        projectDir: 'repo-topic',
-        filePath: join(repoDir, '5049209e-session.jsonl'),
-        cwd: repoDir,
-        preview: '提一个issue，在本项目内整理相关信息',
-        mtime: Date.now(),
-        size: 1024,
-      },
-    ]);
+    const topic = createTopicRouter({
+      getExecutionClients: () => [
+        {
+          clientId: 'worker-1',
+          name: 'worker-1',
+          online: true,
+          isDefault: false,
+          activeTurns: 0,
+          maxConcurrency: 1,
+          workspaces: [{ path: repoDir }],
+          providers: [{ kind: 'claude', displayName: 'Claude', available: true, isDefault: true }],
+          sessions: [
+            {
+              provider: 'claude',
+              providerDisplayName: 'Claude',
+              sdkSessionId: '5049209e-session',
+              cwd: repoDir,
+              preview: '提一个issue，在本项目内整理相关信息',
+              mtime: Date.now(),
+              size: 1024,
+            },
+          ],
+        },
+      ],
+    });
     const adapterWithTopic = {
       ...adapter,
       startThreadWithTitle: vi.fn().mockResolvedValue({
@@ -705,6 +795,7 @@ describe('CommandRouter /settings', () => {
     expect(binding).toMatchObject({
       sdkSessionId: '5049209e-session',
       cwd: repoDir,
+      clientId: 'worker-1',
     });
     expect(topic.topicSessions.findBySdkSessionId('5049209e-session')).toMatchObject({
       scopeId,
@@ -712,6 +803,5 @@ describe('CommandRouter /settings', () => {
       lastMessageId: 'msg-topic-start',
       title: '提一个issue，在本项目内整理相关信息',
     });
-    scanSpy.mockRestore();
   });
 });

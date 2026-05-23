@@ -8,7 +8,7 @@ import {
   readRestartRequest,
   deleteRestartRequest,
   type RestartRequest,
-} from '../../core/path.js';
+} from '../../shared/core/path.js';
 
 const testRuntimeDir = join(homedir(), '.tlive', 'runtime');
 

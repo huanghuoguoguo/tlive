@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { checkForUpdates, compareVersions, selectUpdateRelease } from '../../utils/version-checker.js';
+import { checkForUpdates, compareVersions, selectUpdateRelease } from '../../shared/utils/version-checker.js';
 
 function release(tag: string, prerelease = false) {
   return {

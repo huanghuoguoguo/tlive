@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import type { BaseChannelAdapter } from '../../channels/base.js';
-import type { InboundMessage } from '../../channels/types.js';
-import { IngressCoordinator } from '../../engine/coordinators/ingress.js';
+import type { BaseChannelAdapter } from '../../server/channels/base.js';
+import type { InboundMessage } from '../../server/channels/types.js';
+import { IngressCoordinator } from '../../server/engine/coordinators/ingress.js';
 
 function tempChatIdFile(): string {
   return join(tmpdir(), `tlive-ingress-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`);

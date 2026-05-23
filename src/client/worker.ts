@@ -4,10 +4,10 @@ import { resolve } from 'node:path';
 import type {
   AgentProviderRegistry,
   AgentProviderDescriptor,
-} from '../providers/registry.js';
-import type { LiveSession, QueryControls } from '../providers/base.js';
-import type { AgentProviderKind } from '../providers/kinds.js';
-import { generateId } from '../core/id.js';
+} from './providers/registry.js';
+import type { LiveSession, QueryControls } from '../shared/providers/base.js';
+import type { AgentProviderKind } from '../shared/providers/kinds.js';
+import { generateId } from '../shared/core/id.js';
 import {
   encodeRemoteProtocolMessage,
   parseRemoteProtocolMessage,
@@ -17,9 +17,11 @@ import {
   type InteractionResponseMessage,
   type RemoteInteractionKind,
   type RemoteProviderDescriptor,
+  type RemoteSessionDescriptor,
   type ServerToClientMessage,
   type TurnStartMessage,
-} from '../protocol/messages.js';
+} from '../shared/protocol/messages.js';
+import { listLocalSessionDescriptors } from './session-index.js';
 
 export interface RemoteClientWorkerOptions {
   serverUrl: string;
@@ -140,6 +142,7 @@ export class RemoteClientWorker {
       name: this.options.name,
       providers: descriptors,
       workspaces: this.options.workspaces.map((path) => ({ path: resolve(path) })),
+      sessions: this.scanSessions(),
       maxConcurrency: this.options.maxConcurrency,
       version: this.options.version,
     };
@@ -284,7 +287,7 @@ export class RemoteClientWorker {
   private async consumeTurn(
     turnId: string,
     entry: LocalSessionEntry,
-    stream: ReadableStream<import('../canonical/schema.js').CanonicalEvent>,
+    stream: ReadableStream<import('../shared/canonical/schema.js').CanonicalEvent>,
   ): Promise<void> {
     try {
       const reader = stream.getReader();
@@ -395,7 +398,12 @@ export class RemoteClientWorker {
       type: 'client.status',
       activeTurns: this.activeTurns.size,
       maxConcurrency: this.options.maxConcurrency,
+      sessions: this.scanSessions(),
     });
+  }
+
+  private scanSessions(): RemoteSessionDescriptor[] {
+    return listLocalSessionDescriptors(this.options.providers, this.options.workspaces, 20);
   }
 
   private urlWithToken(serverUrl: string): string {

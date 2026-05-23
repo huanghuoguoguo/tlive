@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FeishuFormatter } from '../../channels/feishu/formatter.js';
-import type { BaseChannelAdapter } from '../../channels/base.js';
-import type { InboundMessage } from '../../channels/types.js';
-import { QueryPresentationFactory } from '../../engine/coordinators/query-presentation.js';
+import { FeishuFormatter } from '../../server/channels/feishu/formatter.js';
+import type { BaseChannelAdapter } from '../../server/channels/base.js';
+import type { InboundMessage } from '../../server/channels/types.js';
+import { QueryPresentationFactory } from '../../server/engine/coordinators/query-presentation.js';
 
 function createMessage(overrides: Partial<InboundMessage> = {}): InboundMessage {
   return {

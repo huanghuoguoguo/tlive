@@ -135,6 +135,8 @@ tlive server
 tlive client --server ws://your-server:8787/tlive --token change-this-token --workspace /path/to/project
 ```
 
+控制面和执行面的状态边界见 [Server / Client 架构](docs/architecture-cn.md)。
+
 Codex runtime 配置：
 
 ```env

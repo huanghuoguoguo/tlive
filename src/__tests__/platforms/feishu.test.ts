@@ -65,8 +65,8 @@ vi.mock('@larksuiteoapi/node-sdk', () => {
   };
 });
 
-import { FeishuAdapter } from '../../channels/feishu/adapter.js';
-import { RateLimitError } from '../../channels/errors.js';
+import { FeishuAdapter } from '../../server/channels/feishu/adapter.js';
+import { RateLimitError } from '../../server/channels/errors.js';
 
 describe('FeishuAdapter', () => {
   let adapter: FeishuAdapter;

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { TopicSessionManager } from '../../engine/state/topic-sessions.js';
+import { TopicSessionManager } from '../../server/engine/state/topic-sessions.js';
 
 describe('TopicSessionManager', () => {
   let tmpDir: string | undefined;

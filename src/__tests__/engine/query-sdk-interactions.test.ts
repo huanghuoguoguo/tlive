@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FeishuFormatter } from '../../channels/feishu/formatter.js';
-import { QuerySdkInteractionsFactory } from '../../engine/coordinators/query-sdk-interactions.js';
-import { InteractionState } from '../../engine/state/interaction-state.js';
-import { SessionStateManager } from '../../engine/state/session-state.js';
+import { FeishuFormatter } from '../../server/channels/feishu/formatter.js';
+import { QuerySdkInteractionsFactory } from '../../server/engine/coordinators/query-sdk-interactions.js';
+import { InteractionState } from '../../server/engine/state/interaction-state.js';
+import { SessionStateManager } from '../../server/engine/state/session-state.js';
 
 describe('QuerySdkInteractionsFactory', () => {
   it('auto-allows the next tool after AskUserQuestion is approved', async () => {

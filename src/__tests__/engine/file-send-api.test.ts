@@ -1,8 +1,8 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { handleFileSendRequest, sendFileToChat } from '../../engine/automation/file-send-api.js';
-import type { BridgeManager } from '../../engine/coordinators/bridge-manager.js';
-import type { DeliveryRoute } from '../../channels/delivery-route.js';
+import { handleFileSendRequest, sendFileToChat } from '../../server/engine/automation/file-send-api.js';
+import type { BridgeManager } from '../../server/engine/coordinators/bridge-manager.js';
+import type { DeliveryRoute } from '../../server/channels/delivery-route.js';
 
 // Mock fs/promises
 vi.mock('node:fs/promises', () => ({

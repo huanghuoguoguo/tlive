@@ -4,8 +4,8 @@ import {
   conversationRouteFromInbound,
   conversationScopeId,
   conversationSurfaceFor,
-} from '../../channels/conversation-context.js';
-import type { InboundMessage } from '../../channels/types.js';
+} from '../../server/channels/conversation-context.js';
+import type { InboundMessage } from '../../server/channels/types.js';
 
 function inbound(overrides: Partial<InboundMessage> = {}): InboundMessage {
   return {

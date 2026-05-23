@@ -5,7 +5,7 @@ import {
   sessionKey,
   splitChatKey,
   splitSessionKey,
-} from '../../core/key.js';
+} from '../../shared/core/key.js';
 
 describe('core key helpers', () => {
   it('splits chat keys while preserving separators in the chat id', () => {

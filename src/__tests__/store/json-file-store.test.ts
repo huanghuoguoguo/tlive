@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { JsonFileStore } from '../../store/json-file.js';
-import type { AgentSettingSource } from '../../config.js';
+import { JsonFileStore } from '../../server/store/json-file.js';
+import type { AgentSettingSource } from '../../shared/config.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';

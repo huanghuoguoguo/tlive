@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { BaseChannelAdapter } from '../../channels/base.js';
-import type { InboundMessage } from '../../channels/types.js';
-import { AdapterLoopRunner } from '../../engine/coordinators/adapter-loop-runner.js';
+import type { BaseChannelAdapter } from '../../server/channels/base.js';
+import type { InboundMessage } from '../../server/channels/types.js';
+import { AdapterLoopRunner } from '../../server/engine/coordinators/adapter-loop-runner.js';
 
 function createAdapter(): BaseChannelAdapter {
   return {

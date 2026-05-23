@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { BaseChannelAdapter } from '../../channels/base.js';
-import { TopicConversationService } from '../../engine/conversations/topic-conversation.js';
-import { TopicSessionManager } from '../../engine/state/topic-sessions.js';
+import type { BaseChannelAdapter } from '../../server/channels/base.js';
+import { TopicConversationService } from '../../server/engine/conversations/topic-conversation.js';
+import { TopicSessionManager } from '../../server/engine/state/topic-sessions.js';
 
 const mainBinding = {
   channelType: 'feishu',

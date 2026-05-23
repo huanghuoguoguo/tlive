@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { BaseChannelAdapter } from '../../channels/base.js';
-import type { InboundMessage } from '../../channels/types.js';
-import { SessionStateManager } from '../../engine/state/session-state.js';
-import { TextDispatcher } from '../../engine/messages/text-dispatcher.js';
+import type { BaseChannelAdapter } from '../../server/channels/base.js';
+import type { InboundMessage } from '../../server/channels/types.js';
+import { SessionStateManager } from '../../server/engine/state/session-state.js';
+import { TextDispatcher } from '../../server/engine/messages/text-dispatcher.js';
 
 function createAdapter(channelType = 'feishu'): BaseChannelAdapter {
   return {

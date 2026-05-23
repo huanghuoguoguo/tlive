@@ -9,7 +9,7 @@ vi.mock('node:child_process', () => ({
   spawn: spawnMock,
 }));
 
-vi.mock('../../utils/version-checker.js', () => ({
+vi.mock('../../shared/utils/version-checker.js', () => ({
   checkForUpdates: vi.fn(),
 }));
 
@@ -25,7 +25,7 @@ describe('UpgradeCommand', () => {
   beforeEach(async () => {
     vi.resetModules();
     // Re-import and set locale after module reset
-    const { setGlobalLocale } = await import('../../i18n/index.js');
+    const { setGlobalLocale } = await import('../../shared/i18n/index.js');
     setGlobalLocale('zh');
     tmpDir = mkdtempSync(join(tmpdir(), 'tlive-upgrade-command-'));
     packageRoot = join(tmpDir, 'app');
@@ -43,7 +43,7 @@ describe('UpgradeCommand', () => {
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => code as never));
     vi.useFakeTimers();
 
-    const mod = await import('../../utils/version-checker.js');
+    const mod = await import('../../shared/utils/version-checker.js');
     checkForUpdatesMock = mod.checkForUpdates as ReturnType<typeof vi.fn>;
   });
 
@@ -56,7 +56,7 @@ describe('UpgradeCommand', () => {
   });
 
   it('shows update notes link for /upgrade notes', async () => {
-    const { UpgradeCommand } = await import('../../engine/commands/upgrade.js');
+    const { UpgradeCommand } = await import('../../server/engine/commands/upgrade.js');
     const send = vi.fn().mockResolvedValue(undefined);
     const command = new UpgradeCommand();
 
@@ -75,7 +75,7 @@ describe('UpgradeCommand', () => {
   it('shows already latest when no update available', async () => {
     checkForUpdatesMock.mockResolvedValue({ hasUpdate: false, current: '0.13.4', latest: '0.13.4' });
 
-    const { UpgradeCommand } = await import('../../engine/commands/upgrade.js');
+    const { UpgradeCommand } = await import('../../server/engine/commands/upgrade.js');
     const send = vi.fn().mockResolvedValue(undefined);
     const command = new UpgradeCommand();
 
@@ -95,7 +95,7 @@ describe('UpgradeCommand', () => {
   it('spawns upgrade process directly when update available', async () => {
     checkForUpdatesMock.mockResolvedValue({ hasUpdate: true, current: '0.13.3', latest: '0.13.4' });
 
-    const { UpgradeCommand } = await import('../../engine/commands/upgrade.js');
+    const { UpgradeCommand } = await import('../../server/engine/commands/upgrade.js');
     const send = vi.fn().mockResolvedValue(undefined);
     const command = new UpgradeCommand();
 
@@ -129,7 +129,7 @@ describe('UpgradeCommand', () => {
   it('refuses upgrade when running from git checkout', async () => {
     checkForUpdatesMock.mockResolvedValue({ hasUpdate: true, current: '0.13.3', latest: '0.13.4' });
 
-    const { UpgradeCommand } = await import('../../engine/commands/upgrade.js');
+    const { UpgradeCommand } = await import('../../server/engine/commands/upgrade.js');
     const send = vi.fn().mockResolvedValue(undefined);
     const command = new UpgradeCommand();
 
@@ -152,7 +152,7 @@ describe('UpgradeCommand', () => {
   it('handles check failure gracefully', async () => {
     checkForUpdatesMock.mockResolvedValue(null);
 
-    const { UpgradeCommand } = await import('../../engine/commands/upgrade.js');
+    const { UpgradeCommand } = await import('../../server/engine/commands/upgrade.js');
     const send = vi.fn().mockResolvedValue(undefined);
     const command = new UpgradeCommand();
 

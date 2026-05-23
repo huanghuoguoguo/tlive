@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { buildSubprocessEnv } from '../../providers/claude-shared.js';
-import { preparePromptWithImages } from '../../providers/prompt-media.js';
-import type { FileAttachment } from '../../providers/base.js';
+import { buildSubprocessEnv } from '../../client/providers/claude-shared.js';
+import { preparePromptWithImages } from '../../client/providers/prompt-media.js';
+import type { FileAttachment } from '../../shared/providers/base.js';
 import * as fs from 'node:fs';
 
 // Mock node:fs for file operations

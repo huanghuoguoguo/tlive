@@ -2,23 +2,23 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { vi } from 'vitest';
-import type { CanonicalEvent } from '../../canonical/schema.js';
-import { BaseChannelAdapter } from '../../channels/base.js';
-import { RateLimitError } from '../../channels/errors.js';
+import type { CanonicalEvent } from '../../shared/canonical/schema.js';
+import { BaseChannelAdapter } from '../../server/channels/base.js';
+import { RateLimitError } from '../../server/channels/errors.js';
 import type {
   InboundMessage,
   SendResult,
   StreamingCardSession,
   ThreadStartResult,
-} from '../../channels/types.js';
-import { FeishuFormatter } from '../../channels/feishu/formatter.js';
-import { FEISHU_POLICY } from '../../channels/feishu/policy.js';
-import type { FeishuRenderedMessage } from '../../channels/feishu/types.js';
-import type { Config } from '../../config.js';
-import { BridgeManager } from '../../engine/coordinators/bridge-manager.js';
-import type { LiveSession, MessagePriority, StreamChatResult, TurnParams } from '../../providers/base.js';
-import type { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
-import { JsonFileStore } from '../../store/json-file.js';
+} from '../../server/channels/types.js';
+import { FeishuFormatter } from '../../server/channels/feishu/formatter.js';
+import { FEISHU_POLICY } from '../../server/channels/feishu/policy.js';
+import type { FeishuRenderedMessage } from '../../server/channels/feishu/types.js';
+import type { Config } from '../../shared/config.js';
+import { BridgeManager } from '../../server/engine/coordinators/bridge-manager.js';
+import type { LiveSession, MessagePriority, StreamChatResult, TurnParams } from '../../shared/providers/base.js';
+import type { ClaudeSDKProvider } from '../../client/providers/claude-sdk.js';
+import { JsonFileStore } from '../../server/store/json-file.js';
 
 type Scenario =
   | string

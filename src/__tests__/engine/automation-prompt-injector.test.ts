@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   AutomationPromptInjector,
-} from '../../engine/automation/prompt-injector.js';
+} from '../../server/engine/automation/prompt-injector.js';
 
 function createDeps(bindingOverrides: Record<string, unknown> = {}) {
   const binding = {

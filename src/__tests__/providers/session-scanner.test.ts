@@ -5,7 +5,7 @@ import {
   invalidateSessionCache,
   readSessionTranscriptPreview,
   type ScannedSession,
-} from '../../providers/session-scanner.js';
+} from '../../client/providers/session-scanner.js';
 import * as fs from 'node:fs';
 import { homedir } from 'node:os';
 

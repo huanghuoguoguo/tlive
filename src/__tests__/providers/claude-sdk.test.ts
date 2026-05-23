@@ -30,9 +30,9 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => {
   return { query: mockQuery };
 });
 
-import { ClaudeSDKProvider } from '../../providers/claude-sdk.js';
-import type { CanonicalEvent } from '../../canonical/schema.js';
-import { DEFAULT_AGENT_SETTING_SOURCES } from '../../config.js';
+import { ClaudeSDKProvider } from '../../client/providers/claude-sdk.js';
+import type { CanonicalEvent } from '../../shared/canonical/schema.js';
+import { DEFAULT_AGENT_SETTING_SOURCES } from '../../shared/config.js';
 
 // Helper to collect stream events
 async function collectStreamEvents(stream: ReadableStream<CanonicalEvent>): Promise<CanonicalEvent[]> {
