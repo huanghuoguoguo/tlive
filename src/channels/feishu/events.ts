@@ -1,5 +1,4 @@
 import type { InboundMessage } from '../types.js';
-import type { Locale } from '../../i18n/index.js';
 import { t } from '../../i18n/index.js';
 import { feishuInboundScope } from './inbound.js';
 
@@ -15,7 +14,7 @@ export interface FeishuCardActionResult {
   missingAction?: boolean;
 }
 
-export function feishuCardActionToInbound(data: unknown, _locale: Locale): FeishuCardActionResult {
+export function feishuCardActionToInbound(data: unknown): FeishuCardActionResult {
   const event = data as {
     operator?: { user_id?: string; open_id?: string };
     action?: {
