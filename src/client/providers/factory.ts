@@ -48,12 +48,8 @@ export function createAgentProviderRegistry(
     ],
   ]);
 
-  const useClientBackedProviders = Boolean(
-    options.remoteClientRegistry && config.remote.server.enabled,
-  );
-  const remoteProviders = new Set(
-    useClientBackedProviders ? config.remote.server.providers : [],
-  );
+  const useClientBackedProviders = Boolean(options.remoteClientRegistry);
+  const remoteProviders = new Set(useClientBackedProviders ? config.remote.server.providers : []);
   const providers = new Map<AgentProviderKind, AgentProvider>();
 
   const localClaude =

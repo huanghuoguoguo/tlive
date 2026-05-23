@@ -59,6 +59,25 @@ TL_MCP_TOKEN=
 TL_MCP_MAX_FILE_MB=20
 ```
 
+## Execution Clients
+
+The server always listens for execution clients. `tlive start` and `tlive server` also start a
+local client unless `--standalone` is passed.
+
+```env
+TL_REMOTE_SERVER_PORT=8787
+TL_REMOTE_SERVER_PATH=/tlive
+TL_REMOTE_TOKEN=
+TL_REMOTE_PROVIDERS=claude,codex
+
+TL_REMOTE_SERVER_URL=ws://your-server:8787/tlive
+TL_REMOTE_CLIENT_ID=
+TL_REMOTE_CLIENT_NAME=
+TL_REMOTE_WORKSPACES=/path/to/project
+```
+
+Worker clients auto-detect available local providers.
+
 ## Security
 
 ```bash

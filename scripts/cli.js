@@ -16,6 +16,7 @@ const TLIVE_HOME = process.env.TLIVE_HOME?.trim() || join(homedir(), '.tlive');
 const RUNTIME_DIR = join(TLIVE_HOME, 'runtime');
 const LOG_DIR = join(TLIVE_HOME, 'logs');
 const BRIDGE_PID = join(RUNTIME_DIR, 'bridge.pid');
+const CLIENT_PID = join(RUNTIME_DIR, 'client.pid');
 const BRIDGE_ENTRY = join(PACKAGE_ROOT, 'dist', 'main.mjs');
 const CLIENT_ENTRY = join(PACKAGE_ROOT, 'dist', 'client.mjs');
 const CONFIG_FILE = join(TLIVE_HOME, 'config.env');
@@ -320,6 +321,18 @@ async function stopBridgeIfRunning(timeoutMs = 30000) {
   return true;
 }
 
+async function stopLocalClientIfRunning(timeoutMs = 30000) {
+  const pid = getLocalClientPid();
+  if (!pid) {
+    try { unlinkSync(CLIENT_PID); } catch {}
+    return false;
+  }
+
+  await terminateProcess(pid, 'Local client', timeoutMs);
+  try { unlinkSync(CLIENT_PID); } catch {}
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -425,6 +438,18 @@ function getBridgePid() {
   return null;
 }
 
+function getLocalClientPid() {
+  try {
+    if (existsSync(CLIENT_PID)) {
+      const pid = parseInt(readFileSync(CLIENT_PID, 'utf-8').trim(), 10);
+      if (!Number.isNaN(pid) && isProcessRunning(pid)) return pid;
+    }
+  } catch {}
+
+  try { unlinkSync(CLIENT_PID); } catch {}
+  return null;
+}
+
 /** Ensure runtime and log directories exist */
 function ensureDirs() {
   mkdirSync(RUNTIME_DIR, { recursive: true });
@@ -435,20 +460,68 @@ function ensureDirs() {
 // Daemon functions
 // ---------------------------------------------------------------------------
 
-function daemonStart() {
+function normalizeHttpPath(path, fallback = '/tlive') {
+  const trimmed = String(path || '').trim();
+  if (!trimmed) return fallback;
+  return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+}
+
+function localRemoteServerUrl(config) {
+  const port = config.TL_REMOTE_SERVER_PORT || '8787';
+  const path = normalizeHttpPath(config.TL_REMOTE_SERVER_PATH, '/tlive');
+  return `ws://127.0.0.1:${port}${path}`;
+}
+
+function startLocalClient(config = loadConfigEnv()) {
   ensureDirs();
+
+  const existing = getLocalClientPid();
+  if (existing) {
+    console.log(`Local client is already running (PID ${existing})`);
+    return existing;
+  }
+
+  if (!existsSync(CLIENT_ENTRY)) {
+    throw new Error(`Client worker not built: ${CLIENT_ENTRY}`);
+  }
+
+  const env = {
+    ...process.env,
+    ...config,
+    TL_DEFAULT_WORKDIR: process.env.TL_DEFAULT_WORKDIR || process.cwd(),
+    TL_REMOTE_SERVER_URL: localRemoteServerUrl(config),
+  };
+
+  const child = spawn(process.execPath, [CLIENT_ENTRY, '--name', 'local'], {
+    detached: true,
+    windowsHide: true,
+    stdio: 'ignore',
+    env,
+  });
+
+  writeFileSync(CLIENT_PID, String(child.pid));
+  child.unref();
+
+  console.log(`Local client started (PID ${child.pid})`);
+  return child.pid;
+}
+
+function daemonStart(options = {}) {
+  ensureDirs();
+  const config = loadConfigEnv();
 
   const existing = getBridgePid();
   if (existing) {
     console.log(`Bridge is already running (PID ${existing})`);
+    if (!options.standalone) {
+      startLocalClient(config);
+    }
     return existing;
   }
 
   if (!existsSync(BRIDGE_ENTRY)) {
     throw new Error(`Bridge not built: ${BRIDGE_ENTRY}`);
   }
-
-  const config = loadConfigEnv();
 
   console.log('Starting Bridge...');
 
@@ -470,27 +543,42 @@ function daemonStart() {
 
   console.log(`Bridge started (PID ${child.pid})`);
 
+  if (!options.standalone) {
+    startLocalClient(config);
+  } else {
+    console.log('Standalone mode: local client not started.');
+  }
+
   return child.pid;
 }
 
 async function daemonStop() {
-  if (await stopBridgeIfRunning()) {
+  const stoppedClient = await stopLocalClientIfRunning();
+  const stoppedBridge = await stopBridgeIfRunning();
+  if (stoppedBridge) {
     console.log('Bridge stopped.');
   } else {
     console.log('Bridge is not running.');
   }
+  if (stoppedClient) {
+    console.log('Local client stopped.');
+  }
 }
 
-async function daemonRestart() {
-  const wasRunning = await stopBridgeIfRunning();
-  if (wasRunning) {
+async function daemonRestart(options = {}) {
+  const wasClientRunning = await stopLocalClientIfRunning();
+  const wasBridgeRunning = await stopBridgeIfRunning();
+  if (wasBridgeRunning) {
     console.log('Bridge stopped.');
   } else {
     console.log('Bridge is not running; starting it now.');
   }
+  if (wasClientRunning) {
+    console.log('Local client stopped.');
+  }
 
   const startedAfterMs = Date.now();
-  daemonStart();
+  daemonStart(options);
   const health = await waitForBridgeHealthy(getVersion(), startedAfterMs, 30000);
   console.log(`Bridge healthy (PID ${health.pid}, version ${health.status.version})`);
 }
@@ -523,6 +611,8 @@ async function daemonStatus() {
     console.log(`Version:      ${version}`);
     console.log(`Uptime:       ${uptime}`);
     console.log(`Channels:     ${channels.join(', ') || 'none'}`);
+    const clientPid = getLocalClientPid();
+    console.log(`Local client: ${clientPid ? `running (PID ${clientPid})` : 'not running'}`);
   } else {
     console.log('Bridge:       not running');
     if (statusData?.exitedAt) {
@@ -626,14 +716,16 @@ Setup (one-time):
   tlive setup                Configure Feishu/Lark
 
 Service Management:
-  tlive start                Start Feishu/Lark bridge
-  tlive server               Start Feishu/Lark bridge (alias of start)
+  tlive start                Start server and local worker client
+  tlive server               Start server and local worker client
+  tlive server --standalone  Start only the server control plane
   tlive client [options]     Run a remote worker client in the foreground
   tlive stop                 Stop IM Bridge daemon
   tlive restart              Restart IM Bridge daemon
   tlive status               Show Bridge status
   tlive logs [N]             Show last N log lines (default: 50)
   tlive upgrade [version]    Upgrade to latest or specified version
+  tlive upgrade --standalone Upgrade and restart only the server control plane
   tlive version              Show version info
 
 IM Commands (in Feishu/Lark):
@@ -692,8 +784,9 @@ switch (command) {
       console.error('Runtime selection has been removed. Configure TL_PROVIDER=claude or codex.');
       process.exit(1);
     }
+    const standalone = args.includes('--standalone');
     try {
-      daemonStart();
+      daemonStart({ standalone });
     } catch (err) {
       console.error(`Failed to start bridge: ${err.message || err}`);
       process.exit(1);
@@ -722,7 +815,7 @@ switch (command) {
 
   case 'restart':
     try {
-      await daemonRestart();
+      await daemonRestart({ standalone: args.includes('--standalone') });
     } catch (err) {
       console.error(`Failed to restart bridge: ${err.message || err}`);
       process.exit(1);
@@ -759,7 +852,8 @@ switch (command) {
   case 'upgrade': {
     const current = getVersion();
     const fromVersion = process.env.TLIVE_UPGRADE_FROM_VERSION || current;
-    const requestedVersion = normalizeRequestedVersion(args[0]);
+    const upgradeStandalone = args.includes('--standalone');
+    const requestedVersion = normalizeRequestedVersion(args.find((arg) => !arg.startsWith('--')));
     const bridgeWasRunning = Boolean(getBridgePid()) || Boolean(process.env.TLIVE_UPGRADE_PARENT_PID);
     const shouldNotifyUpgrade = bridgeWasRunning || Boolean(process.env.TLIVE_UPGRADE_CHAT_ID);
     console.log(`Current version: ${current}`);
@@ -816,6 +910,10 @@ switch (command) {
           }
         }
 
+        if (bridgeWasRunning) {
+          await stopLocalClientIfRunning(30000);
+        }
+
         if (getBridgePid()) {
           await stopBridgeIfRunning(30000);
         }
@@ -832,7 +930,7 @@ switch (command) {
           }
           const startedAfterMs = Date.now();
           try {
-            daemonStart();
+            daemonStart({ standalone: upgradeStandalone });
             const health = await waitForBridgeHealthy(latest, startedAfterMs, 30000);
             console.log(`Bridge healthy (PID ${health.pid}, version ${health.status.version})`);
           } catch (startErr) {
@@ -848,6 +946,7 @@ switch (command) {
             }
 
             await stopBridgeIfRunning(10000);
+            await stopLocalClientIfRunning(10000);
             restoreBackup(backupDir);
             throw new Error(`Upgrade rolled back because the new bridge failed to start: ${startErrorMsg}`);
           }
@@ -867,7 +966,7 @@ switch (command) {
       if (bridgeWasRunning && !getBridgePid() && existsSync(BRIDGE_ENTRY)) {
         try {
           const restartStartedAt = Date.now();
-          daemonStart();
+          daemonStart({ standalone: upgradeStandalone });
           await waitForBridgeHealthy(getVersion(), restartStartedAt, 30000);
           console.error('Previous bridge restarted after failed upgrade.');
         } catch (restartErr) {

@@ -66,9 +66,7 @@ describe('remote client/server bridge', () => {
       token: 'test-token',
       clientId: 'worker-1',
       name: 'worker-1',
-      providers: ['claude'],
       workspaces: [root],
-      maxConcurrency: 1,
       reconnectIntervalMs: 100,
     });
     const workerRun = worker.start();
@@ -120,9 +118,7 @@ describe('remote client/server bridge', () => {
       token: 'test-token',
       clientId: 'worker-1',
       name: 'worker-1',
-      providers: ['claude'],
       workspaces: [root],
-      maxConcurrency: 1,
       reconnectIntervalMs: 100,
     });
     const workerRun = worker.start();

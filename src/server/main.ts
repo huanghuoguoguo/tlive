@@ -352,29 +352,25 @@ export async function main() {
   logger.info('Enabled channel: feishu');
 
   const startedAt = new Date().toISOString();
-  const remoteClients = config.remote.server.enabled
-    ? new RemoteClientRegistry({
-        port: config.remote.server.port,
-        path: config.remote.server.path,
-        token: config.remote.server.token,
-        heartbeatIntervalMs: config.remote.server.heartbeatIntervalMs,
-        clientTimeoutMs: config.remote.server.clientTimeoutMs,
-      })
-    : undefined;
-  remoteClients?.start();
+  const remoteClients = new RemoteClientRegistry({
+    port: config.remote.server.port,
+    path: config.remote.server.path,
+    token: config.remote.server.token,
+    heartbeatIntervalMs: config.remote.server.heartbeatIntervalMs,
+    clientTimeoutMs: config.remote.server.clientTimeoutMs,
+  });
+  remoteClients.start();
 
   // Write startup status
   writeStatusFile({
     pid: process.pid,
     startedAt,
     channels: ['feishu'],
-    remoteServer: config.remote.server.enabled
-      ? {
-          port: config.remote.server.port,
-          path: config.remote.server.path,
-          providers: config.remote.server.providers,
-        }
-      : undefined,
+    remoteServer: {
+      port: config.remote.server.port,
+      path: config.remote.server.path,
+      providers: config.remote.server.providers,
+    },
     mcp: config.mcp.enabled
       ? {
           port: config.mcp.port,
@@ -390,13 +386,12 @@ export async function main() {
   const providers = createAgentProviderRegistry(config, { remoteClientRegistry: remoteClients });
   const llm = providers.defaultProvider;
   const getExecutionClients = (): HomeClientEntry[] => {
-    return remoteClients?.listClients().map((client) => ({
+    return remoteClients.listClients().map((client) => ({
       clientId: client.clientId,
       name: client.name,
       online: true,
       isDefault: false,
       activeTurns: client.activeTurns,
-      maxConcurrency: client.maxConcurrency,
       workspaces: client.workspaces.map((workspace, index) => ({
         path: workspace.path,
         label: workspace.label,
@@ -412,7 +407,7 @@ export async function main() {
       })),
       lastSeenAt: new Date(client.lastSeenAt).toISOString(),
       version: client.version,
-    })) ?? [];
+    }));
   };
 
   // Start Bridge Manager with enabled IM adapters
@@ -439,13 +434,11 @@ export async function main() {
     startedAt,
     readyAt: new Date().toISOString(),
     channels: ['feishu'],
-    remoteServer: config.remote.server.enabled
-      ? {
-          port: config.remote.server.port,
-          path: config.remote.server.path,
-          providers: config.remote.server.providers,
-        }
-      : undefined,
+    remoteServer: {
+      port: config.remote.server.port,
+      path: config.remote.server.path,
+      providers: config.remote.server.providers,
+    },
     mcp: config.mcp.enabled
       ? {
           port: config.mcp.port,
@@ -556,7 +549,7 @@ export async function main() {
       exitReason: reason,
     });
     await manager.stop();
-    remoteClients?.stop();
+    remoteClients.stop();
     logger.close();
     process.exit(0);
   };

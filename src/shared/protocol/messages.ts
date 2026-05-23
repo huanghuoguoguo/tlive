@@ -64,7 +64,6 @@ export interface ClientHelloMessage {
   providers: RemoteProviderDescriptor[];
   workspaces: RemoteWorkspaceDescriptor[];
   sessions?: RemoteSessionDescriptor[];
-  maxConcurrency: number;
   version?: string;
 }
 
@@ -167,7 +166,6 @@ export interface InteractionResponseMessage {
 export interface ClientStatusMessage {
   type: 'client.status';
   activeTurns: number;
-  maxConcurrency: number;
   sessions?: RemoteSessionDescriptor[];
 }
 
@@ -216,7 +214,6 @@ const clientHelloSchema = z.object({
     size: z.number().optional(),
     preview: z.string(),
   })).optional(),
-  maxConcurrency: z.number().int().positive(),
   version: z.string().optional(),
 });
 
@@ -284,7 +281,6 @@ export const remoteProtocolMessageSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('client.status'),
     activeTurns: z.number().int().nonnegative(),
-    maxConcurrency: z.number().int().positive(),
     sessions: z.array(z.object({
       provider: providerKindSchema,
       providerDisplayName: z.string().optional(),

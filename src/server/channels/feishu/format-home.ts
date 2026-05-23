@@ -141,9 +141,10 @@ function buildClientControls(data: HomeData): FeishuCardElement[] {
       .filter((provider) => provider.available)
       .map((provider) => provider.displayName)
       .join(' / ') || 'none';
+    const status = client.activeTurns > 0 ? `执行中 ${client.activeTurns}` : '空闲';
     const body: FeishuCardElement[] = [
       markdownElement(
-        `ID: \`${client.clientId}\`${client.isLocal ? ' · local' : ''}\nProvider: ${providers}\n工作区: \`${workspace}\`\n并发: ${client.activeTurns}/${client.maxConcurrency}${client.version ? ` · ${client.version}` : ''}`,
+        `ID: \`${client.clientId}\`${client.isLocal ? ' · local' : ''}\nProvider: ${providers}\n工作区: \`${workspace}\`\n状态: ${status}${client.version ? ` · ${client.version}` : ''}`,
       ),
     ];
     const leadingButtons: Button[] = [];

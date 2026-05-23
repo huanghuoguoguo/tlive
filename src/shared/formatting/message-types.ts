@@ -134,7 +134,6 @@ export interface HomeClientEntry {
   isDefault: boolean;
   isLocal?: boolean;
   activeTurns: number;
-  maxConcurrency: number;
   workspaces: Array<{ path: string; label?: string; isDefault?: boolean }>;
   providers: HomeProviderEntry[];
   sessions?: AgentSessionDescriptor[];

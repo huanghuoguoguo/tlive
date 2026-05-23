@@ -51,12 +51,12 @@ chmod 600 ~/.tlive/config.env
 
 ## MCP 集成
 
-TLive SDK 会话会自动加载内置 MCP server。由 TLive 启动的 agent 可以回调
-TLive 发送文件/图片或注入自动化 prompt，同时飞书话题路由和权限仍由 bridge 统一管理。
+TLive SDK 会话会自动加载内置 HTTP MCP server。由 TLive 启动的 agent 可以回调
+TLive 发送文件/图片，同时飞书话题路由和权限仍由 server 统一管理。
 
 ## 启动
 
-启动 bridge：
+启动 TLive：
 
 ```bash
 tlive start
@@ -69,6 +69,9 @@ Fix the login bug in auth.ts
 ```
 
 Claude Code 会在本地执行，并把进度、工具调用、权限审批和最终结果实时回传到飞书。
+
+`tlive start` 会同时启动 server 和一个本地执行 client。只有这台机器不应该执行本地
+Claude/Codex turn 时，才使用 `tlive server --standalone`。
 
 ## 常用命令
 

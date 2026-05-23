@@ -51,13 +51,13 @@ chmod 600 ~/.tlive/config.env
 
 ## MCP Integration
 
-TLive SDK sessions automatically load the bundled MCP server. Agents launched by TLive can call
-back into TLive for file/image delivery and automation prompts while TLive keeps Feishu topic
-routing and permissions on the bridge side.
+TLive SDK sessions automatically load the bundled HTTP MCP server. Agents launched by TLive can
+call back into TLive for file/image delivery while TLive keeps Feishu topic routing and permissions
+on the server side.
 
 ## Start
 
-Start the bridge:
+Start TLive:
 
 ```bash
 tlive start
@@ -70,6 +70,9 @@ Fix the login bug in auth.ts
 ```
 
 Claude Code will execute locally and stream progress, tool usage, permission prompts, and the final answer back to Feishu.
+
+`tlive start` starts both the server and a local execution client. Use
+`tlive server --standalone` only when this machine should not run local Claude/Codex turns.
 
 ## Useful Commands
 

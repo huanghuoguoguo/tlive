@@ -98,7 +98,6 @@ export interface Config {
   /** Remote client/server split configuration. */
   remote: {
     server: {
-      enabled: boolean;
       port: number;
       path: string;
       token: string;
@@ -111,9 +110,7 @@ export interface Config {
       token: string;
       clientId: string;
       name: string;
-      providers: AgentProviderKind[];
       workspaces: string[];
-      maxConcurrency: number;
       reconnectIntervalMs: number;
     };
   };
@@ -349,7 +346,6 @@ export function loadConfig(options: LoadConfigOptions = {}): Config {
     },
     remote: {
       server: {
-        enabled: get('TL_REMOTE_SERVER_ENABLED', 'false') === 'true',
         port: parseInt(get('TL_REMOTE_SERVER_PORT', '8787'), 10),
         path: normalizeHttpPath(get('TL_REMOTE_SERVER_PATH', '/tlive'), '/tlive'),
         token: remoteToken,
@@ -368,12 +364,7 @@ export function loadConfig(options: LoadConfigOptions = {}): Config {
         token: remoteToken,
         clientId: get('TL_REMOTE_CLIENT_ID'),
         name: get('TL_REMOTE_CLIENT_NAME'),
-        providers: normalizeProviderList(get('TL_REMOTE_CLIENT_PROVIDERS', remoteProviders.join(','))),
         workspaces: parseList(get('TL_REMOTE_WORKSPACES', get('TL_DEFAULT_WORKDIR', process.cwd()))),
-        maxConcurrency: Math.max(
-          1,
-          Number.parseInt(get('TL_REMOTE_MAX_CONCURRENCY', '1'), 10) || 1,
-        ),
         reconnectIntervalMs: Math.max(
           500,
           Number.parseInt(get('TL_REMOTE_RECONNECT_MS', '3000'), 10) || 3000,

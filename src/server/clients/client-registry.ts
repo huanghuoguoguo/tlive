@@ -39,7 +39,6 @@ export interface RemoteClientSnapshot {
   workspaces: RemoteWorkspaceDescriptor[];
   sessions: RemoteSessionDescriptor[];
   activeTurns: number;
-  maxConcurrency: number;
   lastSeenAt: number;
   version?: string;
 }
@@ -143,7 +142,6 @@ export class RemoteClientRegistry {
   ): RemoteClientSnapshot {
     const candidates = [...this.clients.values()]
       .filter((client) => !preferredClientId || client.clientId === preferredClientId)
-      .filter((client) => client.activeTurns < client.maxConcurrency)
       .filter((client) => client.providers.some((p) => p.kind === provider && p.available))
       .filter((client) => this.clientAcceptsWorkdir(client, workingDirectory))
       .sort((a, b) => a.activeTurns - b.activeTurns || a.clientId.localeCompare(b.clientId));
@@ -285,7 +283,6 @@ export class RemoteClientRegistry {
       workspaces: message.workspaces,
       sessions: message.sessions ?? [],
       activeTurns: 0,
-      maxConcurrency: message.maxConcurrency,
       lastSeenAt: Date.now(),
       version: message.version,
       socket,
@@ -344,7 +341,6 @@ export class RemoteClientRegistry {
 
   private updateClientStatus(client: RemoteClientConnection, message: ClientStatusMessage): void {
     client.activeTurns = message.activeTurns;
-    client.maxConcurrency = message.maxConcurrency;
     client.sessions = message.sessions ?? client.sessions;
   }
 

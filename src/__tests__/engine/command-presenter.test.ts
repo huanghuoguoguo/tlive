@@ -93,7 +93,6 @@ describe('command presenter', () => {
               isDefault: true,
               isLocal: true,
               activeTurns: 0,
-              maxConcurrency: 1,
               workspaces: [{ path: '/home/user/project', isDefault: true }],
               providers: [
                 { kind: 'claude', displayName: 'Claude', available: true, isDefault: true },

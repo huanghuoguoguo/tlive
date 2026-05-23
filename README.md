@@ -48,7 +48,7 @@ tlive --help
 
 ## Quick Start
 
-Run the one-time setup and start the bridge:
+Run the one-time setup and start TLive:
 
 ```bash
 tlive setup
@@ -56,6 +56,10 @@ tlive start
 ```
 
 Then send `/tlive` in Feishu/Lark to open the workbench.
+
+`tlive start` starts the server control plane and a local worker client. Use
+`tlive server --standalone` only when this machine should accept remote workers but not run a
+local Claude/Codex worker.
 
 TLive SDK sessions connect to the TLive HTTP MCP endpoint for agent-side callbacks.
 The MCP endpoint exposes tools such as
@@ -70,7 +74,9 @@ The MCP endpoint exposes tools such as
 └─────────────┘     └──────────────────┘     └─────────────┘
 ```
 
-The bridge runs locally, connects to Feishu through the Feishu/Lark SDK long connection, and drives the selected local agent provider. Claude Code is integrated through `@anthropic-ai/claude-agent-sdk`; Codex is integrated through `@openai/codex-sdk`.
+The server connects to Feishu through the Feishu/Lark SDK long connection. Agent execution runs in
+worker clients, including the local client that `tlive start` launches by default. Claude Code is
+integrated through `@anthropic-ai/claude-agent-sdk`; Codex is integrated through `@openai/codex-sdk`.
 
 ## IM Commands
 
@@ -112,19 +118,21 @@ The workbench shows new-session buttons only for detected local CLIs. Install `c
 
 ### Remote Workers
 
-One machine can run the Feishu bot and scheduler while worker machines connect over WebSocket and run local Claude/Codex sessions.
-Start one or more execution clients with `tlive client`. A client can run on the same host as the server or on another machine.
+One machine can run the Feishu bot and scheduler while worker machines connect over WebSocket and
+run local Claude/Codex sessions. `tlive server` already starts a local worker client. Start
+additional workers with `tlive client` on the same host or on another machine.
 
 Server machine:
 
 ```env
-TL_REMOTE_SERVER_ENABLED=true
 TL_REMOTE_TOKEN=change-this-token
 TL_REMOTE_PROVIDERS=claude,codex
 ```
 
 ```bash
 tlive server
+# or, for a pure control-plane server:
+tlive server --standalone
 ```
 
 Worker machine:

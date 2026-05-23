@@ -59,6 +59,25 @@ TL_MCP_TOKEN=
 TL_MCP_MAX_FILE_MB=20
 ```
 
+## 执行 Client
+
+server 始终监听执行 client。`tlive start` 和 `tlive server` 还会默认启动一个本地
+client，除非传入 `--standalone`。
+
+```env
+TL_REMOTE_SERVER_PORT=8787
+TL_REMOTE_SERVER_PATH=/tlive
+TL_REMOTE_TOKEN=
+TL_REMOTE_PROVIDERS=claude,codex
+
+TL_REMOTE_SERVER_URL=ws://your-server:8787/tlive
+TL_REMOTE_CLIENT_ID=
+TL_REMOTE_CLIENT_NAME=
+TL_REMOTE_WORKSPACES=/path/to/project
+```
+
+执行 client 会自动检测本机可用 provider。
+
 ## 安全
 
 ```bash

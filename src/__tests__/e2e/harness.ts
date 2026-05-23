@@ -42,7 +42,7 @@ export class TestFeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage>
   private editRateLimitFailures = 0;
   private nextMessageSeq = 1;
 
-  constructor(private readonly authorizedUsers = new Set(['user-1', 'webhook'])) {
+  constructor(private readonly authorizedUsers = new Set(['user-1', 'service-user'])) {
     super();
     this.formatter = new FeishuFormatter('zh');
   }
@@ -310,7 +310,6 @@ export function createE2EHarness(scenario?: Scenario): E2EHarness {
         isDefault: true,
         isLocal: true,
         activeTurns: 0,
-        maxConcurrency: 1,
         workspaces: [{ path: root, isDefault: true }],
         providers: [{ kind: 'claude', displayName: 'Claude', available: true, isDefault: true }],
         version: 'test',
@@ -396,7 +395,7 @@ function testConfig(root: string): Config {
       appSecret: 'secret',
       verificationToken: 'verify',
       encryptKey: '',
-      allowedUsers: ['user-1', 'webhook'],
+      allowedUsers: ['user-1', 'service-user'],
       autoPinTopics: false,
     },
     ui: {
@@ -404,7 +403,6 @@ function testConfig(root: string): Config {
     },
     remote: {
       server: {
-        enabled: false,
         port: 8787,
         path: '/tlive',
         token: 'remote-token',
@@ -417,9 +415,7 @@ function testConfig(root: string): Config {
         token: 'remote-token',
         clientId: 'test-client',
         name: 'test-client',
-        providers: ['claude', 'codex'],
         workspaces: [root],
-        maxConcurrency: 1,
         reconnectIntervalMs: 3000,
       },
     },

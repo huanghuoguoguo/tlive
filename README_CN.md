@@ -50,7 +50,7 @@ tlive --help
 
 ## 快速开始
 
-执行一次性配置并启动 bridge：
+执行一次性配置并启动 TLive：
 
 ```bash
 tlive setup
@@ -58,6 +58,9 @@ tlive start
 ```
 
 然后在飞书 / Lark 中发送 `/tlive` 打开工作台。
+
+`tlive start` 会同时启动 server 控制面和一个本地 worker client。只有这台机器只做
+控制面、不执行本地 Claude/Codex 时，才使用 `tlive server --standalone`。
 
 TLive SDK 会话会自动连接 TLive HTTP MCP endpoint，用于 agent 回调 TLive。
 MCP endpoint 会暴露 `tlive_send_file`、
@@ -72,7 +75,9 @@ MCP endpoint 会暴露 `tlive_send_file`、
 └─────────────┘     └──────────────────┘     └─────────────┘
 ```
 
-tlive 本地运行，通过飞书长连接接收消息，再驱动选定的本地 agent provider。Claude Code 通过 `@anthropic-ai/claude-agent-sdk` 接入；Codex 通过 `@openai/codex-sdk` 接入。
+server 通过飞书长连接接收消息。真正的 agent 执行发生在 worker client 中，包括
+`tlive start` 默认拉起的本地 client。Claude Code 通过 `@anthropic-ai/claude-agent-sdk`
+接入；Codex 通过 `@openai/codex-sdk` 接入。
 
 ## IM 命令
 
@@ -114,18 +119,20 @@ TL_PROVIDER=codex
 ### 远端 Worker
 
 中心机器可以只运行飞书 Bot 和调度层，多台工作机通过 WebSocket 连接回来执行本机 Claude/Codex 会话。
-使用 `tlive client` 启动执行节点。client 可以和 server 在同一台机器，也可以运行在其他机器上。
+`tlive server` 默认已经会启动一个本地 worker client。需要更多执行节点时，可以在同机或其他机器上使用
+`tlive client` 启动。
 
 中心机器：
 
 ```env
-TL_REMOTE_SERVER_ENABLED=true
 TL_REMOTE_TOKEN=change-this-token
 TL_REMOTE_PROVIDERS=claude,codex
 ```
 
 ```bash
 tlive server
+# 或者，只启动纯控制面：
+tlive server --standalone
 ```
 
 工作机：

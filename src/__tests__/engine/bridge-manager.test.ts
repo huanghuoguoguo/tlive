@@ -57,10 +57,9 @@ describe('BridgeManager', () => {
     process.env.TL_TOKEN = 'test-token';
     process.env.TL_FS_APP_ID = 'cli_test123';
     process.env.TL_FS_APP_SECRET = 'secret';
-    // Use port 0 (random available port) to avoid conflicts in parallel tests
-    process.env.TL_WEBHOOK_ENABLED = 'true';
-    process.env.TL_WEBHOOK_TOKEN = 'test-webhook-token';
-    process.env.TL_WEBHOOK_PORT = '0';
+    // BridgeManager tests exercise message routing, not the real HTTP MCP listener.
+    process.env.TL_MCP_ENABLED = 'false';
+    process.env.TL_REMOTE_SERVER_PORT = '0';
     store = {
       acquireLock: vi.fn().mockResolvedValue(true),
       releaseLock: vi.fn(),
@@ -78,6 +77,11 @@ describe('BridgeManager', () => {
       }),
     };
     manager = new BridgeManager({ defaultWorkdir: '/tmp', store, llm });
+  });
+
+  afterEach(() => {
+    delete process.env.TL_MCP_ENABLED;
+    delete process.env.TL_REMOTE_SERVER_PORT;
   });
 
   it('filters unauthorized messages', async () => {

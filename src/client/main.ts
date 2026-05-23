@@ -3,7 +3,6 @@ import { createAgentProviderRegistry } from './providers/factory.js';
 import { getCurrentVersion } from '../shared/utils/version-checker.js';
 import { generateId } from '../shared/core/id.js';
 import { defaultRemoteClientName, RemoteClientWorker } from './worker.js';
-import type { AgentProviderKind } from '../shared/providers/kinds.js';
 import { pathToFileURL } from 'node:url';
 
 interface ClientCliArgs {
@@ -12,8 +11,6 @@ interface ClientCliArgs {
   clientId?: string;
   name?: string;
   workspaces?: string[];
-  providers?: AgentProviderKind[];
-  maxConcurrency?: number;
 }
 
 function parseArgs(argv: string[]): ClientCliArgs {
@@ -27,10 +24,6 @@ function parseArgs(argv: string[]): ClientCliArgs {
     else if (arg === '--name') out.name = next();
     else if (arg === '--workspace') out.workspaces = [...(out.workspaces ?? []), next()];
     else if (arg === '--workspaces') out.workspaces = parseList(next());
-    else if (arg === '--providers') out.providers = parseProviders(next());
-    else if (arg === '--max-concurrency') {
-      out.maxConcurrency = Number.parseInt(next(), 10);
-    }
   }
   return out;
 }
@@ -41,13 +34,6 @@ function parseList(value: string | undefined): string[] {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
-}
-
-function parseProviders(value: string | undefined): AgentProviderKind[] {
-  const providers = parseList(value).filter(
-    (item): item is AgentProviderKind => item === 'claude' || item === 'codex',
-  );
-  return providers.length ? providers : ['claude', 'codex'];
 }
 
 export async function main(): Promise<void> {
@@ -68,8 +54,6 @@ export async function main(): Promise<void> {
         : config.remote.client.workspaces.length
           ? config.remote.client.workspaces
           : [config.defaultWorkdir],
-    providers: args.providers?.length ? args.providers : config.remote.client.providers,
-    maxConcurrency: args.maxConcurrency || config.remote.client.maxConcurrency,
     reconnectIntervalMs: config.remote.client.reconnectIntervalMs,
     version: getCurrentVersion(),
   });

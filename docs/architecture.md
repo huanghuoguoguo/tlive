@@ -17,6 +17,7 @@ State ownership follows the same boundary:
 - The workbench is an aggregation view. It should not scan local Claude/Codex history as a global
   source of truth.
 
-The server host can still appear as the `local` execution client. In that case it uses the same
-client-session reporting path as remote clients, so the workbench treats local and remote nodes
-consistently.
+The CLI starts the server plus a `local` execution client by default. That local client uses the
+same WebSocket protocol and session reporting path as remote clients, so the workbench treats local
+and remote nodes consistently. Use `tlive server --standalone` when the server should be a pure
+control plane with no local worker.

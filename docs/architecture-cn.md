@@ -12,4 +12,6 @@ TLive 现在按三块代码组织：
 - client 拥有 SDK runtime 状态和会话发现能力，并通过 remote protocol 把 session descriptor 上报给 server。
 - 工作台只是汇总视图，不应该扫描 server 本机 Claude/Codex history 作为全局事实源。
 
-server 主机仍然可以作为 `local` 执行节点出现。这个 local 节点也走同一套 client session 上报路径，所以工作台对本机和远端节点的处理保持一致。
+CLI 默认会同时启动 server 和一个 `local` 执行 client。这个 local client 也走同一套
+WebSocket protocol 和 session 上报路径，所以工作台对本机和远端节点的处理保持一致。
+只有 server 需要作为纯控制面运行时，才使用 `tlive server --standalone`。

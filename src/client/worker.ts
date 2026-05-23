@@ -29,8 +29,6 @@ export interface RemoteClientWorkerOptions {
   clientId: string;
   name: string;
   workspaces: string[];
-  providers: AgentProviderKind[];
-  maxConcurrency: number;
   reconnectIntervalMs: number;
   version?: string;
 }
@@ -131,10 +129,9 @@ export class RemoteClientWorker {
   }
 
   private buildHello(): ClientHelloMessage {
-    const descriptors = this.providers
-      .list()
-      .filter((descriptor) => this.options.providers.includes(descriptor.kind))
-      .map((descriptor) => this.toRemoteProviderDescriptor(descriptor));
+    const descriptors = this.reportableProviderDescriptors().map((descriptor) =>
+      this.toRemoteProviderDescriptor(descriptor),
+    );
     return {
       type: 'client.hello',
       protocolVersion: REMOTE_PROTOCOL_VERSION,
@@ -143,9 +140,14 @@ export class RemoteClientWorker {
       providers: descriptors,
       workspaces: this.options.workspaces.map((path) => ({ path: resolve(path) })),
       sessions: this.scanSessions(),
-      maxConcurrency: this.options.maxConcurrency,
       version: this.options.version,
     };
+  }
+
+  private reportableProviderDescriptors(): AgentProviderDescriptor[] {
+    return this.providers
+      .list()
+      .filter((descriptor) => descriptor.available && Boolean(this.providers.get(descriptor.kind)));
   }
 
   private toRemoteProviderDescriptor(
@@ -202,11 +204,6 @@ export class RemoteClientWorker {
   }
 
   private async handleTurnStart(message: TurnStartMessage): Promise<void> {
-    if (this.activeTurns.size >= this.options.maxConcurrency) {
-      this.send({ type: 'turn.error', turnId: message.turnId, message: 'Remote client is busy' });
-      return;
-    }
-
     try {
       const entry = this.getOrCreateSession(message);
       const result = entry.session.startTurn(message.prompt, {
@@ -397,13 +394,13 @@ export class RemoteClientWorker {
     this.send({
       type: 'client.status',
       activeTurns: this.activeTurns.size,
-      maxConcurrency: this.options.maxConcurrency,
       sessions: this.scanSessions(),
     });
   }
 
   private scanSessions(): RemoteSessionDescriptor[] {
-    return listLocalSessionDescriptors(this.options.providers, this.options.workspaces, 20);
+    const providerKinds = this.reportableProviderDescriptors().map((provider) => provider.kind);
+    return listLocalSessionDescriptors(providerKinds, this.options.workspaces, 20);
   }
 
   private urlWithToken(serverUrl: string): string {

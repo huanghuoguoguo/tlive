@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
 
 export interface CliDetectionResult {
   available: boolean;
@@ -15,8 +16,21 @@ function findCommand(name: string): string | undefined {
     const result = execSync(cmd, { encoding: 'utf-8', timeout: 5000 }).trim();
     return result.split('\n')[0]?.trim() || undefined;
   } catch {
-    return undefined;
+    /* fall through */
   }
+
+  const executable = process.platform === 'win32' ? `${name}.cmd` : name;
+  const home = homedir();
+  for (const dir of [
+    join(home, '.local', 'bin'),
+    join(home, '.npm-global', 'bin'),
+    join(home, '.bun', 'bin'),
+  ]) {
+    const candidate = join(dir, executable);
+    if (existsSync(candidate)) return candidate;
+  }
+
+  return undefined;
 }
 
 function commandVersion(cliPath: string): string | undefined {

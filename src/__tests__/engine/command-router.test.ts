@@ -348,7 +348,6 @@ describe('CommandRouter /settings', () => {
           online: true,
           isDefault: true,
           activeTurns: 0,
-          maxConcurrency: 1,
           workspaces: [{ path: '/tmp/tlive-remote-smoke', isDefault: true }],
           providers: [
             { kind: 'claude', displayName: 'Claude', available: true, isDefault: true },
@@ -688,7 +687,6 @@ describe('CommandRouter /settings', () => {
           online: true,
           isDefault: false,
           activeTurns: 0,
-          maxConcurrency: 1,
           workspaces: [{ path: repoB }],
           providers: [{ kind: 'claude', displayName: 'Claude', available: true, isDefault: true }],
           sessions: [
@@ -750,7 +748,6 @@ describe('CommandRouter /settings', () => {
           online: true,
           isDefault: false,
           activeTurns: 0,
-          maxConcurrency: 1,
           workspaces: [{ path: repoDir }],
           providers: [{ kind: 'claude', displayName: 'Claude', available: true, isDefault: true }],
           sessions: [
