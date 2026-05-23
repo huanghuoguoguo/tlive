@@ -126,12 +126,13 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
   override async startThreadFromMessage(
     chatId: string,
     messageId: string,
-    text = t('zh', 'feishu.topicProcessing'),
+    text?: string,
   ): Promise<ThreadStartResult | null> {
+    const finalText = text ?? t(this.getLocale(), 'feishu.topicProcessing');
     return startFeishuThreadFromMessage(this.client, {
       chatId,
       messageId,
-      text,
+      text: finalText,
       autoPinTopics: this.autoPinTopics,
       classifyError: (err) => this.classifyError(err),
     });
@@ -140,12 +141,13 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
   override async startThreadWithTitle(
     chatId: string,
     title: string,
-    text = t('zh', 'feishu.topicContinue'),
+    text?: string,
   ): Promise<ThreadStartResult | null> {
+    const finalText = text ?? t(this.getLocale(), 'feishu.topicContinue');
     return startFeishuThreadWithTitle(this.client, {
       chatId,
       title,
-      text,
+      text: finalText,
       autoPinTopics: this.autoPinTopics,
       classifyError: (err) => this.classifyError(err),
     });
