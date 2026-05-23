@@ -18,7 +18,6 @@ const LOG_DIR = join(TLIVE_HOME, 'logs');
 const BRIDGE_PID = join(RUNTIME_DIR, 'bridge.pid');
 const BRIDGE_ENTRY = join(PACKAGE_ROOT, 'dist', 'main.mjs');
 const CLIENT_ENTRY = join(PACKAGE_ROOT, 'dist', 'client.mjs');
-const MCP_ENTRY = join(PACKAGE_ROOT, 'dist', 'mcp.mjs');
 const CONFIG_FILE = join(TLIVE_HOME, 'config.env');
 const UPGRADE_RESULT_FILE = join(RUNTIME_DIR, 'upgrade-result.json');
 const STATUS_FILE = join(RUNTIME_DIR, 'status.json');
@@ -625,7 +624,6 @@ Usage:
 
 Setup (one-time):
   tlive setup                Configure Feishu/Lark
-  tlive mcp                  Run local MCP server on stdio
 
 Service Management:
   tlive start                Start Feishu/Lark bridge
@@ -645,12 +643,11 @@ IM Commands (in Feishu/Lark):
   Other / commands           Passed through to the active agent
 
 MCP:
-  Command: tlive
-  Args:    mcp
-  Tools:   tlive_send_file, tlive_send_image, tlive_inject_prompt, tlive_status
+  Endpoint: /mcp on the TLive server
+  Tools:    tlive_send_file, tlive_send_image, tlive_status
 `;
 
-const NODE_COMMANDS = new Set(['setup', 'start', 'server', 'client', 'mcp', 'stop', 'restart', 'status', 'logs', 'version', 'update', 'upgrade']);
+const NODE_COMMANDS = new Set(['setup', 'start', 'server', 'client', 'stop', 'restart', 'status', 'logs', 'version', 'update', 'upgrade']);
 const CORE_COMMANDS = new Set(['install']);
 
 function run(cmd, opts = {}) {
@@ -715,20 +712,6 @@ switch (command) {
       TL_DEFAULT_WORKDIR: process.env.TL_DEFAULT_WORKDIR || process.cwd(),
     };
     const r = spawnSync(process.execPath, [CLIENT_ENTRY, ...args], { stdio: 'inherit', env });
-    if (r.status) process.exit(r.status);
-    break;
-  }
-
-  case 'mcp': {
-    if (!existsSync(MCP_ENTRY)) {
-      console.error(`MCP server not built: ${MCP_ENTRY}`);
-      process.exit(1);
-    }
-    const env = {
-      ...process.env,
-      ...loadConfigEnv(),
-    };
-    const r = spawnSync(process.execPath, [MCP_ENTRY, ...args], { stdio: 'inherit', env });
     if (r.status) process.exit(r.status);
     break;
   }
@@ -904,7 +887,7 @@ switch (command) {
       process.exit(1);
     } else {
       console.log('Usage:');
-      console.log('  tlive mcp             Run local MCP server on stdio');
+      console.log('  tlive start           Start the TLive server with HTTP MCP enabled');
       console.log('TLive SDK sessions load TLive MCP tools automatically.');
     }
     break;
@@ -912,7 +895,7 @@ switch (command) {
 
   default: {
     // Check for typos of known commands before failing
-    const known = ['setup', 'start', 'server', 'client', 'mcp', 'stop', 'restart', 'status', 'logs', 'install', 'help', 'version', 'update', 'upgrade'];
+    const known = ['setup', 'start', 'server', 'client', 'stop', 'restart', 'status', 'logs', 'install', 'help', 'version', 'update', 'upgrade'];
     const similar = known.find(k => {
       if (Math.abs(k.length - command.length) > 2) return false;
       let diff = 0;

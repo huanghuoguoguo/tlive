@@ -1,14 +1,9 @@
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage, RenderedMessage } from '../../channels/types.js';
 import type { FormattableMessage } from '../../../shared/formatting/message-types.js';
-import type { AutomationBridge } from '../types/automation-bridge.js';
+import type { TliveMcpBridge } from '../mcp/bridge.js';
 import { loadConfig, type Config } from '../../../shared/config.js';
-import { WebhookServer } from '../automation/webhook.js';
-import {
-  AutomationPromptInjector,
-  type AutomationPromptOptions,
-  type AutomationPromptResult,
-} from '../automation/prompt-injector.js';
+import { TliveMcpHttpServer } from '../mcp/http-server.js';
 import type { BridgeStore } from '../../store/interface.js';
 import type { HomeClientEntry } from '../../../shared/formatting/message-types.js';
 import type { AgentProvider } from '../../../shared/providers/base.js';
@@ -36,15 +31,13 @@ interface BridgeManagerDeps {
   getExecutionClients?: () => HomeClientEntry[];
 }
 
-export class BridgeManager implements AutomationBridge {
+export class BridgeManager implements TliveMcpBridge {
   private adapters = new Map<string, BaseChannelAdapter>();
   private running = false;
   private components: BridgeComponents;
   private inbound: InboundDispatcher;
   private adapterLoop: AdapterLoopRunner;
-  private automationPrompts: AutomationPromptInjector;
-  /** Webhook server for automation entry */
-  private webhookServer: WebhookServer | null = null;
+  private mcpServer: TliveMcpHttpServer | null = null;
   /** Cleanup timer for SDK question data */
   private sdkQuestionCleanupTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -78,27 +71,14 @@ export class BridgeManager implements AutomationBridge {
       handleInboundMessage: (adapter, msg, requestId) =>
         this.handleInboundMessage(adapter, msg, requestId),
     });
-    this.automationPrompts = new AutomationPromptInjector({
-      getAdapter: (channelType) => this.getAdapter(channelType),
-      router: this.components.router,
-      store: this.components.store,
-      ingress: this.components.ingress,
-      query: this.components.query,
-    });
-
-    // Initialize webhook server if enabled.
-    if (config.webhook.enabled && config.webhook.token) {
-      this.webhookServer = new WebhookServer({
-        token: config.webhook.token,
-        port: config.webhook.port,
-        path: config.webhook.path,
+    if (config.mcp.enabled && config.mcp.token) {
+      this.mcpServer = new TliveMcpHttpServer({
+        token: config.mcp.token,
+        port: config.mcp.port,
+        path: config.mcp.path,
         bridge: this,
-        sessionStrategy: config.webhook.sessionStrategy,
-        callbackUrl: config.webhook.callbackUrl,
-        rateLimitPerMinute: config.webhook.rateLimitPerMinute,
-        projects: this.components.projectsConfig?.valid,
-        defaultProject: this.components.projectsConfig?.defaultProject,
         defaultWorkdir,
+        maxFileSizeBytes: config.mcp.maxFileSizeBytes,
       });
     }
   }
@@ -122,10 +102,6 @@ export class BridgeManager implements AutomationBridge {
 
   hasActiveSession(channelType: string, chatId: string, workdir?: string): boolean {
     return this.components.sdkEngine.hasActiveSession(channelType, chatId, workdir);
-  }
-
-  async injectAutomationPrompt(options: AutomationPromptOptions): Promise<AutomationPromptResult> {
-    return this.automationPrompts.inject(options);
   }
 
   /** Get the last active chatId for a given channel type. */
@@ -259,8 +235,8 @@ export class BridgeManager implements AutomationBridge {
       },
       5 * 60 * 1000,
     );
-    if (this.webhookServer) {
-      this.webhookServer.start();
+    if (this.mcpServer) {
+      this.mcpServer.start();
     }
   }
 
@@ -274,8 +250,8 @@ export class BridgeManager implements AutomationBridge {
     this.components.permissions.stopPruning();
     this.components.sdkEngine.stopSessionPruning();
     this.components.permissions.getGateway().denyAll();
-    if (this.webhookServer) {
-      this.webhookServer.stop();
+    if (this.mcpServer) {
+      this.mcpServer.stop();
     }
     for (const adapter of this.adapters.values()) {
       await adapter.stop();

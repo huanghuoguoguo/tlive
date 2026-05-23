@@ -48,22 +48,20 @@ export function createAgentProviderRegistry(
     ],
   ]);
 
-  const remoteProviders = new Set(
-    options.remoteClientRegistry && config.remote.server.enabled
-      ? config.remote.server.providers
-      : [],
+  const useClientBackedProviders = Boolean(
+    options.remoteClientRegistry && config.remote.server.enabled,
   );
-  const useClientBackedProviders = options.remoteClientRegistry && config.remote.server.enabled;
+  const remoteProviders = new Set(
+    useClientBackedProviders ? config.remote.server.providers : [],
+  );
   const providers = new Map<AgentProviderKind, AgentProvider>();
 
   const localClaude =
-    (config.remote.server.localClientEnabled || !useClientBackedProviders) &&
-    (claude.available || config.provider === 'claude')
+    !useClientBackedProviders && (claude.available || config.provider === 'claude')
       ? new ClaudeSDKProvider(config.agentSettingSources)
       : undefined;
   const localCodex =
-    (config.remote.server.localClientEnabled || !useClientBackedProviders) &&
-    (codex.available || config.provider === 'codex')
+    !useClientBackedProviders && (codex.available || config.provider === 'codex')
       ? new CodexSDKProvider({
           ...codexConfig,
           ...(codex.path || codexConfig.codexPath
@@ -72,41 +70,37 @@ export function createAgentProviderRegistry(
         })
       : undefined;
 
-  if (useClientBackedProviders && (remoteProviders.has('claude') || localClaude)) {
+  if (useClientBackedProviders && remoteProviders.has('claude')) {
     providers.set(
       'claude',
       new ClientBackedAgentProvider({
         kind: 'claude',
-        localProvider: localClaude,
-        remoteClientRegistry: remoteProviders.has('claude')
-          ? options.remoteClientRegistry
-          : undefined,
+        remoteClientRegistry: options.remoteClientRegistry!,
       }),
     );
     const descriptor = descriptors.get('claude');
     if (descriptor) {
-      descriptor.displayName = localClaude ? 'Claude Code' : 'Remote Claude Code';
+      descriptor.displayName = 'Remote Claude Code';
       descriptor.available = true;
-      descriptor.reason = 'client-backed provider';
+      descriptor.reason = 'execution client provider';
     }
   } else if (localClaude) {
     providers.set('claude', localClaude);
   }
 
-  if (useClientBackedProviders && (remoteProviders.has('codex') || localCodex)) {
+  if (useClientBackedProviders && remoteProviders.has('codex')) {
     providers.set(
       'codex',
       new ClientBackedAgentProvider({
         kind: 'codex',
-        localProvider: localCodex,
-        remoteClientRegistry: remoteProviders.has('codex') ? options.remoteClientRegistry : undefined,
+        remoteClientRegistry: options.remoteClientRegistry!,
       }),
     );
     const descriptor = descriptors.get('codex');
     if (descriptor) {
-      descriptor.displayName = localCodex ? 'Codex' : 'Remote Codex';
+      descriptor.displayName = 'Remote Codex';
       descriptor.available = true;
-      descriptor.reason = 'client-backed provider';
+      descriptor.reason = 'execution client provider';
     }
   } else if (localCodex) {
     providers.set('codex', localCodex);

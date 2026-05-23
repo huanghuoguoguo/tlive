@@ -1,17 +1,13 @@
-import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 const TLIVE_MCP_SERVER_NAME = 'tlive';
 const TLIVE_MCP_TOOLS = [
   'tlive_send_file',
   'tlive_send_image',
-  'tlive_inject_prompt',
   'tlive_status',
 ] as const;
 
 type CodexConfigValue = string | number | boolean | CodexConfigValue[] | CodexConfigObject;
 type CodexConfigObject = { [key: string]: CodexConfigValue };
+type TliveMcpServerConfig = { type: 'http'; url: string; headers?: Record<string, string> };
 
 export function tliveMcpAllowedClaudeTools(): string[] {
   return TLIVE_MCP_TOOLS.map((tool) => `mcp__${TLIVE_MCP_SERVER_NAME}__${tool}`);
@@ -36,47 +32,45 @@ export function tliveMcpConfigForCodex(): CodexConfigObject {
   };
 }
 
-function tliveMcpServerConfig(): { command: string; args: string[]; env?: Record<string, string> } {
-  const entry = resolveBundledMcpEntry();
-  const env = tliveMcpEnvironment();
-  if (entry) {
-    return {
-      command: process.execPath,
-      args: [entry],
-      ...(Object.keys(env).length ? { env } : {}),
-    };
-  }
+function tliveMcpServerConfig(): TliveMcpServerConfig {
+  const url = process.env.TL_MCP_URL?.trim() || process.env.TLIVE_MCP_URL?.trim() || defaultHttpMcpUrl();
+  const token =
+    process.env.TL_MCP_TOKEN?.trim() ||
+    process.env.TL_REMOTE_TOKEN?.trim() ||
+    process.env.TL_TOKEN?.trim();
   return {
-    command: 'tlive',
-    args: ['mcp'],
-    ...(Object.keys(env).length ? { env } : {}),
+    type: 'http',
+    url,
+    ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
   };
 }
 
-function resolveBundledMcpEntry(): string | undefined {
-  const currentDir = dirname(fileURLToPath(import.meta.url));
-  for (const candidate of [
-    join(currentDir, 'mcp.mjs'),
-    join(currentDir, '..', '..', 'dist', 'mcp.mjs'),
-  ]) {
-    if (existsSync(candidate)) return candidate;
-  }
-  return undefined;
+function defaultHttpMcpUrl(): string {
+  const path = normalizePath(process.env.TL_MCP_PATH?.trim() || '/mcp');
+  const base =
+    process.env.TLIVE_MCP_BRIDGE_URL?.trim() ||
+    httpBaseFromRemoteServerUrl(process.env.TL_REMOTE_SERVER_URL?.trim()) ||
+    `http://127.0.0.1:${process.env.TL_MCP_PORT?.trim() || '8081'}`;
+  return `${base.replace(/\/+$/, '')}${path}`;
 }
 
-function tliveMcpEnvironment(): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const key of [
-    'TLIVE_HOME',
-    'TLIVE_MCP_BRIDGE_URL',
-    'TL_WEBHOOK_TOKEN',
-    'TL_WEBHOOK_PORT',
-    'TL_WEBHOOK_PATH',
-    'TL_TOKEN',
-    'TL_PORT',
-  ]) {
-    const value = process.env[key]?.trim();
-    if (value) env[key] = value;
+function httpBaseFromRemoteServerUrl(serverUrl: string | undefined): string | undefined {
+  if (!serverUrl) return undefined;
+  try {
+    const url = new URL(serverUrl);
+    url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:';
+    url.pathname = '';
+    url.search = '';
+    url.hash = '';
+    url.port = process.env.TL_MCP_PORT?.trim() || '8081';
+    return url.toString().replace(/\/+$/, '');
+  } catch {
+    return undefined;
   }
-  return env;
+}
+
+function normalizePath(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) return '/mcp';
+  return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
 }

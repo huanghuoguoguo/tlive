@@ -10,67 +10,26 @@ import type { AgentProviderKind } from '../../shared/providers/kinds.js';
 import { RemoteAgentProvider } from './remote-agent-provider.js';
 import type { RemoteClientRegistry } from './client-registry.js';
 
-export const LOCAL_CLIENT_ID = 'local';
-
 export interface ClientBackedAgentProviderOptions {
   kind: AgentProviderKind;
-  localProvider?: AgentProvider;
-  remoteClientRegistry?: RemoteClientRegistry;
+  remoteClientRegistry: RemoteClientRegistry;
 }
 
 export class ClientBackedAgentProvider implements AgentProvider {
   readonly kind: AgentProviderKind;
   readonly displayName: string;
   readonly capabilities: AgentProviderCapabilities;
-  private readonly remoteProvider?: RemoteAgentProvider;
+  private readonly remoteProvider: RemoteAgentProvider;
 
-  constructor(private readonly options: ClientBackedAgentProviderOptions) {
+  constructor(options: ClientBackedAgentProviderOptions) {
     this.kind = options.kind;
-    this.displayName =
-      options.localProvider?.displayName ??
-      (options.kind === 'claude' ? 'Remote Claude Code' : 'Remote Codex');
-    this.capabilities =
-      options.localProvider?.capabilities ??
-      (options.kind === 'claude'
-        ? {
-            runtimeMode: 'interactive',
-            nativeSteer: true,
-            nativeQueue: true,
-            interactivePermissions: true,
-            askUserQuestion: true,
-            deferredTools: true,
-            settingSources: true,
-            sessionResume: true,
-            imageInputs: true,
-          }
-        : {
-            runtimeMode: 'turn-based',
-            nativeSteer: false,
-            nativeQueue: false,
-            interactivePermissions: false,
-            askUserQuestion: false,
-            deferredTools: false,
-            settingSources: false,
-            sessionResume: true,
-            imageInputs: true,
-          });
-    this.remoteProvider = options.remoteClientRegistry
-      ? new RemoteAgentProvider(options.kind, options.remoteClientRegistry)
-      : undefined;
+    this.remoteProvider = new RemoteAgentProvider(options.kind, options.remoteClientRegistry);
+    this.displayName = this.remoteProvider.displayName;
+    this.capabilities = this.remoteProvider.capabilities;
   }
 
   createSession(params: CreateSessionParams): LiveSession {
-    if (params.clientId && params.clientId !== LOCAL_CLIENT_ID) {
-      if (!this.remoteProvider) {
-        throw new Error(`Remote client provider is not enabled: ${params.clientId}`);
-      }
-      return this.remoteProvider.createSession(params);
-    }
-    if (!this.options.localProvider) {
-      if (!this.remoteProvider) throw new Error(`No provider is configured: ${this.kind}`);
-      return this.remoteProvider.createSession(params);
-    }
-    return this.options.localProvider.createSession(params);
+    return this.remoteProvider.createSession(params);
   }
 
   streamChat(params: StreamChatParams): StreamChatResult {

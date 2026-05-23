@@ -24,7 +24,6 @@ The project no longer carries Telegram, QQ Bot, or generic multi-channel runtime
 - AskUserQuestion and deferred tool interactions for providers that support them
 - Session scanning and resume from `~/.claude/projects/` and TLive-created Codex sessions under `~/.codex/sessions`
 - File and image forwarding to providers that support attachments
-- Automation webhooks for external prompt injection
 - Release-based self-upgrade with `tlive upgrade`
 
 ## Install
@@ -58,9 +57,9 @@ tlive start
 
 Then send `/tlive` in Feishu/Lark to open the workbench.
 
-TLive SDK sessions automatically load the bundled MCP server for agent-side callbacks.
-The MCP server exposes tools such as
-`tlive_send_file`, `tlive_send_image`, `tlive_inject_prompt`, and `tlive_status`.
+TLive SDK sessions connect to the TLive HTTP MCP endpoint for agent-side callbacks.
+The MCP endpoint exposes tools such as
+`tlive_send_file`, `tlive_send_image`, and `tlive_status`.
 
 ## Architecture
 
@@ -114,7 +113,7 @@ The workbench shows new-session buttons only for detected local CLIs. Install `c
 ### Remote Workers
 
 One machine can run the Feishu bot and scheduler while worker machines connect over WebSocket and run local Claude/Codex sessions.
-The server host is also exposed as a local execution client by default. Set `TL_LOCAL_CLIENT_ENABLED=false` if the server should only coordinate remote clients.
+Start one or more execution clients with `tlive client`. A client can run on the same host as the server or on another machine.
 
 Server machine:
 

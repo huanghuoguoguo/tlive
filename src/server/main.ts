@@ -5,9 +5,7 @@ import { createAgentProviderRegistry } from '../client/providers/factory.js';
 import { BridgeManager } from './engine/coordinators/bridge-manager.js';
 import { FeishuAdapter } from './channels/feishu/adapter.js';
 import { RemoteClientRegistry } from './clients/client-registry.js';
-import { LOCAL_CLIENT_ID } from './clients/client-agent-provider.js';
 import type { HomeClientEntry } from '../shared/formatting/message-types.js';
-import { listLocalSessionDescriptors } from '../client/session-index.js';
 import { t, setGlobalLocale } from '../shared/i18n/index.js';
 import {
   checkForUpdates,
@@ -377,6 +375,13 @@ export async function main() {
           providers: config.remote.server.providers,
         }
       : undefined,
+    mcp: config.mcp.enabled
+      ? {
+          port: config.mcp.port,
+          path: config.mcp.path,
+          maxFileSizeBytes: config.mcp.maxFileSizeBytes,
+        }
+      : undefined,
     version: getCurrentVersion(),
   });
 
@@ -385,39 +390,7 @@ export async function main() {
   const providers = createAgentProviderRegistry(config, { remoteClientRegistry: remoteClients });
   const llm = providers.defaultProvider;
   const getExecutionClients = (): HomeClientEntry[] => {
-    const localProviders = providers
-      .availableForNewSession()
-      .filter(() => config.remote.server.localClientEnabled)
-      .map((provider) => ({
-        kind: provider.kind,
-        displayName: provider.displayName,
-        available: provider.available,
-        isDefault: provider.isDefault,
-        reason: provider.reason,
-      }));
-    const localClient: HomeClientEntry[] =
-      config.remote.server.localClientEnabled && localProviders.length
-        ? [
-            {
-              clientId: LOCAL_CLIENT_ID,
-              name: 'local',
-              online: true,
-              isDefault: false,
-              isLocal: true,
-              activeTurns: 0,
-              maxConcurrency: 1,
-              workspaces: [{ path: config.defaultWorkdir, isDefault: true }],
-              providers: localProviders,
-              sessions: listLocalSessionDescriptors(
-                localProviders.map((provider) => provider.kind),
-                [config.defaultWorkdir],
-                20,
-              ),
-              version: getCurrentVersion(),
-            },
-          ]
-        : [];
-    const remote = remoteClients?.listClients().map((client) => ({
+    return remoteClients?.listClients().map((client) => ({
       clientId: client.clientId,
       name: client.name,
       online: true,
@@ -440,7 +413,6 @@ export async function main() {
       lastSeenAt: new Date(client.lastSeenAt).toISOString(),
       version: client.version,
     })) ?? [];
-    return [...localClient, ...remote];
   };
 
   // Start Bridge Manager with enabled IM adapters
@@ -472,6 +444,13 @@ export async function main() {
           port: config.remote.server.port,
           path: config.remote.server.path,
           providers: config.remote.server.providers,
+        }
+      : undefined,
+    mcp: config.mcp.enabled
+      ? {
+          port: config.mcp.port,
+          path: config.mcp.path,
+          maxFileSizeBytes: config.mcp.maxFileSizeBytes,
         }
       : undefined,
     version: getCurrentVersion(),

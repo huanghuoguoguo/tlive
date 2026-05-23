@@ -6,7 +6,7 @@ import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';
 import type { HomeClientEntry } from '../../shared/formatting/message-types.js';
 import { ChannelRouter } from './channel-router.js';
-import { PendingPermissions } from '../permissions/gateway.js';
+import { PendingPermissions } from './permissions/gateway.js';
 import { SessionStateManager } from './state/session-state.js';
 import { WorkspaceStateManager } from './state/workspace-state.js';
 import { RecentProjectsManager } from './state/recent-projects.js';

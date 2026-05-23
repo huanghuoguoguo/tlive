@@ -23,7 +23,6 @@ TL_FS_APP_ID=cli_xxx
 TL_FS_APP_SECRET=xxx
 TL_FS_VERIFICATION_TOKEN=
 TL_FS_ENCRYPT_KEY=
-TL_FS_WEBHOOK_PORT=9100
 TL_FS_AUTO_PIN_TOPIC=true
 
 # 可选用户白名单：open_id 或 user_id，逗号分隔
@@ -50,14 +49,14 @@ TL_AGENT_SETTINGS=user,project,local
 - `full`：加载 user + project + local
 - `isolated`：当前 chat 不加载外部 settings
 
-## 自动化
+## MCP
 
 ```env
-TL_WEBHOOK_ENABLED=false
-TL_WEBHOOK_TOKEN=
-TL_WEBHOOK_PORT=8081
-TL_WEBHOOK_PATH=/webhook
-TL_WEBHOOK_SESSION_STRATEGY=reject
+TL_MCP_ENABLED=true
+TL_MCP_PORT=8081
+TL_MCP_PATH=/mcp
+TL_MCP_TOKEN=
+TL_MCP_MAX_FILE_MB=20
 ```
 
 ## 安全

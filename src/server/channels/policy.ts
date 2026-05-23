@@ -1,4 +1,4 @@
-import type { PermissionDecision } from '../permissions/gateway.js';
+import type { PermissionDecision } from '../engine/permissions/gateway.js';
 
 export type ProgressPhase =
   | 'starting'
@@ -15,7 +15,7 @@ export interface ProgressTraceStats {
   thinkingTextLength: number;
 }
 
-export type { PermissionDecision } from '../permissions/gateway.js';
+export type { PermissionDecision } from '../engine/permissions/gateway.js';
 
 export interface ProgressPolicy {
   shouldRenderPhase(phase: ProgressPhase): boolean;

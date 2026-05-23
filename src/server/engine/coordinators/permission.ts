@@ -1,7 +1,7 @@
 import type {
   PendingPermissions,
   PermissionDecision as TextPermissionDecision,
-} from '../../permissions/gateway.js';
+} from '../permissions/gateway.js';
 import { SdkPermTracker } from './sdk-perm-tracker.js';
 import { QuestionResolver } from './question-resolver.js';
 import { SessionWhitelist } from './session-whitelist.js';

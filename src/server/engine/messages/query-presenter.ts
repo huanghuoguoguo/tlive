@@ -1,6 +1,6 @@
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage, RenderedMessage } from '../../channels/types.js';
-import { chunkByParagraph } from '../../delivery/delivery.js';
+import { chunkByParagraph } from '../../../shared/formatting/text-chunk.js';
 import type { MessageRendererState } from './renderer.js';
 import { truncate } from '../../../shared/core/string.js';
 import { buildProgressData } from './progress-builder.js';

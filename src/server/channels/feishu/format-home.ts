@@ -128,7 +128,7 @@ function buildClientControls(data: HomeData): FeishuCardElement[] {
   const clients = data.clients?.entries ?? [];
   if (!clients.length) {
     return [
-      markdownElement('⚠️ 当前没有可用执行节点。请启动 `tlive client` 或启用本机 local client。'),
+      markdownElement('⚠️ 当前没有可用执行节点。请启动 `tlive client`。'),
     ];
   }
 

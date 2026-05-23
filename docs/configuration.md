@@ -23,7 +23,6 @@ TL_FS_APP_ID=cli_xxx
 TL_FS_APP_SECRET=xxx
 TL_FS_VERIFICATION_TOKEN=
 TL_FS_ENCRYPT_KEY=
-TL_FS_WEBHOOK_PORT=9100
 TL_FS_AUTO_PIN_TOPIC=true
 
 # Optional user whitelist: open_id or user_id, comma-separated
@@ -50,14 +49,14 @@ Use `/settings user|full|isolated` to override Claude settings for the current c
 - `full`: user + project + local settings
 - `isolated`: ignore external settings for this chat
 
-## Automation
+## MCP
 
 ```env
-TL_WEBHOOK_ENABLED=false
-TL_WEBHOOK_TOKEN=
-TL_WEBHOOK_PORT=8081
-TL_WEBHOOK_PATH=/webhook
-TL_WEBHOOK_SESSION_STRATEGY=reject
+TL_MCP_ENABLED=true
+TL_MCP_PORT=8081
+TL_MCP_PATH=/mcp
+TL_MCP_TOKEN=
+TL_MCP_MAX_FILE_MB=20
 ```
 
 ## Security

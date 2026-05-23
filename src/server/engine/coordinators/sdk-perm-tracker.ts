@@ -1,7 +1,7 @@
 import type {
   PendingPermissions,
   PermissionDecision as TextPermissionDecision,
-} from '../../permissions/gateway.js';
+} from '../permissions/gateway.js';
 import { truncate } from '../../../shared/core/string.js';
 import { getLocalizedVariants } from '../../../shared/i18n/index.js';
 

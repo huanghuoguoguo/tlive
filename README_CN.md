@@ -26,7 +26,6 @@ tlive 现在明确只服务一条工作流：
 - 支持 provider 能力范围内的 AskUserQuestion 和 deferred tool 交互
 - 扫描并恢复 `~/.claude/projects/` 下的 Claude Code 会话，以及 `~/.codex/sessions` 下由 TLive 创建的 Codex 会话
 - 文件和图片转发到支持附件的 provider
-- Webhook 等自动化入口
 - 基于 GitHub Release 的 `tlive upgrade` 自升级
 
 ## 安装
@@ -60,9 +59,9 @@ tlive start
 
 然后在飞书 / Lark 中发送 `/tlive` 打开工作台。
 
-TLive SDK 会话会自动加载内置 MCP server，用于 agent 回调 TLive。
-MCP server 会暴露 `tlive_send_file`、
-`tlive_send_image`、`tlive_inject_prompt`、`tlive_status` 等工具。
+TLive SDK 会话会自动连接 TLive HTTP MCP endpoint，用于 agent 回调 TLive。
+MCP endpoint 会暴露 `tlive_send_file`、
+`tlive_send_image`、`tlive_status` 等工具。
 
 ## 架构
 
@@ -115,7 +114,7 @@ TL_PROVIDER=codex
 ### 远端 Worker
 
 中心机器可以只运行飞书 Bot 和调度层，多台工作机通过 WebSocket 连接回来执行本机 Claude/Codex 会话。
-server 主机默认也会作为一个 local 执行 client 出现在工作台里。如果 server 只负责调度远端机器，可以设置 `TL_LOCAL_CLIENT_ENABLED=false`。
+使用 `tlive client` 启动执行节点。client 可以和 server 在同一台机器，也可以运行在其他机器上。
 
 中心机器：
 

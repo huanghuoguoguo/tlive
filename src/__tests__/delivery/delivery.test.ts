@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chunkByParagraph } from '../../server/delivery/delivery.js';
+import { chunkByParagraph } from '../../shared/formatting/text-chunk.js';
 
 describe('paragraph-aware chunking', () => {
   it('keeps paragraphs together when possible', () => {

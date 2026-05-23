@@ -25,7 +25,6 @@ export interface FeishuConfig {
   appSecret: string;
   verificationToken: string;
   encryptKey: string;
-  webhookPort: number;
   allowedUsers: string[];
 }
 

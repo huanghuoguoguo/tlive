@@ -7,14 +7,6 @@ import type { Locale } from './i18n/index.js';
 
 export type AgentSettingSource = 'user' | 'project' | 'local';
 
-/** Webhook default chat configuration */
-export interface WebhookDefaultChat {
-  /** Channel type. Only 'feishu' is supported. */
-  channelType: string;
-  /** Chat ID to route webhook messages to */
-  chatId: string;
-}
-
 /** Project configuration for multi-repo support */
 export interface ProjectConfig {
   /** Project name (unique identifier) */
@@ -23,8 +15,6 @@ export interface ProjectConfig {
   workdir: string;
   /** Provider settings sources for this project. */
   agentSettingSources?: AgentSettingSource[];
-  /** Default chat for webhook routing (optional) */
-  webhookDefaultChat?: WebhookDefaultChat;
 }
 
 export const DEFAULT_AGENT_SETTING_SOURCES: AgentSettingSource[] = ['user', 'project', 'local'];
@@ -57,24 +47,18 @@ export interface Config {
   defaultModel: string;
   /** Provider settings sources to load (default: ['user', 'project', 'local']) */
   agentSettingSources: AgentSettingSource[];
-  /** Webhook configuration for automation entry */
-  webhook: {
-    /** Enable webhook endpoint (default: false) */
+  /** HTTP MCP endpoint for agent-facing TLive tools. */
+  mcp: {
+    /** Enable HTTP MCP endpoint (default: true). */
     enabled: boolean;
-    /** Token for webhook authentication (must match request Authorization: Bearer <token>) */
-    token: string;
-    /** Webhook listen port (default: 8081, separate from main port) */
+    /** Listen port for the MCP endpoint. */
     port: number;
-    /** Webhook path (default: /webhook) */
+    /** Streamable HTTP MCP path (default: /mcp). */
     path: string;
-    /** Session routing strategy when no active session exists:
-     *  - 'reject': Return error if no session (default, safer)
-     *  - 'create': Auto-create new session if none exists */
-    sessionStrategy: 'reject' | 'create';
-    /** Optional callback URL for webhook result notifications */
-    callbackUrl?: string;
-    /** Maximum accepted webhook requests per minute from the same source (0 disables) */
-    rateLimitPerMinute: number;
+    /** Bearer token for MCP clients. Defaults to TL_REMOTE_TOKEN/TL_TOKEN. */
+    token: string;
+    /** Maximum decoded file payload accepted by file tools. */
+    maxFileSizeBytes: number;
   };
   /** Exec configuration — LIMITED shell exec for automation (Phase 3 design only).
    *
@@ -102,7 +86,6 @@ export interface Config {
     appSecret: string;
     verificationToken: string;
     encryptKey: string;
-    webhookPort: number;
     allowedUsers: string[];
     /** Pin newly-created topic entry messages to the chat Pin list. */
     autoPinTopics: boolean;
@@ -116,7 +99,6 @@ export interface Config {
   remote: {
     server: {
       enabled: boolean;
-      localClientEnabled: boolean;
       port: number;
       path: string;
       token: string;
@@ -259,15 +241,11 @@ function parseList(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
-function normalizeWebhookPath(path: string): string {
+function normalizeHttpPath(path: string, defaultPath: string): string {
   const trimmed = path.trim();
-  if (!trimmed) return '/webhook';
+  if (!trimmed) return defaultPath;
   const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
   return withLeadingSlash.length > 1 ? withLeadingSlash.replace(/\/+$/, '') : withLeadingSlash;
-}
-
-function normalizeWebhookSessionStrategy(value: string | undefined): 'reject' | 'create' {
-  return value === 'create' ? 'create' : 'reject';
 }
 
 function normalizeLocale(value: string | undefined): Locale {
@@ -342,19 +320,13 @@ export function loadConfig(options: LoadConfigOptions = {}): Config {
     ) as AgentSettingSource[],
     defaultWorkdir: get('TL_DEFAULT_WORKDIR', process.cwd()),
     defaultModel: get('TL_DEFAULT_MODEL'),
-    webhook: {
-      enabled: get('TL_WEBHOOK_ENABLED', 'false') === 'true',
-      token: get('TL_WEBHOOK_TOKEN'),
-      port: parseInt(get('TL_WEBHOOK_PORT', '8081'), 10),
-      path: normalizeWebhookPath(get('TL_WEBHOOK_PATH', '/webhook')),
-      sessionStrategy: normalizeWebhookSessionStrategy(
-        get('TL_WEBHOOK_SESSION_STRATEGY', 'reject'),
-      ),
-      callbackUrl: get('TL_WEBHOOK_CALLBACK_URL') || undefined,
-      rateLimitPerMinute: Math.max(
-        0,
-        Number.parseInt(get('TL_WEBHOOK_RATE_LIMIT_PER_MINUTE', '30'), 10) || 0,
-      ),
+    mcp: {
+      enabled: get('TL_MCP_ENABLED', 'true') !== 'false',
+      port: parseInt(get('TL_MCP_PORT', '8081'), 10),
+      path: normalizeHttpPath(get('TL_MCP_PATH', '/mcp'), '/mcp'),
+      token: get('TL_MCP_TOKEN', get('TL_REMOTE_TOKEN', get('TL_TOKEN'))),
+      maxFileSizeBytes:
+        Math.max(1, Number.parseInt(get('TL_MCP_MAX_FILE_MB', '20'), 10) || 20) * 1024 * 1024,
     },
     exec: {
       // IMPORTANT: Exec is disabled by default and not implemented in Phase 3
@@ -369,7 +341,6 @@ export function loadConfig(options: LoadConfigOptions = {}): Config {
       appSecret: get('TL_FS_APP_SECRET'),
       verificationToken: get('TL_FS_VERIFICATION_TOKEN'),
       encryptKey: get('TL_FS_ENCRYPT_KEY'),
-      webhookPort: parseInt(get('TL_FS_WEBHOOK_PORT', '9100'), 10),
       allowedUsers: parseList(get('TL_FS_ALLOWED_USERS')),
       autoPinTopics: get('TL_FS_AUTO_PIN_TOPIC', 'true') !== 'false',
     },
@@ -379,9 +350,8 @@ export function loadConfig(options: LoadConfigOptions = {}): Config {
     remote: {
       server: {
         enabled: get('TL_REMOTE_SERVER_ENABLED', 'false') === 'true',
-        localClientEnabled: get('TL_LOCAL_CLIENT_ENABLED', 'true') !== 'false',
         port: parseInt(get('TL_REMOTE_SERVER_PORT', '8787'), 10),
-        path: normalizeWebhookPath(get('TL_REMOTE_SERVER_PATH', '/tlive')),
+        path: normalizeHttpPath(get('TL_REMOTE_SERVER_PATH', '/tlive'), '/tlive'),
         token: remoteToken,
         providers: remoteProviders,
         heartbeatIntervalMs: Math.max(

@@ -1,4 +1,4 @@
-import { CALLBACK_PREFIXES } from '../../shared/core/callbacks.js';
+import { CALLBACK_PREFIXES } from '../../../shared/core/callbacks.js';
 
 export type PermissionDecision = 'allow' | 'allow_always' | 'deny';
 export type PermissionGrantScope = 'same_command' | 'session_all';

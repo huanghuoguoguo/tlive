@@ -22,7 +22,6 @@ const common = {
 const entryPoints = [
   { entry: 'src/server/main.ts', outfile: 'dist/main.mjs' },
   { entry: 'src/client/main.ts', outfile: 'dist/client.mjs' },
-  { entry: 'src/client/mcp/main.ts', outfile: 'dist/mcp.mjs' },
   { entry: 'src/client/providers/claude-setup-wizard.ts', outfile: 'dist/setup.mjs' },
 ];
 
