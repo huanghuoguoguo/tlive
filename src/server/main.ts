@@ -417,6 +417,7 @@ export async function main() {
     defaultWorkdir: config.defaultWorkdir,
     config,
     getExecutionClients,
+    remoteClientRegistry: remoteClients,
   });
   manager.registerAdapter(
     new FeishuAdapter(config.feishu, {

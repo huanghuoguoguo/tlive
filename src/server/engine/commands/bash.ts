@@ -3,8 +3,11 @@ import type { CommandContext } from './types.js';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import { truncate } from '../../../shared/core/string.js';
+import { resolveCommandClientTarget } from './execution-client.js';
 
 const execAsync = promisify(exec);
+const BASH_TIMEOUT_MS = 30_000;
+const BASH_MAX_BUFFER_BYTES = 4 * 1024 * 1024;
 
 export class BashCommand extends BaseCommand {
   readonly name = '/bash';
@@ -24,13 +27,21 @@ export class BashCommand extends BaseCommand {
 
     const binding = await ctx.services.store.getBinding(ctx.msg.channelType, ctx.scopeId);
     const cwd = binding?.cwd || ctx.services.defaultWorkdir;
+    const target = resolveCommandClientTarget(ctx, binding);
+    if (target.error) {
+      await this.send(ctx, { chatId: ctx.msg.chatId, text: target.error });
+      return true;
+    }
 
     try {
-      const { stdout, stderr } = await execAsync(cmdText, {
-        cwd,
-        timeout: 30_000,
-        maxBuffer: 4 * 1024 * 1024,
-      });
+      const { stdout, stderr } =
+        target.clientId && ctx.services.remoteClientRegistry
+          ? await this.execRemote(ctx, target.clientId, cmdText, cwd)
+          : await execAsync(cmdText, {
+              cwd,
+              timeout: BASH_TIMEOUT_MS,
+              maxBuffer: BASH_MAX_BUFFER_BYTES,
+            });
 
       const output = (stdout + (stderr ? '\n⚠️ stderr:\n' + stderr : '')).trim();
       const truncatedOutput = truncate(output, 4000);
@@ -45,5 +56,24 @@ export class BashCommand extends BaseCommand {
       await this.send(ctx, { chatId: ctx.msg.chatId, text: `❌ ${truncatedErr}` });
     }
     return true;
+  }
+
+  private async execRemote(
+    ctx: CommandContext,
+    clientId: string,
+    command: string,
+    cwd: string,
+  ): Promise<{ stdout: string; stderr: string }> {
+    const result = await ctx.services.remoteClientRegistry!.execShell(clientId, command, cwd, {
+      timeoutMs: BASH_TIMEOUT_MS,
+      maxBufferBytes: BASH_MAX_BUFFER_BYTES,
+    });
+    const stdout = result.stdout ?? '';
+    const stderr = result.stderr ?? '';
+    if (result.ok) return { stdout, stderr };
+
+    const err = new Error(result.error || `Remote command failed: ${result.exitCode ?? 'unknown'}`);
+    (err as Error & { stderr?: string }).stderr = stderr || stdout;
+    throw err;
   }
 }

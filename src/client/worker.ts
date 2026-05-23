@@ -1,6 +1,9 @@
 import { WebSocket, type RawData } from 'ws';
-import { hostname } from 'node:os';
-import { resolve } from 'node:path';
+import { hostname, homedir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { stat } from 'node:fs/promises';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
 import type {
   AgentProviderRegistry,
   AgentProviderDescriptor,
@@ -14,6 +17,7 @@ import {
   REMOTE_PROTOCOL_VERSION,
   type ClientHelloMessage,
   type ControlMessage,
+  type ClientCommandMessage,
   type InteractionResponseMessage,
   type RemoteInteractionKind,
   type RemoteProviderDescriptor,
@@ -22,6 +26,8 @@ import {
   type TurnStartMessage,
 } from '../shared/protocol/messages.js';
 import { listLocalSessionDescriptors } from './session-index.js';
+
+const execAsync = promisify(exec);
 
 export interface RemoteClientWorkerOptions {
   serverUrl: string;
@@ -194,6 +200,9 @@ export class RemoteClientWorker {
         break;
       case 'control':
         void this.handleControl(message);
+        break;
+      case 'client.command':
+        void this.handleClientCommand(message);
         break;
       case 'interaction.response':
         this.resolveInteraction(message);
@@ -378,6 +387,74 @@ export class RemoteClientWorker {
     }
   }
 
+  private async handleClientCommand(message: ClientCommandMessage): Promise<void> {
+    try {
+      if (message.action === 'path.stat') {
+        if (!message.path) throw new Error('path is required');
+        const path = resolveClientPath(message.path);
+        const st = await stat(path);
+        this.send({
+          type: 'client.command.result',
+          commandId: message.commandId,
+          ok: true,
+          path,
+          exists: true,
+          isDirectory: st.isDirectory(),
+        });
+        return;
+      }
+
+      if (message.action === 'shell.exec') {
+        if (!message.command) throw new Error('command is required');
+        if (!message.cwd) throw new Error('cwd is required');
+        const result = await execAsync(message.command, {
+          cwd: message.cwd,
+          timeout: message.timeoutMs ?? 30_000,
+          maxBuffer: message.maxBufferBytes ?? 4 * 1024 * 1024,
+        });
+        this.send({
+          type: 'client.command.result',
+          commandId: message.commandId,
+          ok: true,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: 0,
+        });
+        return;
+      }
+
+      throw new Error(`Unsupported client command: ${message.action}`);
+    } catch (err) {
+      const nodeErr = err as NodeJS.ErrnoException & {
+        stdout?: string;
+        stderr?: string;
+        code?: number | string;
+        signal?: NodeJS.Signals;
+      };
+      if (message.action === 'path.stat' && nodeErr.code === 'ENOENT') {
+        this.send({
+          type: 'client.command.result',
+          commandId: message.commandId,
+          ok: true,
+          path: message.path ? resolveClientPath(message.path) : undefined,
+          exists: false,
+          isDirectory: false,
+        });
+        return;
+      }
+      this.send({
+        type: 'client.command.result',
+        commandId: message.commandId,
+        ok: false,
+        stdout: typeof nodeErr.stdout === 'string' ? nodeErr.stdout : undefined,
+        stderr: typeof nodeErr.stderr === 'string' ? nodeErr.stderr : undefined,
+        exitCode: typeof nodeErr.code === 'number' ? nodeErr.code : undefined,
+        signal: nodeErr.signal,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   private activeTurnForSession(sessionId: string): ActiveTurn | undefined {
     return [...this.activeTurns.values()].find((turn) => turn.sessionId === sessionId);
   }
@@ -400,7 +477,7 @@ export class RemoteClientWorker {
 
   private scanSessions(): RemoteSessionDescriptor[] {
     const providerKinds = this.reportableProviderDescriptors().map((provider) => provider.kind);
-    return listLocalSessionDescriptors(providerKinds, this.options.workspaces, 20);
+    return listLocalSessionDescriptors(providerKinds, 20);
   }
 
   private urlWithToken(serverUrl: string): string {
@@ -424,4 +501,10 @@ export function defaultRemoteClientName(): string {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
+}
+
+function resolveClientPath(path: string): string {
+  if (path === '~') return homedir();
+  if (path.startsWith('~/')) return join(homedir(), path.slice(2));
+  return resolve(path);
 }

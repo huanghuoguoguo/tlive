@@ -7,10 +7,11 @@ import {
 } from '../../presentation/command-presenter.js';
 import { shortPath, expandTilde } from '../../../shared/core/path.js';
 import { generateSessionId } from '../../../shared/core/id.js';
-import { existsSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import { isSameRepoRoot } from '../../../shared/utils/repo.js';
 import { t } from '../../../shared/i18n/index.js';
+import { resolveCommandClientTarget } from './execution-client.js';
 
 export class CdCommand extends BaseCommand {
   readonly name = '/cd';
@@ -84,16 +85,19 @@ export class CdCommand extends BaseCommand {
       return true;
     }
 
-    // Handle ~ expansion
-    const expandedPath = expandTilde(path);
-
-    // Resolve relative paths
     const binding = await ctx.services.store.getBinding(ctx.msg.channelType, scopeId);
     const baseCwd = binding?.cwd || ctx.services.defaultWorkdir;
-    const resolvedPath = expandedPath.startsWith('/') ? expandedPath : join(baseCwd, expandedPath);
+    const target = resolveCommandClientTarget(ctx, binding);
+    if (target.error) {
+      await this.send(ctx, { chatId: ctx.msg.chatId, text: target.error });
+      return true;
+    }
 
-    if (!existsSync(resolvedPath)) {
-      await this.send(ctx, presentDirectoryNotFound(ctx.msg.chatId, shortPath(resolvedPath)));
+    const requestedPath = resolveRequestedPath(path, baseCwd, Boolean(target.clientId));
+    const resolvedPath = await this.resolveDirectory(ctx, target.clientId, requestedPath);
+
+    if (!resolvedPath) {
+      await this.send(ctx, presentDirectoryNotFound(ctx.msg.chatId, shortPath(requestedPath)));
       return true;
     }
 
@@ -111,10 +115,12 @@ export class CdCommand extends BaseCommand {
 
     if (binding) {
       binding.cwd = resolvedPath;
+      binding.clientId = binding.clientId ?? target.clientId;
       await ctx.services.store.saveBinding(binding);
     } else {
       await ctx.services.router.rebind(ctx.msg.channelType, scopeId, generateSessionId(), {
         provider: ctx.services.providers.defaultProviderKind,
+        clientId: target.clientId,
         cwd: resolvedPath,
       });
     }
@@ -129,4 +135,27 @@ export class CdCommand extends BaseCommand {
     );
     return true;
   }
+
+  private async resolveDirectory(
+    ctx: CommandContext,
+    clientId: string | undefined,
+    requestedPath: string,
+  ): Promise<string | null> {
+    if (clientId && ctx.services.remoteClientRegistry) {
+      const result = await ctx.services.remoteClientRegistry.statPath(clientId, requestedPath);
+      return result.ok && result.exists && result.isDirectory ? result.path ?? requestedPath : null;
+    }
+
+    try {
+      return statSync(requestedPath).isDirectory() ? requestedPath : null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+function resolveRequestedPath(path: string, baseCwd: string, remote: boolean): string {
+  if (remote && (path === '~' || path.startsWith('~/'))) return path;
+  const expandedPath = remote ? path : expandTilde(path);
+  return expandedPath.startsWith('/') ? expandedPath : join(baseCwd, expandedPath);
 }

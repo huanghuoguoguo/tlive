@@ -8,6 +8,7 @@ import type { BridgeStore } from '../../store/interface.js';
 import type { HomeClientEntry } from '../../../shared/formatting/message-types.js';
 import type { AgentProvider } from '../../../shared/providers/base.js';
 import type { AgentProviderRegistry } from '../../../client/providers/registry.js';
+import type { RemoteClientRegistry } from '../../clients/client-registry.js';
 import {
   createBridgeComponents,
   type BridgeComponents,
@@ -29,6 +30,7 @@ interface BridgeManagerDeps {
   defaultWorkdir: string;
   config?: Config;
   getExecutionClients?: () => HomeClientEntry[];
+  remoteClientRegistry?: RemoteClientRegistry;
 }
 
 export class BridgeManager implements TliveMcpBridge {
@@ -54,6 +56,7 @@ export class BridgeManager implements TliveMcpBridge {
       config,
       getAdapters: () => this.adapters,
       getExecutionClients: deps.getExecutionClients,
+      remoteClientRegistry: deps.remoteClientRegistry,
     };
     this.components = createBridgeComponents(factoryDeps);
     this.inbound = new InboundDispatcher({

@@ -15,6 +15,7 @@ import type { Locale } from '../../../shared/i18n/index.js';
 import type { HelpCategoryId } from './help-categories.js';
 import type { TopicSessionManager } from '../state/topic-sessions.js';
 import type { ConversationSurface } from '../conversations/surface-policy.js';
+import type { RemoteClientRegistry } from '../../clients/client-registry.js';
 
 /** Router helpers - encapsulates complex internal operations */
 export interface RouterHelpers {
@@ -59,6 +60,7 @@ export interface CommandServices {
   getAdapters: () => Map<string, BaseChannelAdapter>;
   topicSessions?: TopicSessionManager;
   getExecutionClients?: () => HomeClientEntry[];
+  remoteClientRegistry?: RemoteClientRegistry;
 }
 
 /** Context passed to each command handler */

@@ -8,6 +8,8 @@ import {
   parseRemoteProtocolMessage,
   REMOTE_PROTOCOL_VERSION,
   type ClientHelloMessage,
+  type ClientCommandMessage,
+  type ClientCommandResultMessage,
   type ClientStatusMessage,
   type ControlMessage,
   type ControlResultMessage,
@@ -66,6 +68,13 @@ interface PendingControl {
   timer: ReturnType<typeof setTimeout>;
 }
 
+interface PendingClientCommand {
+  clientId: string;
+  resolve: (message: ClientCommandResultMessage) => void;
+  reject: (err: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
 export class RemoteClientRegistry {
   private wss: WebSocketServer | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -73,6 +82,7 @@ export class RemoteClientRegistry {
   private readonly clients = new Map<string, RemoteClientConnection>();
   private readonly turns = new Map<string, RegisteredTurn>();
   private readonly pendingControls = new Map<string, PendingControl>();
+  private readonly pendingClientCommands = new Map<string, PendingClientCommand>();
 
   constructor(private readonly options: RemoteClientRegistryOptions) {
     this.serverId = options.serverId || generateId('server', 8);
@@ -117,6 +127,11 @@ export class RemoteClientRegistry {
       pending.reject(new Error('remote server stopped'));
     }
     this.pendingControls.clear();
+    for (const pending of this.pendingClientCommands.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error('remote server stopped'));
+    }
+    this.pendingClientCommands.clear();
     this.wss?.close();
     this.wss = null;
   }
@@ -143,7 +158,6 @@ export class RemoteClientRegistry {
     const candidates = [...this.clients.values()]
       .filter((client) => !preferredClientId || client.clientId === preferredClientId)
       .filter((client) => client.providers.some((p) => p.kind === provider && p.available))
-      .filter((client) => this.clientAcceptsWorkdir(client, workingDirectory))
       .sort((a, b) => a.activeTurns - b.activeTurns || a.clientId.localeCompare(b.clientId));
 
     const selected = candidates[0];
@@ -190,6 +204,47 @@ export class RemoteClientRegistry {
         reject(new Error(`Remote control timed out: ${message.action}`));
       }, timeoutMs);
       this.pendingControls.set(controlId, { resolve, reject, timer });
+      this.send(client.socket, outbound);
+    });
+  }
+
+  async statPath(
+    clientId: string,
+    path: string,
+    timeoutMs = 10_000,
+  ): Promise<ClientCommandResultMessage> {
+    return this.sendClientCommand(clientId, { action: 'path.stat', path }, timeoutMs);
+  }
+
+  async execShell(
+    clientId: string,
+    command: string,
+    cwd: string,
+    options: { timeoutMs?: number; maxBufferBytes?: number } = {},
+  ): Promise<ClientCommandResultMessage> {
+    return this.sendClientCommand(clientId, {
+      action: 'shell.exec',
+      command,
+      cwd,
+      timeoutMs: options.timeoutMs,
+      maxBufferBytes: options.maxBufferBytes,
+    }, options.timeoutMs ? options.timeoutMs + 1_000 : 31_000);
+  }
+
+  private async sendClientCommand(
+    clientId: string,
+    message: Omit<ClientCommandMessage, 'type' | 'commandId'>,
+    timeoutMs: number,
+  ): Promise<ClientCommandResultMessage> {
+    const client = this.requireClient(clientId);
+    const commandId = generateId('cmd', 10);
+    const outbound: ClientCommandMessage = { type: 'client.command', commandId, ...message };
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingClientCommands.delete(commandId);
+        reject(new Error(`Remote client command timed out: ${message.action}`));
+      }, timeoutMs);
+      this.pendingClientCommands.set(commandId, { clientId, resolve, reject, timer });
       this.send(client.socket, outbound);
     });
   }
@@ -259,6 +314,9 @@ export class RemoteClientRegistry {
       case 'control.result':
         this.resolveControl(parsed);
         break;
+      case 'client.command.result':
+        this.resolveClientCommand(parsed);
+        break;
       default:
         console.warn(`[remote-server] unexpected client message: ${parsed.type}`);
     }
@@ -309,6 +367,12 @@ export class RemoteClientRegistry {
       turn.callbacks.onComplete();
       this.turns.delete(turnId);
     }
+    for (const [commandId, pending] of this.pendingClientCommands) {
+      if (pending.clientId !== client.clientId) continue;
+      clearTimeout(pending.timer);
+      pending.reject(new Error(`Remote client disconnected: ${client.clientId}`));
+      this.pendingClientCommands.delete(commandId);
+    }
     console.log(`[remote-server] client disconnected id=${client.clientId}: ${reason}`);
   }
 
@@ -339,6 +403,14 @@ export class RemoteClientRegistry {
     pending.resolve(message);
   }
 
+  private resolveClientCommand(message: ClientCommandResultMessage): void {
+    const pending = this.pendingClientCommands.get(message.commandId);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.pendingClientCommands.delete(message.commandId);
+    pending.resolve(message);
+  }
+
   private updateClientStatus(client: RemoteClientConnection, message: ClientStatusMessage): void {
     client.activeTurns = message.activeTurns;
     client.sessions = message.sessions ?? client.sessions;
@@ -363,14 +435,6 @@ export class RemoteClientRegistry {
       turn.callbacks.onComplete();
     }
     this.turns.clear();
-  }
-
-  private clientAcceptsWorkdir(client: RemoteClientConnection, workingDirectory: string): boolean {
-    if (!client.workspaces.length) return true;
-    return client.workspaces.some((workspace) => {
-      const root = workspace.path.replace(/[\\/]+$/, '');
-      return workingDirectory === root || workingDirectory.startsWith(`${root}/`);
-    });
   }
 
   private requireClient(clientId: string): RemoteClientConnection {

@@ -18,6 +18,7 @@ import type { RouterHelpers, CommandServices } from './commands/types.js';
 import type { PermissionCoordinator } from './coordinators/permission.js';
 import type { Locale } from '../../shared/i18n/index.js';
 import type { TopicSessionManager } from './state/topic-sessions.js';
+import type { RemoteClientRegistry } from '../clients/client-registry.js';
 import { commandRegistry, registerAllCommands } from './commands/index.js';
 import { isPublicTextCommand } from './commands/slash-policy.js';
 import type { ActionCallback } from '../../shared/core/callbacks.js';
@@ -55,6 +56,7 @@ export class CommandRouter {
     projectsConfig?: ProjectsValidationResult,
     topicSessions?: TopicSessionManager,
     getExecutionClients?: () => HomeClientEntry[],
+    remoteClientRegistry?: RemoteClientRegistry,
   ) {
     this.projectsConfig = projectsConfig;
     this.services = {
@@ -73,6 +75,7 @@ export class CommandRouter {
       getAdapters,
       topicSessions,
       getExecutionClients,
+      remoteClientRegistry,
     };
     this.homePayloadBuilder = new HomePayloadBuilder({
       store,

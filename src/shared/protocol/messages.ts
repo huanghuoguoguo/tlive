@@ -145,6 +145,33 @@ export interface ControlResultMessage {
   error?: string;
 }
 
+export type ClientCommandAction = 'path.stat' | 'shell.exec';
+
+export interface ClientCommandMessage {
+  type: 'client.command';
+  commandId: string;
+  action: ClientCommandAction;
+  path?: string;
+  cwd?: string;
+  command?: string;
+  timeoutMs?: number;
+  maxBufferBytes?: number;
+}
+
+export interface ClientCommandResultMessage {
+  type: 'client.command.result';
+  commandId: string;
+  ok: boolean;
+  path?: string;
+  exists?: boolean;
+  isDirectory?: boolean;
+  stdout?: string;
+  stderr?: string;
+  exitCode?: number;
+  signal?: string;
+  error?: string;
+}
+
 export type RemoteInteractionKind = 'permission' | 'ask_user_question' | 'deferred_tool';
 
 export interface InteractionRequestMessage {
@@ -178,6 +205,7 @@ export type ClientToServerMessage =
   | TurnErrorMessage
   | InteractionRequestMessage
   | ControlResultMessage
+  | ClientCommandResultMessage
   | ClientStatusMessage;
 
 export type ServerToClientMessage =
@@ -185,6 +213,7 @@ export type ServerToClientMessage =
   | ServerPingMessage
   | TurnStartMessage
   | ControlMessage
+  | ClientCommandMessage
   | InteractionResponseMessage;
 
 export type RemoteProtocolMessage = ClientToServerMessage | ServerToClientMessage;
@@ -262,6 +291,29 @@ export const remoteProtocolMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('control.result'),
     controlId: z.string(),
     ok: z.boolean(),
+    error: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal('client.command'),
+    commandId: z.string(),
+    action: z.enum(['path.stat', 'shell.exec']),
+    path: z.string().optional(),
+    cwd: z.string().optional(),
+    command: z.string().optional(),
+    timeoutMs: z.number().int().positive().optional(),
+    maxBufferBytes: z.number().int().positive().optional(),
+  }),
+  z.object({
+    type: z.literal('client.command.result'),
+    commandId: z.string(),
+    ok: z.boolean(),
+    path: z.string().optional(),
+    exists: z.boolean().optional(),
+    isDirectory: z.boolean().optional(),
+    stdout: z.string().optional(),
+    stderr: z.string().optional(),
+    exitCode: z.number().int().optional(),
+    signal: z.string().optional(),
     error: z.string().optional(),
   }),
   z.object({

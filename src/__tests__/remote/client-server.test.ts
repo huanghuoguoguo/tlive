@@ -48,7 +48,9 @@ describe('remote client/server bridge', () => {
 
   it('streams a remote provider turn over WebSocket', async () => {
     const root = mkdtempSync(join(tmpdir(), 'tlive-remote-'));
+    const outsideRoot = mkdtempSync(join(tmpdir(), 'tlive-remote-outside-'));
     cleanup.push(() => rmSync(root, { recursive: true, force: true }));
+    cleanup.push(() => rmSync(outsideRoot, { recursive: true, force: true }));
     const port = await freePort();
     const registry = new RemoteClientRegistry({
       port,
@@ -77,8 +79,15 @@ describe('remote client/server bridge', () => {
 
     await waitFor(() => registry.listClients().find((client) => client.clientId === 'worker-1'));
 
+    const statResult = await registry.statPath('worker-1', outsideRoot);
+    expect(statResult).toMatchObject({ ok: true, exists: true, isDirectory: true });
+
+    const shellResult = await registry.execShell('worker-1', 'pwd', outsideRoot);
+    expect(shellResult.ok).toBe(true);
+    expect(shellResult.stdout?.trim()).toBe(outsideRoot);
+
     const provider = new RemoteAgentProvider('claude', registry);
-    const session = provider.createSession({ workingDirectory: root });
+    const session = provider.createSession({ workingDirectory: outsideRoot });
     const result = session.startTurn('hello remote');
     const events = await collect(result.stream);
 

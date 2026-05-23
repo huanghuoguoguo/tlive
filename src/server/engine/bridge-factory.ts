@@ -5,6 +5,7 @@ import type { Config, ProjectsValidationResult } from '../../shared/config.js';
 import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';
 import type { HomeClientEntry } from '../../shared/formatting/message-types.js';
+import type { RemoteClientRegistry } from '../clients/client-registry.js';
 import { ChannelRouter } from './channel-router.js';
 import { PendingPermissions } from './permissions/gateway.js';
 import { SessionStateManager } from './state/session-state.js';
@@ -57,6 +58,7 @@ export interface BridgeFactoryDeps {
   config: Config;
   getAdapters?: () => Map<string, BaseChannelAdapter>;
   getExecutionClients?: () => HomeClientEntry[];
+  remoteClientRegistry?: RemoteClientRegistry;
   appendSystemPrompt?: string;
 }
 
@@ -154,6 +156,7 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
     projectsConfig,
     topicSessions,
     deps.getExecutionClients,
+    deps.remoteClientRegistry,
   );
 
   return {
