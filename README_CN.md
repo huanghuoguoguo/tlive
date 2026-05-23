@@ -77,18 +77,25 @@ tlive 本地运行，通过飞书长连接接收消息，再驱动选定的本�
 
 ## IM 命令
 
+主窗口是只处理命令的工作台。发送 `/tlive` 或 `/home` 打开工作台后，从 client
+折叠块里新建 Claude/Codex 会话。每个新会话都会作为独立的飞书 / Lark 话题打开。
+
 在 agent 话题内直接发送任务：
 
 ```text
 Fix the login bug in auth.ts
 ```
 
-公开文本命令刻意保持很少，这样 `/model` 这类 agent 自己的 slash 命令可以透传给 Claude Code 或 Codex。
+主窗口里的普通文本不会启动 agent 会话。如果连接了多个执行 client，可以在工作台输入
+`/use <client-id>` 设置默认 client。只有一个 client 时，TLive 会自动选中它。
+
+公开工作台命令刻意保持很少，这样话题内的 `/model` 这类 agent 自己的 slash 命令可以透传给 Claude Code 或 Codex。
 
 | 命令 | 说明 |
 |------|------|
 | `/tlive` | 打开 TLive 工作台 |
 | `/home` | 工作台别名 |
+| `/use <client-id>` | 设置工作台默认执行 client |
 | `/stop` | 中断当前执行 |
 
 其它 TLive 操作通过工作台按钮或工作台命令输入完成，包括新建 Claude/Codex 会话、会话历史、目录切换、权限模式、诊断、重启和升级。
@@ -108,6 +115,7 @@ TL_PROVIDER=codex
 ### 远端 Worker
 
 中心机器可以只运行飞书 Bot 和调度层，多台工作机通过 WebSocket 连接回来执行本机 Claude/Codex 会话。
+server 主机默认也会作为一个 local 执行 client 出现在工作台里。如果 server 只负责调度远端机器，可以设置 `TL_LOCAL_CLIENT_ENABLED=false`。
 
 中心机器：
 

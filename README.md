@@ -75,18 +75,26 @@ The bridge runs locally, connects to Feishu through the Feishu/Lark SDK long con
 
 ## IM Commands
 
-Send a normal message inside an agent topic to start or continue work:
+The main chat is a command-only workbench. Use `/tlive` or `/home` to open it, then start
+Claude/Codex sessions from the client blocks. Each new session opens as its own Feishu/Lark topic.
+
+Send normal task messages inside an agent topic to start or continue work:
 
 ```text
 Fix the login bug in auth.ts
 ```
 
-Public text commands are intentionally small so agent slash commands such as `/model` can pass through to Claude Code or Codex.
+Normal text sent in the main chat will not start an agent session. If more than one execution
+client is connected, use `/use <client-id>` in the workbench to choose the default client. When
+there is exactly one client, TLive selects it automatically.
+
+Public workbench commands are intentionally small so agent slash commands such as `/model` can pass through to Claude Code or Codex inside topics.
 
 | Command | Description |
 |---------|-------------|
 | `/tlive` | Open the TLive workbench |
 | `/home` | Alias for the workbench |
+| `/use <client-id>` | Set the default execution client for the workbench |
 | `/stop` | Interrupt current execution |
 
 Other TLive operations are exposed in the workbench as buttons or command input, including new Claude/Codex sessions, session history, directory changes, permission mode, diagnostics, restart, and upgrade.
@@ -106,6 +114,7 @@ The workbench shows new-session buttons only for detected local CLIs. Install `c
 ### Remote Workers
 
 One machine can run the Feishu bot and scheduler while worker machines connect over WebSocket and run local Claude/Codex sessions.
+The server host is also exposed as a local execution client by default. Set `TL_LOCAL_CLIENT_ENABLED=false` if the server should only coordinate remote clients.
 
 Server machine:
 
