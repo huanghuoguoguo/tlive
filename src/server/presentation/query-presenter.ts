@@ -1,17 +1,18 @@
-import type { BaseChannelAdapter } from '../../channels/base.js';
-import type { InboundMessage, RenderedMessage } from '../../channels/types.js';
-import { chunkByParagraph } from '../../../shared/formatting/text-chunk.js';
-import type { MessageRendererState } from './renderer.js';
-import { truncate } from '../../../shared/core/string.js';
-import { buildProgressData } from './progress-builder.js';
-import type { Button } from '../../../shared/ui/types.js';
-import { t } from '../../../shared/i18n/index.js';
-import { withInboundReplyContext } from '../../channels/reply-context.js';
+import type { BaseChannelAdapter } from '../channels/base.js';
+import type { InboundMessage, RenderedMessage } from '../channels/types.js';
+import type { TaskSummaryData } from '../../shared/formatting/message-types.js';
+import { chunkByParagraph } from '../../shared/formatting/text-chunk.js';
+import type { MessageRendererState } from '../engine/messages/renderer.js';
+import { truncate } from '../../shared/core/string.js';
+import { buildProgressData } from '../engine/messages/progress-builder.js';
+import type { Button } from '../../shared/ui/types.js';
+import { t } from '../../shared/i18n/index.js';
+import { withInboundReplyContext } from '../channels/reply-context.js';
 import {
   conversationSurface,
   progressButtonsForSurface,
   taskSummaryButtonsForSurface,
-} from '../conversations/surface-policy.js';
+} from '../engine/conversations/surface-policy.js';
 
 /** Pass buttons through unchanged */
 function castButtons(buttons?: Button[]): Button[] | undefined {
@@ -161,7 +162,7 @@ export class QueryExecutionPresenter {
     permissionRequests: number;
     errorMessage?: string;
     footerLine?: string;
-  }): import('../../../shared/formatting/message-types.js').TaskSummaryData {
+  }): TaskSummaryData {
     // Allow full summary for task completion (up to 5000 chars)
     const locale = this.adapter.getLocale();
     const summarySource = (state.responseText || '').trim();

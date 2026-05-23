@@ -11,8 +11,8 @@ import type {
   NewSessionData,
   DiagnoseData,
   FormattableMessage,
-} from '../../../shared/formatting/message-types.js';
-import { t, type Locale } from '../../../shared/i18n/index.js';
+} from '../../shared/formatting/message-types.js';
+import { t, type Locale } from '../../shared/i18n/index.js';
 
 export function presentStatus(chatId: string, data: StatusData): FormattableMessage {
   return { type: 'status', chatId, data };

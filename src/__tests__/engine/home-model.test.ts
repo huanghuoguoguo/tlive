@@ -6,7 +6,7 @@ import {
   buildRecentProjects,
   buildTopicEntries,
   hasActiveTaskInConversation,
-} from '../../server/engine/presenters/home-model.js';
+} from '../../server/presentation/home-model.js';
 import { TopicSessionManager } from '../../server/engine/state/topic-sessions.js';
 import type { ScannedSession } from '../../client/providers/session-scanner.js';
 import type { ChannelBinding } from '../../server/store/interface.js';

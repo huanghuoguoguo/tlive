@@ -1,6 +1,6 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
-import { presentStatus } from '../messages/presenter.js';
+import { presentStatus } from '../../presentation/command-presenter.js';
 import { getCurrentVersion } from '../../../shared/utils/version-checker.js';
 import { formatSize } from '../../../shared/formatting/session-format.js';
 

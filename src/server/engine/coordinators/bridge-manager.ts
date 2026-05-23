@@ -1,9 +1,9 @@
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage, RenderedMessage } from '../../channels/types.js';
 import type { FormattableMessage } from '../../../shared/formatting/message-types.js';
-import type { TliveMcpBridge } from '../mcp/bridge.js';
+import type { TliveMcpBridge } from '../../mcp/bridge.js';
 import { loadConfig, type Config } from '../../../shared/config.js';
-import { TliveMcpHttpServer } from '../mcp/http-server.js';
+import { TliveMcpHttpServer } from '../../mcp/http-server.js';
 import type { BridgeStore } from '../../store/interface.js';
 import type { HomeClientEntry } from '../../../shared/formatting/message-types.js';
 import type { AgentProvider } from '../../../shared/providers/base.js';

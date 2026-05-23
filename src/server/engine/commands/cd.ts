@@ -4,7 +4,7 @@ import {
   presentDirectory,
   presentDirectoryHistory,
   presentDirectoryNotFound,
-} from '../messages/presenter.js';
+} from '../../presentation/command-presenter.js';
 import { shortPath, expandTilde } from '../../../shared/core/path.js';
 import { generateSessionId } from '../../../shared/core/id.js';
 import { existsSync } from 'node:fs';

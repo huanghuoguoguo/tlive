@@ -1,21 +1,21 @@
-import type { BridgeStore } from '../../store/interface.js';
-import type { SessionStateManager } from '../state/session-state.js';
-import type { WorkspaceStateManager } from '../state/workspace-state.js';
-import type { SDKEngine } from '../sdk/engine.js';
-import type { PermissionCoordinator } from '../coordinators/permission.js';
+import type { BridgeStore } from '../store/interface.js';
+import type { SessionStateManager } from '../engine/state/session-state.js';
+import type { WorkspaceStateManager } from '../engine/state/workspace-state.js';
+import type { SDKEngine } from '../engine/sdk/engine.js';
+import type { PermissionCoordinator } from '../engine/coordinators/permission.js';
 import type {
   HomeClientEntry,
   HomeData,
   HomeProviderEntry,
-} from '../../../shared/formatting/message-types.js';
-import type { QueryControls } from '../../../shared/providers/base.js';
-import type { AgentProviderRegistry } from '../../../client/providers/registry.js';
-import { agentSessionKey } from '../../../shared/providers/kinds.js';
-import type { Locale } from '../../../shared/i18n/index.js';
-import type { TopicSessionManager, TopicSessionRecord } from '../state/topic-sessions.js';
-import type { BaseChannelAdapter } from '../../channels/base.js';
-import { shortPath } from '../../../shared/core/path.js';
-import { formatRelativeTime } from '../../../shared/formatting/session-format.js';
+} from '../../shared/formatting/message-types.js';
+import type { QueryControls } from '../../shared/providers/base.js';
+import type { AgentProviderRegistry } from '../../client/providers/registry.js';
+import { agentSessionKey } from '../../shared/providers/kinds.js';
+import type { Locale } from '../../shared/i18n/index.js';
+import type { TopicSessionManager, TopicSessionRecord } from '../engine/state/topic-sessions.js';
+import type { BaseChannelAdapter } from '../channels/base.js';
+import { shortPath } from '../../shared/core/path.js';
+import { formatRelativeTime } from '../../shared/formatting/session-format.js';
 import {
   buildActiveSdkSessionBindings,
   buildHomeSessionEntries,

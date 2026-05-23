@@ -1,24 +1,24 @@
 import { basename } from 'node:path';
-import { THREAD_SCOPE_SEPARATOR, splitChatKey } from '../../../shared/core/key.js';
-import { shortPath } from '../../../shared/core/path.js';
-import { SESSION_STALE_THRESHOLD_MS } from '../../../shared/core/timing.js';
+import { THREAD_SCOPE_SEPARATOR, splitChatKey } from '../../shared/core/key.js';
+import { shortPath } from '../../shared/core/path.js';
+import { SESSION_STALE_THRESHOLD_MS } from '../../shared/core/timing.js';
 import {
   formatRelativeTime,
   formatSessionDate,
   formatSize,
-} from '../../../shared/formatting/session-format.js';
-import type { HomeData } from '../../../shared/formatting/message-types.js';
-import type { QueryControls } from '../../../shared/providers/base.js';
+} from '../../shared/formatting/session-format.js';
+import type { HomeData } from '../../shared/formatting/message-types.js';
+import type { QueryControls } from '../../shared/providers/base.js';
 import {
   agentSessionKey,
   normalizeAgentProviderKind,
   type AgentProviderKind,
-} from '../../../shared/providers/kinds.js';
-import type { AgentSessionDescriptor } from '../../../shared/formatting/message-types.js';
-import type { ChannelBinding } from '../../store/interface.js';
-import type { Locale } from '../../../shared/i18n/index.js';
-import type { TopicSessionManager, TopicSessionRecord } from '../state/topic-sessions.js';
-import { t } from '../../../shared/i18n/index.js';
+} from '../../shared/providers/kinds.js';
+import type { AgentSessionDescriptor } from '../../shared/formatting/message-types.js';
+import type { ChannelBinding } from '../store/interface.js';
+import type { Locale } from '../../shared/i18n/index.js';
+import type { TopicSessionManager, TopicSessionRecord } from '../engine/state/topic-sessions.js';
+import { t } from '../../shared/i18n/index.js';
 
 export type BoundInfo = {
   channelType: string;

@@ -3,7 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import * as z from 'zod/v4';
 import type { TliveMcpBridge } from './bridge.js';
-import { FileDeliveryService } from '../file-delivery/service.js';
+import { FileDeliveryService } from '../services/file-delivery.js';
 
 const TLIVE_MCP_TOOLS = [
   'tlive_send_file',

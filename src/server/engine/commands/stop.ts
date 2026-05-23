@@ -1,6 +1,6 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
-import { presentStopResult } from '../messages/presenter.js';
+import { presentStopResult } from '../../presentation/command-presenter.js';
 import { chatKey } from '../../../shared/core/key.js';
 import { t } from '../../../shared/i18n/index.js';
 

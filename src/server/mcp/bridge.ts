@@ -1,6 +1,6 @@
-import type { BaseChannelAdapter } from '../../channels/base.js';
-import type { DeliveryRoute } from '../../channels/delivery-route.js';
-import type { ChannelBinding } from '../../store/interface.js';
+import type { BaseChannelAdapter } from '../channels/base.js';
+import type { DeliveryRoute } from '../channels/delivery-route.js';
+import type { ChannelBinding } from '../store/interface.js';
 
 export interface McpDeliveryTarget extends DeliveryRoute {
   cwd?: string;

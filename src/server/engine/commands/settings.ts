@@ -4,7 +4,7 @@ import {
   presentSettingsStatus,
   presentSettingsChanged,
   presentSettingsUnavailable,
-} from '../messages/presenter.js';
+} from '../../presentation/command-presenter.js';
 import type { AgentSettingSource } from '../../../shared/config.js';
 
 const PRESETS: Record<string, AgentSettingSource[]> = {

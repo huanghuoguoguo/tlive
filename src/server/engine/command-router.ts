@@ -24,7 +24,7 @@ import type { ActionCallback } from '../../shared/core/callbacks.js';
 import { DEFAULT_AGENT_SETTING_SOURCES } from '../../shared/config.js';
 import { findGitRoot } from '../../shared/utils/repo.js';
 import { generateSessionId } from '../../shared/core/id.js';
-import { HomePayloadBuilder } from './presenters/home-payload-builder.js';
+import { HomePayloadBuilder } from '../presentation/home-payload-builder.js';
 import { conversationScopeId } from '../channels/conversation-context.js';
 import { commandRejectionForSurface, conversationSurface } from './conversations/surface-policy.js';
 import { withInboundReplyContext } from '../channels/reply-context.js';

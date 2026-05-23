@@ -1,6 +1,6 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
-import { presentNewSession, presentHome } from '../messages/presenter.js';
+import { presentNewSession, presentHome } from '../../presentation/command-presenter.js';
 import { generateSessionId } from '../../../shared/core/id.js';
 import { t } from '../../../shared/i18n/index.js';
 import type { AgentProviderKind } from '../../../shared/providers/kinds.js';

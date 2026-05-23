@@ -1,6 +1,6 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
-import { presentPermissionStatus } from '../messages/presenter.js';
+import { presentPermissionStatus } from '../../presentation/command-presenter.js';
 
 export class PermCommand extends BaseCommand {
   readonly name = '/perm';

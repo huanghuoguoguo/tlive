@@ -1,6 +1,6 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext, HelpEntry } from './types.js';
-import { presentHelp } from '../messages/presenter.js';
+import { presentHelp } from '../../presentation/command-presenter.js';
 import { commandRegistry } from './registry.js';
 import { helpButtonsForSurface, helpEntriesForSurface } from '../conversations/surface-policy.js';
 

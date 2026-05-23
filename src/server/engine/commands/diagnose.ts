@@ -1,6 +1,6 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
-import { presentDiagnose } from '../messages/presenter.js';
+import { presentDiagnose } from '../../presentation/command-presenter.js';
 import { formatSize } from '../../../shared/formatting/session-format.js';
 
 export class DiagnoseCommand extends BaseCommand {

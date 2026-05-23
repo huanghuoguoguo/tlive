@@ -1,6 +1,6 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
-import { presentHome } from '../messages/presenter.js';
+import { presentHome } from '../../presentation/command-presenter.js';
 import type { FormattableMessage } from '../../../shared/formatting/message-types.js';
 import { t } from '../../../shared/i18n/index.js';
 

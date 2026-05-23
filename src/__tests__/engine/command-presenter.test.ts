@@ -3,7 +3,7 @@ import {
   presentHome,
   presentDiagnose,
   presentUpgradeCommand,
-} from '../../server/engine/messages/presenter.js';
+} from '../../server/presentation/command-presenter.js';
 import { FeishuFormatter } from '../../server/channels/feishu/formatter.js';
 import { HELP_CATEGORIES } from '../../server/engine/commands/help-categories.js';
 

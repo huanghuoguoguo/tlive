@@ -2,8 +2,8 @@ import { readFile, stat } from 'node:fs/promises';
 import type { Stats } from 'node:fs';
 import { basename, extname, resolve } from 'node:path';
 import type { TliveMcpBridge } from '../mcp/bridge.js';
-import { applyDeliveryRoute, type DeliveryRoute } from '../../channels/delivery-route.js';
-import type { MediaAttachment } from '../../../shared/media/attachments.js';
+import { applyDeliveryRoute, type DeliveryRoute } from '../channels/delivery-route.js';
+import type { MediaAttachment } from '../../shared/media/attachments.js';
 
 const MIME_MAP: Record<string, string> = {
   '.png': 'image/png',

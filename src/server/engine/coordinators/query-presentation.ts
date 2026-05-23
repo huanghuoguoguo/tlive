@@ -5,7 +5,7 @@ import { withInboundReplyContext } from '../../channels/reply-context.js';
 import { t } from '../../../shared/i18n/index.js';
 import { buildProgressData } from '../messages/progress-builder.js';
 import { MessageRenderer, type MessageRendererState } from '../messages/renderer.js';
-import { QueryExecutionPresenter } from '../messages/query-presenter.js';
+import { QueryExecutionPresenter } from '../../presentation/query-presenter.js';
 
 export interface QueryTypingHandle {
   stop(): void;

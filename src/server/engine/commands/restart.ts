@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, unlinkSync } from 'node:fs';
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
-import { presentRestartResult } from '../messages/presenter.js';
+import { presentRestartResult } from '../../presentation/command-presenter.js';
 import { getTliveRuntimeDir, writeRestartRequest } from '../../../shared/core/path.js';
 import { join } from 'node:path';
 
