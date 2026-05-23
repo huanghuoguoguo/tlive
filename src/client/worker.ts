@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import type {
   AgentProviderRegistry,
   AgentProviderDescriptor,
-} from './providers/registry.js';
+} from '../shared/providers/registry.js';
 import type { LiveSession, QueryControls } from '../shared/providers/base.js';
 import type { AgentProviderKind } from '../shared/providers/kinds.js';
 import { generateId } from '../shared/core/id.js';
@@ -25,7 +25,7 @@ import {
   type ServerToClientMessage,
   type TurnStartMessage,
 } from '../shared/protocol/messages.js';
-import { listLocalSessionDescriptors } from './session-index.js';
+import { invalidateLocalSessionIndex, listLocalSessionDescriptors } from './session-index.js';
 
 const execAsync = promisify(exec);
 
@@ -254,6 +254,7 @@ export class RemoteClientWorker {
       });
     } finally {
       this.activeTurns.delete(message.turnId);
+      invalidateLocalSessionIndex();
       this.sendStatus();
     }
   }

@@ -9,7 +9,7 @@ import type {
   HomeProviderEntry,
 } from '../../shared/formatting/message-types.js';
 import type { QueryControls } from '../../shared/providers/base.js';
-import type { AgentProviderRegistry } from '../../client/providers/registry.js';
+import type { AgentProviderRegistry } from '../../shared/providers/registry.js';
 import { agentSessionKey } from '../../shared/providers/kinds.js';
 import type { Locale } from '../../shared/i18n/index.js';
 import type { TopicSessionManager, TopicSessionRecord } from '../engine/state/topic-sessions.js';

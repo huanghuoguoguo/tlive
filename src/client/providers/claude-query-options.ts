@@ -9,7 +9,7 @@ import type {
   PermissionRequestHandler,
   QueryControls,
 } from '../../shared/providers/base.js';
-import { isDeferredToolName } from './deferred-tools.js';
+import { isDeferredToolName } from '../../shared/providers/deferred-tools.js';
 
 export interface ClaudeCanUseToolOptions {
   decisionReason?: string;

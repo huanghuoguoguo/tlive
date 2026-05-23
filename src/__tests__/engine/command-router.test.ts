@@ -10,7 +10,7 @@ import { TopicSessionManager } from '../../server/engine/state/topic-sessions.js
 import { ChannelRouter } from '../../server/engine/channel-router.js';
 import { JsonFileStore } from '../../server/store/json-file.js';
 import { ClaudeSDKProvider } from '../../client/providers/claude-sdk.js';
-import { AgentProviderRegistry, singleProviderRegistry } from '../../client/providers/registry.js';
+import { AgentProviderRegistry, singleProviderRegistry } from '../../shared/providers/registry.js';
 import { loadProjectsConfig, type AgentSettingSource } from '../../shared/config.js';
 import type { SDKEngine } from '../../server/engine/sdk/engine.js';
 import type { PermissionCoordinator } from '../../server/engine/coordinators/permission.js';

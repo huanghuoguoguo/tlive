@@ -7,8 +7,7 @@ import type { BridgeStore } from '../../store/interface.js';
 import type { ConversationEngine } from '../conversation-engine.js';
 import { preparePromptWithFileAttachments } from '../conversation-engine.js';
 import type { StreamChatResult } from '../../../shared/providers/base.js';
-import type { AgentProviderRegistry } from '../../../client/providers/registry.js';
-import { invalidateLocalSessionIndex } from '../../../client/session-index.js';
+import type { AgentProviderRegistry } from '../../../shared/providers/registry.js';
 import type { SessionStateManager } from '../state/session-state.js';
 import { SessionStaleError, isStaleSessionError } from '../state/session-stale-error.js';
 import type { SDKEngine } from '../sdk/engine.js';
@@ -192,7 +191,6 @@ export class QueryTurnRunner {
         console.log(
           `[query] ${ctx.requestId} COMPLETE tokens=${event.usage.inputTokens}+${event.usage.outputTokens} cost=${event.usage.costUsd?.toFixed(4) || '?'}$`,
         );
-        invalidateLocalSessionIndex();
         if (DEBUG_EVENTS) {
           const state = renderer.getDebugSnapshot();
           console.log(
@@ -213,7 +211,6 @@ export class QueryTurnRunner {
         if (queryFailed) return;
         queryFailed = true;
         console.error(`[query] ${ctx.requestId} ERROR ${err.slice(0, 200)}`);
-        invalidateLocalSessionIndex();
         if (DEBUG_EVENTS) {
           const state = renderer.getDebugSnapshot();
           console.log(
@@ -228,7 +225,6 @@ export class QueryTurnRunner {
       queryFailed = true;
       const err = `${provider.displayName} stream ended without a result event`;
       console.error(`[query] ${ctx.requestId} ERROR ${err}`);
-      invalidateLocalSessionIndex();
       await renderer.onError(err);
     }
 

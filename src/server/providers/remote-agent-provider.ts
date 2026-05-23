@@ -18,7 +18,7 @@ import type {
   RemoteInteractionKind,
   TurnStartMessage,
 } from '../../shared/protocol/messages.js';
-import type { RemoteClientRegistry, RemoteClientSnapshot } from './client-registry.js';
+import type { RemoteClientRegistry, RemoteClientSnapshot } from '../clients/client-registry.js';
 
 function remoteDisplayName(provider: AgentProviderKind): string {
   return provider === 'claude' ? 'Remote Claude Code' : 'Remote Codex';

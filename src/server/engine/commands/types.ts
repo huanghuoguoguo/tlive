@@ -2,7 +2,7 @@ import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage } from '../../channels/types.js';
 import type { BridgeStore, ChannelBinding } from '../../store/interface.js';
 import type { AgentProvider, QueryControls } from '../../../shared/providers/base.js';
-import type { AgentProviderRegistry } from '../../../client/providers/registry.js';
+import type { AgentProviderRegistry } from '../../../shared/providers/registry.js';
 import type { SessionStateManager } from '../state/session-state.js';
 import type { WorkspaceStateManager } from '../state/workspace-state.js';
 import type { RecentProjectsManager } from '../state/recent-projects.js';

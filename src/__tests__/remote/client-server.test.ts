@@ -5,9 +5,9 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { RemoteClientWorker } from '../../client/worker.js';
 import type { CanonicalEvent } from '../../shared/canonical/schema.js';
-import { RemoteAgentProvider } from '../../server/clients/remote-agent-provider.js';
+import { RemoteAgentProvider } from '../../server/providers/remote-agent-provider.js';
 import { RemoteClientRegistry } from '../../server/clients/client-registry.js';
-import { singleProviderRegistry } from '../../client/providers/registry.js';
+import { singleProviderRegistry } from '../../shared/providers/registry.js';
 import { FakeClaudeProvider, waitFor } from '../e2e/harness.js';
 import type { AgentProvider } from '../../shared/providers/base.js';
 

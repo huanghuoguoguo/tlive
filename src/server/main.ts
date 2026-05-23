@@ -1,7 +1,7 @@
 import { loadConfig } from '../shared/config.js';
 import { Logger } from '../shared/logger.js';
 import { JsonFileStore } from './store/json-file.js';
-import { createAgentProviderRegistry } from '../client/providers/factory.js';
+import { createClientBackedAgentProviderRegistry } from './providers/client-backed-factory.js';
 import { BridgeManager } from './engine/coordinators/bridge-manager.js';
 import { FeishuAdapter } from './channels/feishu/adapter.js';
 import { RemoteClientRegistry } from './clients/client-registry.js';
@@ -445,7 +445,7 @@ export async function main() {
 
   // Initialize components
   const store = new JsonFileStore(join(tliveHome, 'data'));
-  const providers = createAgentProviderRegistry(config, { remoteClientRegistry: remoteClients });
+  const providers = createClientBackedAgentProviderRegistry(config, remoteClients);
   const llm = providers.defaultProvider;
   const getExecutionClients = (): HomeClientEntry[] => {
     return remoteClients.listClients().map((client) => ({

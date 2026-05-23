@@ -1,5 +1,5 @@
-import type { AgentProvider } from '../../shared/providers/base.js';
-import { DEFAULT_AGENT_PROVIDER_KIND, type AgentProviderKind } from '../../shared/providers/kinds.js';
+import type { AgentProvider } from './base.js';
+import { DEFAULT_AGENT_PROVIDER_KIND, type AgentProviderKind } from './kinds.js';
 
 export interface AgentProviderDescriptor {
   kind: AgentProviderKind;

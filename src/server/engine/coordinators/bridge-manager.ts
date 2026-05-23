@@ -7,7 +7,7 @@ import { TliveMcpHttpServer } from '../../mcp/http-server.js';
 import type { BridgeStore } from '../../store/interface.js';
 import type { HomeClientEntry } from '../../../shared/formatting/message-types.js';
 import type { AgentProvider } from '../../../shared/providers/base.js';
-import type { AgentProviderRegistry } from '../../../client/providers/registry.js';
+import type { AgentProviderRegistry } from '../../../shared/providers/registry.js';
 import type { RemoteClientRegistry } from '../../clients/client-registry.js';
 import {
   createBridgeComponents,

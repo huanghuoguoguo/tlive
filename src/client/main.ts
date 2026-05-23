@@ -1,5 +1,5 @@
 import { loadConfig } from '../shared/config.js';
-import { createAgentProviderRegistry } from './providers/factory.js';
+import { createLocalAgentProviderRegistry } from './providers/local-factory.js';
 import { getCurrentVersion } from '../shared/utils/version-checker.js';
 import { generateId } from '../shared/core/id.js';
 import { defaultRemoteClientName, RemoteClientWorker } from './worker.js';
@@ -39,7 +39,7 @@ function parseList(value: string | undefined): string[] {
 export async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const config = loadConfig({ validateBridge: false });
-  const providers = createAgentProviderRegistry(config);
+  const providers = createLocalAgentProviderRegistry(config);
   const worker = new RemoteClientWorker(providers, {
     serverUrl: args.serverUrl || config.remote.client.serverUrl,
     token: args.token ?? config.remote.client.token,

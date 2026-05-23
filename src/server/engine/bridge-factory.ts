@@ -1,6 +1,6 @@
 import type { BridgeStore } from '../store/interface.js';
 import type { AgentProvider } from '../../shared/providers/base.js';
-import { singleProviderRegistry, type AgentProviderRegistry } from '../../client/providers/registry.js';
+import { singleProviderRegistry, type AgentProviderRegistry } from '../../shared/providers/registry.js';
 import type { Config, ProjectsValidationResult } from '../../shared/config.js';
 import type { BaseChannelAdapter } from '../channels/base.js';
 import type { InboundMessage } from '../channels/types.js';

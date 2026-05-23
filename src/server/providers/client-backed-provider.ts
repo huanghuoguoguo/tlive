@@ -8,7 +8,7 @@ import type {
 } from '../../shared/providers/base.js';
 import type { AgentProviderKind } from '../../shared/providers/kinds.js';
 import { RemoteAgentProvider } from './remote-agent-provider.js';
-import type { RemoteClientRegistry } from './client-registry.js';
+import type { RemoteClientRegistry } from '../clients/client-registry.js';
 
 export interface ClientBackedAgentProviderOptions {
   kind: AgentProviderKind;

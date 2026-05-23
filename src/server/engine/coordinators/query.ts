@@ -12,7 +12,7 @@ import type { AgentSettingSource } from '../../../shared/config.js';
 import type { TopicSessionManager } from '../state/topic-sessions.js';
 import { Logger, type LogContext } from '../../../shared/logger.js';
 import type { AgentProvider } from '../../../shared/providers/base.js';
-import { singleProviderRegistry, type AgentProviderRegistry } from '../../../client/providers/registry.js';
+import { singleProviderRegistry, type AgentProviderRegistry } from '../../../shared/providers/registry.js';
 import { QueryContext } from './query-context.js';
 import { withInboundReplyContext } from '../../channels/reply-context.js';
 import { t } from '../../../shared/i18n/index.js';

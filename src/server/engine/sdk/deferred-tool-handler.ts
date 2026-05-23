@@ -13,7 +13,7 @@ import { generateId } from '../../../shared/core/id.js';
 import { DEFAULT_PERMISSION_TIMEOUT_MS } from '../../../shared/core/timing.js';
 import { conversationScopeId } from '../../channels/conversation-context.js';
 import { withInboundReplyContext } from '../../channels/reply-context.js';
-import { isDeferredToolName, type DeferredToolName } from '../../../client/providers/deferred-tools.js';
+import { isDeferredToolName, type DeferredToolName } from '../../../shared/providers/deferred-tools.js';
 import { t } from '../../../shared/i18n/index.js';
 
 /** Translation keys for deferred tool prompts */
