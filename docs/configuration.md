@@ -5,7 +5,6 @@ Config file location: `~/.tlive/config.env`
 ## Basic Settings
 
 ```env
-TL_PORT=8080
 TL_TOKEN=auto-generated
 TL_DEFAULT_WORKDIR=/home/user/projects
 TL_DEFAULT_MODEL=
@@ -41,8 +40,6 @@ See [Feishu Setup Guide](setup-feishu.md).
 TL_AGENT_SETTINGS=user,project,local
 ```
 
-Existing `TL_CLAUDE_SETTINGS` configs are still accepted as an alias.
-
 Use `/settings user|full|isolated` to override Claude settings for the current chat only:
 
 - `user`: auth/model config only
@@ -68,7 +65,6 @@ local client unless `--standalone` is passed.
 TL_REMOTE_SERVER_PORT=8787
 TL_REMOTE_SERVER_PATH=/tlive
 TL_REMOTE_TOKEN=
-TL_REMOTE_PROVIDERS=claude,codex
 
 TL_REMOTE_SERVER_URL=ws://your-server:8787/tlive
 TL_REMOTE_CLIENT_ID=

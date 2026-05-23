@@ -33,7 +33,7 @@ export function tliveMcpConfigForCodex(): CodexConfigObject {
 }
 
 function tliveMcpServerConfig(): TliveMcpServerConfig {
-  const url = process.env.TL_MCP_URL?.trim() || process.env.TLIVE_MCP_URL?.trim() || defaultHttpMcpUrl();
+  const url = process.env.TL_MCP_URL?.trim() || defaultHttpMcpUrl();
   const token =
     process.env.TL_MCP_TOKEN?.trim() ||
     process.env.TL_REMOTE_TOKEN?.trim() ||
@@ -48,7 +48,6 @@ function tliveMcpServerConfig(): TliveMcpServerConfig {
 function defaultHttpMcpUrl(): string {
   const path = normalizePath(process.env.TL_MCP_PATH?.trim() || '/mcp');
   const base =
-    process.env.TLIVE_MCP_BRIDGE_URL?.trim() ||
     httpBaseFromRemoteServerUrl(process.env.TL_REMOTE_SERVER_URL?.trim()) ||
     `http://127.0.0.1:${process.env.TL_MCP_PORT?.trim() || '8081'}`;
   return `${base.replace(/\/+$/, '')}${path}`;

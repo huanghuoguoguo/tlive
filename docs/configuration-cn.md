@@ -5,7 +5,6 @@
 ## 基本配置
 
 ```env
-TL_PORT=8080
 TL_TOKEN=auto-generated
 TL_DEFAULT_WORKDIR=/home/user/projects
 TL_DEFAULT_MODEL=
@@ -41,8 +40,6 @@ TL_FS_ALLOWED_USERS=ou_xxx,xxx
 TL_AGENT_SETTINGS=user,project,local
 ```
 
-已有的 `TL_CLAUDE_SETTINGS` 配置仍会作为别名读取。
-
 可通过 `/settings user|full|isolated` 仅覆盖当前 chat 的 Claude 设置：
 
 - `user`：只加载全局认证和模型配置
@@ -68,7 +65,6 @@ client，除非传入 `--standalone`。
 TL_REMOTE_SERVER_PORT=8787
 TL_REMOTE_SERVER_PATH=/tlive
 TL_REMOTE_TOKEN=
-TL_REMOTE_PROVIDERS=claude,codex
 
 TL_REMOTE_SERVER_URL=ws://your-server:8787/tlive
 TL_REMOTE_CLIENT_ID=

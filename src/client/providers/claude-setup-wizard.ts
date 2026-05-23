@@ -69,7 +69,6 @@ export async function runSetupWizard(): Promise<void> {
   if (isUpdate) {
     console.log(`Existing config: ${CONFIG_PATH}`);
     console.log('  Channel: feishu');
-    console.log(`  Port: ${existing.TL_PORT || '8080'}`);
     console.log('');
 
     const mode = await ask(
@@ -90,9 +89,8 @@ export async function runSetupWizard(): Promise<void> {
 
   const config = { ...existing };
 
-  // Token + port
+  // Token
   if (!config.TL_TOKEN) config.TL_TOKEN = randomBytes(16).toString('hex');
-  config.TL_PORT = await ask('Web server port', config.TL_PORT || '8080');
 
   console.log('\n--- Feishu ---');
   config.TL_FS_APP_ID = await ask('App ID', config.TL_FS_APP_ID || '');
@@ -100,13 +98,6 @@ export async function runSetupWizard(): Promise<void> {
   config.TL_FS_ALLOWED_USERS = await ask(
     'Allowed user IDs (comma-separated, blank = all)',
     config.TL_FS_ALLOWED_USERS || '',
-  );
-
-  // General
-  console.log('\n--- General ---');
-  config.TL_PUBLIC_URL = await ask(
-    'Public URL for web links (blank = local only)',
-    config.TL_PUBLIC_URL || '',
   );
 
   // Write
@@ -119,7 +110,6 @@ export async function runSetupWizard(): Promise<void> {
 
   console.log(`\n✅ Config saved to ${CONFIG_PATH}`);
   console.log(`   Token: ${maskSecret(config.TL_TOKEN)}`);
-  console.log(`   Port: ${config.TL_PORT}`);
   console.log('   Channel: feishu');
   printNextSteps();
 }

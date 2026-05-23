@@ -45,7 +45,6 @@ export interface BridgeComponents {
   query: QueryOrchestrator;
   commands: CommandRouter;
   engine: ConversationEngine;
-  port: number;
   projectsConfig: ProjectsValidationResult | undefined;
 }
 
@@ -74,7 +73,6 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
   const getAdapters = deps.getAdapters ?? (() => new Map<string, BaseChannelAdapter>());
   const runtimeDir = getTliveRuntimeDir();
   const gateway = new PendingPermissions();
-  const port = config.port || 8080;
 
   const router = new ChannelRouter(store);
   const state = new SessionStateManager(runtimeDir);
@@ -131,7 +129,6 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
     defaultWorkdir,
     topicSessions,
     defaultAgentSettingSources: config.agentSettingSources,
-    port,
     appendSystemPrompt: deps.appendSystemPrompt,
     onConversationMessageResolved: async (msg, rawMsg) => {
       ingress.recordDeliveryTarget(msg);
@@ -174,7 +171,6 @@ export function createBridgeComponents(deps: BridgeFactoryDeps): BridgeComponent
     query,
     commands,
     engine,
-    port,
     projectsConfig,
   };
 }

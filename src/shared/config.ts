@@ -38,7 +38,6 @@ export interface ProjectsValidationResult {
 }
 
 export interface Config {
-  port: number;
   token: string;
   provider: ProviderKind;
   /** Locale for i18n (default: 'zh') */
@@ -60,27 +59,6 @@ export interface Config {
     /** Maximum decoded file payload accepted by file tools. */
     maxFileSizeBytes: number;
   };
-  /** Exec configuration — LIMITED shell exec for automation (Phase 3 design only).
-   *
-   * SECURITY WARNING: Exec is disabled by default and should remain disabled
-   * unless you have a specific need and understand the security implications.
-   *
-   * If enabled in future phases:
-   * - Commands will be restricted to an explicit whitelist
-   * - All executions will be logged with full detail
-   * - Timeouts will be enforced
-   * - Exec results will be delivered via IM for visibility
-   */
-  exec: {
-    /** Enable exec capability (default: false, NOT IMPLEMENTED in Phase 3) */
-    enabled: boolean;
-    /** Command whitelist — only these commands can be executed (if enabled) */
-    allowedCommands: string[];
-    /** Execution timeout in milliseconds (default: 30000 = 30 seconds) */
-    timeout: number;
-    /** Log all exec commands to dedicated file */
-    logExec: boolean;
-  };
   feishu: {
     appId: string;
     appSecret: string;
@@ -101,7 +79,6 @@ export interface Config {
       port: number;
       path: string;
       token: string;
-      providers: AgentProviderKind[];
       heartbeatIntervalMs: number;
       clientTimeoutMs: number;
     };
@@ -253,13 +230,6 @@ function normalizeProvider(value: string | undefined): ProviderKind {
   return value === 'codex' ? 'codex' : DEFAULT_AGENT_PROVIDER_KIND;
 }
 
-function normalizeProviderList(value: string | undefined): AgentProviderKind[] {
-  const providers = parseList(value)
-    .map((item) => normalizeProvider(item))
-    .filter((item, index, arr) => arr.indexOf(item) === index);
-  return providers.length ? providers : [DEFAULT_AGENT_PROVIDER_KIND];
-}
-
 function loadEnvFile(path: string): Record<string, string> {
   try {
     const content = readFileSync(path, 'utf-8');
@@ -303,17 +273,14 @@ export function createConfigValueReader(): ConfigValueReader {
 export function loadConfig(options: LoadConfigOptions = {}): Config {
   const get = createConfigValueReader();
 
-  const port = parseInt(get('TL_PORT', '8080'), 10);
   const remoteToken = get('TL_REMOTE_TOKEN', get('TL_TOKEN'));
-  const remoteProviders = normalizeProviderList(get('TL_REMOTE_PROVIDERS', 'claude,codex'));
 
   const config: Config = {
-    port,
     token: get('TL_TOKEN'),
     provider: normalizeProvider(get('TL_PROVIDER', DEFAULT_AGENT_PROVIDER_KIND)),
     locale: normalizeLocale(get('TL_LOCALE')),
     agentSettingSources: parseList(
-      get('TL_AGENT_SETTINGS', get('TL_CLAUDE_SETTINGS', DEFAULT_AGENT_SETTING_SOURCES.join(','))),
+      get('TL_AGENT_SETTINGS', DEFAULT_AGENT_SETTING_SOURCES.join(',')),
     ) as AgentSettingSource[],
     defaultWorkdir: get('TL_DEFAULT_WORKDIR', process.cwd()),
     defaultModel: get('TL_DEFAULT_MODEL'),
@@ -324,14 +291,6 @@ export function loadConfig(options: LoadConfigOptions = {}): Config {
       token: get('TL_MCP_TOKEN', get('TL_REMOTE_TOKEN', get('TL_TOKEN'))),
       maxFileSizeBytes:
         Math.max(1, Number.parseInt(get('TL_MCP_MAX_FILE_MB', '20'), 10) || 20) * 1024 * 1024,
-    },
-    exec: {
-      // IMPORTANT: Exec is disabled by default and not implemented in Phase 3
-      // This is a design placeholder for potential future implementation
-      enabled: false, // Hard-coded false for Phase 3 — no env var override allowed
-      allowedCommands: parseList(get('TL_EXEC_ALLOWED_COMMANDS', '')),
-      timeout: parseInt(get('TL_EXEC_TIMEOUT', '30000'), 10),
-      logExec: get('TL_EXEC_LOG', 'true') === 'true',
     },
     feishu: {
       appId: get('TL_FS_APP_ID'),
@@ -349,7 +308,6 @@ export function loadConfig(options: LoadConfigOptions = {}): Config {
         port: parseInt(get('TL_REMOTE_SERVER_PORT', '8787'), 10),
         path: normalizeHttpPath(get('TL_REMOTE_SERVER_PATH', '/tlive'), '/tlive'),
         token: remoteToken,
-        providers: remoteProviders,
         heartbeatIntervalMs: Math.max(
           5_000,
           Number.parseInt(get('TL_REMOTE_HEARTBEAT_MS', '30000'), 10) || 30_000,

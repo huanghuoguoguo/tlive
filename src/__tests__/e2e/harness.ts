@@ -370,7 +370,6 @@ export function findCallbackData(adapter: TestFeishuAdapter, prefix: string): st
 
 function testConfig(root: string): Config {
   return {
-    port: 8080,
     token: 'test-token',
     provider: 'claude',
     locale: 'zh',
@@ -383,12 +382,6 @@ function testConfig(root: string): Config {
       path: '/mcp',
       token: 'mcp-token',
       maxFileSizeBytes: 20 * 1024 * 1024,
-    },
-    exec: {
-      enabled: false,
-      allowedCommands: [],
-      timeout: 30_000,
-      logExec: true,
     },
     feishu: {
       appId: 'cli_test_app',
@@ -406,7 +399,6 @@ function testConfig(root: string): Config {
         port: 8787,
         path: '/tlive',
         token: 'remote-token',
-        providers: ['claude', 'codex'],
         heartbeatIntervalMs: 30_000,
         clientTimeoutMs: 90_000,
       },

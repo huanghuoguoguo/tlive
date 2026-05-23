@@ -148,7 +148,6 @@ describe('QueryOrchestrator', () => {
       store: mockStore,
       defaultWorkdir: '/tmp/project',
       defaultAgentSettingSources: ['user', 'project', 'local'],
-      port: 8080,
       onConversationMessageResolved: options.onConversationMessageResolved,
     });
 

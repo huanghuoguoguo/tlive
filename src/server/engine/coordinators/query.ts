@@ -38,7 +38,6 @@ interface QueryOrchestratorOptions {
   defaultWorkdir: string;
   topicSessions?: TopicSessionManager;
   defaultAgentSettingSources: AgentSettingSource[];
-  port: number;
   appendSystemPrompt?: string;
   onConversationMessageResolved?: (
     msg: InboundMessage,

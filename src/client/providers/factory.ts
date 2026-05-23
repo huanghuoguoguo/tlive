@@ -49,7 +49,6 @@ export function createAgentProviderRegistry(
   ]);
 
   const useClientBackedProviders = Boolean(options.remoteClientRegistry);
-  const remoteProviders = new Set(useClientBackedProviders ? config.remote.server.providers : []);
   const providers = new Map<AgentProviderKind, AgentProvider>();
 
   const localClaude =
@@ -66,7 +65,7 @@ export function createAgentProviderRegistry(
         })
       : undefined;
 
-  if (useClientBackedProviders && remoteProviders.has('claude')) {
+  if (useClientBackedProviders) {
     providers.set(
       'claude',
       new ClientBackedAgentProvider({
@@ -84,7 +83,7 @@ export function createAgentProviderRegistry(
     providers.set('claude', localClaude);
   }
 
-  if (useClientBackedProviders && remoteProviders.has('codex')) {
+  if (useClientBackedProviders) {
     providers.set(
       'codex',
       new ClientBackedAgentProvider({

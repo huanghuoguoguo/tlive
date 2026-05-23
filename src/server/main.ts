@@ -369,7 +369,6 @@ export async function main() {
     remoteServer: {
       port: config.remote.server.port,
       path: config.remote.server.path,
-      providers: config.remote.server.providers,
     },
     mcp: config.mcp.enabled
       ? {
@@ -437,7 +436,6 @@ export async function main() {
     remoteServer: {
       port: config.remote.server.port,
       path: config.remote.server.path,
-      providers: config.remote.server.providers,
     },
     mcp: config.mcp.enabled
       ? {

@@ -126,7 +126,6 @@ Server machine:
 
 ```env
 TL_REMOTE_TOKEN=change-this-token
-TL_REMOTE_PROVIDERS=claude,codex
 ```
 
 ```bash
@@ -170,8 +169,6 @@ Configure with:
 ```env
 TL_AGENT_SETTINGS=user,project,local
 ```
-
-Existing `TL_CLAUDE_SETTINGS` configs are still accepted as an alias.
 
 ## Upgrade
 

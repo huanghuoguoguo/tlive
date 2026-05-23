@@ -126,7 +126,6 @@ TL_PROVIDER=codex
 
 ```env
 TL_REMOTE_TOKEN=change-this-token
-TL_REMOTE_PROVIDERS=claude,codex
 ```
 
 ```bash
@@ -169,8 +168,6 @@ Claude Code 设置会按当前会话的工作目录加载：
 ```env
 TL_AGENT_SETTINGS=user,project,local
 ```
-
-已有的 `TL_CLAUDE_SETTINGS` 配置仍会作为别名读取。
 
 ## 升级
 
