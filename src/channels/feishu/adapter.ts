@@ -74,7 +74,7 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
     eventDispatcher.register({
       'card.action.trigger': async (data: unknown) => {
         console.log('[feishu] card.action.trigger received:', JSON.stringify(data).slice(0, 500));
-        const result = feishuCardActionToInbound(data);
+        const result = feishuCardActionToInbound(data, this.getLocale());
         if (result.missingAction) {
           console.warn('[feishu] card.action.trigger: no action value found');
         }

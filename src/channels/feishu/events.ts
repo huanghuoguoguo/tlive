@@ -1,4 +1,5 @@
 import type { InboundMessage } from '../types.js';
+import type { Locale } from '../../i18n/index.js';
 import { t } from '../../i18n/index.js';
 import { feishuInboundScope } from './inbound.js';
 
@@ -14,7 +15,7 @@ export interface FeishuCardActionResult {
   missingAction?: boolean;
 }
 
-export function feishuCardActionToInbound(data: unknown): FeishuCardActionResult {
+export function feishuCardActionToInbound(data: unknown, locale: Locale): FeishuCardActionResult {
   const event = data as {
     operator?: { user_id?: string; open_id?: string };
     action?: {
@@ -40,7 +41,7 @@ export function feishuCardActionToInbound(data: unknown): FeishuCardActionResult
         text: '',
         callbackData: `form:${interactionId}:${JSON.stringify(formValue)}`,
       },
-      response: successToast(t('zh', 'adapter.submitted')),
+      response: successToast(t(locale, 'adapter.submitted')),
     };
   }
 
@@ -55,7 +56,7 @@ export function feishuCardActionToInbound(data: unknown): FeishuCardActionResult
       text: '',
       callbackData: action,
     },
-    response: successToast(t('zh', 'adapter.processing')),
+    response: successToast(t(locale, 'adapter.processing')),
   };
 }
 

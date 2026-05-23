@@ -374,6 +374,7 @@ function testConfig(root: string): Config {
     port: 8080,
     token: 'test-token',
     provider: 'claude',
+    locale: 'zh',
     defaultWorkdir: root,
     defaultModel: '',
     agentSettingSources: ['user', 'project', 'local'],
