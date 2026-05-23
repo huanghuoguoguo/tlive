@@ -27,13 +27,13 @@ export { DEFAULT_DONE_BUTTONS, type QuickButtonName } from './button-registry.js
 // ---------------------------------------------------------------------------
 
 function quickButton(
-  locale: Locale,
+  _locale: Locale,
   name: QuickButtonName,
   options: Pick<Button, 'row' | 'style'> & { labelKey?: TranslationKey } = {},
 ): Button {
   const definition = QUICK_BUTTONS[name];
   return {
-    label: t(locale, options.labelKey ?? definition.labelKey),
+    label: t(options.labelKey ?? definition.labelKey),
     callbackData: encodeButtonAction(definition.action),
     style: options.style ?? 'default',
     row: options.row,
@@ -55,11 +55,11 @@ export interface NewSessionButtonProvider {
 }
 
 function navNewForProvider(
-  locale: Locale,
+  _locale: Locale,
   provider: NewSessionButtonProvider,
   row: number,
 ): Button {
-  const label = t(locale, 'btn.newProviderSession').replace('{provider}', provider.displayName);
+  const label = t('btn.newProviderSession').replace('{provider}', provider.displayName);
   return {
     label,
     callbackData: actionCallback('new', provider.kind),
@@ -72,18 +72,18 @@ function navHelp(locale: Locale): Button {
   return quickButton(locale, 'help', { row: 1 });
 }
 
-function navStop(locale: Locale, sessionKey?: string): Button {
+function navStop(_locale: Locale, sessionKey?: string): Button {
   return {
-    label: t(locale, 'progress.btnStop'),
+    label: t('progress.btnStop'),
     callbackData: actionCallback('stop', sessionKey),
     style: 'danger',
     row: 0,
   };
 }
 
-function navSettings(locale: Locale): Button {
+function navSettings(_locale: Locale): Button {
   return {
-    label: t(locale, 'taskStart.btnSettings'),
+    label: t('taskStart.btnSettings'),
     callbackData: actionCallback('home'),
     style: 'default',
     row: 0,
@@ -112,36 +112,36 @@ function quickButtons(
 // Internal permission button helpers
 // ---------------------------------------------------------------------------
 
-function permAllow(permId: string, locale: Locale): Button {
+function permAllow(permId: string, _locale: Locale): Button {
   return {
-    label: t(locale, 'perm.decisionAllow'),
+    label: t('perm.decisionAllow'),
     callbackData: `${CALLBACK_PREFIXES.PERM_ALLOW}${permId}`,
     style: 'primary',
     row: 0,
   };
 }
 
-function permAllowSameCommand(permId: string, locale: Locale): Button {
+function permAllowSameCommand(permId: string, _locale: Locale): Button {
   return {
-    label: t(locale, 'perm.decisionAllowSameCommand'),
+    label: t('perm.decisionAllowSameCommand'),
     callbackData: `${CALLBACK_PREFIXES.PERM_ALLOW_SAME}${permId}`,
     style: 'default',
     row: 0,
   };
 }
 
-function permAllowAllInSession(permId: string, locale: Locale): Button {
+function permAllowAllInSession(permId: string, _locale: Locale): Button {
   return {
-    label: t(locale, 'perm.decisionAllowSessionAll'),
+    label: t('perm.decisionAllowSessionAll'),
     callbackData: `${CALLBACK_PREFIXES.PERM_ALLOW_ALL_SESSION}${permId}`,
     style: 'default',
     row: 1,
   };
 }
 
-function permDeny(permId: string, locale: Locale): Button {
+function permDeny(permId: string, _locale: Locale): Button {
   return {
-    label: t(locale, 'perm.decisionDeny'),
+    label: t('perm.decisionDeny'),
     callbackData: `${CALLBACK_PREFIXES.PERM_DENY}${permId}`,
     style: 'danger',
     row: 1,
@@ -161,18 +161,18 @@ export function permissionButtons(permId: string, locale: Locale): Button[] {
   ];
 }
 
-export function deferredSubmit(permId: string, locale: Locale): Button {
+export function deferredSubmit(permId: string, _locale: Locale): Button {
   return {
-    label: t(locale, 'deferred.btnSubmit'),
+    label: t('deferred.btnSubmit'),
     callbackData: `${CALLBACK_PREFIXES.DEFERRED_SUBMIT}${permId}`,
     style: 'primary',
     row: 0,
   };
 }
 
-export function deferredSkip(permId: string, locale: Locale): Button {
+export function deferredSkip(permId: string, _locale: Locale): Button {
   return {
-    label: t(locale, 'deferred.btnSkip'),
+    label: t('deferred.btnSkip'),
     callbackData: `${CALLBACK_PREFIXES.DEFERRED_SKIP}${permId}`,
     style: 'default',
     row: 0,
@@ -239,7 +239,7 @@ export function topicCommandPaletteButtons(
 
   if (options.interactivePermissions) {
     buttons.push({
-      label: t(locale, 'home.btnPermissions'),
+      label: t('home.btnPermissions'),
       callbackData: action('perm'),
       style: 'default',
       row: 0,
@@ -271,13 +271,13 @@ export function permStatusButtons(
   const toggle: Button =
     mode === 'on'
       ? {
-          label: t(locale, 'perm.btnTurnOff'),
+          label: t('perm.btnTurnOff'),
           callbackData: action('perm', 'off'),
           style: 'danger',
           row: 0,
         }
       : {
-          label: t(locale, 'perm.btnTurnOn'),
+          label: t('perm.btnTurnOn'),
           callbackData: action('perm', 'on'),
           style: 'primary',
           row: 0,

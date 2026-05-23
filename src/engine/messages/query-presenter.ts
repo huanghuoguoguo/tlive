@@ -64,11 +64,11 @@ export class QueryExecutionPresenter {
 
     let outMsg: RenderedMessage;
     if (state) {
-      const locale = this.adapter.getLocale();
+      const _locale = this.adapter.getLocale();
       const actionButtons = buttons ?? this.defaultProgressActionButtons(state);
       const progressData = buildProgressData(
         state,
-        this.inbound.text || t(locale, 'format.continueTask'),
+        this.inbound.text || t('format.continueTask'),
         castButtons(actionButtons),
         content,
       );
@@ -165,7 +165,7 @@ export class QueryExecutionPresenter {
     // Allow full summary for task completion (up to 5000 chars)
     const locale = this.adapter.getLocale();
     const summarySource = (state.responseText || '').trim();
-    const summary = truncate(summarySource || t(locale, 'format.taskCompleted'), 5000);
+    const summary = truncate(summarySource || t('format.taskCompleted'), 5000);
     const changedFileKeys = new Set(
       state.toolLogs
         .filter((log) => ['Edit', 'Write', 'MultiEdit'].includes(log.name) && log.input.trim())

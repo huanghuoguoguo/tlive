@@ -21,13 +21,13 @@ const MAX_HISTORY_SESSIONS = 2;
 
 /** Unified session status label for consistent display across /status and /home */
 export function sessionStatusLabel(
-  locale: Locale,
+  _locale: Locale,
   isTurnActive: boolean,
   isAlive: boolean,
 ): { icon: string; text: string } {
-  if (isTurnActive) return { icon: '⏳', text: t(locale, 'home.statusExecuting') };
-  if (isAlive) return { icon: '🟢', text: t(locale, 'home.statusActive') };
-  return { icon: '💤', text: t(locale, 'home.statusIdle') };
+  if (isTurnActive) return { icon: '⏳', text: t('home.statusExecuting') };
+  if (isAlive) return { icon: '🟢', text: t('home.statusActive') };
+  return { icon: '💤', text: t('home.statusIdle') };
 }
 
 export interface FormatHomeParams {

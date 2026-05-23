@@ -81,11 +81,11 @@ export class AdapterLoopRunner {
   ): void {
     if (!chatId) return;
 
-    const locale = this.resolveLocale(adapter);
+    const _locale = this.resolveLocale(adapter);
     const errorMsg = err instanceof Error ? err.message : String(err);
     const notification = {
       chatId,
-      text: `${t(locale, 'error.title')}\n${t(locale, 'error.requestId')}: ${requestId ?? 'unknown'}\n${truncate(errorMsg, 200)}`,
+      text: `${t('error.title')}\n${t('error.requestId')}: ${requestId ?? 'unknown'}\n${truncate(errorMsg, 200)}`,
     };
 
     adapter

@@ -48,7 +48,7 @@ export class CdCommand extends BaseCommand {
     if (path === '-') {
       const previousDir = ctx.services.workspace.getPreviousDirectory(ctx.msg.channelType, scopeId);
       if (!previousDir) {
-        await this.send(ctx, { chatId: ctx.msg.chatId, text: t(ctx.locale, 'cmd.cd.noHistory') });
+        await this.send(ctx, { chatId: ctx.msg.chatId, text: t('cmd.cd.noHistory') });
         return true;
       }
 
@@ -76,7 +76,7 @@ export class CdCommand extends BaseCommand {
       ctx.services.workspace.pushHistory(ctx.msg.channelType, scopeId, previousDir);
       ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, scopeId, previousDir);
 
-      const feedbackText = t(ctx.locale, 'cmd.cd.switchedBack');
+      const feedbackText = t('cmd.cd.switchedBack');
       await this.send(
         ctx,
         presentDirectory(ctx.msg.chatId, shortPath(previousDir), true, feedbackText),
@@ -122,7 +122,7 @@ export class CdCommand extends BaseCommand {
     ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, scopeId, resolvedPath);
 
     const feedbackText =
-      hadActiveSession && switchedRepo ? t(ctx.locale, 'cmd.cd.switchedRepo') : undefined;
+      hadActiveSession && switchedRepo ? t('cmd.cd.switchedRepo') : undefined;
     await this.send(
       ctx,
       presentDirectory(ctx.msg.chatId, shortPath(resolvedPath), true, feedbackText),

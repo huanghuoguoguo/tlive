@@ -51,11 +51,11 @@ export class SDKDeferredToolHandler {
   }
 
   /** Get prompt and placeholder for a deferred tool */
-  static getToolPrompt(toolName: DeferredToolName, locale: Locale): { prompt: string; placeholder: string } {
+  static getToolPrompt(toolName: DeferredToolName, _locale: Locale): { prompt: string; placeholder: string } {
     const keys = DEFERRED_TOOL_PROMPT_KEYS[toolName];
     return {
-      prompt: t(locale, keys.prompt),
-      placeholder: t(locale, keys.placeholder),
+      prompt: t(keys.prompt),
+      placeholder: t(keys.placeholder),
     };
   }
 
@@ -88,8 +88,8 @@ export class SDKDeferredToolHandler {
       prompt = toolPrompt.prompt;
       inputPlaceholder = toolPrompt.placeholder;
     } else {
-      prompt = t(locale, 'deferredTool.toolInputPrompt').replace('{toolName}', toolName);
-      inputPlaceholder = t(locale, 'deferredTool.toolInputPlaceholder');
+      prompt = t('deferredTool.toolInputPrompt').replace('{toolName}', toolName);
+      inputPlaceholder = t('deferredTool.toolInputPlaceholder');
     }
 
     // Track pending deferred tool state (only in InteractionState, not PermissionCoordinator)

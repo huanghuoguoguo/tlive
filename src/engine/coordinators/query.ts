@@ -118,7 +118,7 @@ export class QueryOrchestrator {
           withInboundReplyContext(
             {
               chatId: msg.chatId,
-              text: t(adapter.getLocale(), 'query.replyMissing'),
+              text: t('query.replyMissing'),
             },
             msg,
           ),

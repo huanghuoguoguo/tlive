@@ -18,7 +18,7 @@ export class ContinueSessionCommand extends BaseCommand {
   async execute(ctx: CommandContext): Promise<boolean> {
     const token = ctx.parts[1]?.trim();
     if (!token) {
-      await sendPlain(ctx, t(ctx.locale, 'cmd.continue.usage'));
+      await sendPlain(ctx, t('cmd.continue.usage'));
       return true;
     }
 

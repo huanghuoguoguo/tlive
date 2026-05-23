@@ -70,7 +70,7 @@ export class NewCommand extends BaseCommand {
 
     ctx.services.state.clearLastActive(ctx.msg.channelType, scopeId);
 
-    const feedbackText = hadActiveSession ? t(ctx.locale, 'newSession.feedbackText') : undefined;
+    const feedbackText = hadActiveSession ? t('newSession.feedbackText') : undefined;
     await this.send(
       ctx,
       presentNewSession(ctx.msg.chatId, {

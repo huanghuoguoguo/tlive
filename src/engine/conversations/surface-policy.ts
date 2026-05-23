@@ -30,13 +30,13 @@ export function isCommandAllowedOnSurface(command: string, surface: Conversation
 export function commandRejectionForSurface(
   command: string,
   surface: ConversationSurface,
-  locale: Locale = 'zh',
+  _locale: Locale = 'zh',
 ): string | undefined {
   if (surface !== 'topic') return undefined;
   const cmd = normalizeCommandName(command);
-  if (cmd === 'tlive') return t(locale, 'surface.tliveRejection');
-  if (cmd === 'home') return t(locale, 'surface.homeRejection');
-  if (cmd === 'continue') return t(locale, 'surface.continueRejection');
+  if (cmd === 'tlive') return t('surface.tliveRejection');
+  if (cmd === 'home') return t('surface.homeRejection');
+  if (cmd === 'continue') return t('surface.continueRejection');
   return undefined;
 }
 

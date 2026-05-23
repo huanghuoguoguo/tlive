@@ -99,19 +99,19 @@ export class QueryPresentationFactory {
         }
       },
       onFlushError: (error, context) => {
-        const locale = adapter.getLocale();
+        const _locale = adapter.getLocale();
         const phaseText =
           context.phase === 'completed'
-            ? t(locale, 'progress.phaseCompleted')
+            ? t('progress.phaseCompleted')
             : context.phase === 'failed'
-              ? t(locale, 'progress.phaseFailed')
-              : t(locale, 'progress.phaseRunning');
+              ? t('progress.phaseFailed')
+              : t('progress.phaseRunning');
         const notifyMsg = adapter.format({
           type: 'error',
           chatId: msg.chatId,
           data: {
-            title: `${t(locale, 'format.flushErrorTitle')} (${phaseText})`,
-            message: `${(error.message || String(error)).slice(0, 150)}\n\n${t(locale, 'format.flushErrorHint')}`,
+            title: `${t('format.flushErrorTitle')} (${phaseText})`,
+            message: `${(error.message || String(error)).slice(0, 150)}\n\n${t('format.flushErrorHint')}`,
           },
         });
         adapter.send(withInboundReplyContext(notifyMsg, msg)).catch(() => {});
@@ -128,8 +128,8 @@ export class QueryPresentationFactory {
     inbound: InboundMessage,
     state: MessageRendererState,
   ): boolean {
-    const locale = adapter.getLocale();
-    const progressData = buildProgressData(state, inbound.text || t(locale, 'format.continueTask'));
+    const _locale = adapter.getLocale();
+    const progressData = buildProgressData(state, inbound.text || t('format.continueTask'));
     const outMsg = adapter.format({ type: 'progress', chatId: inbound.chatId, data: progressData });
     return adapter.shouldSplitProgressMessage(outMsg);
   }

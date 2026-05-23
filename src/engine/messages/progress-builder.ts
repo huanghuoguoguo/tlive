@@ -136,15 +136,15 @@ export class ProgressContentBuilder {
     };
   }
 
-  buildFooter(input: RenderInput, locale: Locale = 'zh'): string {
+  buildFooter(input: RenderInput, _locale: Locale = 'zh'): string {
     const parts: string[] = [];
     if (input.model) {
       parts.push(`[${input.model}]`);
     } else if (input.engineName) {
-      parts.push(t(locale, 'progress.engineLabel').replace('{name}', input.engineName));
+      parts.push(t('progress.engineLabel').replace('{name}', input.engineName));
     }
     if (input.reasoningEffort) {
-      parts.push(t(locale, 'progress.thinkingLabel').replace('{effort}', input.reasoningEffort));
+      parts.push(t('progress.thinkingLabel').replace('{effort}', input.reasoningEffort));
     }
     if (input.cwd) {
       parts.push(shortPath(input.cwd));
@@ -161,11 +161,11 @@ export class ProgressContentBuilder {
 
   // --- Private helpers ---
 
-  private renderExecuting(input: RenderInput, locale: Locale = 'zh'): string {
+  private renderExecuting(input: RenderInput, _locale: Locale = 'zh'): string {
     // After bubble split: show continuation hint
     if (input.bubbleToolCount === 0 && input.totalTools > 0) {
       const lines: string[] = [];
-      lines.push(t(locale, 'progress.continueExec').replace('{steps}', String(input.totalTools)));
+      lines.push(t('progress.continueExec').replace('{steps}', String(input.totalTools)));
       if (input.todoItems.length > 0) {
         lines.push('');
         lines.push(this.renderTodoProgress(input.todoItems));

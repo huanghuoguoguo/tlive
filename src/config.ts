@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path';
 import { expandTilde, getTliveHome } from './core/path.js';
 import { normalizeQuickButtonNames, type QuickButtonName } from './ui/button-registry.js';
 import { DEFAULT_AGENT_PROVIDER_KIND, type AgentProviderKind } from './providers/kinds.js';
+import type { Locale } from './i18n/index.js';
 
 export type AgentSettingSource = 'user' | 'project' | 'local';
 
@@ -53,6 +54,8 @@ export interface Config {
   port: number;
   token: string;
   provider: ProviderKind;
+  /** Locale for i18n (default: 'zh') */
+  locale: Locale;
   defaultWorkdir: string;
   defaultModel: string;
   /** Provider settings sources to load (default: ['user', 'project', 'local']) */
@@ -280,6 +283,10 @@ function normalizeWebhookSessionStrategy(value: string | undefined): 'reject' | 
   return value === 'create' ? 'create' : 'reject';
 }
 
+function normalizeLocale(value: string | undefined): Locale {
+  return value === 'en' ? 'en' : 'zh';
+}
+
 function normalizeProvider(value: string | undefined): ProviderKind {
   return value === 'codex' ? 'codex' : DEFAULT_AGENT_PROVIDER_KIND;
 }
@@ -376,6 +383,7 @@ export function loadConfig(options: LoadConfigOptions = {}): Config {
     port,
     token: get('TL_TOKEN'),
     provider: normalizeProvider(get('TL_PROVIDER', DEFAULT_AGENT_PROVIDER_KIND)),
+    locale: normalizeLocale(get('TL_LOCALE')),
     agentSettingSources: parseList(
       get('TL_AGENT_SETTINGS', get('TL_CLAUDE_SETTINGS', DEFAULT_AGENT_SETTING_SOURCES.join(','))),
     ) as AgentSettingSource[],

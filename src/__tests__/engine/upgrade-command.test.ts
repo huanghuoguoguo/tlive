@@ -24,6 +24,9 @@ describe('UpgradeCommand', () => {
 
   beforeEach(async () => {
     vi.resetModules();
+    // Re-import and set locale after module reset
+    const { setGlobalLocale } = await import('../../i18n/index.js');
+    setGlobalLocale('zh');
     tmpDir = mkdtempSync(join(tmpdir(), 'tlive-upgrade-command-'));
     packageRoot = join(tmpDir, 'app');
     cliPath = join(packageRoot, 'scripts', 'cli.js');

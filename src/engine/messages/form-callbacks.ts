@@ -9,7 +9,7 @@ export async function handleFormCallback(
   ctx: CallbackHandlerContext,
 ): Promise<CallbackHandlerResult> {
   const { adapter, msg, deps, callbackData } = ctx;
-  const locale = adapter.getLocale();
+  const _locale = adapter.getLocale();
   const formParsed = parseFormCallback(callbackData);
   if (!formParsed) return undefined;
 
@@ -25,7 +25,7 @@ export async function handleFormCallback(
         withInboundReplyContext(
           {
             chatId: msg.chatId,
-            text: t(locale, 'formCmd.enterCommand'),
+            text: t('formCmd.enterCommand'),
           },
           msg,
         ),
@@ -99,7 +99,7 @@ export async function handleFormCallback(
         withInboundReplyContext(
           {
             chatId: msg.chatId,
-            text: t(locale, 'form.invalidSelection'),
+            text: t('form.invalidSelection'),
           },
           msg,
         ),
@@ -117,7 +117,7 @@ export async function handleFormCallback(
       withInboundReplyContext(
         {
           chatId: msg.chatId,
-          text: t(locale, 'form.submitWithoutAnswer'),
+          text: t('form.submitWithoutAnswer'),
         },
         msg,
       ),

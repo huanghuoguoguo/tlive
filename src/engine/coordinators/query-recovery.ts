@@ -92,7 +92,7 @@ export class QueryRecoveryPolicy {
     return {
       routeBinding,
       sessionTarget: recoveredTarget,
-      resumeFallbackMessage: t(adapter.getLocale(), 'queryRecovery.staleSessionFallback'),
+      resumeFallbackMessage: t('queryRecovery.staleSessionFallback'),
     };
   }
 }

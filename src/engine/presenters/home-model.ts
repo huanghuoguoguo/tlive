@@ -113,7 +113,7 @@ export function buildTopicEntries(opts: {
       })
       .map((record, index) => {
         const provider = normalizeAgentProviderKind(record.provider);
-        const agentSessionLabel = t(opts.locale, 'homeModel.agentSession');
+        const agentSessionLabel = t('homeModel.agentSession');
         return {
           index: index + 1,
           sdkSessionId: record.sdkSessionId,

@@ -81,13 +81,13 @@ export class TextDispatcher {
       return false;
     }
 
-    const locale = adapter.getLocale();
+    const _locale = adapter.getLocale();
     const trimmed = msg.text.trim();
     if (matchesLocalizedInput(trimmed, 'input.skip')) {
       this.options.permissions.getGateway().resolve(pendingDeferred.permId, 'deny', 'Skipped');
       this.options.sdkEngine.getInteractionState().cleanupDeferredTool(pendingDeferred.permId);
       await adapter.send(
-        withInboundReplyContext({ chatId: msg.chatId, text: t(locale, 'input.skipped') }, msg),
+        withInboundReplyContext({ chatId: msg.chatId, text: t('input.skipped') }, msg),
       );
       return true;
     }
@@ -101,7 +101,7 @@ export class TextDispatcher {
       withInboundReplyContext(
         {
           chatId: msg.chatId,
-          text: `${t(locale, 'input.submitted')} ${trimmed.slice(0, 50)}${trimmed.length > 50 ? '...' : ''}`,
+          text: `${t('input.submitted')} ${trimmed.slice(0, 50)}${trimmed.length > 50 ? '...' : ''}`,
         },
         msg,
       ),

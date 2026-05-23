@@ -19,19 +19,10 @@ export function getGlobalLocale(): Locale {
   return globalLocale;
 }
 
-/** Look up a translation by locale and key */
-export function t(locale: Locale, key: TranslationKey): string;
-
-/** Look up a translation by key (uses global locale) */
-export function t(key: TranslationKey): string;
-
-export function t(localeOrKey: Locale | TranslationKey, key?: TranslationKey): string {
-  if (key === undefined) {
-    // t(key) form - use global locale
-    return dictionaries[globalLocale][localeOrKey as TranslationKey];
-  }
-  // t(locale, key) form
-  return dictionaries[localeOrKey as Locale][key];
+/** Look up a translation by key (uses global locale, or override if provided) */
+export function t(key: TranslationKey, localeOverride?: Locale): string {
+  const locale = localeOverride ?? globalLocale;
+  return dictionaries[locale][key];
 }
 
 /** Check if input matches a localized keyword (both zh and en variants) */

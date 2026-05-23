@@ -119,19 +119,19 @@ export class MessageLoopCoordinator {
    * Format user feedback based on sendWithContext result.
    */
   private formatQueueFeedback(result: SendWithContextResult): string | null {
-    const locale = this.options.locale ?? 'zh';
+    const _locale = this.options.locale ?? 'zh';
     if (!result.sent) {
       if (result.mode === 'none') {
         if (result.failureReason === 'reply_target_missing') {
-          return t(locale, 'msgLoop.replyTargetMissing');
+          return t('msgLoop.replyTargetMissing');
         }
         if (result.failureReason === 'send_failed') {
-          return t(locale, 'msgLoop.sendFailed');
+          return t('msgLoop.sendFailed');
         }
         if (result.failureReason === 'busy_unsupported') {
-          return t(locale, 'msgLoop.busyUnsupported');
+          return t('msgLoop.busyUnsupported');
         }
-        return t(locale, 'msgLoop.noActiveSession');
+        return t('msgLoop.noActiveSession');
       }
       if (result.queueFull) {
         const maxDepth =
@@ -140,15 +140,15 @@ export class MessageLoopCoordinator {
             ? this.options.sdkEngine.getMaxQueueDepth()
             : 3);
         const depth = result.queueDepth ?? maxDepth;
-        return t(locale, 'msgLoop.queueFull')
+        return t('msgLoop.queueFull')
           .replace('{depth}', String(depth))
           .replace('{maxDepth}', String(maxDepth));
       }
-      return t(locale, 'msgLoop.processFailed');
+      return t('msgLoop.processFailed');
     }
 
     if (result.mode === 'steer') {
-      return t(locale, 'msgLoop.inserted');
+      return t('msgLoop.inserted');
     }
 
     if (result.mode === 'queue' && result.queuePosition !== undefined) {
@@ -157,7 +157,7 @@ export class MessageLoopCoordinator {
         (typeof this.options.sdkEngine.getMaxQueueDepth === 'function'
           ? this.options.sdkEngine.getMaxQueueDepth()
           : 3);
-      return t(locale, 'msgLoop.queued')
+      return t('msgLoop.queued')
         .replace('{position}', String(result.queuePosition))
         .replace('{maxDepth}', String(maxDepth));
     }

@@ -58,8 +58,8 @@ export class HomeTopicsCommand extends BaseCommand {
       type: 'sessionList',
       chatId: ctx.msg.chatId,
       data: {
-        title: t(ctx.locale, 'homeCmd.recentTopicsTitle'),
-        emptyText: t(ctx.locale, 'homeCmd.recentTopicsEmpty'),
+        title: t('homeCmd.recentTopicsTitle'),
+        emptyText: t('homeCmd.recentTopicsEmpty'),
         entries: shown.map((topic) => ({
           index: topic.index,
           provider: topic.provider,
@@ -71,7 +71,7 @@ export class HomeTopicsCommand extends BaseCommand {
           preview: topic.preview,
           isCurrent: topic.isCurrent,
           isActive: topic.isActive,
-          actionLabel: t(ctx.locale, 'homeCmd.btnBackToTopic'),
+          actionLabel: t('homeCmd.btnBackToTopic'),
           actionStyle: topic.isCurrent ? 'default' : 'primary',
         })),
       },
@@ -96,8 +96,8 @@ export class HomeHistoryCommand extends BaseCommand {
       type: 'sessionList',
       chatId: ctx.msg.chatId,
       data: {
-        title: t(ctx.locale, 'homeCmd.recentLocalTitle'),
-        emptyText: t(ctx.locale, 'homeCmd.recentLocalEmpty'),
+        title: t('homeCmd.recentLocalTitle'),
+        emptyText: t('homeCmd.recentLocalEmpty'),
         entries: shown.map((session) => ({
           index: session.index,
           provider: session.provider,
@@ -108,7 +108,7 @@ export class HomeHistoryCommand extends BaseCommand {
           preview: session.preview,
           transcript: session.transcript,
           isCurrent: session.isCurrent,
-          actionLabel: t(ctx.locale, 'homeCmd.btnResumeToTopic'),
+          actionLabel: t('homeCmd.btnResumeToTopic'),
           actionStyle: 'primary',
         })),
       },

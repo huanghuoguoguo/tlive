@@ -150,7 +150,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
   }
 
   private footerActionPanel(footerLine: string, buttons: Button[]): FeishuCardElement {
-    return collapsiblePanel(t(this.locale, 'formatter.runInfo'), [
+    return collapsiblePanel(t('formatter.runInfo'), [
       this.md(`<font color='grey'>${footerLine}</font>`),
       ...buttonElements(buttons),
     ]);
@@ -181,7 +181,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
   formatStatus(chatId: string, data: StatusData): FeishuRenderedMessage {
     return this.createCardMessage(
       chatId,
-      { template: 'blue', title: t(this.locale, 'format.titleStatus') },
+      { template: 'blue', title: t('format.titleStatus') },
       buildStatusElements(data, this.locale),
     );
   }
@@ -190,7 +190,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
     const elements = buildQuestionElements({ chatId, data, locale: this.locale });
     return this.createCardMessage(
       chatId,
-      { template: 'blue', title: t(this.locale, 'format.titleQuestion') },
+      { template: 'blue', title: t('format.titleQuestion') },
       elements,
       undefined,
     );
@@ -200,7 +200,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
     const elements = buildDeferredToolElements({ chatId, data, locale: this.locale });
     return this.createCardMessage(
       chatId,
-      { template: 'purple', title: t(this.locale, 'format.titleDeferredInput') },
+      { template: 'purple', title: t('format.titleDeferredInput') },
       elements,
       undefined,
     );
@@ -215,7 +215,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
     const buttons = homeButtons(this.locale, data.providers?.available ?? []);
     return this.createCardMessage(
       chatId,
-      { template: 'blue', title: t(this.locale, 'format.titleHome') },
+      { template: 'blue', title: t('format.titleHome') },
       elements,
       buttons,
     );
@@ -228,7 +228,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
       chatId,
       {
         template: data.mode === 'on' ? 'orange' : 'grey',
-        title: t(this.locale, 'format.titlePermissionStatus'),
+        title: t('format.titlePermissionStatus'),
       },
       elements,
       buttons,
@@ -245,21 +245,21 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
 
   formatTaskStart(chatId: string, data: TaskStartData): FeishuRenderedMessage {
     const title = data.isNewSession
-      ? t(this.locale, 'format.titleTaskReset')
-      : t(this.locale, 'format.titleTaskStart');
+      ? t('format.titleTaskReset')
+      : t('format.titleTaskStart');
     const elements: FeishuCardElement[] = [
       this.md(
-        `**${t(this.locale, 'format.labelCurrentConfig')}**\n${t(this.locale, 'format.labelDirectory')}：${data.cwd}\n${t(this.locale, 'home.labelPermission')}：${data.permissionMode === 'on' ? t(this.locale, 'perm.labelModeOn') : t(this.locale, 'perm.labelModeOff')}`,
+        `**${t('format.labelCurrentConfig')}**\n${t('format.labelDirectory')}：${data.cwd}\n${t('home.labelPermission')}：${data.permissionMode === 'on' ? t('perm.labelModeOn') : t('perm.labelModeOff')}`,
       ),
     ];
     if (data.previousSessionPreview) {
       elements.push(
         this.md(
-          `**${t(this.locale, 'format.labelPreviousSession')}**\n${truncate(data.previousSessionPreview, 100)}`,
+          `**${t('format.labelPreviousSession')}**\n${truncate(data.previousSessionPreview, 100)}`,
         ),
       );
     }
-    elements.push(this.md(t(this.locale, 'format.taskStartHint')));
+    elements.push(this.md(t('format.taskStartHint')));
     return this.createCardMessage(
       chatId,
       { template: 'blue', title },
@@ -270,9 +270,9 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
 
   formatTaskSummary(chatId: string, data: TaskSummaryData): FeishuRenderedMessage {
     const elements: FeishuCardElement[] = [
-      this.md(`**${t(this.locale, 'format.labelResultSummary')}**\n${data.summary}`),
+      this.md(`**${t('format.labelResultSummary')}**\n${data.summary}`),
       this.md(
-        `**${t(this.locale, 'taskSummary.labelResult')}**\n${t(this.locale, 'format.labelChangedFiles')}：${data.changedFiles}\n${t(this.locale, 'format.labelPermissionRequests')}：${data.permissionRequests}\n${t(this.locale, 'home.labelStatus')}：${data.hasError ? t(this.locale, 'taskSummary.statusError') : t(this.locale, 'taskSummary.statusDone')}`,
+        `**${t('taskSummary.labelResult')}**\n${t('format.labelChangedFiles')}：${data.changedFiles}\n${t('format.labelPermissionRequests')}：${data.permissionRequests}\n${t('home.labelStatus')}：${data.hasError ? t('taskSummary.statusError') : t('taskSummary.statusDone')}`,
       ),
     ];
     const buttons = data.actionButtons ?? taskSummaryButtons(this.locale, this.getDoneButtons());
@@ -283,8 +283,8 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
         {
           template: data.hasError ? 'red' : 'green',
           title: data.hasError
-            ? t(this.locale, 'format.titleTaskEnd')
-            : t(this.locale, 'format.titleTaskSummary'),
+            ? t('format.titleTaskEnd')
+            : t('format.titleTaskSummary'),
         },
         elements,
       );
@@ -294,8 +294,8 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
       {
         template: data.hasError ? 'red' : 'green',
         title: data.hasError
-          ? t(this.locale, 'format.titleTaskEnd')
-          : t(this.locale, 'format.titleTaskSummary'),
+          ? t('format.titleTaskEnd')
+          : t('format.titleTaskSummary'),
       },
       elements,
       buttons,
@@ -305,7 +305,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
   formatHelp(chatId: string, data: HelpData): FeishuRenderedMessage {
     return this.createCardMessage(
       chatId,
-      { template: 'blue', title: t(this.locale, 'home.btnHelp') },
+      { template: 'blue', title: t('home.btnHelp') },
       buildHelpElements(data, this.locale),
       data.actionButtons ?? helpButtons(this.locale),
     );
@@ -314,47 +314,47 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
   formatTopicCommandPalette(chatId: string, data: TopicCommandPaletteData): FeishuRenderedMessage {
     const sdkSession = data.sdkSessionId
       ? data.sdkSessionId.slice(0, 8)
-      : t(this.locale, 'formatter.sessionNone');
+      : t('formatter.sessionNone');
     const status = data.isActive
-      ? t(this.locale, 'formatter.sessionRunningLabel')
-      : t(this.locale, 'formatter.sessionIdleLabel');
+      ? t('formatter.sessionRunningLabel')
+      : t('formatter.sessionIdleLabel');
     const runtimeMode =
       data.capabilities.runtimeMode === 'interactive'
-        ? t(this.locale, 'formatter.interactiveMode')
-        : t(this.locale, 'formatter.turnBasedMode');
+        ? t('formatter.interactiveMode')
+        : t('formatter.turnBasedMode');
     const permissionStatus =
       data.permissionMode === 'on'
-        ? t(this.locale, 'formatter.toolApprovalRequired')
-        : t(this.locale, 'formatter.toolCallsAutoAllowed');
+        ? t('formatter.toolApprovalRequired')
+        : t('formatter.toolCallsAutoAllowed');
     const permissionLine = data.capabilities.interactivePermissions
-      ? t(this.locale, 'formatter.topicPermissionStatus').replace('{status}', permissionStatus)
+      ? t('formatter.topicPermissionStatus').replace('{status}', permissionStatus)
       : data.provider === 'codex'
-        ? t(this.locale, 'formatter.codexPermissionNote')
+        ? t('formatter.codexPermissionNote')
         : '';
     const slashLine =
       data.provider === 'codex'
-        ? t(this.locale, 'formatter.codexSlashNote')
-        : t(this.locale, 'formatter.otherSlashPassThrough');
+        ? t('formatter.codexSlashNote')
+        : t('formatter.otherSlashPassThrough');
     const capabilityLabels = [
-      data.capabilities.imageInputs ? t(this.locale, 'formatter.imageInput') : undefined,
-      data.capabilities.nativeSteer ? t(this.locale, 'formatter.instantSteer') : undefined,
-      data.capabilities.nativeQueue ? t(this.locale, 'formatter.queueCapability') : undefined,
+      data.capabilities.imageInputs ? t('formatter.imageInput') : undefined,
+      data.capabilities.nativeSteer ? t('formatter.instantSteer') : undefined,
+      data.capabilities.nativeQueue ? t('formatter.queueCapability') : undefined,
     ].filter(Boolean);
 
     const elements: FeishuCardElement[] = [
       this.md(
-        `**${t(this.locale, 'formatter.currentSession')}**\n${data.providerDisplayName} · ${runtimeMode} · \`${sdkSession}\` · ${status}`,
+        `**${t('formatter.currentSession')}**\n${data.providerDisplayName} · ${runtimeMode} · \`${sdkSession}\` · ${status}`,
       ),
-      this.md(`**${t(this.locale, 'formatter.directory')}**\n\`${data.cwd}\``),
+      this.md(`**${t('formatter.directory')}**\n\`${data.cwd}\``),
       this.md(
-        `**${t(this.locale, 'formatter.capabilities')}**\n${capabilityLabels.join(' · ') || t(this.locale, 'formatter.basicChat')}`,
+        `**${t('formatter.capabilities')}**\n${capabilityLabels.join(' · ') || t('formatter.basicChat')}`,
       ),
       this.md(`${slashLine}${permissionLine ? `\n${permissionLine}` : ''}`),
     ];
 
     return this.createCardMessage(
       chatId,
-      { template: 'blue', title: t(this.locale, 'formatter.sessionActions') },
+      { template: 'blue', title: t('formatter.sessionActions') },
       elements,
       topicCommandPaletteButtons(this.locale, {
         isActive: data.isActive,
@@ -368,8 +368,8 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
     const cwdLabel = data.cwd ? ` in \`${data.cwd}\`` : '';
     return this.createCardMessage(
       chatId,
-      { template: 'green', title: t(this.locale, 'newSession.title') },
-      [this.md(`${t(this.locale, 'newSession.title')}${cwdLabel}`)],
+      { template: 'green', title: t('newSession.title') },
+      [this.md(`${t('newSession.title')}${cwdLabel}`)],
     );
   }
 
@@ -439,23 +439,23 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
       : '';
     const elements: FeishuCardElement[] = [
       this.md(
-        `**${t(this.locale, 'version.title').replace('🔄 **', '').replace('**', '')}**\nv${data.current}`,
+        `**${t('version.title').replace('🔄 **', '').replace('**', '')}**\nv${data.current}`,
       ),
-      this.md(`**${t(this.locale, 'version.released')}**\nv${data.latest}`),
+      this.md(`**${t('version.released')}**\nv${data.latest}`),
     ];
     if (dateStr) {
-      elements.push(this.md(`**${t(this.locale, 'version.released')}**\n${dateStr}`));
+      elements.push(this.md(`**${t('version.released')}**\n${dateStr}`));
     }
     const buttons: Button[] = [
       {
-        label: `⬆️ ${t(this.locale, 'home.labelSwitch')}`,
+        label: `⬆️ ${t('home.labelSwitch')}`,
         callbackData: actionCallback('upgrade', `confirm:${data.latest}`),
         style: 'primary',
       },
     ];
     return this.createCardMessage(
       chatId,
-      { template: 'blue', title: t(this.locale, 'version.title') },
+      { template: 'blue', title: t('version.title') },
       elements,
       buttons,
     );
@@ -471,7 +471,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
     });
     return this.createCardMessage(
       chatId,
-      { template: 'blue', title: t(this.locale, 'format.titleQuestion') },
+      { template: 'blue', title: t('format.titleQuestion') },
       elements,
       buttons,
     );
@@ -483,7 +483,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
       chatId,
       {
         template: saturatedSessions > 0 ? 'orange' : 'blue',
-        title: t(this.locale, 'format.titleDiagnose'),
+        title: t('format.titleDiagnose'),
       },
       elements,
     );

@@ -39,11 +39,11 @@ function providerDisplayName(ctx: CommandContext, provider: AgentProviderKind | 
   return ctx.services.providers.descriptor(normalized)?.displayName ?? normalized;
 }
 
-function buildTopicTitle(target: AgentSessionTarget, locale: string): string {
+function buildTopicTitle(target: AgentSessionTarget, _locale: string): string {
   const preview = target.preview.replace(/\s+/g, ' ').trim();
   return truncate(
     preview ||
-      t(locale as 'zh' | 'en', 'topicResume.sessionPreview').replace(
+      t('topicResume.sessionPreview').replace(
         '{provider}',
         target.providerDisplayName,
       ),
@@ -51,8 +51,8 @@ function buildTopicTitle(target: AgentSessionTarget, locale: string): string {
   );
 }
 
-function buildThreadIntro(target: AgentSessionTarget, locale: string): string {
-  return t(locale as 'zh' | 'en', 'topicResume.connected')
+function buildThreadIntro(target: AgentSessionTarget, _locale: string): string {
+  return t('topicResume.connected')
     .replace('{provider}', target.providerDisplayName)
     .replace('{sessionId}', target.sdkSessionId.slice(0, 8))
     .replace('{cwd}', shortPath(target.cwd));
@@ -77,7 +77,7 @@ export class TopicResumeService {
     if (!target && !topic) {
       await sendPlain(
         this.ctx,
-        t(this.ctx.locale, 'topicResume.sessionNotFound').replace('{provider}', displayName),
+        t('topicResume.sessionNotFound').replace('{provider}', displayName),
       );
       return true;
     }
@@ -90,7 +90,7 @@ export class TopicResumeService {
       preview:
         topic?.preview ||
         topic?.title ||
-        t(this.ctx.locale, 'topicResume.sessionPreview').replace('{provider}', displayName),
+        t('topicResume.sessionPreview').replace('{provider}', displayName),
     };
 
     if (topic) {
@@ -153,12 +153,12 @@ export class TopicResumeService {
     target: AgentSessionTarget,
   ): Promise<void> {
     const sdkShort = target.sdkSessionId.slice(0, 8);
-    const text = t(this.ctx.locale, 'topicResume.resumed')
+    const text = t('topicResume.resumed')
       .replace('{provider}', target.providerDisplayName)
       .replace('{sessionId}', sdkShort);
     const replyTarget = record.lastMessageId ?? record.rootMessageId;
     if (!replyTarget) {
-      await sendPlain(this.ctx, t(this.ctx.locale, 'topicResume.anchorMissing'));
+      await sendPlain(this.ctx, t('topicResume.anchorMissing'));
       return;
     }
 
@@ -182,7 +182,7 @@ export class TopicResumeService {
 
   private async openNewTopic(target: AgentSessionTarget): Promise<void> {
     if (this.ctx.surface !== 'workbench' || !this.ctx.msg.messageId) {
-      await sendPlain(this.ctx, t(this.ctx.locale, 'topicResume.fromWorkbench'));
+      await sendPlain(this.ctx, t('topicResume.fromWorkbench'));
       return;
     }
 
@@ -191,7 +191,7 @@ export class TopicResumeService {
     const topic = await startWorkbenchTopic(this.ctx, topicTitle, introText);
 
     if (!topic) {
-      await sendPlain(this.ctx, t(this.ctx.locale, 'topicResume.createFailed'));
+      await sendPlain(this.ctx, t('topicResume.createFailed'));
       return;
     }
 

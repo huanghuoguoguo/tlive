@@ -17,37 +17,37 @@ function providerToken(entry: SessionListEntry): string {
   return `${entry.provider ? `${entry.provider}:` : ''}${entry.sdkSessionId ?? ''}`;
 }
 
-function panelTitle(entry: SessionListEntry, locale: Locale): string {
+function panelTitle(entry: SessionListEntry, _locale: Locale): string {
   const provider = entry.providerDisplayName ?? 'Agent';
   const state = entry.isActive
-    ? t(locale, 'sessionList.stateRunning')
+    ? t('sessionList.stateRunning')
     : entry.isCurrent
-      ? t(locale, 'sessionList.stateCurrent')
-      : t(locale, 'sessionList.stateCanContinue');
+      ? t('sessionList.stateCurrent')
+      : t('sessionList.stateCanContinue');
   const subject = truncate(entry.title || entry.preview, 28);
   return `${entry.index}. ${state} ${provider} ${sessionIdLabel(entry.sdkSessionId)} · ${entry.date} · ${subject}`;
 }
 
-function transcriptPreview(entry: SessionListEntry, locale: Locale): string {
+function transcriptPreview(entry: SessionListEntry, _locale: Locale): string {
   const transcript = entry.transcript ?? [];
   if (!transcript.length) return '';
   const lines = transcript.slice(-4).map((message) => {
     const role =
       message.role === 'assistant'
-        ? t(locale, 'sessionList.roleAssistant')
-        : t(locale, 'sessionList.roleUser');
+        ? t('sessionList.roleAssistant')
+        : t('sessionList.roleUser');
     return `- ${role}: ${truncate(message.text, 110)}`;
   });
-  return `\n\n${t(locale, 'sessionList.recentMessages')}\n${lines.join('\n')}`;
+  return `\n\n${t('sessionList.recentMessages')}\n${lines.join('\n')}`;
 }
 
 function panelBody(entry: SessionListEntry, locale: Locale): string {
   const titleLine = entry.title
-    ? `${t(locale, 'sessionList.topic')}\n${truncate(entry.title, 120)}\n\n`
+    ? `${t('sessionList.topic')}\n${truncate(entry.title, 120)}\n\n`
     : '';
   return [
-    `${titleLine}${t(locale, 'sessionList.workspace')}\n\`${entry.cwd}\``,
-    `${t(locale, 'sessionList.preview')}\n${truncate(entry.preview, 220)}${transcriptPreview(entry, locale)}`,
+    `${titleLine}${t('sessionList.workspace')}\n\`${entry.cwd}\``,
+    `${t('sessionList.preview')}\n${truncate(entry.preview, 220)}${transcriptPreview(entry, locale)}`,
   ].join('\n\n');
 }
 

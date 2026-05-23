@@ -18,35 +18,35 @@ export interface FormatPermStatusParams {
 }
 
 export function buildPermStatusElements(params: FormatPermStatusParams): FeishuCardElement[] {
-  const { data, locale } = params;
+  const { data } = params;
   const decisionLabel = data.lastDecision
     ? {
-        allow: t(locale, 'perm.decisionAllow'),
-        allow_always: t(locale, 'perm.decisionAlwaysAllow'),
-        deny: t(locale, 'perm.decisionDeny'),
-        cancelled: t(locale, 'perm.decisionCancelled'),
+        allow: t('perm.decisionAllow'),
+        allow_always: t('perm.decisionAlwaysAllow'),
+        deny: t('perm.decisionDeny'),
+        cancelled: t('perm.decisionCancelled'),
       }[data.lastDecision.decision]
     : '';
 
   const elements: FeishuCardElement[] = [
     markdownElement(
-      `**${t(locale, 'perm.labelMode')}**\n${data.mode === 'on' ? t(locale, 'perm.labelModeOn') : t(locale, 'perm.labelModeOff')}`,
+      `**${t('perm.labelMode')}**\n${data.mode === 'on' ? t('perm.labelModeOn') : t('perm.labelModeOff')}`,
     ),
     markdownElement(
-      `**${t(locale, 'perm.labelSessionMemory')}**\n${t(locale, 'perm.labelTools')} ${data.rememberedTools} · ${t(locale, 'perm.labelBashPrefixes')} ${data.rememberedBashPrefixes}`,
+      `**${t('perm.labelSessionMemory')}**\n${t('perm.labelTools')} ${data.rememberedTools} · ${t('perm.labelBashPrefixes')} ${data.rememberedBashPrefixes}`,
     ),
   ];
 
   if (data.pending) {
     elements.push(
       markdownElement(
-        `**${t(locale, 'perm.pendingApproval')}**\n${data.pending.toolName}\n\`\`\`\n${truncate(data.pending.input, 220)}\n\`\`\``,
+        `**${t('perm.pendingApproval')}**\n${data.pending.toolName}\n\`\`\`\n${truncate(data.pending.input, 220)}\n\`\`\``,
       ),
     );
   } else {
     elements.push(
       markdownElement(
-        `**${t(locale, 'perm.pendingApproval')}**\n${t(locale, 'perm.labelNoPending')}`,
+        `**${t('perm.pendingApproval')}**\n${t('perm.labelNoPending')}`,
       ),
     );
   }
@@ -54,7 +54,7 @@ export function buildPermStatusElements(params: FormatPermStatusParams): FeishuC
   if (data.lastDecision) {
     elements.push(
       markdownElement(
-        `**${t(locale, 'perm.lastDecision')}**\n${data.lastDecision.toolName} · ${decisionLabel}`,
+        `**${t('perm.lastDecision')}**\n${data.lastDecision.toolName} · ${decisionLabel}`,
       ),
     );
   }

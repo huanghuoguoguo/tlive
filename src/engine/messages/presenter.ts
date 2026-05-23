@@ -42,13 +42,13 @@ export function presentHelp(chatId: string, data: HelpData): FormattableMessage 
 export function presentStopResult(
   chatId: string,
   interrupted: boolean,
-  locale: Locale = 'zh',
+  _locale: Locale = 'zh',
 ): { chatId: string; text: string } {
   return {
     chatId,
     text: interrupted
-      ? t(locale, 'presenter.stopInterrupted')
-      : t(locale, 'presenter.stopNoExecution'),
+      ? t('presenter.stopInterrupted')
+      : t('presenter.stopNoExecution'),
   };
 }
 
@@ -69,26 +69,26 @@ export function presentDirectoryHistory(
   current: string,
   history: string[],
   workspaceBinding?: string,
-  locale: Locale = 'zh',
+  _locale: Locale = 'zh',
 ): { chatId: string; text: string } {
-  const lines = [t(locale, 'presenter.currentDir') + current];
+  const lines = [t('presenter.currentDir') + current];
 
   if (workspaceBinding && workspaceBinding !== current) {
-    lines.push(t(locale, 'presenter.workspaceBinding') + workspaceBinding);
+    lines.push(t('presenter.workspaceBinding') + workspaceBinding);
   }
 
   if (history.length > 1) {
     lines.push('');
-    lines.push(t(locale, 'presenter.dirHistory'));
+    lines.push(t('presenter.dirHistory'));
     history.slice(0, 5).forEach((dir, i) => {
       const marker = i === 0 ? '●' : `${i}.`;
       lines.push(`  ${marker} ${dir}`);
     });
     if (history.length > 5) {
-      lines.push(t(locale, 'presenter.totalCount').replace('{count}', String(history.length)));
+      lines.push(t('presenter.totalCount').replace('{count}', String(history.length)));
     }
     lines.push('');
-    lines.push(t(locale, 'presenter.cdHint'));
+    lines.push(t('presenter.cdHint'));
   }
 
   return { chatId, text: lines.join('\n') };
@@ -103,9 +103,9 @@ export function presentDirectoryNotFound(
 
 export function presentSettingsUnavailable(
   chatId: string,
-  locale: Locale = 'zh',
+  _locale: Locale = 'zh',
 ): { chatId: string; text: string } {
-  return { chatId, text: t(locale, 'presenter.settingsUnavailable') };
+  return { chatId, text: t('presenter.settingsUnavailable') };
 }
 
 export function presentSettingsChanged(

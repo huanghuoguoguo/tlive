@@ -30,10 +30,10 @@ export function formatRelativeTime(timestamp: number, locale: Locale): string {
   const diffHour = Math.floor(diffMs / 3600000);
   const diffDay = Math.floor(diffMs / 86400000);
 
-  if (diffMin < 1) return t(locale, 'format.justNow');
-  if (diffMin < 60) return t(locale, 'format.minAgo').replace('{count}', String(diffMin));
-  if (diffHour < 24) return t(locale, 'format.hourAgo').replace('{count}', String(diffHour));
-  if (diffDay < 7) return t(locale, 'format.dayAgo').replace('{count}', String(diffDay));
+  if (diffMin < 1) return t('format.justNow', locale);
+  if (diffMin < 60) return t('format.minAgo', locale).replace('{count}', String(diffMin));
+  if (diffHour < 24) return t('format.hourAgo', locale).replace('{count}', String(diffHour));
+  if (diffDay < 7) return t('format.dayAgo', locale).replace('{count}', String(diffDay));
   return new Date(timestamp).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
     month: 'short',
     day: 'numeric',

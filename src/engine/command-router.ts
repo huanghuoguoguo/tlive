@@ -191,7 +191,7 @@ export class CommandRouter {
           withInboundReplyContext(
             {
               chatId: msg.chatId,
-              text: t(locale, 'router.workbenchCommandHint').replace('{cmd}', handler.name),
+              text: t('router.workbenchCommandHint').replace('{cmd}', handler.name),
             },
             msg,
           ),
@@ -220,7 +220,7 @@ export class CommandRouter {
     if (!opts.requirePublicTextCommand) {
       await adapter.send(
         withInboundReplyContext(
-          { chatId: msg.chatId, text: t(locale, 'router.unknownCommand').replace('{cmd}', cmd) },
+          { chatId: msg.chatId, text: t('router.unknownCommand').replace('{cmd}', cmd) },
           msg,
         ),
       );

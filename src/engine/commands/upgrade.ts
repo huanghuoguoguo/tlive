@@ -42,7 +42,7 @@ export class UpgradeCommand extends BaseCommand {
     if (subCmd === 'notes') {
       await this.send(ctx, {
         chatId: ctx.msg.chatId,
-        text: t(ctx.locale, 'cmd.upgrade.notesHint'),
+        text: t('cmd.upgrade.notesHint'),
       });
       return true;
     }
@@ -53,7 +53,7 @@ export class UpgradeCommand extends BaseCommand {
     if (!info) {
       await this.send(ctx, {
         chatId: ctx.msg.chatId,
-        text: t(ctx.locale, 'cmd.upgrade.checkFailed'),
+        text: t('cmd.upgrade.checkFailed'),
       });
       return true;
     }
@@ -61,7 +61,7 @@ export class UpgradeCommand extends BaseCommand {
     if (!info.hasUpdate) {
       await this.send(ctx, {
         chatId: ctx.msg.chatId,
-        text: t(ctx.locale, 'cmd.upgrade.alreadyLatest').replace('{version}', info.current),
+        text: t('cmd.upgrade.alreadyLatest').replace('{version}', info.current),
       });
       return true;
     }
@@ -74,7 +74,7 @@ export class UpgradeCommand extends BaseCommand {
       if (existsSync(join(packageRoot, '.git'))) {
         await this.send(ctx, {
           chatId: ctx.msg.chatId,
-          text: t(ctx.locale, 'cmd.upgrade.gitCheckout'),
+          text: t('cmd.upgrade.gitCheckout'),
         });
         return true;
       }
@@ -86,7 +86,7 @@ export class UpgradeCommand extends BaseCommand {
 
       await this.send(ctx, {
         chatId: ctx.msg.chatId,
-        text: t(ctx.locale, 'cmd.upgrade.starting')
+        text: t('cmd.upgrade.starting')
           .replace('{current}', info.current)
           .replace('{latest}', info.latest),
       });
@@ -108,7 +108,7 @@ export class UpgradeCommand extends BaseCommand {
     } catch (err: any) {
       await this.send(ctx, {
         chatId: ctx.msg.chatId,
-        text: t(ctx.locale, 'cmd.upgrade.failed').replace(
+        text: t('cmd.upgrade.failed').replace(
           '{error}',
           err?.message || 'Unknown error',
         ),

@@ -97,7 +97,7 @@ export class CostTracker {
     return this._queryCount;
   }
 
-  static format(stats: UsageStats, locale: Locale = 'zh'): string {
+  static format(stats: UsageStats, _locale: Locale = 'zh'): string {
     const duration = formatDuration(stats.durationMs);
     // When tokens are 0, show only duration.
     if (stats.inputTokens === 0 && stats.outputTokens === 0) {
@@ -108,14 +108,14 @@ export class CostTracker {
     const freshInputTokens = Math.max(0, stats.inputTokens - cachedInputTokens);
     const reasoningOutputTokens = positiveNumber(stats.reasoningOutputTokens);
     const tokenParts = [
-      `${t(locale, 'cost.input')} ${formatTokens(freshInputTokens)}`,
-      `${t(locale, 'cost.output')} ${formatTokens(stats.outputTokens)}`,
+      `${t('cost.input')} ${formatTokens(freshInputTokens)}`,
+      `${t('cost.output')} ${formatTokens(stats.outputTokens)}`,
     ];
     if (reasoningOutputTokens > 0) {
-      tokenParts.push(`${t(locale, 'cost.reasoning')} ${formatTokens(reasoningOutputTokens)}`);
+      tokenParts.push(`${t('cost.reasoning')} ${formatTokens(reasoningOutputTokens)}`);
     }
     if (cachedInputTokens > 0) {
-      tokenParts.push(`${t(locale, 'cost.cached')} ${formatTokens(cachedInputTokens)}`);
+      tokenParts.push(`${t('cost.cached')} ${formatTokens(cachedInputTokens)}`);
     }
     const tokens = tokenParts.join(' / ');
 

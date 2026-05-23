@@ -15,7 +15,7 @@ export interface FeishuCardActionResult {
   missingAction?: boolean;
 }
 
-export function feishuCardActionToInbound(data: unknown, locale: Locale): FeishuCardActionResult {
+export function feishuCardActionToInbound(data: unknown, _locale: Locale): FeishuCardActionResult {
   const event = data as {
     operator?: { user_id?: string; open_id?: string };
     action?: {
@@ -41,7 +41,7 @@ export function feishuCardActionToInbound(data: unknown, locale: Locale): Feishu
         text: '',
         callbackData: `form:${interactionId}:${JSON.stringify(formValue)}`,
       },
-      response: successToast(t(locale, 'adapter.submitted')),
+      response: successToast(t('adapter.submitted')),
     };
   }
 
@@ -56,7 +56,7 @@ export function feishuCardActionToInbound(data: unknown, locale: Locale): Feishu
       text: '',
       callbackData: action,
     },
-    response: successToast(t(locale, 'adapter.processing')),
+    response: successToast(t('adapter.processing')),
   };
 }
 

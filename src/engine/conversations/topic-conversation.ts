@@ -109,12 +109,12 @@ export class TopicConversationService {
     msg: InboundMessage,
     binding: TopicSessionBindingSnapshot,
     updates: { sdkSessionId?: string; lastMessageId?: string } = {},
-    locale: string = 'zh',
+    _locale: string = 'zh',
   ): void {
     if (!msg.threadId || !this.options.topicSessions) return;
     const scopeId = conversationScopeId(msg);
     const preview = truncate(
-      (msg.text || '').trim() || t(locale as 'zh' | 'en', 'topic.agentSession'),
+      (msg.text || '').trim() || t('topic.agentSession'),
       120,
     );
     this.options.topicSessions.upsert({
@@ -136,7 +136,7 @@ export class TopicConversationService {
   private async ensureTopicScope(
     adapter: BaseChannelAdapter,
     msg: InboundMessage,
-    locale: string = 'zh',
+    _locale: string = 'zh',
   ): Promise<InboundMessage> {
     if (
       msg.threadId ||
@@ -148,7 +148,7 @@ export class TopicConversationService {
     }
 
     const started = await adapter
-      .startThreadFromMessage(msg.chatId, msg.messageId, t(locale as 'zh' | 'en', 'topic.started'))
+      .startThreadFromMessage(msg.chatId, msg.messageId, t('topic.started'))
       .catch((err) => {
         console.warn(`[query] start thread failed: ${Logger.formatError(err)}`);
         return null;

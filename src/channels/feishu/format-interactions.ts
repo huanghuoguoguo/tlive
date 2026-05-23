@@ -24,7 +24,7 @@ export function buildQuestionElements(params: FormatQuestionParams): FeishuCardE
   const { question, options, multiSelect, permId } = data;
 
   const cardElements: FeishuCardElement[] = [
-    markdownElement(`**${t(locale, 'perm.labelQuestion')}**\n${question}`),
+    markdownElement(`**${t('perm.labelQuestion')}**\n${question}`),
   ];
 
   const useSelectDropdown = !multiSelect && options.length > 4;
@@ -35,11 +35,11 @@ export function buildQuestionElements(params: FormatQuestionParams): FeishuCardE
         (opt, i) => `${i + 1}. **${opt.label}**${opt.description ? ` — ${opt.description}` : ''}`,
       )
       .join('\n');
-    cardElements.push(markdownElement(`**${t(locale, 'perm.labelOptions')}**\n${optionsList}`));
+    cardElements.push(markdownElement(`**${t('perm.labelOptions')}**\n${optionsList}`));
     if (multiSelect) {
-      cardElements.push(markdownElement(t(locale, 'perm.hintClickToggle')));
+      cardElements.push(markdownElement(t('perm.hintClickToggle')));
     } else {
-      cardElements.push(markdownElement(t(locale, 'perm.hintClickOrText')));
+      cardElements.push(markdownElement(t('perm.hintClickOrText')));
     }
   }
 
@@ -49,7 +49,7 @@ export function buildQuestionElements(params: FormatQuestionParams): FeishuCardE
     formElements.push({
       tag: 'select_static',
       name: '_select',
-      placeholder: { tag: 'plain_text', content: t(locale, 'perm.placeholderSelect') },
+      placeholder: { tag: 'plain_text', content: t('perm.placeholderSelect') },
       options: options.map((opt) => ({
         text: { tag: 'plain_text', content: opt.label },
         value: opt.label,
@@ -64,8 +64,8 @@ export function buildQuestionElements(params: FormatQuestionParams): FeishuCardE
     placeholder: {
       tag: 'plain_text',
       content: useSelectDropdown
-        ? t(locale, 'perm.placeholderText')
-        : t(locale, 'perm.placeholderTextInput'),
+        ? t('perm.placeholderText')
+        : t('perm.placeholderTextInput'),
     },
     required: false,
   } as FeishuCardElement);
@@ -77,20 +77,20 @@ export function buildQuestionElements(params: FormatQuestionParams): FeishuCardE
   return cardElements;
 }
 
-function buildQuestionButtons(data: QuestionData, locale: Locale): Button[] {
+function buildQuestionButtons(data: QuestionData, _locale: Locale): Button[] {
   const { options, multiSelect, permId, sessionId } = data;
   const useSelectDropdown = !multiSelect && options.length > 4;
 
   if (useSelectDropdown) {
     return [
       {
-        label: t(locale, 'perm.btnSubmit'),
+        label: t('perm.btnSubmit'),
         callbackData: `form:${permId}`,
         style: 'primary',
         row: 0,
       },
       {
-        label: t(locale, 'perm.btnSkip'),
+        label: t('perm.btnSkip'),
         callbackData: `askq_skip:${permId}:${sessionId}`,
         style: 'default',
         row: 0,
@@ -107,13 +107,13 @@ function buildQuestionButtons(data: QuestionData, locale: Locale): Button[] {
         row: idx,
       })),
       {
-        label: t(locale, 'perm.btnSubmit'),
+        label: t('perm.btnSubmit'),
         callbackData: `form:${permId}`,
         style: 'primary' as const,
         row: options.length,
       },
       {
-        label: t(locale, 'perm.btnSkip'),
+        label: t('perm.btnSkip'),
         callbackData: `askq_skip:${permId}:${sessionId}`,
         style: 'default',
         row: options.length,
@@ -129,13 +129,13 @@ function buildQuestionButtons(data: QuestionData, locale: Locale): Button[] {
       row: idx,
     })),
     {
-      label: t(locale, 'perm.btnSubmitText'),
+      label: t('perm.btnSubmitText'),
       callbackData: `form:${permId}`,
       style: 'primary' as const,
       row: options.length,
     },
     {
-      label: t(locale, 'perm.btnSkip'),
+      label: t('perm.btnSkip'),
       callbackData: `askq_skip:${permId}:${sessionId}`,
       style: 'default',
       row: options.length,
@@ -150,14 +150,14 @@ export interface FormatDeferredToolParams {
 }
 
 export function buildDeferredToolElements(params: FormatDeferredToolParams): FeishuCardElement[] {
-  const { data, locale } = params;
+  const { data } = params;
   const { toolName, prompt, permId, sessionId, inputPlaceholder } = data;
 
   const cardElements: FeishuCardElement[] = [
-    markdownElement(`**${t(locale, 'perm.labelToolRequest')}**\n${toolName}`),
-    markdownElement(`**${t(locale, 'perm.labelDescription')}**\n${prompt}`),
-    markdownElement(`**${t(locale, 'perm.labelSessionInfo')}**\n${sessionId}`),
-    markdownElement(t(locale, 'perm.hintInputSubmit')),
+    markdownElement(`**${t('perm.labelToolRequest')}**\n${toolName}`),
+    markdownElement(`**${t('perm.labelDescription')}**\n${prompt}`),
+    markdownElement(`**${t('perm.labelSessionInfo')}**\n${sessionId}`),
+    markdownElement(t('perm.hintInputSubmit')),
   ];
 
   const formElements: FeishuCardElement[] = [
@@ -166,7 +166,7 @@ export function buildDeferredToolElements(params: FormatDeferredToolParams): Fei
       name: '_deferred_input',
       placeholder: {
         tag: 'plain_text',
-        content: inputPlaceholder || t(locale, 'perm.placeholderInput'),
+        content: inputPlaceholder || t('perm.placeholderInput'),
       },
       required: false,
     } as FeishuCardElement,
@@ -174,13 +174,13 @@ export function buildDeferredToolElements(params: FormatDeferredToolParams): Fei
 
   const formButtons: Button[] = [
     {
-      label: t(locale, 'perm.btnSubmit'),
+      label: t('perm.btnSubmit'),
       callbackData: `form:${permId}`,
       style: 'primary',
       row: 0,
     },
     {
-      label: t(locale, 'perm.btnSkip'),
+      label: t('perm.btnSkip'),
       callbackData: `deferred:skip:${permId}`,
       style: 'default',
       row: 0,
@@ -199,7 +199,7 @@ export interface FormatMultiSelectParams {
 }
 
 export function buildMultiSelectElements(params: FormatMultiSelectParams): FeishuCardElement[] {
-  const { data, locale } = params;
+  const { data } = params;
   const optionsList = data.options
     .map(
       (opt, i) =>
@@ -208,10 +208,10 @@ export function buildMultiSelectElements(params: FormatMultiSelectParams): Feish
     .join('\n');
 
   return [
-    markdownElement(`**${t(locale, 'perm.labelQuestion')}**\n${data.question}`),
-    markdownElement(`**${t(locale, 'perm.labelOptions')}**\n${optionsList}`),
+    markdownElement(`**${t('perm.labelQuestion')}**\n${data.question}`),
+    markdownElement(`**${t('perm.labelOptions')}**\n${optionsList}`),
     markdownElement(
-      `**${t(locale, 'perm.labelDescription')}**\n${t(locale, 'perm.hintMultiSelect')}`,
+      `**${t('perm.labelDescription')}**\n${t('perm.hintMultiSelect')}`,
     ),
   ];
 }
@@ -220,7 +220,7 @@ export function buildMultiSelectButtons(
   permId: string,
   sessionId: string,
   options: Array<{ label: string; description?: string }>,
-  locale: Locale,
+  _locale: Locale,
 ): Button[] {
   return [
     ...options.map((opt, idx) => ({
@@ -230,13 +230,13 @@ export function buildMultiSelectButtons(
       row: idx,
     })),
     {
-      label: t(locale, 'perm.btnSubmit'),
+      label: t('perm.btnSubmit'),
       callbackData: `form:${permId}`,
       style: 'primary' as const,
       row: options.length,
     },
     {
-      label: t(locale, 'perm.btnSkip'),
+      label: t('perm.btnSkip'),
       callbackData: `askq_skip:${permId}:${sessionId}`,
       style: 'default' as const,
       row: options.length,

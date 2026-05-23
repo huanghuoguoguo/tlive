@@ -23,7 +23,7 @@ export class StopCommand extends BaseCommand {
     if (ctx.surface === 'workbench') {
       await this.send(ctx, {
         chatId: ctx.msg.chatId,
-        text: t(ctx.locale, 'cmd.stop.workbenchHint'),
+        text: t('cmd.stop.workbenchHint'),
       });
       return true;
     }

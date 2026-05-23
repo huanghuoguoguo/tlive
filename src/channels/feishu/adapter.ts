@@ -128,7 +128,7 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
     messageId: string,
     text?: string,
   ): Promise<ThreadStartResult | null> {
-    const finalText = text ?? t(this.getLocale(), 'feishu.topicProcessing');
+    const finalText = text ?? t('feishu.topicProcessing');
     return startFeishuThreadFromMessage(this.client, {
       chatId,
       messageId,
@@ -143,7 +143,7 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
     title: string,
     text?: string,
   ): Promise<ThreadStartResult | null> {
-    const finalText = text ?? t(this.getLocale(), 'feishu.topicContinue');
+    const finalText = text ?? t('feishu.topicContinue');
     return startFeishuThreadWithTitle(this.client, {
       chatId,
       title,
