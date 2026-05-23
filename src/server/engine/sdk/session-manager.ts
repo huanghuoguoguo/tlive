@@ -10,7 +10,7 @@
 import type { AgentProvider, LiveSession } from '../../../shared/providers/base.js';
 import type { AgentProviderKind } from '../../../shared/providers/kinds.js';
 import type { AgentSettingSource } from '../../../shared/config.js';
-import type { EffortLevel } from '../../../shared/utils/types.js';
+import type { EffortLevel } from '../../../shared/providers/effort.js';
 import { SESSION_STALE_THRESHOLD_MS } from '../../../shared/core/timing.js';
 import { chatKey as buildChatKey, sessionKey as buildSessionKey } from '../../../shared/core/key.js';
 

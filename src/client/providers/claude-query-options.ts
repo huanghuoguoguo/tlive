@@ -1,6 +1,6 @@
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentSettingSource } from '../../shared/config.js';
-import type { EffortLevel } from '../../shared/utils/types.js';
+import type { EffortLevel } from '../../shared/providers/effort.js';
 import { buildSubprocessEnv, SAFE_PERMISSIONS } from './claude-shared.js';
 import { tliveMcpAllowedClaudeTools, tliveMcpServersForClaude } from './tlive-mcp.js';
 import type {

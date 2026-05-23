@@ -7,6 +7,7 @@ import { AgentProviderRegistry, type AgentProviderDescriptor } from './registry.
 import type { AgentProviderKind } from '../../shared/providers/kinds.js';
 import type { RemoteClientRegistry } from '../../server/clients/client-registry.js';
 import { ClientBackedAgentProvider } from '../../server/clients/client-agent-provider.js';
+import { loadCodexProviderConfig } from './codex-config.js';
 
 export interface AgentProviderRegistryOptions {
   remoteClientRegistry?: RemoteClientRegistry;
@@ -17,7 +18,8 @@ export function createAgentProviderRegistry(
   options: AgentProviderRegistryOptions = {},
 ): AgentProviderRegistry {
   const claude = detectClaudeCli();
-  const codex = detectCodexCli(config.codex.codexPath || undefined);
+  const codexConfig = loadCodexProviderConfig({ defaultModel: config.defaultModel });
+  const codex = detectCodexCli(codexConfig.codexPath);
 
   const descriptors = new Map<AgentProviderKind, AgentProviderDescriptor>([
     [
@@ -63,20 +65,10 @@ export function createAgentProviderRegistry(
     (config.remote.server.localClientEnabled || !useClientBackedProviders) &&
     (codex.available || config.provider === 'codex')
       ? new CodexSDKProvider({
-          ...(codex.path || config.codex.codexPath
-            ? { codexPath: codex.path ?? config.codex.codexPath }
+          ...codexConfig,
+          ...(codex.path || codexConfig.codexPath
+            ? { codexPath: codex.path ?? codexConfig.codexPath }
             : {}),
-          ...(config.codex.model ? { model: config.codex.model } : {}),
-          sandboxMode: config.codex.sandboxMode,
-          approvalPolicy: config.codex.approvalPolicy,
-          skipGitRepoCheck: config.codex.skipGitRepoCheck,
-          ...(config.codex.modelReasoningEffort
-            ? { modelReasoningEffort: config.codex.modelReasoningEffort }
-            : {}),
-          ...(config.codex.networkAccessEnabled !== undefined
-            ? { networkAccessEnabled: config.codex.networkAccessEnabled }
-            : {}),
-          ...(config.codex.webSearchMode ? { webSearchMode: config.codex.webSearchMode } : {}),
         })
       : undefined;
 

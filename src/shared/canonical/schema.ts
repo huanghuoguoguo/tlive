@@ -135,12 +135,14 @@ const rateLimitSchema = z.object({
   resetsAt: z.number().optional(),
 });
 
+export const todoStatusSchema = z.enum(['pending', 'in_progress', 'completed']);
+
 const todoUpdateSchema = z.object({
   kind: z.literal('todo_update'),
   todos: z.array(
     z.object({
       content: z.string(),
-      status: z.enum(['pending', 'in_progress', 'completed']),
+      status: todoStatusSchema,
     }),
   ),
 });
@@ -167,3 +169,4 @@ export const canonicalEventSchema = z.discriminatedUnion('kind', [
 ]);
 
 export type CanonicalEvent = z.infer<typeof canonicalEventSchema>;
+export type TodoStatus = z.infer<typeof todoStatusSchema>;

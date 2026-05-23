@@ -28,6 +28,7 @@ vi.mock('@openai/codex-sdk', () => ({
 }));
 
 import { CodexLiveSession, resolveCodexSessionOptions } from '../../client/providers/codex-live-session.js';
+import { loadCodexProviderConfig } from '../../client/providers/codex-config.js';
 import { CodexSDKProvider, toCodexReasoningEffort } from '../../client/providers/codex-sdk.js';
 
 describe('CodexSDKProvider', () => {
@@ -93,6 +94,41 @@ describe('CodexSDKProvider', () => {
     expect(resolved.model).toBe('gpt-5.4');
     expect(resolved.modelReasoningEffort).toBe('medium');
     rmSync(codexHome, { recursive: true, force: true });
+  });
+
+  it('loads Codex env options in the Codex provider boundary', () => {
+    const values = new Map([
+      ['TL_CODEX_MODEL', 'gpt-5.4'],
+      ['TL_CODEX_PATH', '/usr/local/bin/codex'],
+      ['TL_CODEX_SANDBOX_MODE', 'danger-full-access'],
+      ['TL_CODEX_APPROVAL_POLICY', 'never'],
+      ['TL_CODEX_SKIP_GIT_REPO_CHECK', 'true'],
+      ['TL_CODEX_REASONING_EFFORT', 'high'],
+      ['TL_CODEX_NETWORK_ACCESS', 'true'],
+      ['TL_CODEX_WEB_SEARCH', 'live'],
+    ]);
+
+    expect(loadCodexProviderConfig({ get: (key, fallback = '') => values.get(key) ?? fallback }))
+      .toEqual({
+        model: 'gpt-5.4',
+        codexPath: '/usr/local/bin/codex',
+        sandboxMode: 'danger-full-access',
+        approvalPolicy: 'never',
+        skipGitRepoCheck: true,
+        modelReasoningEffort: 'high',
+        networkAccessEnabled: true,
+        webSearchMode: 'live',
+      });
+  });
+
+  it('keeps Codex defaults local to the Codex provider config', () => {
+    expect(loadCodexProviderConfig({ defaultModel: 'gpt-5.5', get: (_key, fallback = '') => fallback }))
+      .toEqual({
+        model: 'gpt-5.5',
+        sandboxMode: 'workspace-write',
+        approvalPolicy: 'on-request',
+        skipGitRepoCheck: false,
+      });
   });
 
   it('injects TLive MCP only into the SDK-created Codex process', () => {

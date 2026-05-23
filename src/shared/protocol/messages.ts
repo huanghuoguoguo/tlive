@@ -3,14 +3,13 @@ import { canonicalEventSchema, type CanonicalEvent } from '../canonical/schema.j
 import type { AgentProviderCapabilities } from '../providers/base.js';
 import type { AgentProviderKind } from '../providers/kinds.js';
 import type { AgentSettingSource } from '../config.js';
-import type { EffortLevel } from '../utils/types.js';
+import { canonicalEffortSchema, type EffortLevel } from '../providers/effort.js';
 import type { FileAttachment } from '../media/attachments.js';
 
 export const REMOTE_PROTOCOL_VERSION = 1;
 
 const providerKindSchema = z.enum(['claude', 'codex']);
 const settingSourceSchema = z.enum(['user', 'project', 'local']);
-const effortSchema = z.enum(['low', 'medium', 'high', 'max']);
 
 const providerCapabilitiesSchema = z.object({
   runtimeMode: z.enum(['interactive', 'turn-based']),
@@ -237,7 +236,7 @@ const turnStartSchema = z.object({
   workingDirectory: z.string(),
   sdkSessionId: z.string().optional(),
   model: z.string().optional(),
-  effort: effortSchema.optional(),
+  effort: canonicalEffortSchema.optional(),
   settingSources: z.array(settingSourceSchema).optional(),
   appendSystemPrompt: z.string().optional(),
   attachments: z.array(fileAttachmentSchema).optional(),

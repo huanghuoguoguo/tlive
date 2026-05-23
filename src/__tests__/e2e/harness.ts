@@ -378,13 +378,6 @@ function testConfig(root: string): Config {
     defaultWorkdir: root,
     defaultModel: '',
     agentSettingSources: ['user', 'project', 'local'],
-    codex: {
-      model: '',
-      codexPath: '',
-      sandboxMode: 'workspace-write',
-      approvalPolicy: 'on-request',
-      skipGitRepoCheck: false,
-    },
     webhook: {
       enabled: false,
       token: 'webhook-token',

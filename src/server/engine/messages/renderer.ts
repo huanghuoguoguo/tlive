@@ -4,7 +4,7 @@
  */
 
 import { truncate } from '../../../shared/core/string.js';
-import type { TodoStatus } from '../../../shared/utils/types.js';
+import type { TodoStatus } from '../../../shared/canonical/schema.js';
 import type { VerboseLevel } from '../state/session-state.js';
 import type { Button } from '../../../shared/ui/types.js';
 import type { AgentRuntimeInfo } from '../../../shared/providers/base.js';

@@ -30,10 +30,7 @@ export interface ProjectConfig {
 export const DEFAULT_AGENT_SETTING_SOURCES: AgentSettingSource[] = ['user', 'project', 'local'];
 
 export type ProviderKind = AgentProviderKind;
-export type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
-export type CodexApprovalPolicy = 'never' | 'on-request' | 'on-failure' | 'untrusted';
-export type CodexReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
-export type CodexWebSearchMode = 'disabled' | 'cached' | 'live';
+export type ConfigValueReader = (key: string, defaultValue?: string) => string;
 
 /** Structure of projects.json configuration file */
 export interface ProjectsFileConfig {
@@ -60,16 +57,6 @@ export interface Config {
   defaultModel: string;
   /** Provider settings sources to load (default: ['user', 'project', 'local']) */
   agentSettingSources: AgentSettingSource[];
-  codex: {
-    model: string;
-    codexPath: string;
-    sandboxMode: CodexSandboxMode;
-    approvalPolicy: CodexApprovalPolicy;
-    skipGitRepoCheck: boolean;
-    modelReasoningEffort?: CodexReasoningEffort;
-    networkAccessEnabled?: boolean;
-    webSearchMode?: CodexWebSearchMode;
-  };
   /** Webhook configuration for automation entry */
   webhook: {
     /** Enable webhook endpoint (default: false) */
@@ -298,41 +285,6 @@ function normalizeProviderList(value: string | undefined): AgentProviderKind[] {
   return providers.length ? providers : [DEFAULT_AGENT_PROVIDER_KIND];
 }
 
-function normalizeCodexSandboxMode(value: string | undefined): CodexSandboxMode {
-  if (value === 'read-only' || value === 'danger-full-access') return value;
-  return 'workspace-write';
-}
-
-function normalizeCodexApprovalPolicy(value: string | undefined): CodexApprovalPolicy {
-  if (value === 'never' || value === 'on-failure' || value === 'untrusted') return value;
-  return 'on-request';
-}
-
-function normalizeCodexReasoningEffort(
-  value: string | undefined,
-): CodexReasoningEffort | undefined {
-  if (
-    value === 'minimal' ||
-    value === 'low' ||
-    value === 'medium' ||
-    value === 'high' ||
-    value === 'xhigh'
-  ) {
-    return value;
-  }
-  return undefined;
-}
-
-function normalizeCodexWebSearchMode(value: string | undefined): CodexWebSearchMode | undefined {
-  if (value === 'disabled' || value === 'cached' || value === 'live') return value;
-  return undefined;
-}
-
-function parseOptionalBoolean(value: string | undefined): boolean | undefined {
-  if (value === undefined || value === '') return undefined;
-  return value === 'true';
-}
-
 function loadEnvFile(path: string): Record<string, string> {
   try {
     const content = readFileSync(path, 'utf-8');
@@ -359,11 +311,10 @@ function loadEnvFile(path: string): Record<string, string> {
   }
 }
 
-export function loadConfig(options: LoadConfigOptions = {}): Config {
-  // 1. Load env file
+export function createConfigValueReader(): ConfigValueReader {
   const envFile = loadEnvFile(join(getTliveHome(), 'config.env'));
 
-  // 2. Inject non-TL_ vars into process.env so providers can access them
+  // Inject non-TL_ vars into process.env so providers can access them
   //    (e.g. ANTHROPIC_API_KEY) — process.env takes precedence
   for (const [key, value] of Object.entries(envFile)) {
     if (!key.startsWith('TL_') && !(key in process.env)) {
@@ -371,9 +322,11 @@ export function loadConfig(options: LoadConfigOptions = {}): Config {
     }
   }
 
-  // 3. Merge: env vars override env file
-  const get = (key: string, defaultValue = ''): string =>
-    process.env[key] ?? envFile[key] ?? defaultValue;
+  return (key, defaultValue = ''): string => process.env[key] ?? envFile[key] ?? defaultValue;
+}
+
+export function loadConfig(options: LoadConfigOptions = {}): Config {
+  const get = createConfigValueReader();
 
   const port = parseInt(get('TL_PORT', '8080'), 10);
   const remoteToken = get('TL_REMOTE_TOKEN', get('TL_TOKEN'));
@@ -389,16 +342,6 @@ export function loadConfig(options: LoadConfigOptions = {}): Config {
     ) as AgentSettingSource[],
     defaultWorkdir: get('TL_DEFAULT_WORKDIR', process.cwd()),
     defaultModel: get('TL_DEFAULT_MODEL'),
-    codex: {
-      model: get('TL_CODEX_MODEL', get('TL_DEFAULT_MODEL')),
-      codexPath: get('TL_CODEX_PATH'),
-      sandboxMode: normalizeCodexSandboxMode(get('TL_CODEX_SANDBOX_MODE', 'workspace-write')),
-      approvalPolicy: normalizeCodexApprovalPolicy(get('TL_CODEX_APPROVAL_POLICY', 'on-request')),
-      skipGitRepoCheck: get('TL_CODEX_SKIP_GIT_REPO_CHECK', 'false') === 'true',
-      modelReasoningEffort: normalizeCodexReasoningEffort(get('TL_CODEX_REASONING_EFFORT')),
-      networkAccessEnabled: parseOptionalBoolean(get('TL_CODEX_NETWORK_ACCESS')),
-      webSearchMode: normalizeCodexWebSearchMode(get('TL_CODEX_WEB_SEARCH')),
-    },
     webhook: {
       enabled: get('TL_WEBHOOK_ENABLED', 'false') === 'true',
       token: get('TL_WEBHOOK_TOKEN'),

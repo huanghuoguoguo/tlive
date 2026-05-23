@@ -1,4 +1,4 @@
-import type { EffortLevel } from '../../../shared/utils/types.js';
+import type { EffortLevel } from '../../../shared/providers/effort.js';
 
 /** Session configuration stored per chat/session. */
 export interface SessionMode {

@@ -2,7 +2,7 @@
  * Shared types for message rendering — extracted to avoid circular dependency.
  */
 
-import type { TodoStatus } from '../../../shared/utils/types.js';
+import type { TodoStatus } from '../../../shared/canonical/schema.js';
 
 /** Tool call log entry for detailed display */
 export interface ToolLogEntry {

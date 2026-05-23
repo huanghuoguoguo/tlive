@@ -1,6 +1,6 @@
 import type { CanonicalEvent } from '../canonical/schema.js';
 import type { AgentSettingSource } from '../config.js';
-import type { EffortLevel } from '../utils/types.js';
+import type { EffortLevel } from './effort.js';
 import type { AgentProviderKind } from './kinds.js';
 import type {
   AskUserQuestionHandler,
@@ -20,8 +20,7 @@ export type {
   PermissionTimeoutCallback,
   QueryControls,
 };
-
-export type { EffortLevel };
+export { canonicalEffortSchema, type EffortLevel } from './effort.js';
 export type { AgentProviderKind };
 
 export interface AgentProviderCapabilities {

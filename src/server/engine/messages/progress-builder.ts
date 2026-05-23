@@ -6,7 +6,7 @@
 import { redactSensitiveContent } from '../../../shared/utils/content-filter.js';
 import { getToolIcon } from '../sdk/tool-registry.js';
 import { shortPath } from '../../../shared/core/path.js';
-import type { TodoStatus } from '../../../shared/utils/types.js';
+import type { TodoStatus } from '../../../shared/canonical/schema.js';
 import type { ToolLogEntry, TimelineEntry, MessageRendererState } from './renderer-types.js';
 import type { Button } from '../../../shared/ui/types.js';
 import { t, type Locale } from '../../../shared/i18n/index.js';

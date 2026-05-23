@@ -12,7 +12,7 @@ import type {
   DeferredToolHandler,
   AgentProvider,
 } from '../../shared/providers/base.js';
-import type { TodoStatus } from '../../shared/utils/types.js';
+import type { TodoStatus } from '../../shared/canonical/schema.js';
 import { getTliveHome } from '../../shared/core/path.js';
 
 const TEXT_MIME_PREFIXES = [
