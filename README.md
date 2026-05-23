@@ -181,8 +181,8 @@ tlive upgrade
 Upgrade to a specific release, including beta/prerelease versions when available:
 
 ```bash
-tlive upgrade 0.13.7
-tlive upgrade 0.13.8-beta.1
+tlive upgrade 0.14.0
+tlive upgrade 0.14.0-beta.1
 ```
 
 ## Documentation

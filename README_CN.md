@@ -180,8 +180,8 @@ tlive upgrade
 升级到指定版本，包括后续发布的 beta/prerelease 版本：
 
 ```bash
-tlive upgrade 0.13.7
-tlive upgrade 0.13.8-beta.1
+tlive upgrade 0.14.0
+tlive upgrade 0.14.0-beta.1
 ```
 
 ## 文档
