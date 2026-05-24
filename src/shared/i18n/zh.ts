@@ -137,6 +137,7 @@ export const zh: Translations = {
   // --- versionUpdate ---
   'version.title': '🔄 **发现新版本**',
   'version.released': '发布时间',
+  'version.notes': '更新内容',
 
   // --- multiSelectToggle ---
   'multiSelect.hint': '💬 点击选项切换，然后按 Submit 确认',

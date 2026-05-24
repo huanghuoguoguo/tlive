@@ -390,6 +390,7 @@ export interface VersionUpdateData {
   current: string;
   latest: string;
   publishedAt?: string;
+  releaseNotes?: string;
 }
 
 /** Multi-select toggle card (for AskUserQuestion) */

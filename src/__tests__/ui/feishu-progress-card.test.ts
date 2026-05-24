@@ -131,6 +131,24 @@ describe('FeishuFormatter.formatQuestion', () => {
   });
 });
 
+describe('FeishuFormatter.formatVersionUpdate', () => {
+  const formatter = new FeishuFormatter('zh');
+
+  it('includes release notes in the update card', () => {
+    const msg = formatter.formatVersionUpdate('chat1', {
+      current: '0.14.0',
+      latest: '0.14.1',
+      publishedAt: '2026-05-24T00:00:00Z',
+      releaseNotes: '- 修复 Feishu live QA 路径\n- 新增真实测试工具',
+    });
+
+    const elements = getElements(msg as any);
+
+    expect(JSON.stringify(elements)).toContain('更新内容');
+    expect(JSON.stringify(elements)).toContain('修复 Feishu live QA 路径');
+  });
+});
+
 describe('FeishuFormatter.formatProgress', () => {
   const formatter = new FeishuFormatter('zh');
 

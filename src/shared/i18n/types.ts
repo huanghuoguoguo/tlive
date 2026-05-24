@@ -139,6 +139,7 @@ export interface Translations {
   // --- versionUpdate ---
   'version.title': string;
   'version.released': string;
+  'version.notes': string;
 
   // --- multiSelectToggle ---
   'multiSelect.hint': string;

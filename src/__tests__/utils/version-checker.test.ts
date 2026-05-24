@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { checkForUpdates, compareVersions, selectUpdateRelease } from '../../shared/utils/version-checker.js';
 
-function release(tag: string, prerelease = false) {
+function release(tag: string, prerelease = false, body = '') {
   return {
     tag_name: `v${tag}`,
     name: `v${tag}`,
     html_url: `https://example.test/${tag}`,
+    body,
     published_at: '2026-05-22T00:00:00Z',
     prerelease,
     draft: false,
@@ -69,6 +70,23 @@ describe('version-checker', () => {
       expect.any(Object),
     );
     expect(info).toMatchObject({ current: '0.13.7', latest: '0.13.7', hasUpdate: false });
+  });
+
+  it('includes release notes from GitHub release metadata', async () => {
+    process.env.npm_package_version = '0.13.7';
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(mockJsonResponse(release('0.13.8', false, 'Fix Feishu QA paths')));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const info = await checkForUpdates();
+
+    expect(info).toMatchObject({
+      current: '0.13.7',
+      latest: '0.13.8',
+      hasUpdate: true,
+      releaseNotes: 'Fix Feishu QA paths',
+    });
   });
 
   it('uses the releases list for prerelease versions', async () => {

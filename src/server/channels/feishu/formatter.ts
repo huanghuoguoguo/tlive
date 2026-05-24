@@ -437,6 +437,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
           day: 'numeric',
         })
       : '';
+    const releaseNotes = data.releaseNotes?.trim();
     const elements: FeishuCardElement[] = [
       this.md(
         `**${t('version.title').replace('🔄 **', '').replace('**', '')}**\nv${data.current}`,
@@ -445,6 +446,11 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
     ];
     if (dateStr) {
       elements.push(this.md(`**${t('version.released')}**\n${dateStr}`));
+    }
+    if (releaseNotes) {
+      elements.push(
+        this.md(`**${t('version.notes')}**\n${truncate(releaseNotes, 420)}`),
+      );
     }
     const buttons: Button[] = [
       {

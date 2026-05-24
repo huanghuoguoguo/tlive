@@ -137,6 +137,7 @@ export const en: Translations = {
   // --- versionUpdate ---
   'version.title': '🔄 **Update Available**',
   'version.released': 'Released',
+  'version.notes': 'What changed',
 
   // --- multiSelectToggle ---
   'multiSelect.hint': '💬 Tap options to toggle, then Submit',

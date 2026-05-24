@@ -580,6 +580,7 @@ export async function main() {
               current: info.current,
               latest: info.latest,
               publishedAt: info.publishedAt,
+              releaseNotes: info.releaseNotes,
             },
           })
           .catch(() => {});
