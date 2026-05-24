@@ -35,6 +35,16 @@ function envValue(key, fallback = '') {
   return process.env[key] || liveEnv[key] || configEnv[key] || fallback;
 }
 
+function usage() {
+  console.error(`Usage:
+  npm run live:feishu:send -- <message>
+
+Examples:
+  npm run live:feishu:send -- "/home"
+  npm run live:feishu:send -- "/new claude yhh-client-..."
+`);
+}
+
 function fail(message) {
   console.error(`[live-feishu-send] ${message}`);
   process.exit(1);
@@ -42,11 +52,17 @@ function fail(message) {
 
 const configEnv = loadEnvFile(CONFIG_FILE);
 const liveEnv = loadEnvFile(LIVE_TEST_FILE);
+const argv = process.argv.slice(2);
+
+if (argv.includes('--help') || argv.includes('-h')) {
+  usage();
+  process.exit(0);
+}
 
 const token = envValue('FEISHU_TEST_USER_ACCESS_TOKEN');
 const chatId = envValue('TL_FS_TEST_CHAT_ID');
 const receiveIdType = envValue('TL_FS_TEST_RECEIVE_ID_TYPE', 'chat_id');
-const text = process.argv.slice(2).join(' ') || '/home';
+const text = argv.join(' ') || '/home';
 
 if (!token) fail(`FEISHU_TEST_USER_ACCESS_TOKEN is missing. Run npm run live:feishu:auth first.`);
 if (!chatId) fail(`TL_FS_TEST_CHAT_ID is missing. Add it to ${LIVE_TEST_FILE}`);

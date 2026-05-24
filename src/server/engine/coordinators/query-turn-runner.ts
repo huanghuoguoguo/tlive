@@ -103,123 +103,127 @@ export class QueryTurnRunner {
       });
     }
 
-    await this.options.engine.processMessage({
-      provider,
-      sdkSessionId: binding.sdkSessionId,
-      workingDirectory: workdir,
-      clientId: binding.clientId,
-      settingSources,
-      text: promptText,
-      attachments: imageAttachments,
-      streamResult,
-      sdkPermissionHandler: streamResult ? undefined : sdkPermissionHandler,
-      sdkAskQuestionHandler: streamResult ? undefined : sdkAskQuestionHandler,
-      sdkDeferredToolHandler: streamResult ? undefined : sdkDeferredToolHandler,
-      onControls: (ctrl) => this.options.sdkEngine.setControlsForChat(chatKey, ctrl, sessionKey),
-      onSdkSessionId: async (id) => {
-        binding.sdkSessionId = id;
-        this.options.sdkEngine.updateSessionSdkSessionId?.(sessionKey, id);
-        if (binding.channelType === msg.channelType && binding.chatId === scopeId) {
-          const currentBinding = await this.options.store.getBinding(msg.channelType, scopeId);
-          if (currentBinding?.sessionId === binding.sessionId) {
-            currentBinding.sdkSessionId = id;
-            await this.options.store.saveBinding(currentBinding);
+    try {
+      await this.options.engine.processMessage({
+        provider,
+        sdkSessionId: binding.sdkSessionId,
+        workingDirectory: workdir,
+        clientId: binding.clientId,
+        settingSources,
+        text: promptText,
+        attachments: imageAttachments,
+        streamResult,
+        sdkPermissionHandler: streamResult ? undefined : sdkPermissionHandler,
+        sdkAskQuestionHandler: streamResult ? undefined : sdkAskQuestionHandler,
+        sdkDeferredToolHandler: streamResult ? undefined : sdkDeferredToolHandler,
+        onControls: (ctrl) => this.options.sdkEngine.setControlsForChat(chatKey, ctrl, sessionKey),
+        onSdkSessionId: async (id) => {
+          binding.sdkSessionId = id;
+          this.options.sdkEngine.updateSessionSdkSessionId?.(sessionKey, id);
+          if (binding.channelType === msg.channelType && binding.chatId === scopeId) {
+            const currentBinding = await this.options.store.getBinding(msg.channelType, scopeId);
+            if (currentBinding?.sessionId === binding.sessionId) {
+              currentBinding.sdkSessionId = id;
+              await this.options.store.saveBinding(currentBinding);
+            }
           }
-        }
-        await this.options.onSdkSessionId?.(query, id);
-      },
-      onTextDelta: (delta) => renderer.onTextDelta(delta),
-      onThinkingDelta: (delta) => renderer.onThinkingDelta(delta),
-      onToolStart: (event) => renderer.onToolStart(event.name, event.input, event.id),
-      onToolResult: (event) => {
-        renderer.onToolResult(event.toolUseId, event.content, event.isError);
-        if (event.isFinal !== false) {
-          renderer.onToolComplete(event.toolUseId);
-        }
-      },
-      onAgentStart: (data) => {
-        if (DEBUG_EVENTS) console.log(`[bridge] agent_start: ${data.description}`);
-        renderer.onToolStart('Agent', { description: data.description, prompt: '' });
-      },
-      onAgentProgress: (data) => {
-        if (DEBUG_EVENTS) console.log(`[bridge] agent_progress: ${data.description}`);
-        if (data.usage?.durationMs) {
-          renderer.onToolProgress({ toolName: 'Agent', elapsed: data.usage.durationMs });
-        }
-      },
-      onAgentComplete: () => renderer.onToolComplete('agent-complete'),
-      onToolProgress: (data) => renderer.onToolProgress(data),
-      onStatus: (data) => renderer.setModel(data.model),
-      onSessionInfo: (data) => renderer.onSessionInfo(data),
-      onToolUseSummary: (summary) => renderer.onToolUseSummary(summary),
-      onApiRetry: (data) => {
-        console.log(
-          `[bridge] api_retry: attempt ${data.attempt}/${data.maxRetries} delay=${data.retryDelayMs}ms${data.error ? ` error=${data.error}` : ''}`,
-        );
-        renderer.onApiRetry(data);
-      },
-      onCompactBoundary: (data) => {
-        console.log(
-          `[bridge] compact_boundary: trigger=${data.trigger}${data.preTokens ? ` pre_tokens=${data.preTokens}` : ''}`,
-        );
-        renderer.onCompacting(true);
-      },
-      onRateLimit: (data) => {
-        if (data.status === 'rejected') {
-          renderer.onTextDelta('\n⚠️ Rate limited. Retrying...\n');
-        } else if (data.status === 'allowed_warning' && data.utilization) {
-          renderer.onTextDelta(`\n⚠️ Rate limit: ${Math.round(data.utilization * 100)}% used\n`);
-        }
-      },
-      onTodoUpdate: (todos) => renderer.onTodoUpdate(todos),
-      onQueryResult: async (event) => {
-        terminalEventSeen = true;
-        if (queryFailed) return;
-        if (event.permissionDenials?.length) {
-          console.warn(
-            `[query] ${ctx.requestId} DENIALS ${event.permissionDenials.map((denial) => denial.toolName).join(', ')}`,
-          );
-        }
-        const usageStats = costTracker.finish({
-          input_tokens: event.usage.inputTokens,
-          output_tokens: event.usage.outputTokens,
-          cached_input_tokens: event.usage.cachedInputTokens,
-          reasoning_output_tokens: event.usage.reasoningOutputTokens,
-          cost_usd: event.usage.costUsd,
-        });
-        renderer.setUsageSummary(CostTracker.format(usageStats));
-        console.log(
-          `[query] ${ctx.requestId} COMPLETE tokens=${event.usage.inputTokens}+${event.usage.outputTokens} cost=${event.usage.costUsd?.toFixed(4) || '?'}$`,
-        );
-        if (DEBUG_EVENTS) {
-          const state = renderer.getDebugSnapshot();
+          await this.options.onSdkSessionId?.(query, id);
+        },
+        onTextDelta: (delta) => renderer.onTextDelta(delta),
+        onThinkingDelta: (delta) => renderer.onThinkingDelta(delta),
+        onToolStart: (event) => renderer.onToolStart(event.name, event.input, event.id),
+        onToolResult: (event) => {
+          renderer.onToolResult(event.toolUseId, event.content, event.isError);
+          if (event.isFinal !== false) {
+            renderer.onToolComplete(event.toolUseId);
+          }
+        },
+        onAgentStart: (data) => {
+          if (DEBUG_EVENTS) console.log(`[bridge] agent_start: ${data.description}`);
+          renderer.onToolStart('Agent', { description: data.description, prompt: '' });
+        },
+        onAgentProgress: (data) => {
+          if (DEBUG_EVENTS) console.log(`[bridge] agent_progress: ${data.description}`);
+          if (data.usage?.durationMs) {
+            renderer.onToolProgress({ toolName: 'Agent', elapsed: data.usage.durationMs });
+          }
+        },
+        onAgentComplete: () => renderer.onToolComplete('agent-complete'),
+        onToolProgress: (data) => renderer.onToolProgress(data),
+        onStatus: (data) => renderer.setModel(data.model),
+        onSessionInfo: (data) => renderer.onSessionInfo(data),
+        onToolUseSummary: (summary) => renderer.onToolUseSummary(summary),
+        onApiRetry: (data) => {
           console.log(
-            `[bridge] final timeline: thinking=${state.thinkingEntries} text=${state.textEntries} tool=${state.toolEntries}`,
+            `[bridge] api_retry: attempt ${data.attempt}/${data.maxRetries} delay=${data.retryDelayMs}ms${data.error ? ` error=${data.error}` : ''}`,
           );
-        }
-        await renderer.onComplete();
-      },
-      onPromptSuggestion: (suggestion) => {
-        this.sendPromptSuggestion(query.msg, suggestion, query);
-      },
-      onError: async (err) => {
-        if (isStaleSessionError(err)) {
-          console.log(`[query] ${ctx.requestId} SESSION_STALE detected`);
-          throw new SessionStaleError(err);
-        }
-        terminalEventSeen = true;
-        if (queryFailed) return;
-        queryFailed = true;
-        console.error(`[query] ${ctx.requestId} ERROR ${err.slice(0, 200)}`);
-        if (DEBUG_EVENTS) {
-          const state = renderer.getDebugSnapshot();
+          renderer.onApiRetry(data);
+        },
+        onCompactBoundary: (data) => {
           console.log(
-            `[bridge] error timeline: thinking=${state.thinkingEntries} text=${state.textEntries} tool=${state.toolEntries}`,
+            `[bridge] compact_boundary: trigger=${data.trigger}${data.preTokens ? ` pre_tokens=${data.preTokens}` : ''}`,
           );
-        }
-        await renderer.onError(err);
-      },
-    });
+          renderer.onCompacting(true);
+        },
+        onRateLimit: (data) => {
+          if (data.status === 'rejected') {
+            renderer.onTextDelta('\n⚠️ Rate limited. Retrying...\n');
+          } else if (data.status === 'allowed_warning' && data.utilization) {
+            renderer.onTextDelta(`\n⚠️ Rate limit: ${Math.round(data.utilization * 100)}% used\n`);
+          }
+        },
+        onTodoUpdate: (todos) => renderer.onTodoUpdate(todos),
+        onQueryResult: async (event) => {
+          terminalEventSeen = true;
+          if (queryFailed) return;
+          if (event.permissionDenials?.length) {
+            console.warn(
+              `[query] ${ctx.requestId} DENIALS ${event.permissionDenials.map((denial) => denial.toolName).join(', ')}`,
+            );
+          }
+          const usageStats = costTracker.finish({
+            input_tokens: event.usage.inputTokens,
+            output_tokens: event.usage.outputTokens,
+            cached_input_tokens: event.usage.cachedInputTokens,
+            reasoning_output_tokens: event.usage.reasoningOutputTokens,
+            cost_usd: event.usage.costUsd,
+          });
+          renderer.setUsageSummary(CostTracker.format(usageStats));
+          console.log(
+            `[query] ${ctx.requestId} COMPLETE tokens=${event.usage.inputTokens}+${event.usage.outputTokens} cost=${event.usage.costUsd?.toFixed(4) || '?'}$`,
+          );
+          if (DEBUG_EVENTS) {
+            const state = renderer.getDebugSnapshot();
+            console.log(
+              `[bridge] final timeline: thinking=${state.thinkingEntries} text=${state.textEntries} tool=${state.toolEntries}`,
+            );
+          }
+          await renderer.onComplete();
+        },
+        onPromptSuggestion: (suggestion) => {
+          this.sendPromptSuggestion(query.msg, suggestion, query);
+        },
+        onError: async (err) => {
+          if (isStaleSessionError(err)) {
+            console.log(`[query] ${ctx.requestId} SESSION_STALE detected`);
+            throw new SessionStaleError(err);
+          }
+          terminalEventSeen = true;
+          if (queryFailed) return;
+          queryFailed = true;
+          console.error(`[query] ${ctx.requestId} ERROR ${err.slice(0, 200)}`);
+          if (DEBUG_EVENTS) {
+            const state = renderer.getDebugSnapshot();
+            console.log(
+              `[bridge] error timeline: thinking=${state.thinkingEntries} text=${state.textEntries} tool=${state.toolEntries}`,
+            );
+          }
+          await renderer.onError(err);
+        },
+      });
+    } finally {
+      this.options.sdkEngine.setControlsForChat(chatKey, undefined, sessionKey);
+    }
 
     if (!terminalEventSeen) {
       queryFailed = true;

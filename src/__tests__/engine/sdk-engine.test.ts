@@ -274,6 +274,41 @@ describe('SDKEngine', () => {
       expect(mockProvider.createSession).toHaveBeenCalledTimes(1);
     });
 
+    it('passes the selected execution client when creating a session', () => {
+      const mockSession = createMockSession(true, false);
+      const mockProvider = createMockProvider({ '/workdir': mockSession });
+
+      createEngineSession(engine, mockProvider, { clientId: 'local-client' });
+
+      expect(mockProvider.createSession).toHaveBeenCalledWith(expect.objectContaining({
+        clientId: 'local-client',
+      }));
+      expect(engine.getSessionsForChat('feishu', 'chat-1')[0]).toMatchObject({
+        clientId: 'local-client',
+      });
+    });
+
+    it('recreates an alive session when the selected execution client changes', () => {
+      const firstSession = createMockSession(true, false);
+      const secondSession = createMockSession(true, false);
+      const provider = {
+        streamChat: vi.fn().mockReturnValue({ stream: new ReadableStream() }),
+        createSession: vi
+          .fn()
+          .mockReturnValueOnce(firstSession)
+          .mockReturnValueOnce(secondSession),
+      } as unknown as ClaudeSDKProvider;
+
+      createEngineSession(engine, provider, { clientId: 'worker-1' });
+      const recreated = createEngineSession(engine, provider, { clientId: 'worker-2' });
+
+      expect(recreated).toBe(secondSession);
+      expect(firstSession.close).toHaveBeenCalled();
+      expect(provider.createSession).toHaveBeenLastCalledWith(expect.objectContaining({
+        clientId: 'worker-2',
+      }));
+    });
+
     it('recreates an alive session when a resume session id is selected later', () => {
       const firstSession = createMockSession(true, false);
       const secondSession = createMockSession(true, false);

@@ -189,6 +189,37 @@ describe('QueryOrchestrator', () => {
     expect(JSON.stringify((adapter.send as any).mock.calls[0][0])).toContain('hello');
   });
 
+  it('clears active controls after a completed turn', async () => {
+    const controls = {
+      interrupt: vi.fn(),
+      stopTask: vi.fn(),
+    };
+    const engine = {
+      processMessage: vi.fn().mockImplementation(async (params) => {
+        params.onControls?.(controls);
+        await params.onQueryResult?.({
+          sessionId: 'sdk-2',
+          isError: false,
+          usage: { inputTokens: 1, outputTokens: 1, costUsd: 0 },
+        });
+      }),
+    };
+    const { adapter, orchestrator, sdkEngine } = createHarness({ engine });
+
+    await orchestrator.run(adapter, inbound());
+
+    expect(sdkEngine.setControlsForChat).toHaveBeenCalledWith(
+      expect.any(String),
+      controls,
+      expect.any(String),
+    );
+    expect(sdkEngine.setControlsForChat).toHaveBeenLastCalledWith(
+      expect.any(String),
+      undefined,
+      expect.any(String),
+    );
+  });
+
   it('renders backend errors as failed turns instead of marking them done', async () => {
     const engine = {
       processMessage: vi.fn().mockImplementation(async (params) => {

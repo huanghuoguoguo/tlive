@@ -12,7 +12,10 @@ import type { AgentProviderKind } from '../../../shared/providers/kinds.js';
 import type { AgentSettingSource } from '../../../shared/config.js';
 import type { EffortLevel } from '../../../shared/providers/effort.js';
 import { SESSION_STALE_THRESHOLD_MS } from '../../../shared/core/timing.js';
-import { chatKey as buildChatKey, sessionKey as buildSessionKey } from '../../../shared/core/key.js';
+import {
+  chatKey as buildChatKey,
+  sessionKey as buildSessionKey,
+} from '../../../shared/core/key.js';
 
 /** Reason for closing a session — used for logging and diagnostics */
 export type SessionCleanupReason = 'new' | 'switch' | 'cd' | 'settings' | 'expire' | 'close';
@@ -411,13 +414,18 @@ export class SessionManager {
     const previousSdkSessionId = previousManaged?.sdkSessionId;
     const previousWorkdir = previousManaged?.workdir;
     const previousProvider = previousManaged?.provider;
+    const previousClientId = previousManaged?.clientId;
     const key = this.registerSessionContext(
       channelType,
       chatId,
       bindingSessionId,
       workdir,
       options.sessionId,
-      { setAsCurrent: options.setAsCurrent !== false, provider: llm.kind, clientId: options.clientId },
+      {
+        setAsCurrent: options.setAsCurrent !== false,
+        provider: llm.kind,
+        clientId: options.clientId,
+      },
     );
     const managed = this.registry.get(key);
     if (!managed) return undefined;
@@ -427,13 +435,23 @@ export class SessionManager {
       options.sessionId !== undefined && options.sessionId !== previousSdkSessionId;
     const workdirChanged = previousWorkdir !== undefined && previousWorkdir !== workdir;
     const providerChanged = previousProvider !== undefined && previousProvider !== llm.kind;
+    const clientChanged = options.clientId !== undefined && previousClientId !== options.clientId;
 
-    if (existing?.isAlive && !sessionIdChanged && !workdirChanged && !providerChanged) {
+    if (
+      existing?.isAlive &&
+      !sessionIdChanged &&
+      !workdirChanged &&
+      !providerChanged &&
+      !clientChanged
+    ) {
       managed.lastActiveAt = Date.now();
       return existing;
     }
 
-    if (existing?.isAlive && (sessionIdChanged || workdirChanged || providerChanged)) {
+    if (
+      existing?.isAlive &&
+      (sessionIdChanged || workdirChanged || providerChanged || clientChanged)
+    ) {
       existing.close();
       managed.session = undefined;
       hooks.cleanupQueue?.(key);
@@ -448,6 +466,7 @@ export class SessionManager {
       model: options.model,
       settingSources: options.settingSources,
       appendSystemPrompt: options.appendSystemPrompt,
+      clientId: options.clientId,
     });
 
     managed.session = session;
@@ -562,6 +581,7 @@ export class SessionManager {
           bindingSessionId: managed.bindingSessionId,
           sdkSessionId: managed.sdkSessionId,
           provider: managed.provider,
+          clientId: managed.clientId,
           isCurrent: key === currentKey,
           queueDepth: getQueueDepth(key),
         });

@@ -35,7 +35,10 @@
     "test:e2e": "vitest run src/__tests__/e2e",
     "test:e2e:coverage": "vitest run src/__tests__/e2e --coverage --coverage.reportsDirectory=reports/coverage-e2e --coverage.reporter=json-summary --coverage.reporter=text && node scripts/audit-blackbox-coverage.js",
     "live:feishu:auth": "node scripts/live-feishu-auth.js",
+    "live:feishu:browser": "node scripts/live-feishu-browser.js",
+    "live:feishu:reply": "node scripts/live-feishu-reply.js",
     "live:feishu:send": "node scripts/live-feishu-send.js",
+    "live:feishu:upload-file": "node scripts/live-feishu-upload-file.js",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "prepare": "husky"

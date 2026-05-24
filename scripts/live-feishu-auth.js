@@ -13,7 +13,7 @@ const DEFAULT_PORT = 8788;
 const CALLBACK_PATH = '/oauth/callback';
 const TOKEN_URL = 'https://open.feishu.cn/open-apis/authen/v2/oauth/token';
 const AUTHORIZE_URL = 'https://accounts.feishu.cn/open-apis/authen/v1/authorize';
-const DEFAULT_SCOPE = 'im:message im:message.send_as_user offline_access';
+const DEFAULT_SCOPE = 'im:message im:message.send_as_user im:resource:upload offline_access';
 
 function loadEnvFile(path) {
   const env = {};
@@ -91,6 +91,7 @@ const appSecret = envValue('TL_FS_APP_SECRET');
 if (!appId) fail(`TL_FS_APP_ID is missing. Add it to ${CONFIG_FILE}`);
 if (!appSecret) fail(`TL_FS_APP_SECRET is missing. Add it to ${CONFIG_FILE}`);
 
+const shouldRefresh = process.argv.includes('--refresh');
 const port = Number.parseInt(envValue('TL_FS_AUTH_PORT', String(DEFAULT_PORT)), 10);
 if (!Number.isInteger(port) || port <= 0) fail('TL_FS_AUTH_PORT must be a valid port');
 
@@ -129,6 +130,24 @@ async function exchangeCode(code) {
   return body;
 }
 
+async function refreshToken(refreshTokenValue) {
+  const response = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    body: JSON.stringify({
+      grant_type: 'refresh_token',
+      client_id: appId,
+      client_secret: appSecret,
+      refresh_token: refreshTokenValue,
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.code !== 0 || !body.access_token) {
+    throw new Error(JSON.stringify(body, null, 2));
+  }
+  return body;
+}
+
 function saveToken(token) {
   const merged = { ...liveEnv };
   merged.TL_FS_OAUTH_REDIRECT_URI = redirectUri;
@@ -152,6 +171,23 @@ function saveToken(token) {
     chmodSync(LIVE_TEST_FILE, 0o600);
   } catch {
     // Best effort on platforms without chmod support.
+  }
+}
+
+if (shouldRefresh) {
+  const refreshTokenValue = envValue('FEISHU_TEST_USER_REFRESH_TOKEN');
+  if (!refreshTokenValue) fail('FEISHU_TEST_USER_REFRESH_TOKEN is missing. Run auth without --refresh.');
+  try {
+    const token = await refreshToken(refreshTokenValue);
+    saveToken(token);
+    console.log(`[live-feishu-auth] refreshed token in ${LIVE_TEST_FILE}`);
+    console.log(`[live-feishu-auth] access token ${mask(token.access_token)}`);
+    if (token.refresh_token) console.log('[live-feishu-auth] refresh token saved');
+    process.exit(0);
+  } catch (err) {
+    console.error('[live-feishu-auth] refresh failed');
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
   }
 }
 
