@@ -37,6 +37,7 @@ import {
   routePermissionRequest,
   type ClaudeCanUseToolOptions,
 } from './claude-query-options.js';
+import { appendClaudeStderrToError } from './claude-shared.js';
 import { ClaudeEventLogger } from './claude-event-logger.js';
 
 export interface ClaudeLiveSessionOptions {
@@ -61,6 +62,7 @@ export class ClaudeLiveSession implements LiveSession {
   private _isTurnActive = false;
   private currentTurnController: ReadableStreamDefaultController<CanonicalEvent> | null = null;
   private eventLogger = new ClaudeEventLogger('tlive:session');
+  private stderrBuf = '';
 
   // Message generator coordination
   private messageWaiter: ((msg: string | null) => void) | null = null;
@@ -127,6 +129,8 @@ export class ClaudeLiveSession implements LiveSession {
       cliPath,
       toolConfig: { askUserQuestion: { previewFormat: 'markdown' } },
       stderr: (data: string) => {
+        this.stderrBuf += data;
+        if (this.stderrBuf.length > 4096) this.stderrBuf = this.stderrBuf.slice(-4096);
         const trimmed = data.length > 200 ? data.slice(-200) : data;
         console.log(`[tlive:session] stderr: ${trimmed}`);
       },
@@ -205,12 +209,16 @@ export class ClaudeLiveSession implements LiveSession {
     } catch (err) {
       this.eventLogger.flush();
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`[tlive:session] query ended with error: ${message}`);
+      const visibleMessage = appendClaudeStderrToError(message, this.stderrBuf);
+      console.error(`[tlive:session] query ended with error: ${visibleMessage}`);
       this.adapter.reset();
       // Emit error to active turn if any
       if (this.currentTurnController) {
         try {
-          this.currentTurnController.enqueue({ kind: 'error', message } as CanonicalEvent);
+          this.currentTurnController.enqueue({
+            kind: 'error',
+            message: visibleMessage,
+          } as CanonicalEvent);
           this.currentTurnController.close();
         } catch {
           /* controller may already be closed */

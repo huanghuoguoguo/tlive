@@ -22,6 +22,7 @@ import type {
 import { DEFAULT_AGENT_SETTING_SOURCES, type AgentSettingSource } from '../../shared/config.js';
 import { ClaudeLiveSession } from './claude-live-session.js';
 import { preparePromptWithImages } from './prompt-media.js';
+import { appendClaudeStderrToError } from './claude-shared.js';
 import {
   buildClaudeQueryOptions,
   createClaudeQueryControls,
@@ -341,7 +342,10 @@ export class ClaudeSDKProvider implements AgentProvider {
             const diagInfo = stderrBuf ? ` [stderr: ${stderrBuf.slice(-200)}]` : '';
             console.error(`[claude-sdk] query error: ${message}${diagInfo}`);
 
-            controller.enqueue({ kind: 'error', message } as CanonicalEvent);
+            controller.enqueue({
+              kind: 'error',
+              message: appendClaudeStderrToError(message, stderrBuf),
+            } as CanonicalEvent);
             controller.close();
           } finally {
             // Clean up this query's temp image files

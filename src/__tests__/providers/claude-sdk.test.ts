@@ -166,6 +166,36 @@ describe('ClaudeSDKProvider', () => {
       });
     });
 
+    it('surfaces Claude stderr when a persistent session exits', async () => {
+      let releaseFailure: (() => void) | undefined;
+      vi.mocked(claudeAgentSdk.query).mockImplementationOnce(((input: any) => ({
+        interrupt: vi.fn().mockResolvedValue(undefined),
+        stopTask: vi.fn().mockResolvedValue(undefined),
+        async *[Symbol.asyncIterator]() {
+          await new Promise<void>((resolve) => {
+            releaseFailure = resolve;
+          });
+          input.options.stderr('fatal: proxy refused connection\n');
+          throw new Error('Claude Code process exited with code 1');
+        },
+      })) as any);
+
+      const session = provider.createSession({ workingDirectory: '/tmp' });
+      const result = session.startTurn('hello');
+      for (let i = 0; i < 10 && !releaseFailure; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      expect(releaseFailure).toBeTypeOf('function');
+      releaseFailure?.();
+      const events = await collectStreamEvents(result.stream);
+
+      expect(events).toContainEqual({
+        kind: 'error',
+        message:
+          'Claude Code process exited with code 1\n\nClaude Code stderr:\nfatal: proxy refused connection',
+      });
+    });
+
     it('exposes runtime info from current Claude session options', () => {
       const session = provider.createSession({
         workingDirectory: '/tmp',

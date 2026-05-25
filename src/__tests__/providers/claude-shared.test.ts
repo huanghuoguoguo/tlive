@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { buildSubprocessEnv } from '../../client/providers/claude-shared.js';
+import {
+  appendClaudeStderrToError,
+  buildSubprocessEnv,
+} from '../../client/providers/claude-shared.js';
 import { preparePromptWithImages } from '../../client/providers/prompt-media.js';
 import type { FileAttachment } from '../../shared/providers/base.js';
 import * as fs from 'node:fs';
@@ -12,7 +15,7 @@ vi.mock('node:fs', () => ({
 }));
 
 // Mock core/path
-vi.mock('../../core/path.js', () => ({
+vi.mock('../../shared/core/path.js', () => ({
   getTliveHome: vi.fn().mockReturnValue('/tmp/tlive-home'),
 }));
 
@@ -39,6 +42,7 @@ describe('claude-shared utilities', () => {
 
       expect(result.PATH).toBe('/usr/bin');
       expect(result.HOME).toBe('/home/user');
+      expect(result.TMPDIR).toBe('/tmp/tlive-home/tmp/claude');
       expect(result.CLAUDECODE_TOKEN).toBeUndefined();
       expect(result.CLAUDECODE_SESSION).toBeUndefined();
     });
@@ -56,6 +60,7 @@ describe('claude-shared utilities', () => {
       expect(result.NODE_ENV).toBe('test');
       expect(result.TL_DEFAULT_WORKDIR).toBe('/tmp');
       expect(result.PATH).toBe('/usr/bin');
+      expect(result.TMPDIR).toBe('/tmp/tlive-home/tmp/claude');
     });
 
     it('handles undefined env values', () => {
@@ -69,6 +74,44 @@ describe('claude-shared utilities', () => {
 
       expect(result.DEFINED).toBe('value');
       expect(result.UNDEFINED).toBeUndefined();
+      expect(result.TMPDIR).toBe('/tmp/tlive-home/tmp/claude');
+    });
+
+    it('uses explicit Claude temp dir override', () => {
+      vi.stubGlobal('process', {
+        env: {
+          TL_CLAUDE_TMPDIR: '/custom/claude-tmp',
+        },
+      });
+
+      const result = buildSubprocessEnv();
+
+      expect(result.TMPDIR).toBe('/custom/claude-tmp');
+      expect(result.TMP).toBe('/custom/claude-tmp');
+      expect(result.TEMP).toBe('/custom/claude-tmp');
+      expect(fs.mkdirSync).toHaveBeenCalledWith('/custom/claude-tmp', {
+        recursive: true,
+        mode: 0o700,
+      });
+    });
+  });
+
+  describe('appendClaudeStderrToError', () => {
+    it('appends sanitized stderr details to provider errors', () => {
+      const message = appendClaudeStderrToError(
+        'Claude Code process exited with code 1',
+        '\u001b[31mfatal: upstream failed\u001b[0m\nANTHROPIC_API_KEY=sk-ant-api03-secret',
+      );
+
+      expect(message).toContain('Claude Code process exited with code 1');
+      expect(message).toContain('Claude Code stderr:');
+      expect(message).toContain('fatal: upstream failed');
+      expect(message).toContain('ANTHROPIC_API_KEY=[REDACTED]');
+      expect(message).not.toContain('sk-ant-api03-secret');
+    });
+
+    it('keeps the original error when stderr is empty', () => {
+      expect(appendClaudeStderrToError('failed', '\n\n')).toBe('failed');
     });
   });
 
