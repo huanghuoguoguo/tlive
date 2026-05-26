@@ -13,6 +13,7 @@ interface ClientCliArgs {
   token?: string;
   clientId?: string;
   name?: string;
+  note?: string;
   workspaces?: string[];
 }
 
@@ -25,6 +26,7 @@ function parseArgs(argv: string[]): ClientCliArgs {
     else if (arg === '--token') out.token = next();
     else if (arg === '--id' || arg === '--client-id') out.clientId = next();
     else if (arg === '--name') out.name = next();
+    else if (arg === '--note') out.note = next();
     else if (arg === '--workspace') out.workspaces = [...(out.workspaces ?? []), next()];
     else if (arg === '--workspaces') out.workspaces = parseList(next());
   }
@@ -67,6 +69,28 @@ export function resolveRemoteClientId(
   return generated;
 }
 
+export function resolveRemoteClientWorkspaces(
+  cliWorkspaces: string[] | undefined,
+  configWorkspaces: string[],
+  defaultWorkdir: string,
+): string[] {
+  const defaultDir = defaultWorkdir.trim() || process.cwd();
+  const shortcuts = cliWorkspaces?.length ? cliWorkspaces : configWorkspaces;
+  return uniqueNonEmpty([defaultDir, ...shortcuts]);
+}
+
+function uniqueNonEmpty(values: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
+}
+
 export async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const config = loadConfig({ validateBridge: false });
@@ -76,12 +100,12 @@ export async function main(): Promise<void> {
     token: args.token ?? config.remote.client.token,
     clientId: resolveRemoteClientId(args.clientId, config.remote.client.clientId),
     name: args.name || config.remote.client.name || defaultRemoteClientName(),
-    workspaces:
-      args.workspaces?.length
-        ? args.workspaces
-        : config.remote.client.workspaces.length
-          ? config.remote.client.workspaces
-          : [config.defaultWorkdir],
+    note: args.note || config.remote.client.note,
+    workspaces: resolveRemoteClientWorkspaces(
+      args.workspaces,
+      config.remote.client.workspaces,
+      config.defaultWorkdir,
+    ),
     reconnectIntervalMs: config.remote.client.reconnectIntervalMs,
     version: getCurrentVersion(),
   });

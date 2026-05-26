@@ -87,6 +87,7 @@ export interface Config {
       token: string;
       clientId: string;
       name: string;
+      note: string;
       workspaces: string[];
       reconnectIntervalMs: number;
     };
@@ -322,7 +323,8 @@ export function loadConfig(options: LoadConfigOptions = {}): Config {
         token: remoteToken,
         clientId: get('TL_REMOTE_CLIENT_ID'),
         name: get('TL_REMOTE_CLIENT_NAME'),
-        workspaces: parseList(get('TL_REMOTE_WORKSPACES', get('TL_DEFAULT_WORKDIR', process.cwd()))),
+        note: get('TL_REMOTE_CLIENT_NOTE'),
+        workspaces: parseList(get('TL_REMOTE_WORKSPACES')),
         reconnectIntervalMs: Math.max(
           500,
           Number.parseInt(get('TL_REMOTE_RECONNECT_MS', '3000'), 10) || 3000,

@@ -38,6 +38,7 @@ export interface RemoteClientRegistryOptions {
 export interface RemoteClientSnapshot {
   clientId: string;
   name: string;
+  note?: string;
   providers: RemoteProviderDescriptor[];
   workspaces: RemoteWorkspaceDescriptor[];
   sessions: RemoteSessionDescriptor[];
@@ -343,6 +344,7 @@ export class RemoteClientRegistry {
     const client: RemoteClientConnection = {
       clientId: message.clientId,
       name: message.name,
+      note: message.note,
       providers: message.providers,
       workspaces: message.workspaces,
       sessions: message.sessions ?? [],

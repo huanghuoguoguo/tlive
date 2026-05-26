@@ -130,6 +130,7 @@ export interface HomeProviderEntry {
 export interface HomeClientEntry {
   clientId: string;
   name: string;
+  note?: string;
   online: boolean;
   isDefault: boolean;
   isLocal?: boolean;

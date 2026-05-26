@@ -35,6 +35,7 @@ export interface RemoteClientWorkerOptions {
   token: string;
   clientId: string;
   name: string;
+  note?: string;
   workspaces: string[];
   reconnectIntervalMs: number;
   version?: string;
@@ -144,6 +145,7 @@ export class RemoteClientWorker {
       protocolVersion: REMOTE_PROTOCOL_VERSION,
       clientId: this.options.clientId,
       name: this.options.name,
+      note: this.options.note?.trim() || undefined,
       providers: descriptors,
       workspaces: this.options.workspaces.map((path) => ({ path: resolve(path) })),
       sessions: this.scanSessions(),

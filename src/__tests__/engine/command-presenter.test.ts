@@ -89,11 +89,15 @@ describe('command presenter', () => {
             {
               clientId: 'local',
               name: 'local',
+              note: '开发机 · 本地 worker',
               online: true,
               isDefault: true,
               isLocal: true,
               activeTurns: 0,
-              workspaces: [{ path: '/home/user/project', isDefault: true }],
+              workspaces: [
+                { path: '/home/user/project', isDefault: true },
+                { path: '/home/user/other-project' },
+              ],
               host: { hostname: 'devbox', ipAddresses: ['10.0.0.8'] },
               remoteAddress: '203.0.113.8',
               providers: [
@@ -115,7 +119,11 @@ describe('command presenter', () => {
       expect(rendered).not.toContain('状态:');
       expect(rendered).not.toContain('空闲');
       expect(rendered).toContain('local');
-      expect(rendered).toContain('位置: devbox · 10.0.0.8 · 203.0.113.8');
+      expect(rendered).toContain('备注: 开发机 · 本地 worker');
+      expect(rendered).toContain('默认目录: `/home/user/project`');
+      expect(rendered).toContain('快捷目录: `/home/user/other-project`');
+      expect(rendered).not.toContain('位置:');
+      expect(rendered).not.toContain('203.0.113.8');
       expect(rendered).toContain('新建 Claude');
       expect(rendered).toContain('查看节点历史');
       expect(rendered).toContain('节点: `local`');

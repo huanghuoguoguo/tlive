@@ -143,9 +143,10 @@ function buildClientControls(data: HomeData): FeishuCardElement[] {
       .join(' / ') || 'none';
     const detailLines = [
       `ID: \`${client.clientId}\`${client.isLocal ? ' · local' : ''}`,
-      clientLocationLine(client),
+      client.note ? `备注: ${client.note}` : undefined,
       `Provider: ${providers}`,
-      `工作区: \`${workspace}\``,
+      `默认目录: \`${workspace}\``,
+      clientShortcutLine(client, workspace),
       client.activeTurns > 0 ? `运行中: ${client.activeTurns} 个任务` : undefined,
       client.version ? `版本: ${client.version}` : undefined,
     ].filter((line): line is string => Boolean(line));
@@ -193,13 +194,12 @@ function buildClientControls(data: HomeData): FeishuCardElement[] {
   return elements;
 }
 
-function clientLocationLine(client: HomeClientEntry): string | undefined {
-  const parts = uniqueNonEmpty([
-    client.host?.hostname,
-    ...(client.host?.ipAddresses ?? []),
-    client.remoteAddress,
-  ]);
-  return parts.length ? `位置: ${parts.join(' · ')}` : undefined;
+function clientShortcutLine(client: HomeClientEntry, defaultPath: string): string | undefined {
+  const shortcuts = uniqueNonEmpty(
+    client.workspaces.map((workspace) => workspace.path).filter((path) => path !== defaultPath),
+  );
+  if (!shortcuts.length) return undefined;
+  return `快捷目录: ${shortcuts.map((path) => `\`${path}\``).join(' · ')}`;
 }
 
 function uniqueNonEmpty(values: Array<string | undefined>): string[] {
