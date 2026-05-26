@@ -1,6 +1,11 @@
 import type { ThreadStartResult } from '../../channels/types.js';
 import { chatScopeId } from '../../../shared/core/key.js';
 import type { CommandContext } from '../commands/types.js';
+import {
+  buildTliveTopicMetadata,
+  encodeTliveTopicMetadata,
+  type TliveTopicMetadataInput,
+} from '../../../shared/topic-metadata.js';
 
 export interface StartedTopic {
   scopeId: string;
@@ -13,6 +18,7 @@ export async function startWorkbenchTopic(
   ctx: CommandContext,
   title: string,
   introText: string,
+  metadata?: TliveTopicMetadataInput,
 ): Promise<StartedTopic | null> {
   if (ctx.surface !== 'workbench' || !ctx.msg.messageId) return null;
 
@@ -26,7 +32,23 @@ export async function startWorkbenchTopic(
       ? await startFromMessage(ctx.msg.chatId, ctx.msg.messageId, introText).catch(() => null)
       : null);
 
-  return normalizeStartedTopic(ctx.msg.chatId, started);
+  const topic = normalizeStartedTopic(ctx.msg.chatId, started);
+  if (topic && metadata) {
+    await ctx.adapter
+      .publishTopicMetadata(
+        ctx.msg.chatId,
+        topic.rootMessageId,
+        buildTopicMetadataIndexText({
+          ...metadata,
+          threadId: topic.threadId,
+          rootMessageId: topic.rootMessageId,
+          entryMessageId: topic.lastMessageId,
+        }),
+      )
+      .catch(() => null);
+  }
+
+  return topic;
 }
 
 function normalizeStartedTopic(
@@ -40,4 +62,9 @@ function normalizeStartedTopic(
     rootMessageId: started.rootMessageId ?? started.messageId,
     lastMessageId: started.messageId,
   };
+}
+
+function buildTopicMetadataIndexText(metadata: TliveTopicMetadataInput): string {
+  const fullMetadata = buildTliveTopicMetadata(metadata);
+  return ['TLive 会话索引', encodeTliveTopicMetadata(fullMetadata)].join('\n');
 }

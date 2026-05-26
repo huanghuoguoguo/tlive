@@ -94,6 +94,8 @@ describe('command presenter', () => {
               isLocal: true,
               activeTurns: 0,
               workspaces: [{ path: '/home/user/project', isDefault: true }],
+              host: { hostname: 'devbox', ipAddresses: ['10.0.0.8'] },
+              remoteAddress: '203.0.113.8',
               providers: [
                 { kind: 'claude', displayName: 'Claude', available: true, isDefault: true },
               ],
@@ -109,7 +111,11 @@ describe('command presenter', () => {
       });
 
       const rendered = JSON.stringify(formatted.feishuElements);
+      expect(rendered).not.toContain('默认工作区');
+      expect(rendered).not.toContain('状态:');
+      expect(rendered).not.toContain('空闲');
       expect(rendered).toContain('local');
+      expect(rendered).toContain('位置: devbox · 10.0.0.8 · 203.0.113.8');
       expect(rendered).toContain('新建 Claude');
       expect(rendered).toContain('查看节点历史');
       expect(rendered).toContain('节点: `local`');

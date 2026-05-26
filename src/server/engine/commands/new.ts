@@ -1,11 +1,14 @@
+import { basename } from 'node:path';
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentNewSession, presentHome } from '../../presentation/command-presenter.js';
 import { generateSessionId } from '../../../shared/core/id.js';
+import { shortPath } from '../../../shared/core/path.js';
 import { t } from '../../../shared/i18n/index.js';
 import type { AgentProviderKind } from '../../../shared/providers/kinds.js';
 import type { ChannelBinding } from '../../store/interface.js';
 import { startWorkbenchTopic } from '../services/topic-starter.js';
+import { buildTopicEntryText } from '../services/topic-entry.js';
 
 interface NewSessionProviderChoice {
   kind: AgentProviderKind;
@@ -101,7 +104,8 @@ export class NewCommand extends BaseCommand {
       }
       return {
         clientId: client.clientId,
-        cwd: client.workspaces.find((workspace) => workspace.isDefault)?.path ?? previousBinding?.cwd,
+        cwd:
+          client.workspaces.find((workspace) => workspace.isDefault)?.path ?? previousBinding?.cwd,
       };
     }
 
@@ -112,8 +116,7 @@ export class NewCommand extends BaseCommand {
     return {
       clientId: selected?.clientId ?? previousBinding?.clientId,
       cwd:
-        selected?.workspaces.find((workspace) => workspace.isDefault)?.path ??
-        previousBinding?.cwd,
+        selected?.workspaces.find((workspace) => workspace.isDefault)?.path ?? previousBinding?.cwd,
     };
   }
 
@@ -164,9 +167,29 @@ export class NewCommand extends BaseCommand {
     clientChoice: NewSessionClientChoice,
   ): Promise<boolean> {
     const cwd = clientChoice.cwd || previousBinding?.cwd || ctx.services.defaultWorkdir;
-    const title = `新 ${providerChoice.displayName} 会话`;
-    const intro = `💬 已开启新话题，请在本话题内继续发送消息。`;
-    const topic = await startWorkbenchTopic(ctx, title, intro);
+    const title = buildNewTopicTitle(providerChoice.displayName, cwd, clientChoice.clientId);
+    const createdAt = new Date().toISOString();
+    const intro = buildTopicEntryText({
+      channelType: ctx.msg.channelType,
+      chatId: ctx.msg.chatId,
+      scopeId: ctx.scopeId,
+      threadId: 'pending',
+      provider: providerChoice.kind,
+      clientId: clientChoice.clientId,
+      cwd,
+      title,
+      preview: title,
+      createdAt,
+      updatedAt: createdAt,
+    });
+    const topic = await startWorkbenchTopic(ctx, title, intro, {
+      provider: providerChoice.kind,
+      clientId: clientChoice.clientId,
+      cwd,
+      title,
+      preview: title,
+      createdAt,
+    });
     if (!topic) return false;
 
     const topicScopeId = topic.scopeId;
@@ -191,6 +214,7 @@ export class NewCommand extends BaseCommand {
       scopeId: topicScopeId,
       threadId: topic.threadId,
       rootMessageId: topic.rootMessageId,
+      entryMessageId: topic.lastMessageId,
       lastMessageId: topic.lastMessageId,
       provider: providerChoice.kind,
       clientId: clientChoice.clientId,
@@ -200,4 +224,24 @@ export class NewCommand extends BaseCommand {
     });
     return true;
   }
+}
+
+function buildNewTopicTitle(providerDisplayName: string, cwd: string, clientId?: string): string {
+  const parts = [
+    'TLive',
+    providerDisplayName,
+    basename(cwd) || shortPath(cwd),
+    clientId ? shortClientId(clientId) : undefined,
+    formatCompactTimestamp(new Date()),
+  ].filter((part): part is string => !!part);
+  return parts.join(' · ');
+}
+
+function shortClientId(clientId: string): string {
+  return clientId.length > 18 ? `${clientId.slice(0, 15)}...` : clientId;
+}
+
+function formatCompactTimestamp(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }

@@ -351,6 +351,53 @@ describe('FeishuAdapter', () => {
       await adapter.stop();
     });
 
+    it('publishes pinned topic metadata as a readable post thread reply', async () => {
+      adapter = new FeishuAdapter({
+        appId: 'cli_test123',
+        appSecret: 'secret_abc',
+        verificationToken: 'verify_token',
+        encryptKey: '',
+        allowedUsers: [],
+      }, { autoPinTopics: true });
+      mockMessageReply.mockResolvedValueOnce({
+        data: { message_id: 'msg-topic-metadata', thread_id: 'thread-1' },
+      });
+      await adapter.start();
+
+      const result = await adapter.publishTopicMetadata(
+        'oc_chat123',
+        'msg-topic-root',
+        'TLive 会话索引\ntlive-topic:abc',
+      );
+
+      expect(result).toBe('msg-topic-metadata');
+      expect(mockMessageReply).toHaveBeenCalledWith({
+        path: { message_id: 'msg-topic-root' },
+        data: {
+          msg_type: 'post',
+          content: JSON.stringify({
+            zh_cn: {
+              title: 'TLive 会话索引',
+              content: [
+                [
+                  {
+                    tag: 'a',
+                    text: 'TLive 会话索引',
+                    href: 'https://tlive.local/session#tlive-topic:abc',
+                  },
+                ],
+              ],
+            },
+          }),
+          reply_in_thread: true,
+        },
+      });
+      expect(mockPinCreate).toHaveBeenCalledWith({
+        data: { message_id: 'msg-topic-metadata' },
+      });
+      await adapter.stop();
+    });
+
     it('throws when client is not started', async () => {
       await expect(adapter.send({ chatId: 'oc_chat123', text: 'hi' })).rejects.toThrow(
         'Feishu client not started',

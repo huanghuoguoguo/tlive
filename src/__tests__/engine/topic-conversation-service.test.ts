@@ -162,4 +162,100 @@ describe('TopicConversationService', () => {
       lastMessageId: 'main-bubble',
     });
   });
+
+  it('restores an unknown topic scope from pinned TLive metadata', async () => {
+    const scopeId = 'chat-1#thread:thread-restored';
+    const store = createStore({
+      getBinding: vi.fn().mockImplementation(async (_channelType: string, chatId: string) =>
+        chatId === scopeId ? null : mainBinding
+      ),
+    });
+    const router = {
+      resolve: vi.fn(),
+    } as any;
+    const sdkEngine = {
+      resolveSessionTarget: vi.fn().mockImplementation((
+        channelType: string,
+        chatId: string,
+        binding: any,
+      ) => ({
+        target: {
+          sessionKey: `${channelType}:${chatId}:${binding.sessionId}`,
+          bindingSessionId: binding.sessionId,
+          workdir: binding.cwd,
+          sdkSessionId: binding.sdkSessionId,
+          provider: binding.provider,
+          clientId: binding.clientId,
+          source: 'current',
+        },
+      })),
+    } as any;
+    const topicSessions = new TopicSessionManager();
+    const adapter = createAdapter({
+      findPinnedTopicMetadata: vi.fn().mockResolvedValue({
+        chatId: 'chat-1',
+        threadId: 'thread-restored',
+        messageId: 'msg-entry',
+        rootMessageId: 'msg-root',
+        metadata: {
+          type: 'tlive.topic',
+          version: 1,
+          provider: 'codex',
+          clientId: 'remote-1',
+          cwd: '/repo-restored',
+          sdkSessionId: 'sdk-restored',
+          title: 'Restored topic',
+        },
+      }),
+    });
+    const service = new TopicConversationService({
+      store,
+      router,
+      sdkEngine,
+      topicSessions,
+      defaultWorkdir: '/repo',
+    });
+
+    const resolved = await service.resolve(adapter, {
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      scopeId,
+      threadId: 'thread-restored',
+      threadRootMessageId: 'msg-root',
+      replyTargetMessageId: 'msg-user',
+      replyInThread: true,
+      userId: 'user-1',
+      text: '继续',
+      messageId: 'msg-user',
+    });
+
+    expect(router.resolve).not.toHaveBeenCalled();
+    expect(store.saveBinding).toHaveBeenCalledWith(expect.objectContaining({
+      chatId: scopeId,
+      sdkSessionId: 'sdk-restored',
+      provider: 'codex',
+      clientId: 'remote-1',
+      cwd: '/repo-restored',
+    }));
+    expect(resolved.binding).toMatchObject({
+      chatId: scopeId,
+      sdkSessionId: 'sdk-restored',
+      provider: 'codex',
+      clientId: 'remote-1',
+      cwd: '/repo-restored',
+    });
+    expect(resolved.target).toMatchObject({
+      sdkSessionId: 'sdk-restored',
+      provider: 'codex',
+      clientId: 'remote-1',
+    });
+    expect(topicSessions.findByScope(scopeId)).toMatchObject({
+      scopeId,
+      threadId: 'thread-restored',
+      rootMessageId: 'msg-root',
+      entryMessageId: 'msg-entry',
+      lastMessageId: 'msg-entry',
+      sdkSessionId: 'sdk-restored',
+    });
+  });
 });

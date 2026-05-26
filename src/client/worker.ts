@@ -1,5 +1,5 @@
 import { WebSocket, type RawData } from 'ws';
-import { hostname, homedir } from 'node:os';
+import { hostname, homedir, networkInterfaces, platform } from 'node:os';
 import { join, resolve } from 'node:path';
 import { stat } from 'node:fs/promises';
 import { exec } from 'node:child_process';
@@ -19,6 +19,7 @@ import {
   type ControlMessage,
   type ClientCommandMessage,
   type InteractionResponseMessage,
+  type RemoteClientHostDescriptor,
   type RemoteInteractionKind,
   type RemoteProviderDescriptor,
   type RemoteSessionDescriptor,
@@ -146,6 +147,7 @@ export class RemoteClientWorker {
       providers: descriptors,
       workspaces: this.options.workspaces.map((path) => ({ path: resolve(path) })),
       sessions: this.scanSessions(),
+      host: buildClientHostDescriptor(),
       version: this.options.version,
     };
   }
@@ -498,6 +500,25 @@ export class RemoteClientWorker {
 
 export function defaultRemoteClientName(): string {
   return hostname();
+}
+
+function buildClientHostDescriptor(): RemoteClientHostDescriptor {
+  return {
+    hostname: hostname(),
+    platform: platform(),
+    ipAddresses: localIpv4Addresses(),
+  };
+}
+
+function localIpv4Addresses(): string[] {
+  const out: string[] = [];
+  for (const entries of Object.values(networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (entry.internal || entry.family !== 'IPv4') continue;
+      out.push(entry.address);
+    }
+  }
+  return [...new Set(out)].slice(0, 4);
 }
 
 function delay(ms: number): Promise<void> {

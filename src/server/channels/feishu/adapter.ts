@@ -1,6 +1,11 @@
 import { Client, WSClient, EventDispatcher } from '@larksuiteoapi/node-sdk';
 import { BaseChannelAdapter } from '../base.js';
-import type { InboundMessage, SendResult, ThreadStartResult } from '../types.js';
+import type {
+  InboundMessage,
+  PinnedTopicMetadata,
+  SendResult,
+  ThreadStartResult,
+} from '../types.js';
 import type { BridgeError } from '../errors.js';
 import { RateLimitError, AuthError } from '../errors.js';
 import { FeishuStreamingSession } from './streaming.js';
@@ -10,9 +15,11 @@ import type { FeishuRenderedMessage } from './types.js';
 import type { QuickButtonName } from '../../../shared/ui/buttons.js';
 import { feishuMessageEventToInbound, type FeishuMessageReceiveEvent } from './inbound.js';
 import { feishuCardActionToInbound, feishuMenuEventToInbound } from './events.js';
+import { findPinnedFeishuTopicMetadata } from './topic-recovery.js';
 import {
   editFeishuMessage,
   pinFeishuMessage,
+  publishFeishuTopicMetadata,
   sendFeishuMessage,
   shouldSplitFeishuProgressMessage,
   startFeishuThreadFromMessage,
@@ -147,6 +154,26 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
       chatId,
       title,
       text: finalText,
+      autoPinTopics: this.autoPinTopics,
+      classifyError: (err) => this.classifyError(err),
+    });
+  }
+
+  override async findPinnedTopicMetadata(
+    chatId: string,
+    threadId: string,
+  ): Promise<PinnedTopicMetadata | null> {
+    return findPinnedFeishuTopicMetadata(this.client, chatId, threadId);
+  }
+
+  override async publishTopicMetadata(
+    _chatId: string,
+    rootMessageId: string,
+    text: string,
+  ): Promise<string | null> {
+    return publishFeishuTopicMetadata(this.client, {
+      rootMessageId,
+      text,
       autoPinTopics: this.autoPinTopics,
       classifyError: (err) => this.classifyError(err),
     });

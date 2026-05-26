@@ -27,6 +27,7 @@ describe('TopicSessionManager', () => {
       scopeId: 'chat-1#thread:thread-1',
       threadId: 'thread-1',
       rootMessageId: 'msg-root',
+      entryMessageId: 'msg-entry',
       lastMessageId: 'msg-last',
       sdkSessionId: 'sdk-1',
       cwd: '/repo',
@@ -37,6 +38,7 @@ describe('TopicSessionManager', () => {
     const restored = new TopicSessionManager(tmpDir);
     expect(restored.findBySdkSessionId('sdk-1')).toMatchObject({
       scopeId: 'chat-1#thread:thread-1',
+      entryMessageId: 'msg-entry',
       lastMessageId: 'msg-last',
       cwd: '/repo',
     });

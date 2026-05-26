@@ -138,6 +138,12 @@ export interface HomeClientEntry {
   providers: HomeProviderEntry[];
   sessions?: AgentSessionDescriptor[];
   lastSeenAt?: string;
+  host?: {
+    hostname?: string;
+    platform?: string;
+    ipAddresses?: string[];
+  };
+  remoteAddress?: string;
   version?: string;
 }
 

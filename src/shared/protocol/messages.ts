@@ -56,6 +56,12 @@ export interface RemoteSessionDescriptor {
   preview: string;
 }
 
+export interface RemoteClientHostDescriptor {
+  hostname?: string;
+  platform?: string;
+  ipAddresses?: string[];
+}
+
 export interface ClientHelloMessage {
   type: 'client.hello';
   protocolVersion: number;
@@ -64,6 +70,7 @@ export interface ClientHelloMessage {
   providers: RemoteProviderDescriptor[];
   workspaces: RemoteWorkspaceDescriptor[];
   sessions?: RemoteSessionDescriptor[];
+  host?: RemoteClientHostDescriptor;
   version?: string;
 }
 
@@ -243,6 +250,11 @@ const clientHelloSchema = z.object({
     size: z.number().optional(),
     preview: z.string(),
   })).optional(),
+  host: z.object({
+    hostname: z.string().optional(),
+    platform: z.string().optional(),
+    ipAddresses: z.array(z.string()).optional(),
+  }).optional(),
   version: z.string().optional(),
 });
 

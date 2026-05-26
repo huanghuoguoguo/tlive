@@ -2,10 +2,14 @@ import { generateSessionId } from '../../../shared/core/id.js';
 import { shortPath } from '../../../shared/core/path.js';
 import { truncate } from '../../../shared/core/string.js';
 import { withInboundReplyContext } from '../../channels/reply-context.js';
-import { normalizeAgentProviderKind, type AgentProviderKind } from '../../../shared/providers/kinds.js';
+import {
+  normalizeAgentProviderKind,
+  type AgentProviderKind,
+} from '../../../shared/providers/kinds.js';
 import type { TopicSessionRecord } from '../state/topic-sessions.js';
 import type { CommandContext } from '../commands/types.js';
 import { startWorkbenchTopic } from './topic-starter.js';
+import { updateTopicEntryMessage } from './topic-entry.js';
 import { t } from '../../../shared/i18n/index.js';
 
 interface AgentSessionTarget {
@@ -44,11 +48,7 @@ function providerDisplayName(ctx: CommandContext, provider: AgentProviderKind | 
 function buildTopicTitle(target: AgentSessionTarget, _locale: string): string {
   const preview = target.preview.replace(/\s+/g, ' ').trim();
   return truncate(
-    preview ||
-      t('topicResume.sessionPreview').replace(
-        '{provider}',
-        target.providerDisplayName,
-      ),
+    preview || t('topicResume.sessionPreview').replace('{provider}', target.providerDisplayName),
     120,
   );
 }
@@ -112,7 +112,8 @@ export class TopicResumeService {
         if (parsed.provider && session.provider !== parsed.provider) continue;
         return {
           ...session,
-          providerDisplayName: session.providerDisplayName ?? providerDisplayName(this.ctx, session.provider),
+          providerDisplayName:
+            session.providerDisplayName ?? providerDisplayName(this.ctx, session.provider),
           clientId: client.clientId,
         };
       }
@@ -187,6 +188,8 @@ export class TopicResumeService {
       preview: target.preview,
       lastMessageId: result.messageId || record.lastMessageId,
     });
+    const updated = this.ctx.services.topicSessions?.findByScope(record.scopeId);
+    if (updated) await updateTopicEntryMessage(this.ctx.adapter, updated);
   }
 
   private async openNewTopic(target: AgentSessionTarget): Promise<void> {
@@ -197,7 +200,15 @@ export class TopicResumeService {
 
     const topicTitle = buildTopicTitle(target, this.ctx.locale);
     const introText = buildThreadIntro(target, this.ctx.locale);
-    const topic = await startWorkbenchTopic(this.ctx, topicTitle, introText);
+    const topic = await startWorkbenchTopic(this.ctx, topicTitle, introText, {
+      provider: target.provider,
+      clientId: target.clientId,
+      cwd: target.cwd,
+      sdkSessionId: target.sdkSessionId,
+      title: topicTitle,
+      preview: target.preview,
+      createdAt: new Date().toISOString(),
+    });
 
     if (!topic) {
       await sendPlain(this.ctx, t('topicResume.createFailed'));
@@ -225,6 +236,7 @@ export class TopicResumeService {
       scopeId,
       threadId: topic.threadId,
       rootMessageId: topic.rootMessageId,
+      entryMessageId: topic.lastMessageId,
       lastMessageId: topic.lastMessageId,
       sdkSessionId: target.sdkSessionId,
       provider: target.provider,

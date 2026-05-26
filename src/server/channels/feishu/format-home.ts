@@ -5,7 +5,7 @@
 import type { Locale } from '../../../shared/i18n/index.js';
 import { t } from '../../../shared/i18n/index.js';
 import type { FeishuCardElement } from './card-builder.js';
-import type { HomeData } from '../../../shared/formatting/message-types.js';
+import type { HomeClientEntry, HomeData } from '../../../shared/formatting/message-types.js';
 import type { Button } from '../../../shared/ui/types.js';
 import type { NewSessionButtonProvider } from '../../../shared/ui/buttons.js';
 import { truncate } from '../../../shared/core/string.js';
@@ -42,7 +42,7 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
 
   elements.push(
     markdownElement(
-      `**工作台**\n默认执行节点: ${data.clients?.defaultClientId ? `\`${data.clients.defaultClientId}\`` : '未选择'} · 默认工作区: \`${data.workspace.cwd}\``,
+      `**工作台**\n默认执行节点: ${data.clients?.defaultClientId ? `\`${data.clients.defaultClientId}\`` : '未选择'}`,
     ),
   );
   elements.push(...buildClientControls(data));
@@ -141,11 +141,16 @@ function buildClientControls(data: HomeData): FeishuCardElement[] {
       .filter((provider) => provider.available)
       .map((provider) => provider.displayName)
       .join(' / ') || 'none';
-    const status = client.activeTurns > 0 ? `执行中 ${client.activeTurns}` : '空闲';
+    const detailLines = [
+      `ID: \`${client.clientId}\`${client.isLocal ? ' · local' : ''}`,
+      clientLocationLine(client),
+      `Provider: ${providers}`,
+      `工作区: \`${workspace}\``,
+      client.activeTurns > 0 ? `运行中: ${client.activeTurns} 个任务` : undefined,
+      client.version ? `版本: ${client.version}` : undefined,
+    ].filter((line): line is string => Boolean(line));
     const body: FeishuCardElement[] = [
-      markdownElement(
-        `ID: \`${client.clientId}\`${client.isLocal ? ' · local' : ''}\nProvider: ${providers}\n工作区: \`${workspace}\`\n状态: ${status}${client.version ? ` · ${client.version}` : ''}`,
-      ),
+      markdownElement(detailLines.join('\n')),
     ];
     const leadingButtons: Button[] = [];
     if (!client.isDefault) {
@@ -186,6 +191,19 @@ function buildClientControls(data: HomeData): FeishuCardElement[] {
   ];
   elements.push(...buttonElements(buttons));
   return elements;
+}
+
+function clientLocationLine(client: HomeClientEntry): string | undefined {
+  const parts = uniqueNonEmpty([
+    client.host?.hostname,
+    ...(client.host?.ipAddresses ?? []),
+    client.remoteAddress,
+  ]);
+  return parts.length ? `位置: ${parts.join(' · ')}` : undefined;
+}
+
+function uniqueNonEmpty(values: Array<string | undefined>): string[] {
+  return [...new Set(values.filter((value): value is string => Boolean(value?.trim())))];
 }
 
 function buildDiagnosticsControls(): FeishuCardElement[] {

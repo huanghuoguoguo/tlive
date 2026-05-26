@@ -468,6 +468,8 @@ export async function main() {
         reason: provider.reason,
       })),
       lastSeenAt: new Date(client.lastSeenAt).toISOString(),
+      host: client.host,
+      remoteAddress: client.remoteAddress,
       version: client.version,
     }));
   };

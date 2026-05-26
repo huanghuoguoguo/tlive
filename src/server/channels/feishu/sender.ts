@@ -176,6 +176,58 @@ export async function startFeishuThreadWithTitle(
   return started ? { ...started, rootMessageId: String(rootMessageId) } : null;
 }
 
+export async function publishFeishuTopicMetadata(
+  client: Client | null,
+  options: {
+    rootMessageId: string;
+    text: string;
+    autoPinTopics: boolean;
+    classifyError: ClassifyError;
+  },
+): Promise<string | null> {
+  if (!client) return null;
+  try {
+    const result = (await client.im.message.reply({
+      path: { message_id: options.rootMessageId },
+      data: {
+        msg_type: 'post',
+        content: buildTopicMetadataPost(options.text),
+        reply_in_thread: true,
+      },
+    })) as FeishuCreateMessageResult;
+    const messageId = result?.data?.message_id;
+    if (!messageId) return null;
+    if (options.autoPinTopics) {
+      await pinFeishuMessage(client, String(messageId)).catch((pinErr) => {
+        console.warn(
+          `[feishu] auto pin topic metadata failed (${(pinErr as any)?.code ?? 'unknown'})`,
+        );
+      });
+    }
+    return String(messageId);
+  } catch (err) {
+    throw options.classifyError(err);
+  }
+}
+
+function buildTopicMetadataPost(text: string): string {
+  const marker = text.match(/tlive-topic:[A-Za-z0-9_-]+/)?.[0] ?? text;
+  return JSON.stringify({
+    zh_cn: {
+      title: 'TLive 会话索引',
+      content: [
+        [
+          {
+            tag: 'a',
+            text: 'TLive 会话索引',
+            href: `https://tlive.local/session#${marker}`,
+          },
+        ],
+      ],
+    },
+  });
+}
+
 export async function pinFeishuMessage(client: Client | null, messageId: string): Promise<void> {
   if (!client) return;
   await client.im.pin.create({

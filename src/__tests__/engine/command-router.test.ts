@@ -16,6 +16,7 @@ import type { SDKEngine } from '../../server/engine/sdk/engine.js';
 import type { PermissionCoordinator } from '../../server/engine/coordinators/permission.js';
 import { chatScopeId } from '../../shared/core/key.js';
 import type { HomeClientEntry } from '../../shared/formatting/message-types.js';
+import { extractTliveTopicMetadata } from '../../shared/topic-metadata.js';
 
 /** Create a minimal PermissionCoordinator mock for tests */
 function createMockPermissions(): PermissionCoordinator {
@@ -84,6 +85,7 @@ describe('CommandRouter /settings', () => {
       format: vi.fn((msg: any) => msg),
       send: vi.fn().mockResolvedValue(undefined),
       sendFormatted: vi.fn().mockResolvedValue(undefined),
+      publishTopicMetadata: vi.fn().mockResolvedValue('msg-topic-metadata'),
       getLocale: () => 'zh',
     };
 
@@ -478,7 +480,7 @@ describe('CommandRouter /settings', () => {
         rootMessageId: 'msg-title',
         messageId: 'msg-topic-start',
         provider: 'claude',
-        title: '新 Claude 会话',
+        titleMatcher: /^TLive · Claude · project · \d{2}-\d{2} \d{2}:\d{2}$/,
         seed: {
           sdkSessionId: 'sdk-1',
           projectName: 'repo',
@@ -492,7 +494,7 @@ describe('CommandRouter /settings', () => {
         rootMessageId: 'msg-codex-root',
         messageId: 'msg-codex-start',
         provider: 'codex',
-        title: '新 Codex 会话',
+        titleMatcher: /^TLive · Codex · project · \d{2}-\d{2} \d{2}:\d{2}$/,
         seed: {},
         assertPermissionMode: false,
       },
@@ -533,9 +535,18 @@ describe('CommandRouter /settings', () => {
 
       expect(adapterWithTopic.startThreadWithTitle).toHaveBeenCalledWith(
         testCase.chatId,
-        testCase.title,
-        expect.stringContaining('已开启新话题'),
+        expect.stringMatching(testCase.titleMatcher),
+        expect.stringContaining('继续在本话题内发送消息'),
       );
+      const topicTitle = (adapterWithTopic.startThreadWithTitle as any).mock.calls.at(-1)[1];
+      const metadataText = (adapterWithTopic.publishTopicMetadata as any).mock.calls.at(-1)[2];
+      expect(extractTliveTopicMetadata(metadataText)).toMatchObject({
+        provider: testCase.provider,
+        cwd: '/tmp/project',
+        threadId: testCase.threadId,
+        rootMessageId: testCase.rootMessageId,
+        entryMessageId: testCase.messageId,
+      });
       const scopeId = chatScopeId(testCase.chatId, testCase.threadId);
       const topicBinding = await store.getBinding('feishu', scopeId);
       expect(topicBinding).toMatchObject({
@@ -549,8 +560,9 @@ describe('CommandRouter /settings', () => {
         scopeId,
         provider: testCase.provider,
         rootMessageId: testCase.rootMessageId,
+        entryMessageId: testCase.messageId,
         lastMessageId: testCase.messageId,
-        title: testCase.title,
+        title: topicTitle,
       });
       if (testCase.assertPermissionMode) {
         expect(state.getPermMode('feishu', scopeId, topicBinding?.sessionId)).toBe('off');
@@ -782,11 +794,20 @@ describe('CommandRouter /settings', () => {
       messageId: 'workbench-card',
     } as any);
 
-    expect(adapterWithTopic.startThreadWithTitle).toHaveBeenCalledWith(
-      'c1',
-      '提一个issue，在本项目内整理相关信息',
-      expect.stringContaining('5049209e'),
-    );
+    const [chatId, topicTitle, topicIntro] = (adapterWithTopic.startThreadWithTitle as any).mock
+      .calls[0];
+    expect(chatId).toBe('c1');
+    expect(topicTitle).toBe('提一个issue，在本项目内整理相关信息');
+    expect(topicIntro).toContain('5049209e');
+    const metadataText = (adapterWithTopic.publishTopicMetadata as any).mock.calls[0][2];
+    expect(extractTliveTopicMetadata(metadataText)).toMatchObject({
+      provider: 'claude',
+      cwd: repoDir,
+      sdkSessionId: '5049209e-session',
+      threadId: 'thread-history',
+      rootMessageId: 'msg-title',
+      entryMessageId: 'msg-topic-start',
+    });
     const scopeId = chatScopeId('c1', 'thread-history');
     const binding = await store.getBinding('feishu', scopeId);
     expect(binding).toMatchObject({
@@ -797,6 +818,7 @@ describe('CommandRouter /settings', () => {
     expect(topic.topicSessions.findBySdkSessionId('5049209e-session')).toMatchObject({
       scopeId,
       rootMessageId: 'msg-title',
+      entryMessageId: 'msg-topic-start',
       lastMessageId: 'msg-topic-start',
       title: '提一个issue，在本项目内整理相关信息',
     });

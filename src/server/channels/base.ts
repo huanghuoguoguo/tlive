@@ -1,12 +1,16 @@
 import type {
   ChannelType,
   InboundMessage,
+  PinnedTopicMetadata,
   RenderedMessage,
   SendResult,
   StreamingCardSession,
   ThreadStartResult,
 } from './types.js';
-import type { CardResolutionData, FormattableMessage } from '../../shared/formatting/message-types.js';
+import type {
+  CardResolutionData,
+  FormattableMessage,
+} from '../../shared/formatting/message-types.js';
 import type { MessageFormatter } from '../../shared/formatting/message-formatter.js';
 import type { Button } from '../../shared/ui/types.js';
 import type {
@@ -53,6 +57,23 @@ export abstract class BaseChannelAdapter<TRendered extends RenderedMessage = Ren
     _title: string,
     _text?: string,
   ): Promise<ThreadStartResult | null> {
+    return null;
+  }
+
+  /** Resolve TLive metadata from a pinned platform topic entry, when supported. */
+  async findPinnedTopicMetadata(
+    _chatId: string,
+    _threadId: string,
+  ): Promise<PinnedTopicMetadata | null> {
+    return null;
+  }
+
+  /** Publish a platform-readable metadata entry for a topic and pin it when supported. */
+  async publishTopicMetadata(
+    _chatId: string,
+    _rootMessageId: string,
+    _text: string,
+  ): Promise<string | null> {
     return null;
   }
 

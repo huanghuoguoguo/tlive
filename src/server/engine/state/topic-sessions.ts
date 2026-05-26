@@ -11,6 +11,8 @@ export interface TopicSessionRecord {
   scopeId: string;
   threadId: string;
   rootMessageId?: string;
+  /** Pinned bot entry message that carries TLive recovery metadata. */
+  entryMessageId?: string;
   lastMessageId?: string;
   sdkSessionId?: string;
   provider?: AgentProviderKind;

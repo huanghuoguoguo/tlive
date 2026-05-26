@@ -14,6 +14,7 @@ import {
   type ControlMessage,
   type ControlResultMessage,
   type InteractionRequestMessage,
+  type RemoteClientHostDescriptor,
   type RemoteProviderDescriptor,
   type RemoteSessionDescriptor,
   type RemoteWorkspaceDescriptor,
@@ -42,6 +43,8 @@ export interface RemoteClientSnapshot {
   sessions: RemoteSessionDescriptor[];
   activeTurns: number;
   lastSeenAt: number;
+  host?: RemoteClientHostDescriptor;
+  remoteAddress?: string;
   version?: string;
 }
 
@@ -80,6 +83,7 @@ export class RemoteClientRegistry {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private readonly serverId: string;
   private readonly clients = new Map<string, RemoteClientConnection>();
+  private readonly socketRemoteAddresses = new WeakMap<WebSocket, string>();
   private readonly turns = new Map<string, RegisteredTurn>();
   private readonly pendingControls = new Map<string, PendingControl>();
   private readonly pendingClientCommands = new Map<string, PendingClientCommand>();
@@ -92,6 +96,8 @@ export class RemoteClientRegistry {
     if (this.wss) return;
     this.wss = new WebSocketServer({ port: this.options.port, path: this.options.path });
     this.wss.on('connection', (socket, request) => {
+      const remoteAddress = normalizeRemoteAddress(request.socket.remoteAddress);
+      if (remoteAddress) this.socketRemoteAddresses.set(socket, remoteAddress);
       if (!this.isAuthorized(request.url, request.headers.authorization)) {
         socket.close(1008, 'unauthorized');
         return;
@@ -342,6 +348,8 @@ export class RemoteClientRegistry {
       sessions: message.sessions ?? [],
       activeTurns: 0,
       lastSeenAt: Date.now(),
+      host: message.host,
+      remoteAddress: this.socketRemoteAddresses.get(socket),
       version: message.version,
       socket,
     };
@@ -460,4 +468,9 @@ export class RemoteClientRegistry {
     }
     socket.send(encodeRemoteProtocolMessage(message));
   }
+}
+
+function normalizeRemoteAddress(address: string | undefined): string | undefined {
+  if (!address) return undefined;
+  return address.startsWith('::ffff:') ? address.slice('::ffff:'.length) : address;
 }

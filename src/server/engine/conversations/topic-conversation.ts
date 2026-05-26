@@ -69,9 +69,20 @@ export class TopicConversationService {
     const route = conversationRouteFromInbound(msg);
     const scopeId = route.logicalScopeId;
     const existingBinding = await this.options.store.getBinding(msg.channelType, scopeId);
-    let binding = existingBinding ?? (await this.options.router.resolve(msg.channelType, scopeId));
+    const restoredBinding = existingBinding
+      ? null
+      : await this.restorePinnedTopicBinding(adapter, msg, scopeId);
+    let binding =
+      existingBinding ??
+      restoredBinding ??
+      (await this.options.router.resolve(msg.channelType, scopeId));
 
-    const claimed = await this.claimThreadSession(msg, scopeId, binding, !existingBinding);
+    const claimed = await this.claimThreadSession(
+      msg,
+      scopeId,
+      binding,
+      !existingBinding && !restoredBinding,
+    );
     if (claimed) {
       binding = claimed.binding;
       return { msg, route, scopeId, binding, target: claimed.target };
@@ -110,25 +121,25 @@ export class TopicConversationService {
     binding: TopicSessionBindingSnapshot,
     updates: { sdkSessionId?: string; lastMessageId?: string } = {},
     _locale: string = 'zh',
-  ): void {
-    if (!msg.threadId || !this.options.topicSessions) return;
+  ) {
+    if (!msg.threadId || !this.options.topicSessions) return undefined;
     const scopeId = conversationScopeId(msg);
-    const preview = truncate(
-      (msg.text || '').trim() || t('topic.agentSession'),
-      120,
-    );
-    this.options.topicSessions.upsert({
+    const existing = this.options.topicSessions.findByScope(scopeId);
+    const preview = truncate((msg.text || '').trim() || t('topic.agentSession'), 120);
+    return this.options.topicSessions.upsert({
       channelType: msg.channelType,
       chatId: msg.chatId,
       scopeId,
       threadId: msg.threadId,
-      rootMessageId: msg.threadRootMessageId ?? msg.replyTargetMessageId,
+      rootMessageId: existing?.rootMessageId ?? msg.threadRootMessageId ?? msg.replyTargetMessageId,
+      entryMessageId:
+        existing?.entryMessageId ?? msg.threadParentMessageId ?? msg.threadRootMessageId,
       lastMessageId: updates.lastMessageId ?? msg.replyTargetMessageId ?? msg.messageId,
       sdkSessionId: updates.sdkSessionId ?? binding.sdkSessionId,
       provider: binding.provider,
       clientId: binding.clientId,
       cwd: binding.cwd || this.options.defaultWorkdir,
-      title: preview,
+      title: existing?.title ?? preview,
       preview,
     });
   }
@@ -243,5 +254,59 @@ export class TopicConversationService {
     }
 
     return null;
+  }
+
+  private async restorePinnedTopicBinding(
+    adapter: BaseChannelAdapter,
+    msg: InboundMessage,
+    scopeId: string,
+  ): Promise<ChannelBinding | null> {
+    if (!msg.threadId || typeof adapter.findPinnedTopicMetadata !== 'function') return null;
+
+    const pinned = await adapter.findPinnedTopicMetadata(msg.chatId, msg.threadId).catch((err) => {
+      console.warn(`[topic-session] pinned metadata lookup failed: ${Logger.formatError(err)}`);
+      return null;
+    });
+    if (!pinned) return null;
+
+    const source = await this.options.store.getBinding(msg.channelType, msg.chatId);
+    const metadata = pinned.metadata;
+    const now = new Date().toISOString();
+    const binding: ChannelBinding = {
+      channelType: msg.channelType,
+      chatId: scopeId,
+      sessionId: generateSessionId(),
+      sdkSessionId: metadata.sdkSessionId,
+      provider: metadata.provider ?? source?.provider,
+      clientId: metadata.clientId ?? source?.clientId,
+      cwd: metadata.cwd ?? source?.cwd ?? this.options.defaultWorkdir,
+      agentSettingSources: source?.agentSettingSources,
+      projectName: source?.projectName,
+      createdAt: now,
+    };
+    await this.options.store.saveBinding(binding);
+
+    this.options.topicSessions?.upsert({
+      channelType: msg.channelType,
+      chatId: msg.chatId,
+      scopeId,
+      threadId: msg.threadId,
+      rootMessageId: metadata.rootMessageId ?? pinned.rootMessageId ?? msg.threadRootMessageId,
+      entryMessageId: metadata.entryMessageId ?? pinned.messageId,
+      lastMessageId: pinned.messageId,
+      sdkSessionId: metadata.sdkSessionId,
+      provider: metadata.provider ?? source?.provider,
+      clientId: metadata.clientId ?? source?.clientId,
+      cwd: metadata.cwd ?? source?.cwd ?? this.options.defaultWorkdir,
+      title: metadata.title ?? metadata.preview,
+      preview: metadata.preview ?? metadata.title,
+      createdAt: metadata.createdAt,
+      updatedAt: metadata.updatedAt,
+    });
+
+    console.log(
+      `[topic-session] RESTORED chat=${msg.chatId.slice(-8)} thread=${msg.threadId.slice(-8)}`,
+    );
+    return binding;
   }
 }

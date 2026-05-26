@@ -2,6 +2,7 @@ export const FEISHU_CHANNEL = 'feishu' as const;
 export type ChannelType = typeof FEISHU_CHANNEL;
 
 import type { FileAttachment } from '../../shared/media/attachments.js';
+import type { TliveTopicMetadata } from '../../shared/topic-metadata.js';
 
 export interface InboundMessage {
   channelType: ChannelType;
@@ -49,6 +50,16 @@ export interface ThreadStartResult {
   rootMessageId?: string;
   /** First bot reply inside the topic. */
   messageId: string;
+}
+
+export interface PinnedTopicMetadata {
+  chatId: string;
+  threadId: string;
+  /** Pinned entry message that carries the metadata. */
+  messageId: string;
+  rootMessageId?: string;
+  createTime?: string;
+  metadata: TliveTopicMetadata;
 }
 
 export interface StreamingCardSession {

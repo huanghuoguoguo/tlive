@@ -12,7 +12,10 @@ import type { AgentSettingSource } from '../../../shared/config.js';
 import type { TopicSessionManager } from '../state/topic-sessions.js';
 import { Logger, type LogContext } from '../../../shared/logger.js';
 import type { AgentProvider } from '../../../shared/providers/base.js';
-import { singleProviderRegistry, type AgentProviderRegistry } from '../../../shared/providers/registry.js';
+import {
+  singleProviderRegistry,
+  type AgentProviderRegistry,
+} from '../../../shared/providers/registry.js';
 import { QueryContext } from './query-context.js';
 import { withInboundReplyContext } from '../../channels/reply-context.js';
 import { t } from '../../../shared/i18n/index.js';
@@ -25,6 +28,7 @@ import { conversationScopeId } from '../../channels/conversation-context.js';
 import { QueryPresentationFactory } from './query-presentation.js';
 import { QuerySdkInteractionsFactory } from './query-sdk-interactions.js';
 import { QueryRecoveryPolicy } from './query-recovery.js';
+import { updateTopicEntryMessage } from '../services/topic-entry.js';
 
 interface QueryOrchestratorOptions {
   engine: ConversationEngine;
@@ -75,8 +79,9 @@ export class QueryOrchestrator {
       defaultWorkdir: options.defaultWorkdir,
       defaultAgentSettingSources: options.defaultAgentSettingSources,
       appendSystemPrompt: options.appendSystemPrompt,
-      onSdkSessionId: (query, id) => {
-        this.recordTopicSession(query.msg, query.binding, { sdkSessionId: id });
+      onSdkSessionId: async (query, id) => {
+        const record = this.recordTopicSession(query.msg, query.binding, { sdkSessionId: id });
+        if (record) await updateTopicEntryMessage(query.adapter, record);
       },
     });
     this.presentation = new QueryPresentationFactory({
@@ -263,8 +268,8 @@ export class QueryOrchestrator {
     msg: InboundMessage,
     binding: TopicSessionBindingSnapshot,
     updates: { sdkSessionId?: string; lastMessageId?: string } = {},
-  ): void {
-    this.conversations.recordTopicSession(msg, binding, updates);
+  ) {
+    return this.conversations.recordTopicSession(msg, binding, updates);
   }
 
   private linkProgressMessage(
