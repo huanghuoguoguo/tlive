@@ -20,6 +20,8 @@ const CLIENT_PID = join(RUNTIME_DIR, 'client.pid');
 const BRIDGE_ENTRY = join(PACKAGE_ROOT, 'dist', 'main.mjs');
 const CLIENT_ENTRY = join(PACKAGE_ROOT, 'dist', 'client.mjs');
 const CONFIG_FILE = join(TLIVE_HOME, 'config.env');
+const SERVER_CONFIG_FILE = join(TLIVE_HOME, 'server.env');
+const CLIENT_CONFIG_FILE = join(TLIVE_HOME, 'client.env');
 const UPGRADE_RESULT_FILE = join(RUNTIME_DIR, 'upgrade-result.json');
 const STATUS_FILE = join(RUNTIME_DIR, 'status.json');
 const RELEASE_BASE_URL = process.env.TLIVE_RELEASE_BASE_URL?.trim();
@@ -337,11 +339,11 @@ async function stopLocalClientIfRunning(timeoutMs = 30000) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Parse ~/.tlive/config.env (KEY=VALUE lines, supports quotes) */
-function loadConfigEnv() {
+/** Parse env files (KEY=VALUE lines, supports quotes). */
+function readEnvFile(file) {
   const env = {};
-  if (!existsSync(CONFIG_FILE)) return env;
-  const content = readFileSync(CONFIG_FILE, 'utf-8');
+  if (!existsSync(file)) return env;
+  const content = readFileSync(file, 'utf-8');
   for (const line of content.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
@@ -357,6 +359,18 @@ function loadConfigEnv() {
     env[key] = val;
   }
   return env;
+}
+
+function loadConfigEnv(profile = 'base') {
+  const baseEnv = readEnvFile(CONFIG_FILE);
+  if (profile === 'server') return { ...baseEnv, ...readEnvFile(SERVER_CONFIG_FILE) };
+  if (profile === 'client') return { ...baseEnv, ...readEnvFile(CLIENT_CONFIG_FILE) };
+  return baseEnv;
+}
+
+function applyDefaultWorkdir(env) {
+  if (env.TL_DEFAULT_WORKDIR) return env;
+  return { ...env, TL_DEFAULT_WORKDIR: process.cwd() };
 }
 
 /** Check whether a PID is alive */
@@ -472,7 +486,7 @@ function localRemoteServerUrl(config) {
   return `ws://127.0.0.1:${port}${path}`;
 }
 
-function startLocalClient(config = loadConfigEnv()) {
+function startLocalClient(clientConfig = loadConfigEnv('client'), serverConfig = loadConfigEnv('server')) {
   ensureDirs();
 
   const existing = getLocalClientPid();
@@ -485,12 +499,16 @@ function startLocalClient(config = loadConfigEnv()) {
     throw new Error(`Client worker not built: ${CLIENT_ENTRY}`);
   }
 
-  const env = {
+  const env = applyDefaultWorkdir({
+    ...clientConfig,
     ...process.env,
-    ...config,
-    TL_DEFAULT_WORKDIR: process.env.TL_DEFAULT_WORKDIR || process.cwd(),
-    TL_REMOTE_SERVER_URL: localRemoteServerUrl(config),
-  };
+    TL_REMOTE_TOKEN:
+      process.env.TL_REMOTE_TOKEN ||
+      clientConfig.TL_REMOTE_TOKEN ||
+      serverConfig.TL_REMOTE_TOKEN ||
+      serverConfig.TL_TOKEN,
+    TL_REMOTE_SERVER_URL: localRemoteServerUrl(serverConfig),
+  });
 
   const child = spawn(process.execPath, [CLIENT_ENTRY, '--name', 'local'], {
     detached: true,
@@ -508,13 +526,14 @@ function startLocalClient(config = loadConfigEnv()) {
 
 function daemonStart(options = {}) {
   ensureDirs();
-  const config = loadConfigEnv();
+  const serverConfig = loadConfigEnv('server');
+  const clientConfig = loadConfigEnv('client');
 
   const existing = getBridgePid();
   if (existing) {
     console.log(`Bridge is already running (PID ${existing})`);
     if (!options.standalone) {
-      startLocalClient(config);
+      startLocalClient(clientConfig, serverConfig);
     }
     return existing;
   }
@@ -526,9 +545,8 @@ function daemonStart(options = {}) {
   console.log('Starting Bridge...');
 
   const env = {
+    ...serverConfig,
     ...process.env,
-    ...config,
-    TL_DEFAULT_WORKDIR: process.env.TL_DEFAULT_WORKDIR || process.cwd(),
     ...(options.standalone ? { TL_SERVER_STANDALONE: 'true' } : {}),
   };
 
@@ -545,7 +563,7 @@ function daemonStart(options = {}) {
   console.log(`Bridge started (PID ${child.pid})`);
 
   if (!options.standalone) {
-    startLocalClient(config);
+    startLocalClient(clientConfig, serverConfig);
   } else {
     console.log('Standalone mode: local client not started.');
   }
@@ -801,11 +819,13 @@ switch (command) {
       process.exit(1);
     }
     const env = {
+      ...loadConfigEnv('client'),
       ...process.env,
-      ...loadConfigEnv(),
-      TL_DEFAULT_WORKDIR: process.env.TL_DEFAULT_WORKDIR || process.cwd(),
     };
-    const r = spawnSync(process.execPath, [CLIENT_ENTRY, ...args], { stdio: 'inherit', env });
+    const r = spawnSync(process.execPath, [CLIENT_ENTRY, ...args], {
+      stdio: 'inherit',
+      env: applyDefaultWorkdir(env),
+    });
     if (r.status) process.exit(r.status);
     break;
   }

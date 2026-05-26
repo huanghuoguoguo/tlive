@@ -6,6 +6,7 @@ import { DEFAULT_AGENT_PROVIDER_KIND, type AgentProviderKind } from './providers
 import type { Locale } from './i18n/index.js';
 
 export type AgentSettingSource = 'user' | 'project' | 'local';
+export type ConfigProfile = 'base' | 'server' | 'client';
 
 /** Project configuration for multi-repo support */
 export interface ProjectConfig {
@@ -97,6 +98,8 @@ export interface Config {
 export interface LoadConfigOptions {
   /** Set false for tlive client workers, which do not need Feishu credentials. */
   validateBridge?: boolean;
+  /** Which role-specific env file to layer over config.env. */
+  profile?: ConfigProfile;
 }
 
 /** Validate a single project config */
@@ -257,8 +260,18 @@ function loadEnvFile(path: string): Record<string, string> {
   }
 }
 
-export function createConfigValueReader(): ConfigValueReader {
-  const envFile = loadEnvFile(join(getTliveHome(), 'config.env'));
+export function loadConfigEnvFiles(profile: ConfigProfile = 'base'): Record<string, string> {
+  const tliveHome = getTliveHome();
+  const baseEnv = loadEnvFile(join(tliveHome, 'config.env'));
+  if (profile === 'base') return baseEnv;
+  return {
+    ...baseEnv,
+    ...loadEnvFile(join(tliveHome, `${profile}.env`)),
+  };
+}
+
+export function createConfigValueReader(profile: ConfigProfile = 'base'): ConfigValueReader {
+  const envFile = loadConfigEnvFiles(profile);
 
   // Inject non-TL_ vars into process.env so providers can access them
   //    (e.g. ANTHROPIC_API_KEY) — process.env takes precedence
@@ -272,7 +285,8 @@ export function createConfigValueReader(): ConfigValueReader {
 }
 
 export function loadConfig(options: LoadConfigOptions = {}): Config {
-  const get = createConfigValueReader();
+  const profile = options.profile ?? (options.validateBridge === false ? 'client' : 'server');
+  const get = createConfigValueReader(profile);
 
   const remoteToken = get('TL_REMOTE_TOKEN', get('TL_TOKEN'));
 

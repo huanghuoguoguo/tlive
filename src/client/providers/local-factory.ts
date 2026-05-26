@@ -1,4 +1,4 @@
-import type { Config } from '../../shared/config.js';
+import { createConfigValueReader, type Config } from '../../shared/config.js';
 import type { AgentProvider } from '../../shared/providers/base.js';
 import type { AgentProviderKind } from '../../shared/providers/kinds.js';
 import {
@@ -12,7 +12,10 @@ import { detectClaudeCli, detectCodexCli } from './cli-detection.js';
 
 export function createLocalAgentProviderRegistry(config: Config): AgentProviderRegistry {
   const claude = detectClaudeCli();
-  const codexConfig = loadCodexProviderConfig({ defaultModel: config.defaultModel });
+  const codexConfig = loadCodexProviderConfig({
+    defaultModel: config.defaultModel,
+    get: createConfigValueReader('client'),
+  });
   const codex = detectCodexCli(codexConfig.codexPath);
 
   const descriptors = new Map<AgentProviderKind, AgentProviderDescriptor>([

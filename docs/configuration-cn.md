@@ -1,12 +1,17 @@
 # 配置选项
 
-配置文件位置：`~/.tlive/config.env`
+配置文件：
+
+- `~/.tlive/config.env`：共享/旧版兼容配置
+- `~/.tlive/server.env`：飞书桥接和控制面配置
+- `~/.tlive/client.env`：执行 client 配置
+
+角色配置会覆盖 `config.env`；shell 环境变量会覆盖这两类文件。
 
 ## 基本配置
 
 ```env
 TL_TOKEN=auto-generated
-TL_DEFAULT_WORKDIR=/home/user/projects
 TL_DEFAULT_MODEL=
 
 # 任务完成/失败卡片底部按钮。
@@ -62,22 +67,27 @@ server 始终监听执行 client。`tlive start` 和 `tlive server` 还会默认
 client，除非传入 `--standalone`。
 
 ```env
+# ~/.tlive/server.env
 TL_REMOTE_SERVER_PORT=8787
 TL_REMOTE_SERVER_PATH=/tlive
 TL_REMOTE_TOKEN=
 
+# ~/.tlive/client.env
 TL_REMOTE_SERVER_URL=ws://your-server:8787/tlive
 TL_REMOTE_CLIENT_ID=
 TL_REMOTE_CLIENT_NAME=
-TL_REMOTE_WORKSPACES=/path/to/project
+TL_REMOTE_CLIENT_NOTE=
+TL_DEFAULT_WORKDIR=/path/to/default/project
+TL_REMOTE_WORKSPACES=/path/to/quick-project
 ```
 
-执行 client 会自动检测本机可用 provider。
+执行 client 会自动检测本机可用 provider。`TL_DEFAULT_WORKDIR` 是这个 client
+新会话的默认目录。`TL_REMOTE_WORKSPACES` 只是工作台展示的快捷目录，不限制 `/cd`。
 
 ## 安全
 
 ```bash
-chmod 600 ~/.tlive/config.env
+chmod 600 ~/.tlive/*.env
 ```
 
 配置文件中的敏感信息在发送到 IM 前会自动脱敏。

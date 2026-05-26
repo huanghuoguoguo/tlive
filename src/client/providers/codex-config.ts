@@ -13,7 +13,7 @@ export interface LoadCodexProviderConfigOptions {
 export function loadCodexProviderConfig(
   options: LoadCodexProviderConfigOptions = {},
 ): CodexProviderConfig {
-  const get = options.get ?? createConfigValueReader();
+  const get = options.get ?? createConfigValueReader('client');
   const model = get('TL_CODEX_MODEL', options.defaultModel ?? get('TL_DEFAULT_MODEL'));
   const codexPath = get('TL_CODEX_PATH');
   return {
