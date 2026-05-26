@@ -67,6 +67,7 @@ export interface ClientHelloMessage {
   protocolVersion: number;
   clientId: string;
   name: string;
+  note?: string;
   providers: RemoteProviderDescriptor[];
   workspaces: RemoteWorkspaceDescriptor[];
   sessions?: RemoteSessionDescriptor[];
@@ -230,6 +231,7 @@ const clientHelloSchema = z.object({
   protocolVersion: z.number().int().positive(),
   clientId: z.string().min(1),
   name: z.string().min(1),
+  note: z.string().optional(),
   providers: z.array(
     z.object({
       kind: providerKindSchema,

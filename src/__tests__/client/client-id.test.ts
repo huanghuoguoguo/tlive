@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { resolveRemoteClientId } from '../../client/main.js';
+import { resolveRemoteClientId, resolveRemoteClientWorkspaces } from '../../client/main.js';
 
 describe('remote client id resolution', () => {
   const roots: string[] = [];
@@ -47,5 +47,17 @@ describe('remote client id resolution', () => {
     expect(first).toBe('worker-host-client-fixed');
     expect(second).toBe('worker-host-client-fixed');
     expect(readFileSync(join(home, 'client-id'), 'utf8')).toBe('worker-host-client-fixed\n');
+  });
+
+  it('treats remote workspaces as quick directories after the default workdir', () => {
+    expect(resolveRemoteClientWorkspaces(undefined, [], '/default')).toEqual(['/default']);
+    expect(resolveRemoteClientWorkspaces(undefined, ['/quick', '/default'], '/default')).toEqual([
+      '/default',
+      '/quick',
+    ]);
+    expect(resolveRemoteClientWorkspaces(['/cli'], ['/config'], '/default')).toEqual([
+      '/default',
+      '/cli',
+    ]);
   });
 });

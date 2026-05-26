@@ -451,6 +451,7 @@ export async function main() {
     return remoteClients.listClients().map((client) => ({
       clientId: client.clientId,
       name: client.name,
+      note: client.note,
       online: true,
       isDefault: false,
       activeTurns: client.activeTurns,

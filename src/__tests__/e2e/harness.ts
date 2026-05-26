@@ -407,6 +407,7 @@ function testConfig(root: string): Config {
         token: 'remote-token',
         clientId: 'test-client',
         name: 'test-client',
+        note: '',
         workspaces: [root],
         reconnectIntervalMs: 3000,
       },
