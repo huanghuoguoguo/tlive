@@ -2,17 +2,19 @@
 
 Config files:
 
-- `~/.tlive/config.env`: shared/legacy fallback values
 - `~/.tlive/server.env`: Feishu bridge and control-plane values
 - `~/.tlive/client.env`: execution client values
+- `~/.tlive/config.env`: legacy file, used only for one-time migration
 
-Role-specific files override `config.env`; shell environment variables override both.
+Runtime reads only the role-specific file for the process. Shell environment variables override
+that file. If `config.env` exists and either `server.env` or `client.env` is missing, startup
+creates the missing role file from `config.env` once and then reads only the role file.
 
 ## Basic Settings
 
 ```env
+# ~/.tlive/server.env
 TL_TOKEN=auto-generated
-TL_DEFAULT_MODEL=
 
 # Completed/failed task card buttons.
 # Default is only the workbench button. Add more if needed.
@@ -23,6 +25,7 @@ TL_DONE_BUTTONS=home
 ## Feishu / Lark
 
 ```env
+# ~/.tlive/server.env
 TL_FS_APP_ID=cli_xxx
 TL_FS_APP_SECRET=xxx
 TL_FS_VERIFICATION_TOKEN=
@@ -38,6 +41,7 @@ See [Feishu Setup Guide](setup-feishu.md).
 ## Agent Settings
 
 ```env
+# ~/.tlive/client.env
 # Settings sources loaded by default for new chats
 # user    = ~/.claude/settings.json
 # project = .claude/settings.json + CLAUDE.md + project MCP config
@@ -54,6 +58,7 @@ Use `/settings user|full|isolated` to override Claude settings for the current c
 ## MCP
 
 ```env
+# ~/.tlive/server.env
 TL_MCP_ENABLED=true
 TL_MCP_PORT=8081
 TL_MCP_PATH=/mcp
@@ -74,9 +79,11 @@ TL_REMOTE_TOKEN=
 
 # ~/.tlive/client.env
 TL_REMOTE_SERVER_URL=ws://your-server:8787/tlive
+TL_REMOTE_TOKEN=
 TL_REMOTE_CLIENT_ID=
 TL_REMOTE_CLIENT_NAME=
 TL_REMOTE_CLIENT_NOTE=
+TL_DEFAULT_MODEL=
 TL_DEFAULT_WORKDIR=/path/to/default/project
 TL_REMOTE_WORKSPACES=/path/to/quick-project
 ```

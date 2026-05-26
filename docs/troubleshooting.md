@@ -27,12 +27,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$tmp = Join-Path $env:TE
 
 1. Check config file exists:
    ```bash
-   cat ~/.tlive/config.env
+   cat ~/.tlive/server.env
    ```
 
 2. Check file permissions:
    ```bash
-   chmod 600 ~/.tlive/config.env
+   chmod 600 ~/.tlive/server.env
    ```
 
 3. Check recent logs:

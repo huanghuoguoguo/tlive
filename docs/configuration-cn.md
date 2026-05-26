@@ -2,17 +2,19 @@
 
 配置文件：
 
-- `~/.tlive/config.env`：共享/旧版兼容配置
 - `~/.tlive/server.env`：飞书桥接和控制面配置
 - `~/.tlive/client.env`：执行 client 配置
+- `~/.tlive/config.env`：旧版文件，只用于一次性迁移
 
-角色配置会覆盖 `config.env`；shell 环境变量会覆盖这两类文件。
+运行时只读取当前进程对应的角色配置；shell 环境变量会覆盖角色配置。如果
+`config.env` 存在且 `server.env` 或 `client.env` 缺失，启动时会从 `config.env`
+生成缺失的角色文件，之后只读取角色文件。
 
 ## 基本配置
 
 ```env
+# ~/.tlive/server.env
 TL_TOKEN=auto-generated
-TL_DEFAULT_MODEL=
 
 # 任务完成/失败卡片底部按钮。
 # 默认只显示工作台按钮。需要更多按钮时可追加。
@@ -23,6 +25,7 @@ TL_DONE_BUTTONS=home
 ## 飞书 / Lark
 
 ```env
+# ~/.tlive/server.env
 TL_FS_APP_ID=cli_xxx
 TL_FS_APP_SECRET=xxx
 TL_FS_VERIFICATION_TOKEN=
@@ -38,6 +41,7 @@ TL_FS_ALLOWED_USERS=ou_xxx,xxx
 ## Agent 设置
 
 ```env
+# ~/.tlive/client.env
 # 新 chat 默认加载的 Agent 设置来源
 # user    = ~/.claude/settings.json
 # project = .claude/settings.json + CLAUDE.md + project MCP config
@@ -54,6 +58,7 @@ TL_AGENT_SETTINGS=user,project,local
 ## MCP
 
 ```env
+# ~/.tlive/server.env
 TL_MCP_ENABLED=true
 TL_MCP_PORT=8081
 TL_MCP_PATH=/mcp
@@ -74,9 +79,11 @@ TL_REMOTE_TOKEN=
 
 # ~/.tlive/client.env
 TL_REMOTE_SERVER_URL=ws://your-server:8787/tlive
+TL_REMOTE_TOKEN=
 TL_REMOTE_CLIENT_ID=
 TL_REMOTE_CLIENT_NAME=
 TL_REMOTE_CLIENT_NOTE=
+TL_DEFAULT_MODEL=
 TL_DEFAULT_WORKDIR=/path/to/default/project
 TL_REMOTE_WORKSPACES=/path/to/quick-project
 ```

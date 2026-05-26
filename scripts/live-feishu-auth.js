@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
 
 const TLIVE_HOME = process.env.TLIVE_HOME || join(homedir(), '.tlive');
-const CONFIG_FILE = join(TLIVE_HOME, 'config.env');
+const SERVER_CONFIG_FILE = join(TLIVE_HOME, 'server.env');
 const LIVE_TEST_FILE = join(TLIVE_HOME, 'live-test.env');
 const DEFAULT_PORT = 8788;
 const CALLBACK_PATH = '/oauth/callback';
@@ -83,13 +83,13 @@ function fail(message) {
   process.exit(1);
 }
 
-const configEnv = loadEnvFile(CONFIG_FILE);
+const configEnv = loadEnvFile(SERVER_CONFIG_FILE);
 const liveEnv = loadEnvFile(LIVE_TEST_FILE);
 
 const appId = envValue('TL_FS_APP_ID');
 const appSecret = envValue('TL_FS_APP_SECRET');
-if (!appId) fail(`TL_FS_APP_ID is missing. Add it to ${CONFIG_FILE}`);
-if (!appSecret) fail(`TL_FS_APP_SECRET is missing. Add it to ${CONFIG_FILE}`);
+if (!appId) fail(`TL_FS_APP_ID is missing. Add it to ${SERVER_CONFIG_FILE}`);
+if (!appSecret) fail(`TL_FS_APP_SECRET is missing. Add it to ${SERVER_CONFIG_FILE}`);
 
 const shouldRefresh = process.argv.includes('--refresh');
 const port = Number.parseInt(envValue('TL_FS_AUTH_PORT', String(DEFAULT_PORT)), 10);

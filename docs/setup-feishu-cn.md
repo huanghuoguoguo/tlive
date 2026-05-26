@@ -174,7 +174,7 @@ tlive setup
 
 **方式 C — 手动配置：**
 
-编辑 `~/.tlive/config.env`：
+编辑 `~/.tlive/server.env`：
 ```env
 TL_FS_APP_ID=cli_xxxxxxxxxxxxxxxx
 TL_FS_APP_SECRET=你的-app-secret

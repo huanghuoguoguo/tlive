@@ -32,7 +32,7 @@ tlive --help
 
 按照 [飞书配置指南](setup-feishu-cn.md) 创建自建应用、启用机器人能力、配置事件订阅并发布应用。
 
-`~/.tlive/config.env` 至少需要：
+`~/.tlive/server.env` 至少需要：
 
 ```env
 TL_TOKEN=your-secret-token
@@ -46,7 +46,7 @@ TL_FS_ALLOWED_USERS=
 保护配置文件权限：
 
 ```bash
-chmod 600 ~/.tlive/config.env
+chmod 600 ~/.tlive/server.env
 ```
 
 ## MCP 集成

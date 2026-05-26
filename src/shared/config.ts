@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expandTilde, getTliveHome } from './core/path.js';
 import { normalizeQuickButtonNames, type QuickButtonName } from './ui/button-registry.js';
@@ -6,7 +6,7 @@ import { DEFAULT_AGENT_PROVIDER_KIND, type AgentProviderKind } from './providers
 import type { Locale } from './i18n/index.js';
 
 export type AgentSettingSource = 'user' | 'project' | 'local';
-export type ConfigProfile = 'base' | 'server' | 'client';
+export type ConfigProfile = 'server' | 'client';
 
 /** Project configuration for multi-repo support */
 export interface ProjectConfig {
@@ -98,7 +98,7 @@ export interface Config {
 export interface LoadConfigOptions {
   /** Set false for tlive client workers, which do not need Feishu credentials. */
   validateBridge?: boolean;
-  /** Which role-specific env file to layer over config.env. */
+  /** Which role-specific env file to read. */
   profile?: ConfigProfile;
 }
 
@@ -260,17 +260,97 @@ function loadEnvFile(path: string): Record<string, string> {
   }
 }
 
-export function loadConfigEnvFiles(profile: ConfigProfile = 'base'): Record<string, string> {
-  const tliveHome = getTliveHome();
-  const baseEnv = loadEnvFile(join(tliveHome, 'config.env'));
-  if (profile === 'base') return baseEnv;
-  return {
-    ...baseEnv,
-    ...loadEnvFile(join(tliveHome, `${profile}.env`)),
-  };
+function isServerConfigKey(key: string): boolean {
+  return (
+    key === 'TL_TOKEN' ||
+    key === 'TL_LOCALE' ||
+    key === 'TL_ENABLED_CHANNELS' ||
+    key === 'TL_PORT' ||
+    key === 'TL_DONE_BUTTONS' ||
+    key === 'TL_LOCAL_CLIENT_DISABLED' ||
+    key === 'TL_SERVER_STANDALONE' ||
+    key === 'TL_REMOTE_TOKEN' ||
+    key === 'TL_REMOTE_HEARTBEAT_MS' ||
+    key === 'TL_REMOTE_CLIENT_TIMEOUT_MS' ||
+    key === 'TL_DEBUG_EVENTS' ||
+    key.startsWith('TL_FS_') ||
+    key.startsWith('TL_MCP_') ||
+    key.startsWith('TL_REMOTE_SERVER_') ||
+    key.startsWith('TL_WEBHOOK_') ||
+    key.startsWith('TL_COST_')
+  );
 }
 
-export function createConfigValueReader(profile: ConfigProfile = 'base'): ConfigValueReader {
+function isClientConfigKey(key: string): boolean {
+  return (
+    key === 'TL_PROVIDER' ||
+    key === 'TL_AGENT_SETTINGS' ||
+    key === 'TL_DEFAULT_WORKDIR' ||
+    key === 'TL_DEFAULT_MODEL' ||
+    key === 'TL_REMOTE_TOKEN' ||
+    key === 'TL_REMOTE_SERVER_URL' ||
+    key === 'TL_REMOTE_RECONNECT_MS' ||
+    key === 'TL_REMOTE_WORKSPACES' ||
+    key === 'TL_CLAUDE_TMPDIR' ||
+    key === 'TL_MCP_URL' ||
+    key === 'TL_DEBUG_EVENTS' ||
+    key.startsWith('TL_REMOTE_CLIENT_') ||
+    key.startsWith('TL_CODEX_') ||
+    key.startsWith('CTI_') ||
+    key === 'HTTP_PROXY' ||
+    key === 'HTTPS_PROXY' ||
+    key === 'ALL_PROXY' ||
+    key === 'NO_PROXY' ||
+    !key.startsWith('TL_')
+  );
+}
+
+function migratedEnvForProfile(
+  profile: ConfigProfile,
+  legacyEnv: Record<string, string>,
+): Record<string, string> {
+  const isKeyForProfile = profile === 'server' ? isServerConfigKey : isClientConfigKey;
+  return Object.fromEntries(Object.entries(legacyEnv).filter(([key]) => isKeyForProfile(key)));
+}
+
+function serializeEnvFile(env: Record<string, string>, source: string): string {
+  const lines = [
+    `# Migrated from ${source}.`,
+    '# Edit this role-specific file; runtime no longer reads config.env.',
+  ];
+  for (const [key, value] of Object.entries(env)) {
+    lines.push(`${key}=${value}`);
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+export function migrateLegacyConfigEnvFiles(tliveHome: string = getTliveHome()): void {
+  const legacyPath = join(tliveHome, 'config.env');
+  if (!existsSync(legacyPath)) return;
+
+  const legacyEnv = loadEnvFile(legacyPath);
+  for (const profile of ['server', 'client'] as const) {
+    const targetPath = join(tliveHome, `${profile}.env`);
+    if (existsSync(targetPath)) continue;
+    const migratedEnv = migratedEnvForProfile(profile, legacyEnv);
+    try {
+      writeFileSync(targetPath, serializeEnvFile(migratedEnv, legacyPath), {
+        flag: 'wx',
+        mode: 0o600,
+      });
+    } catch {
+      /* Another process may have created the file. */
+    }
+  }
+}
+
+export function loadConfigEnvFiles(profile: ConfigProfile): Record<string, string> {
+  const tliveHome = getTliveHome();
+  migrateLegacyConfigEnvFiles(tliveHome);
+  return loadEnvFile(join(tliveHome, `${profile}.env`));
+}
+
+export function createConfigValueReader(profile: ConfigProfile = 'server'): ConfigValueReader {
   const envFile = loadConfigEnvFiles(profile);
 
   // Inject non-TL_ vars into process.env so providers can access them

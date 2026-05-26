@@ -9,7 +9,8 @@ import { randomBytes } from 'node:crypto';
 import { getTliveHome } from '../../shared/core/path.js';
 
 const TERMLIVE_HOME = getTliveHome();
-const CONFIG_PATH = join(TERMLIVE_HOME, 'config.env');
+const SERVER_CONFIG_PATH = join(TERMLIVE_HOME, 'server.env');
+const LEGACY_CONFIG_PATH = join(TERMLIVE_HOME, 'config.env');
 
 export function isClaudeCodeEnvironment(): boolean {
   return !!(process.env.CLAUDE_CODE || process.env.CLAUDE_SESSION_ID);
@@ -27,8 +28,9 @@ async function ask(question: string, defaultValue = ''): Promise<string> {
 }
 
 function loadExistingConfig(): Record<string, string> {
-  if (!existsSync(CONFIG_PATH)) return {};
-  const content = readFileSync(CONFIG_PATH, 'utf-8');
+  const path = existsSync(SERVER_CONFIG_PATH) ? SERVER_CONFIG_PATH : LEGACY_CONFIG_PATH;
+  if (!existsSync(path)) return {};
+  const content = readFileSync(path, 'utf-8');
   const config: Record<string, string> = {};
   for (const line of content.split('\n')) {
     const eq = line.indexOf('=');
@@ -67,7 +69,7 @@ export async function runSetupWizard(): Promise<void> {
   const isUpdate = Object.keys(existing).length > 0;
 
   if (isUpdate) {
-    console.log(`Existing config: ${CONFIG_PATH}`);
+    console.log(`Existing config: ${SERVER_CONFIG_PATH}`);
     console.log('  Channel: feishu');
     console.log('');
 
@@ -106,9 +108,9 @@ export async function runSetupWizard(): Promise<void> {
     .filter(([, v]) => v !== '')
     .map(([k, v]) => `${k}=${v}`);
 
-  writeFileSync(CONFIG_PATH, lines.join('\n') + '\n', { mode: 0o600 });
+  writeFileSync(SERVER_CONFIG_PATH, lines.join('\n') + '\n', { mode: 0o600 });
 
-  console.log(`\n✅ Config saved to ${CONFIG_PATH}`);
+  console.log(`\n✅ Config saved to ${SERVER_CONFIG_PATH}`);
   console.log(`   Token: ${maskSecret(config.TL_TOKEN)}`);
   console.log('   Channel: feishu');
   printNextSteps();

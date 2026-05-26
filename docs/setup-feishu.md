@@ -134,7 +134,7 @@ Paste your App ID and App Secret when prompted.
 
 **Option B — Manual configuration:**
 
-Edit `~/.tlive/config.env`:
+Edit `~/.tlive/server.env`:
 ```env
 TL_FS_APP_ID=cli_xxxxxxxxxxxxxxxx
 TL_FS_APP_SECRET=your-app-secret

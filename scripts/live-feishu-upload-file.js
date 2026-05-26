@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 
 const TLIVE_HOME = process.env.TLIVE_HOME || join(homedir(), '.tlive');
-const CONFIG_FILE = join(TLIVE_HOME, 'config.env');
+const SERVER_CONFIG_FILE = join(TLIVE_HOME, 'server.env');
 const LIVE_TEST_FILE = join(TLIVE_HOME, 'live-test.env');
 const TOPIC_SESSIONS_FILE = join(TLIVE_HOME, 'runtime', 'topic-sessions.json');
 const FILE_UPLOAD_URL = 'https://open.feishu.cn/open-apis/im/v1/files';
@@ -154,7 +154,7 @@ async function replyWithFile(token, rootMessageId, fileKey) {
   return body.data?.message_id ?? '';
 }
 
-const configEnv = loadEnvFile(CONFIG_FILE);
+const configEnv = loadEnvFile(SERVER_CONFIG_FILE);
 const liveEnv = loadEnvFile(LIVE_TEST_FILE);
 const token = envValue('FEISHU_TEST_USER_ACCESS_TOKEN');
 const { rootMessageId, filePath } = parseArgs(process.argv.slice(2));

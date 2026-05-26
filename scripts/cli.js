@@ -361,11 +361,86 @@ function readEnvFile(file) {
   return env;
 }
 
-function loadConfigEnv(profile = 'base') {
-  const baseEnv = readEnvFile(CONFIG_FILE);
-  if (profile === 'server') return { ...baseEnv, ...readEnvFile(SERVER_CONFIG_FILE) };
-  if (profile === 'client') return { ...baseEnv, ...readEnvFile(CLIENT_CONFIG_FILE) };
-  return baseEnv;
+function isServerConfigKey(key) {
+  return key === 'TL_TOKEN' ||
+    key === 'TL_LOCALE' ||
+    key === 'TL_ENABLED_CHANNELS' ||
+    key === 'TL_PORT' ||
+    key === 'TL_DONE_BUTTONS' ||
+    key === 'TL_LOCAL_CLIENT_DISABLED' ||
+    key === 'TL_SERVER_STANDALONE' ||
+    key === 'TL_REMOTE_TOKEN' ||
+    key === 'TL_REMOTE_HEARTBEAT_MS' ||
+    key === 'TL_REMOTE_CLIENT_TIMEOUT_MS' ||
+    key === 'TL_DEBUG_EVENTS' ||
+    key.startsWith('TL_FS_') ||
+    key.startsWith('TL_MCP_') ||
+    key.startsWith('TL_REMOTE_SERVER_') ||
+    key.startsWith('TL_WEBHOOK_') ||
+    key.startsWith('TL_COST_');
+}
+
+function isClientConfigKey(key) {
+  return key === 'TL_PROVIDER' ||
+    key === 'TL_AGENT_SETTINGS' ||
+    key === 'TL_DEFAULT_WORKDIR' ||
+    key === 'TL_DEFAULT_MODEL' ||
+    key === 'TL_REMOTE_TOKEN' ||
+    key === 'TL_REMOTE_SERVER_URL' ||
+    key === 'TL_REMOTE_RECONNECT_MS' ||
+    key === 'TL_REMOTE_WORKSPACES' ||
+    key === 'TL_CLAUDE_TMPDIR' ||
+    key === 'TL_MCP_URL' ||
+    key === 'TL_DEBUG_EVENTS' ||
+    key.startsWith('TL_REMOTE_CLIENT_') ||
+    key.startsWith('TL_CODEX_') ||
+    key.startsWith('CTI_') ||
+    key === 'HTTP_PROXY' ||
+    key === 'HTTPS_PROXY' ||
+    key === 'ALL_PROXY' ||
+    key === 'NO_PROXY' ||
+    !key.startsWith('TL_');
+}
+
+function migratedEnvForProfile(profile, legacyEnv) {
+  const isKeyForProfile = profile === 'server' ? isServerConfigKey : isClientConfigKey;
+  return Object.fromEntries(Object.entries(legacyEnv).filter(([key]) => isKeyForProfile(key)));
+}
+
+function serializeEnvFile(env, source) {
+  const lines = [
+    `# Migrated from ${source}.`,
+    '# Edit this role-specific file; runtime no longer reads config.env.',
+  ];
+  for (const [key, value] of Object.entries(env)) {
+    lines.push(`${key}=${value}`);
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+function migrateLegacyConfigEnv() {
+  if (!existsSync(CONFIG_FILE)) return;
+  const legacyEnv = readEnvFile(CONFIG_FILE);
+  for (const [profile, target] of [
+    ['server', SERVER_CONFIG_FILE],
+    ['client', CLIENT_CONFIG_FILE],
+  ]) {
+    if (existsSync(target)) continue;
+    try {
+      writeFileSync(target, serializeEnvFile(migratedEnvForProfile(profile, legacyEnv), CONFIG_FILE), {
+        flag: 'wx',
+        mode: 0o600,
+      });
+    } catch {
+      // Another process may have created the file.
+    }
+  }
+}
+
+function loadConfigEnv(profile = 'server') {
+  migrateLegacyConfigEnv();
+  if (profile === 'client') return readEnvFile(CLIENT_CONFIG_FILE);
+  return readEnvFile(SERVER_CONFIG_FILE);
 }
 
 function applyDefaultWorkdir(env) {

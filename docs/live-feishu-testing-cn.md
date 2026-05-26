@@ -109,7 +109,7 @@ TL_FS_OAUTH_REDIRECT_URI=http://127.0.0.1:8788/oauth/callback npm run live:feish
 
 ## 本地配置
 
-`~/.tlive/config.env` 至少需要：
+`~/.tlive/server.env` 至少需要：
 
 ```env
 TL_FS_APP_ID=cli_xxx

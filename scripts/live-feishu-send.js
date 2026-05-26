@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 const TLIVE_HOME = process.env.TLIVE_HOME || join(homedir(), '.tlive');
-const CONFIG_FILE = join(TLIVE_HOME, 'config.env');
+const SERVER_CONFIG_FILE = join(TLIVE_HOME, 'server.env');
 const LIVE_TEST_FILE = join(TLIVE_HOME, 'live-test.env');
 const MESSAGE_URL = 'https://open.feishu.cn/open-apis/im/v1/messages';
 
@@ -50,7 +50,7 @@ function fail(message) {
   process.exit(1);
 }
 
-const configEnv = loadEnvFile(CONFIG_FILE);
+const configEnv = loadEnvFile(SERVER_CONFIG_FILE);
 const liveEnv = loadEnvFile(LIVE_TEST_FILE);
 const argv = process.argv.slice(2);
 

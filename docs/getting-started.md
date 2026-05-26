@@ -32,7 +32,7 @@ tlive --help
 
 Follow the [Feishu Setup Guide](setup-feishu.md) to create the custom app, enable bot messaging, configure event subscriptions, and publish the app.
 
-You need these values in `~/.tlive/config.env`:
+You need these values in `~/.tlive/server.env`:
 
 ```env
 TL_TOKEN=your-secret-token
@@ -46,7 +46,7 @@ TL_FS_ALLOWED_USERS=
 Secure the config file:
 
 ```bash
-chmod 600 ~/.tlive/config.env
+chmod 600 ~/.tlive/server.env
 ```
 
 ## MCP Integration

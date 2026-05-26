@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -37,15 +37,52 @@ describe('role-specific config loading', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('layers server.env and client.env over config.env for their own roles', () => {
+  it('migrates legacy config.env into missing role-specific files', () => {
     writeFileSync(
       join(root, 'config.env'),
       [
-        'TL_TOKEN=base-token',
-        'TL_FS_APP_ID=base-app',
-        'TL_FS_APP_SECRET=base-secret',
-        'TL_DEFAULT_WORKDIR=/base-default',
-        'TL_REMOTE_CLIENT_ID=base-client',
+        'TL_TOKEN=legacy-token',
+        'TL_REMOTE_TOKEN=remote-token',
+        'TL_FS_APP_ID=legacy-app',
+        'TL_FS_APP_SECRET=legacy-secret',
+        'TL_DEFAULT_WORKDIR=/legacy-default',
+        'TL_REMOTE_CLIENT_ID=legacy-client',
+        'TL_REMOTE_CLIENT_NAME=Legacy Client',
+        'HTTP_PROXY=http://127.0.0.1:7890',
+      ].join('\n'),
+    );
+
+    const server = loadConfig();
+    const client = loadConfig({ validateBridge: false });
+    const serverFile = readFileSync(join(root, 'server.env'), 'utf-8');
+    const clientFile = readFileSync(join(root, 'client.env'), 'utf-8');
+
+    expect(server.token).toBe('legacy-token');
+    expect(server.remote.server.token).toBe('remote-token');
+    expect(server.feishu.appId).toBe('legacy-app');
+    expect(server.defaultWorkdir).not.toBe('/legacy-default');
+    expect(client.remote.client.token).toBe('remote-token');
+    expect(client.defaultWorkdir).toBe('/legacy-default');
+    expect(client.remote.client.clientId).toBe('legacy-client');
+    expect(client.remote.client.name).toBe('Legacy Client');
+    expect(existsSync(join(root, 'server.env'))).toBe(true);
+    expect(existsSync(join(root, 'client.env'))).toBe(true);
+    expect(serverFile).toContain('TL_FS_APP_ID=legacy-app');
+    expect(serverFile).not.toContain('TL_DEFAULT_WORKDIR=');
+    expect(clientFile).toContain('TL_DEFAULT_WORKDIR=/legacy-default');
+    expect(clientFile).toContain('HTTP_PROXY=http://127.0.0.1:7890');
+    expect(clientFile).not.toContain('TL_FS_APP_ID=');
+  });
+
+  it('does not read legacy config.env when role-specific files already exist', () => {
+    writeFileSync(
+      join(root, 'config.env'),
+      [
+        'TL_TOKEN=legacy-token',
+        'TL_FS_APP_ID=legacy-app',
+        'TL_FS_APP_SECRET=legacy-secret',
+        'TL_DEFAULT_WORKDIR=/legacy-default',
+        'TL_REMOTE_CLIENT_ID=legacy-client',
       ].join('\n'),
     );
     writeFileSync(
@@ -70,11 +107,11 @@ describe('role-specific config loading', () => {
     const server = loadConfig();
     expect(server.token).toBe('server-token');
     expect(server.feishu.appId).toBe('server-app');
-    expect(server.defaultWorkdir).toBe('/base-default');
-    expect(server.remote.client.clientId).toBe('base-client');
+    expect(server.defaultWorkdir).not.toBe('/legacy-default');
+    expect(server.remote.client.clientId).toBe('');
 
     const client = loadConfig({ validateBridge: false });
-    expect(client.token).toBe('base-token');
+    expect(client.token).toBe('');
     expect(client.defaultWorkdir).toBe('/client-default');
     expect(client.remote.client.clientId).toBe('client-1');
     expect(client.remote.client.name).toBe('Client One');

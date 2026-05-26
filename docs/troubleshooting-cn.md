@@ -27,12 +27,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$tmp = Join-Path $env:TE
 
 1. 检查配置文件是否存在：
    ```bash
-   cat ~/.tlive/config.env
+   cat ~/.tlive/server.env
    ```
 
 2. 检查配置文件权限：
    ```bash
-   chmod 600 ~/.tlive/config.env
+   chmod 600 ~/.tlive/server.env
    ```
 
 3. 查看最近日志：

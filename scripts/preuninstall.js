@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // preuninstall: clean up installed binaries, scripts, and docs from ~/.tlive/
-// Preserves user data: config.env, data/, logs/, runtime/
+// Preserves user data: *.env, data/, logs/, runtime/
 import { existsSync, unlinkSync, readdirSync, rmdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
