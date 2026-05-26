@@ -12,6 +12,11 @@ import type { LiveSession, QueryControls } from '../shared/providers/base.js';
 import type { AgentProviderKind } from '../shared/providers/kinds.js';
 import { generateId } from '../shared/core/id.js';
 import {
+  createMachineFingerprint,
+  type RemoteClientIdentity,
+  type RemoteClientIdentityStore,
+} from './identity.js';
+import {
   encodeRemoteProtocolMessage,
   parseRemoteProtocolMessage,
   REMOTE_PROTOCOL_VERSION,
@@ -32,10 +37,13 @@ const execAsync = promisify(exec);
 export interface RemoteClientWorkerOptions {
   serverUrl: string;
   token: string;
-  clientId: string;
+  clientId?: string;
+  clientSecret?: string;
   name: string;
   workspaces: string[];
   reconnectIntervalMs: number;
+  identityStore?: RemoteClientIdentityStore;
+  machineFingerprint?: string;
   version?: string;
 }
 
@@ -65,11 +73,24 @@ export class RemoteClientWorker {
   private readonly sessions = new Map<string, LocalSessionEntry>();
   private readonly activeTurns = new Map<string, ActiveTurn>();
   private readonly pendingInteractions = new Map<string, PendingInteraction>();
+  private identity: RemoteClientIdentity | null;
+  private readonly machineFingerprint: string;
 
   constructor(
     private readonly providers: AgentProviderRegistry,
     private readonly options: RemoteClientWorkerOptions,
-  ) {}
+  ) {
+    this.identity =
+      options.identityStore?.load() ??
+      (options.clientId && options.clientSecret
+        ? {
+            clientId: options.clientId,
+            clientSecret: options.clientSecret,
+            serverUrl: options.serverUrl,
+          }
+        : null);
+    this.machineFingerprint = options.machineFingerprint ?? createMachineFingerprint();
+  }
 
   async start(): Promise<void> {
     while (!this.stopped) {
@@ -119,7 +140,6 @@ export class RemoteClientWorker {
     });
 
     this.send(this.buildHello());
-    console.log(`[remote-client] connected to ${this.options.serverUrl} as ${this.options.clientId}`);
 
     await new Promise<void>((resolveClose) => {
       socket.on('message', (data) => this.handleMessage(data));
@@ -141,13 +161,30 @@ export class RemoteClientWorker {
     return {
       type: 'client.hello',
       protocolVersion: REMOTE_PROTOCOL_VERSION,
-      clientId: this.options.clientId,
+      clientId: this.identity?.clientId,
+      clientSecret: this.identity?.clientSecret,
+      machineFingerprint: this.machineFingerprint,
       name: this.options.name,
       providers: descriptors,
       workspaces: this.options.workspaces.map((path) => ({ path: resolve(path) })),
       sessions: this.scanSessions(),
       version: this.options.version,
     };
+  }
+
+  private acceptServerHello(message: Extract<ServerToClientMessage, { type: 'server.hello' }>): void {
+    if (message.clientSecret) {
+      this.identity = {
+        clientId: message.clientId,
+        clientSecret: message.clientSecret,
+        serverUrl: this.options.serverUrl,
+        assignedAt: new Date().toISOString(),
+      };
+      this.options.identityStore?.save(this.identity);
+    }
+    console.log(
+      `[remote-client] connected to ${this.options.serverUrl} as ${message.clientId} (${message.identityStatus})`,
+    );
   }
 
   private reportableProviderDescriptors(): AgentProviderDescriptor[] {
@@ -191,6 +228,7 @@ export class RemoteClientWorker {
 
     switch (message.type) {
       case 'server.hello':
+        this.acceptServerHello(message);
         break;
       case 'server.ping':
         this.send({ type: 'client.pong', timestamp: message.timestamp });

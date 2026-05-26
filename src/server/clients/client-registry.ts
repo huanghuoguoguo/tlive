@@ -1,8 +1,12 @@
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { URL } from 'node:url';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { dirname, join } from 'node:path';
 import type { AgentProviderKind } from '../../shared/providers/kinds.js';
 import type { CanonicalEvent } from '../../shared/canonical/schema.js';
 import { generateId } from '../../shared/core/id.js';
+import { getTliveHome } from '../../shared/core/path.js';
 import {
   encodeRemoteProtocolMessage,
   parseRemoteProtocolMessage,
@@ -32,6 +36,7 @@ export interface RemoteClientRegistryOptions {
   serverId?: string;
   heartbeatIntervalMs: number;
   clientTimeoutMs: number;
+  identityStorePath?: string;
 }
 
 export interface RemoteClientSnapshot {
@@ -75,17 +80,36 @@ interface PendingClientCommand {
   timer: ReturnType<typeof setTimeout>;
 }
 
+interface EnrolledRemoteClient {
+  clientId: string;
+  secretHash: string;
+  machineFingerprint?: string;
+  name: string;
+  registeredAt: string;
+  lastSeenAt: string;
+}
+
+interface ResolvedClientIdentity {
+  clientId: string;
+  clientSecret?: string;
+  identityStatus: 'accepted' | 'enrolled';
+}
+
 export class RemoteClientRegistry {
   private wss: WebSocketServer | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private readonly serverId: string;
+  private readonly identityStorePath: string;
   private readonly clients = new Map<string, RemoteClientConnection>();
+  private readonly enrolledClients = new Map<string, EnrolledRemoteClient>();
   private readonly turns = new Map<string, RegisteredTurn>();
   private readonly pendingControls = new Map<string, PendingControl>();
   private readonly pendingClientCommands = new Map<string, PendingClientCommand>();
 
   constructor(private readonly options: RemoteClientRegistryOptions) {
     this.serverId = options.serverId || generateId('server', 8);
+    this.identityStorePath = options.identityStorePath || join(getTliveHome(), 'remote-clients.json');
+    this.loadEnrolledClients();
   }
 
   start(): void {
@@ -328,14 +352,17 @@ export class RemoteClientRegistry {
       return;
     }
 
-    const existing = this.clients.get(message.clientId);
+    const identity = this.resolveClientIdentity(socket, message);
+    if (!identity) return;
+
+    const existing = this.clients.get(identity.clientId);
     if (existing && existing.socket !== socket) {
       existing.socket.close(1000, 'client reconnected');
       this.unregisterSocket(existing.socket, 'client reconnected');
     }
 
     const client: RemoteClientConnection = {
-      clientId: message.clientId,
+      clientId: identity.clientId,
       name: message.name,
       providers: message.providers,
       workspaces: message.workspaces,
@@ -351,10 +378,110 @@ export class RemoteClientRegistry {
       protocolVersion: REMOTE_PROTOCOL_VERSION,
       serverId: this.serverId,
       heartbeatIntervalMs: this.options.heartbeatIntervalMs,
+      clientId: identity.clientId,
+      clientSecret: identity.clientSecret,
+      identityStatus: identity.identityStatus,
     });
     console.log(
       `[remote-server] client connected id=${client.clientId} name=${client.name} providers=${client.providers.map((p) => p.kind).join(',') || 'none'}`,
     );
+  }
+
+  private resolveClientIdentity(
+    socket: WebSocket,
+    message: ClientHelloMessage,
+  ): ResolvedClientIdentity | null {
+    if (!message.clientId || !message.clientSecret) {
+      return this.enrollClient(message);
+    }
+
+    const enrolled = this.enrolledClients.get(message.clientId);
+    if (!enrolled) {
+      return this.enrollClient(message);
+    }
+
+    if (!this.secretMatches(message.clientSecret, enrolled.secretHash)) {
+      socket.close(1008, 'client identity rejected');
+      return null;
+    }
+
+    if (
+      enrolled.machineFingerprint &&
+      message.machineFingerprint &&
+      enrolled.machineFingerprint !== message.machineFingerprint
+    ) {
+      socket.close(1008, 'client identity conflict');
+      return null;
+    }
+
+    enrolled.name = message.name;
+    enrolled.machineFingerprint = message.machineFingerprint || enrolled.machineFingerprint;
+    enrolled.lastSeenAt = new Date().toISOString();
+    this.persistEnrolledClients();
+    return { clientId: enrolled.clientId, identityStatus: 'accepted' };
+  }
+
+  private enrollClient(message: ClientHelloMessage): ResolvedClientIdentity {
+    const clientId = this.generateClientId();
+    const clientSecret = randomBytes(32).toString('base64url');
+    const now = new Date().toISOString();
+    this.enrolledClients.set(clientId, {
+      clientId,
+      secretHash: hashSecret(clientSecret),
+      machineFingerprint: message.machineFingerprint,
+      name: message.name,
+      registeredAt: now,
+      lastSeenAt: now,
+    });
+    this.persistEnrolledClients();
+    return { clientId, clientSecret, identityStatus: 'enrolled' };
+  }
+
+  private generateClientId(): string {
+    let id = '';
+    do {
+      id = `client-${randomBytes(8).toString('base64url')}`;
+    } while (this.enrolledClients.has(id));
+    return id;
+  }
+
+  private loadEnrolledClients(): void {
+    if (!existsSync(this.identityStorePath)) return;
+    try {
+      const parsed = JSON.parse(readFileSync(this.identityStorePath, 'utf-8')) as {
+        clients?: EnrolledRemoteClient[];
+      };
+      for (const client of parsed.clients ?? []) {
+        if (!client.clientId || !client.secretHash) continue;
+        this.enrolledClients.set(client.clientId, client);
+      }
+    } catch (err) {
+      console.warn(
+        `[remote-server] failed to read client identity store: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  private persistEnrolledClients(): void {
+    try {
+      mkdirSync(dirname(this.identityStorePath), { recursive: true });
+      const clients = [...this.enrolledClients.values()].sort((a, b) =>
+        a.clientId.localeCompare(b.clientId),
+      );
+      writeFileSync(this.identityStorePath, `${JSON.stringify({ clients }, null, 2)}\n`, {
+        mode: 0o600,
+      });
+    } catch (err) {
+      console.warn(
+        `[remote-server] failed to write client identity store: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  private secretMatches(secret: string, expectedHash: string): boolean {
+    const actual = Buffer.from(hashSecret(secret), 'utf-8');
+    const expected = Buffer.from(expectedHash, 'utf-8');
+    return actual.length === expected.length && timingSafeEqual(actual, expected);
   }
 
   private unregisterSocket(socket: WebSocket, reason: string): void {
@@ -460,4 +587,8 @@ export class RemoteClientRegistry {
     }
     socket.send(encodeRemoteProtocolMessage(message));
   }
+}
+
+function hashSecret(secret: string): string {
+  return createHash('sha256').update(secret).digest('hex');
 }

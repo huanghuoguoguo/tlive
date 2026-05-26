@@ -59,7 +59,9 @@ export interface RemoteSessionDescriptor {
 export interface ClientHelloMessage {
   type: 'client.hello';
   protocolVersion: number;
-  clientId: string;
+  clientId?: string;
+  clientSecret?: string;
+  machineFingerprint?: string;
   name: string;
   providers: RemoteProviderDescriptor[];
   workspaces: RemoteWorkspaceDescriptor[];
@@ -72,6 +74,9 @@ export interface ServerHelloMessage {
   protocolVersion: number;
   serverId: string;
   heartbeatIntervalMs: number;
+  clientId: string;
+  clientSecret?: string;
+  identityStatus: 'accepted' | 'enrolled';
 }
 
 export interface ServerPingMessage {
@@ -221,7 +226,9 @@ export type RemoteProtocolMessage = ClientToServerMessage | ServerToClientMessag
 const clientHelloSchema = z.object({
   type: z.literal('client.hello'),
   protocolVersion: z.number().int().positive(),
-  clientId: z.string().min(1),
+  clientId: z.string().min(1).optional(),
+  clientSecret: z.string().min(1).optional(),
+  machineFingerprint: z.string().min(1).optional(),
   name: z.string().min(1),
   providers: z.array(
     z.object({
@@ -251,6 +258,9 @@ const serverHelloSchema = z.object({
   protocolVersion: z.number().int().positive(),
   serverId: z.string(),
   heartbeatIntervalMs: z.number().int().positive(),
+  clientId: z.string().min(1),
+  clientSecret: z.string().min(1).optional(),
+  identityStatus: z.enum(['accepted', 'enrolled']),
 });
 
 const turnStartSchema = z.object({

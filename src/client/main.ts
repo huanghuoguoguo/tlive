@@ -1,7 +1,7 @@
 import { loadConfig } from '../shared/config.js';
 import { createLocalAgentProviderRegistry } from './providers/local-factory.js';
 import { getCurrentVersion } from '../shared/utils/version-checker.js';
-import { generateId } from '../shared/core/id.js';
+import { FileRemoteClientIdentityStore } from './identity.js';
 import { defaultRemoteClientName, RemoteClientWorker } from './worker.js';
 import { pathToFileURL } from 'node:url';
 
@@ -40,13 +40,11 @@ export async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const config = loadConfig({ validateBridge: false });
   const providers = createLocalAgentProviderRegistry(config);
+  const identityStore = new FileRemoteClientIdentityStore();
   const worker = new RemoteClientWorker(providers, {
     serverUrl: args.serverUrl || config.remote.client.serverUrl,
     token: args.token ?? config.remote.client.token,
-    clientId:
-      args.clientId ||
-      config.remote.client.clientId ||
-      `${defaultRemoteClientName()}-${generateId('client', 6)}`,
+    clientId: args.clientId || config.remote.client.clientId || undefined,
     name: args.name || config.remote.client.name || defaultRemoteClientName(),
     workspaces:
       args.workspaces?.length
@@ -55,6 +53,7 @@ export async function main(): Promise<void> {
           ? config.remote.client.workspaces
           : [config.defaultWorkdir],
     reconnectIntervalMs: config.remote.client.reconnectIntervalMs,
+    identityStore,
     version: getCurrentVersion(),
   });
 
