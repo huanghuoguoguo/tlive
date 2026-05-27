@@ -5,7 +5,12 @@
 import type { Locale } from '../../../shared/i18n/index.js';
 import { t } from '../../../shared/i18n/index.js';
 import type { FeishuCardElement } from './card-builder.js';
-import type { HomeClientEntry, HomeData } from '../../../shared/formatting/message-types.js';
+import type {
+  HomeClientEntry,
+  HomeData,
+  HomeSessionEntry,
+  HomeTopicEntry,
+} from '../../../shared/formatting/message-types.js';
 import type { Button } from '../../../shared/ui/types.js';
 import type { NewSessionButtonProvider } from '../../../shared/ui/buttons.js';
 import { truncate } from '../../../shared/core/string.js';
@@ -47,72 +52,12 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
   );
   elements.push(...buildClientControls(data));
 
-  // Recent topic-backed conversations.
-  if (data.session.topics?.length) {
-    const topicPanelElements: FeishuCardElement[] = [];
-    for (const topic of data.session.topics.slice(0, MAX_HOME_TOPICS)) {
-      const status = topic.isActive ? '⏳ 执行中' : '✅ 可继续';
-      const currentMark = topic.isCurrent ? ' ◀' : '';
-      const sdkShort = topic.sdkSessionId ? topic.sdkSessionId.slice(0, 8) : '-';
-      const providerLabel = topic.providerDisplayName ?? 'Agent';
-      const clientLabel = topic.clientId ? `\`${topic.clientId}\`` : '未记录';
-      topicPanelElements.push(
-        markdownElement(
-          `**${topic.index}. ${status} ${truncate(topic.title, 36)}${currentMark}**\n节点: ${clientLabel} · ${providerLabel} \`${sdkShort}\` · \`${topic.cwd}\` · ${topic.updatedAt}\n${truncate(topic.preview, 90)}`,
-        ),
-      );
-      if (topic.sdkSessionId) {
-        topicPanelElements.push(
-          ...buttonElements([
-            {
-              label: '回到话题',
-              callbackData: actionCallback(
-                'continue',
-                `${topic.provider ? `${topic.provider}:` : ''}${topic.sdkSessionId}`,
-              ),
-              style: topic.isCurrent ? 'default' : 'primary',
-              row: 0,
-            },
-          ]),
-        );
-      }
-    }
-    elements.push(collapsiblePanel('💬 最近会话话题', topicPanelElements));
+  const recentPanelElements = buildRecentSessionControls(data);
+  if (recentPanelElements.length) {
+    elements.push(collapsiblePanel('💬 最近会话', recentPanelElements));
   }
 
-  const recoverableHistorySessions =
-    data.session.recent?.filter((session) => session.sdkSessionId) ?? [];
-  const recoverableSessions = recoverableHistorySessions.slice(0, MAX_HISTORY_SESSIONS);
-  if (recoverableSessions.length) {
-    const historyElements: FeishuCardElement[] = [];
-    for (const session of recoverableSessions) {
-      const providerLabel = session.providerDisplayName ?? 'Agent';
-      const sdkShort = session.sdkSessionId ? session.sdkSessionId.slice(0, 8) : '-';
-      historyElements.push(
-        markdownElement(
-          `**${session.index}. ${providerLabel} \`${sdkShort}\` · ${session.date}**\n节点: \`${session.clientId ?? '-'}\` · \`${session.cwd}\`\n${truncate(session.preview, 80)}`,
-        ),
-      );
-      if (session.sdkSessionId) {
-        historyElements.push(
-          ...buttonElements([
-            {
-              label: session.topic ? '回到话题' : '恢复到话题',
-              callbackData: actionCallback(
-                'continue',
-                `${session.provider ? `${session.provider}:` : ''}${session.sdkSessionId}`,
-              ),
-              style: session.isCurrent ? 'default' : 'primary',
-              row: 0,
-            },
-          ]),
-        );
-      }
-    }
-    elements.push(collapsiblePanel('🧭 最近会话', historyElements));
-  }
-
-  elements.push(collapsiblePanel('🛠️ 诊断', buildDiagnosticsControls()));
+  elements.push(collapsiblePanel('❔ 帮助', buildHelpControls()));
 
   return elements;
 }
@@ -183,15 +128,87 @@ function buildClientControls(data: HomeData): FeishuCardElement[] {
     elements.push(collapsiblePanel(title, body));
   }
 
-  const buttons: Button[] = [
-    {
-      label: '查看最近会话',
-      callbackData: actionCallback('home-history'),
-      row: 0,
-    },
-  ];
-  elements.push(...buttonElements(buttons));
   return elements;
+}
+
+function buildRecentSessionControls(data: HomeData): FeishuCardElement[] {
+  const elements: FeishuCardElement[] = [];
+  const topicSdkSessionIds = new Set(
+    (data.session.topics ?? [])
+      .map((topic) => topic.sdkSessionId)
+      .filter((id): id is string => Boolean(id)),
+  );
+  let index = 1;
+
+  for (const topic of (data.session.topics ?? []).slice(0, MAX_HOME_TOPICS)) {
+    elements.push(...topicSessionElements(topic, index++));
+  }
+
+  const recoverableSessions = (data.session.recent ?? [])
+    .filter((session) => session.sdkSessionId && !topicSdkSessionIds.has(session.sdkSessionId))
+    .slice(0, MAX_HISTORY_SESSIONS);
+  for (const session of recoverableSessions) {
+    elements.push(...historySessionElements(session, index++));
+  }
+
+  if (elements.length || data.session.recent?.some((session) => session.sdkSessionId)) {
+    elements.push(...buttonElements([{ label: '更多', callbackData: actionCallback('home-history'), row: 0 }]));
+  }
+
+  return elements;
+}
+
+function topicSessionElements(topic: HomeTopicEntry, index: number): FeishuCardElement[] {
+  const status = topic.isActive ? '⏳ 执行中' : '✅ 可继续';
+  const currentMark = topic.isCurrent ? ' ◀' : '';
+  const sdkShort = topic.sdkSessionId ? topic.sdkSessionId.slice(0, 8) : '-';
+  const providerLabel = topic.providerDisplayName ?? 'Agent';
+  const clientLabel = topic.clientId ? `\`${topic.clientId}\`` : '未记录';
+  const elements = [
+    markdownElement(
+      `**${index}. ${status} ${truncate(topic.title, 36)}${currentMark}**\n节点: ${clientLabel} · ${providerLabel} \`${sdkShort}\` · \`${topic.cwd}\` · ${topic.updatedAt}\n${truncate(topic.preview, 90)}`,
+    ),
+  ];
+  if (!topic.sdkSessionId) return elements;
+  return [
+    ...elements,
+    ...buttonElements([
+      {
+        label: '回到话题',
+        callbackData: actionCallback(
+          'continue',
+          `${topic.provider ? `${topic.provider}:` : ''}${topic.sdkSessionId}`,
+        ),
+        style: topic.isCurrent ? 'default' : 'primary',
+        row: 0,
+      },
+    ]),
+  ];
+}
+
+function historySessionElements(session: HomeSessionEntry, index: number): FeishuCardElement[] {
+  const providerLabel = session.providerDisplayName ?? 'Agent';
+  const sdkShort = session.sdkSessionId ? session.sdkSessionId.slice(0, 8) : '-';
+  const elements = [
+    markdownElement(
+      `**${index}. ${providerLabel} \`${sdkShort}\` · ${session.date}**\n节点: \`${session.clientId ?? '-'}\` · \`${session.cwd}\`\n${truncate(session.preview, 80)}`,
+    ),
+  ];
+  if (!session.sdkSessionId) return elements;
+  return [
+    ...elements,
+    ...buttonElements([
+      {
+        label: session.topic ? '回到话题' : '恢复到话题',
+        callbackData: actionCallback(
+          'continue',
+          `${session.provider ? `${session.provider}:` : ''}${session.sdkSessionId}`,
+        ),
+        style: session.isCurrent ? 'default' : 'primary',
+        row: 0,
+      },
+    ]),
+  ];
 }
 
 function clientShortcutLine(client: HomeClientEntry, defaultPath: string): string | undefined {
@@ -206,9 +223,10 @@ function uniqueNonEmpty(values: Array<string | undefined>): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value?.trim())))];
 }
 
-function buildDiagnosticsControls(): FeishuCardElement[] {
+function buildHelpControls(): FeishuCardElement[] {
   return buttonElements([
+    { label: '使用帮助', callbackData: actionCallback('help'), row: 0 },
     { label: 'Bridge 状态', callbackData: actionCallback('status'), row: 0 },
-    { label: '内部诊断', callbackData: actionCallback('diagnose'), row: 0 },
+    { label: '内部诊断', callbackData: actionCallback('diagnose'), row: 1 },
   ]);
 }

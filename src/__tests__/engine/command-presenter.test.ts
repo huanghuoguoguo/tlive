@@ -73,7 +73,7 @@ describe('command presenter', () => {
               clientId: 'local',
               provider: 'claude',
               providerDisplayName: 'Claude',
-              sdkSessionId: 'recent-bound-topic',
+              sdkSessionId: 'sdk-local-1',
               topic: {
                 scopeId: 'chat-1#thread:thread-1',
                 threadId: 'thread-1',
@@ -127,8 +127,15 @@ describe('command presenter', () => {
       expect(rendered).toContain('新建 Claude');
       expect(rendered).toContain('查看节点历史');
       expect(rendered).toContain('节点: `local`');
-      expect(rendered).toContain('recent-');
+      expect(rendered).toContain('💬 最近会话');
+      expect(rendered).not.toContain('最近会话话题');
+      expect(rendered).not.toContain('🧭 最近会话');
+      expect(rendered).not.toContain('查看最近会话');
+      expect(rendered).toContain('更多');
+      expect(rendered).not.toContain('Recent task');
       expect(rendered).toContain('回到话题');
+      expect(rendered).toContain('❔ 帮助');
+      expect(rendered).toContain('使用帮助');
       expect(rendered).not.toContain('设为默认');
     });
 
