@@ -7,6 +7,7 @@ import { shortPath } from '../../../shared/core/path.js';
 import { t } from '../../../shared/i18n/index.js';
 import type { AgentProviderKind } from '../../../shared/providers/kinds.js';
 import type { ChannelBinding } from '../../store/interface.js';
+import type { HomeClientEntry } from '../../../shared/formatting/message-types.js';
 import { startWorkbenchTopic } from '../services/topic-starter.js';
 import { buildTopicEntryText } from '../services/topic-entry.js';
 
@@ -102,10 +103,10 @@ export class NewCommand extends BaseCommand {
         await this.send(ctx, { chatId: ctx.msg.chatId, text: `⚠️ 未找到 client: ${requested}` });
         return null;
       }
+      const currentCwd = currentCwdForClient(previousBinding, client.clientId);
       return {
         clientId: client.clientId,
-        cwd:
-          client.workspaces.find((workspace) => workspace.isDefault)?.path ?? previousBinding?.cwd,
+        cwd: currentCwd ?? defaultWorkspaceForClient(client),
       };
     }
 
@@ -113,10 +114,11 @@ export class NewCommand extends BaseCommand {
       (previousBinding?.clientId &&
         clients.find((entry) => entry.clientId === previousBinding.clientId)) ||
       (clients.length === 1 ? clients[0] : undefined);
+    const clientId = selected?.clientId ?? previousBinding?.clientId;
+    const currentCwd = currentCwdForClient(previousBinding, clientId);
     return {
-      clientId: selected?.clientId ?? previousBinding?.clientId,
-      cwd:
-        selected?.workspaces.find((workspace) => workspace.isDefault)?.path ?? previousBinding?.cwd,
+      clientId,
+      cwd: currentCwd ?? (selected ? defaultWorkspaceForClient(selected) : undefined),
     };
   }
 
@@ -224,6 +226,16 @@ export class NewCommand extends BaseCommand {
     });
     return true;
   }
+}
+
+function currentCwdForClient(binding: ChannelBinding | null, clientId?: string): string | undefined {
+  if (!binding?.cwd) return undefined;
+  if (!clientId || !binding.clientId || binding.clientId === clientId) return binding.cwd;
+  return undefined;
+}
+
+function defaultWorkspaceForClient(client: HomeClientEntry): string | undefined {
+  return client.workspaces.find((workspace) => workspace.isDefault)?.path ?? client.workspaces[0]?.path;
 }
 
 function buildNewTopicTitle(providerDisplayName: string, cwd: string, clientId?: string): string {

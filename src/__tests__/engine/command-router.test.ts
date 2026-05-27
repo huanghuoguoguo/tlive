@@ -574,6 +574,91 @@ describe('CommandRouter /settings', () => {
     }
   });
 
+  it('uses the current workbench cwd when creating a topic on the same client', async () => {
+    const defaultDir = join(tmpDir, 'tlive-remote-client');
+    const currentDir = join(tmpDir, 'workspace');
+    mkdirSync(defaultDir);
+    mkdirSync(currentDir);
+
+    const providers = new AgentProviderRegistry(
+      'codex',
+      new Map([
+        ['claude', createMockClaudeProvider()],
+        ['codex', createMockCodexProvider()],
+      ]),
+      new Map([
+        [
+          'claude',
+          { kind: 'claude', displayName: 'Claude', available: true, isDefault: false },
+        ],
+        [
+          'codex',
+          { kind: 'codex', displayName: 'Codex', available: true, isDefault: true },
+        ],
+      ]),
+    );
+    const topic = createTopicRouter({
+      providers,
+      getExecutionClients: () => [
+        {
+          clientId: 'vm-0-16',
+          name: 'VM-0-16',
+          online: true,
+          isDefault: true,
+          activeTurns: 0,
+          workspaces: [
+            { path: defaultDir, isDefault: true },
+            { path: currentDir },
+          ],
+          providers: [
+            { kind: 'codex', displayName: 'Codex', available: true, isDefault: true },
+          ],
+        },
+      ],
+    });
+    await store.saveBinding({
+      channelType: 'feishu',
+      chatId: 'c-current-cwd',
+      sessionId: 'binding-current',
+      provider: 'codex',
+      clientId: 'vm-0-16',
+      cwd: currentDir,
+      createdAt: '',
+    });
+    const adapterWithTopic = {
+      ...adapter,
+      startThreadWithTitle: vi.fn().mockResolvedValue({
+        threadId: 'thread-current-cwd',
+        rootMessageId: 'msg-current-root',
+        messageId: 'msg-current-start',
+      }),
+    };
+
+    await topic.router.handle(adapterWithTopic, {
+      channelType: 'feishu',
+      chatId: 'c-current-cwd',
+      userId: 'u1',
+      text: '/new codex vm-0-16',
+      internalCommand: true,
+      messageId: 'workbench-card',
+    } as any);
+
+    const metadataText = (adapterWithTopic.publishTopicMetadata as any).mock.calls.at(-1)[2];
+    expect(extractTliveTopicMetadata(metadataText)).toMatchObject({
+      provider: 'codex',
+      clientId: 'vm-0-16',
+      cwd: currentDir,
+    });
+    const scopeId = chatScopeId('c-current-cwd', 'thread-current-cwd');
+    expect(await store.getBinding('feishu', scopeId)).toMatchObject({
+      clientId: 'vm-0-16',
+      cwd: currentDir,
+    });
+    expect((adapterWithTopic.startThreadWithTitle as any).mock.calls.at(-1)[1]).toContain(
+      'workspace',
+    );
+  });
+
   it('tracks the current directory so /cd - returns to the immediate previous path', async () => {
     const dirA = join(tmpDir, 'a');
     const dirB = join(tmpDir, 'b');
