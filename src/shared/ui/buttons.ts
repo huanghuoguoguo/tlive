@@ -257,8 +257,8 @@ export function topicCommandPaletteButtons(
   return buttons;
 }
 
-export function helpButtons(locale: Locale): Button[] {
-  return [{ ...navNew(locale), style: 'primary' as const, row: 0 }];
+export function helpButtons(_locale: Locale): Button[] {
+  return [];
 }
 
 export function permStatusButtons(

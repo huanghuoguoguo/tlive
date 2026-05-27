@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   presentHome,
   presentDiagnose,
+  presentHelp,
   presentUpgradeCommand,
 } from '../../server/presentation/command-presenter.js';
 import { FeishuFormatter } from '../../server/channels/feishu/formatter.js';
@@ -94,6 +95,7 @@ describe('command presenter', () => {
               isDefault: true,
               isLocal: true,
               activeTurns: 0,
+              version: '0.14.1',
               workspaces: [
                 { path: '/home/user/project', isDefault: true },
                 { path: '/home/user/other-project' },
@@ -118,10 +120,12 @@ describe('command presenter', () => {
       expect(rendered).not.toContain('默认工作区');
       expect(rendered).not.toContain('状态:');
       expect(rendered).not.toContain('空闲');
+      expect(rendered).toContain('当前目录: `/home/user/project`');
       expect(rendered).toContain('local');
       expect(rendered).toContain('备注: 开发机 · 本地 worker');
       expect(rendered).toContain('默认目录: `/home/user/project`');
-      expect(rendered).toContain('快捷目录: `/home/user/other-project`');
+      expect(rendered).not.toContain('快捷目录:');
+      expect(rendered).not.toContain('版本:');
       expect(rendered).not.toContain('位置:');
       expect(rendered).not.toContain('203.0.113.8');
       expect(rendered).toContain('新建 Claude');
@@ -195,6 +199,25 @@ describe('command presenter', () => {
 
       const formatted = feishuFormatter.format(msg);
       expect(countFeishuTaggedElements(formatted.feishuElements ?? [])).toBeLessThanOrEqual(45);
+    });
+  });
+
+  describe('presentHelp', () => {
+    it('does not show a new-session shortcut button in help', () => {
+      const msg = presentHelp('chat-1', {
+        commands: [
+          {
+            cmd: 'home',
+            desc: '打开工作台',
+            category: HELP_CATEGORIES.status,
+          },
+        ],
+      });
+
+      const formatted = feishuFormatter.format(msg);
+      const rendered = JSON.stringify(formatted);
+      expect(rendered).not.toContain('新会话');
+      expect(rendered).not.toContain('tlive:action:new');
     });
   });
 

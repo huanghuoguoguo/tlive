@@ -6,7 +6,6 @@ import type { Locale } from '../../../shared/i18n/index.js';
 import { t } from '../../../shared/i18n/index.js';
 import type { FeishuCardElement } from './card-builder.js';
 import type {
-  HomeClientEntry,
   HomeData,
   HomeSessionEntry,
   HomeTopicEntry,
@@ -47,7 +46,7 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
 
   elements.push(
     markdownElement(
-      `**工作台**\n默认执行节点: ${data.clients?.defaultClientId ? `\`${data.clients.defaultClientId}\`` : '未选择'}`,
+      `**工作台**\n默认执行节点: ${data.clients?.defaultClientId ? `\`${data.clients.defaultClientId}\`` : '未选择'}\n当前目录: \`${data.workspace.cwd}\``,
     ),
   );
   elements.push(...buildClientControls(data));
@@ -91,9 +90,7 @@ function buildClientControls(data: HomeData): FeishuCardElement[] {
       client.note ? `备注: ${client.note}` : undefined,
       `Provider: ${providers}`,
       `默认目录: \`${workspace}\``,
-      clientShortcutLine(client, workspace),
       client.activeTurns > 0 ? `运行中: ${client.activeTurns} 个任务` : undefined,
-      client.version ? `版本: ${client.version}` : undefined,
     ].filter((line): line is string => Boolean(line));
     const body: FeishuCardElement[] = [
       markdownElement(detailLines.join('\n')),
@@ -209,18 +206,6 @@ function historySessionElements(session: HomeSessionEntry, index: number): Feish
       },
     ]),
   ];
-}
-
-function clientShortcutLine(client: HomeClientEntry, defaultPath: string): string | undefined {
-  const shortcuts = uniqueNonEmpty(
-    client.workspaces.map((workspace) => workspace.path).filter((path) => path !== defaultPath),
-  );
-  if (!shortcuts.length) return undefined;
-  return `快捷目录: ${shortcuts.map((path) => `\`${path}\``).join(' · ')}`;
-}
-
-function uniqueNonEmpty(values: Array<string | undefined>): string[] {
-  return [...new Set(values.filter((value): value is string => Boolean(value?.trim())))];
 }
 
 function buildHelpControls(): FeishuCardElement[] {
