@@ -158,8 +158,11 @@ export interface AgentSessionDescriptor {
   preview: string;
 }
 
+export type HomeView = 'main' | 'nodes' | 'recent' | 'help' | 'diagnostics';
+
 /** Home screen for /home command */
 export interface HomeData {
+  view?: HomeView;
   providers?: {
     defaultKind: AgentProviderKind;
     available: HomeProviderEntry[];

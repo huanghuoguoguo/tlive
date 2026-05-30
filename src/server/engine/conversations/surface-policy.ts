@@ -13,7 +13,13 @@ export type { ConversationSurface } from '../../channels/conversation-context.js
 
 type SurfaceInput = Pick<InboundMessage, 'threadId' | 'scopeId'>;
 
-const WORKBENCH_ONLY_COMMANDS = new Set(['tlive', 'home', 'continue']);
+const WORKBENCH_ONLY_COMMANDS = new Set([
+  'tlive',
+  'home',
+  'home-refresh',
+  'home-view',
+  'continue',
+]);
 
 export function conversationSurface(input: SurfaceInput): ConversationSurface {
   return conversationSurfaceFor(input);
@@ -35,7 +41,9 @@ export function commandRejectionForSurface(
   if (surface !== 'topic') return undefined;
   const cmd = normalizeCommandName(command);
   if (cmd === 'tlive') return t('surface.tliveRejection');
-  if (cmd === 'home') return t('surface.homeRejection');
+  if (cmd === 'home' || cmd === 'home-refresh' || cmd === 'home-view') {
+    return t('surface.homeRejection');
+  }
   if (cmd === 'continue') return t('surface.continueRejection');
   return undefined;
 }

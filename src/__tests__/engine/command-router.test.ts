@@ -84,6 +84,7 @@ describe('CommandRouter /settings', () => {
       channelType: 'feishu',
       format: vi.fn((msg: any) => msg),
       send: vi.fn().mockResolvedValue(undefined),
+      editMessage: vi.fn().mockResolvedValue(undefined),
       sendFormatted: vi.fn().mockResolvedValue(undefined),
       publishTopicMetadata: vi.fn().mockResolvedValue('msg-topic-metadata'),
       getLocale: () => 'zh',
@@ -235,6 +236,83 @@ describe('CommandRouter /settings', () => {
       type: 'home',
       chatId: 'c1',
     }));
+    expect(adapter.send).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'home',
+      chatId: 'c1',
+    }));
+  });
+
+  it('refreshes a workbench card in place from a callback action', async () => {
+    const handled = await router.handleAction(
+      adapter,
+      {
+        channelType: 'feishu',
+        chatId: 'c1',
+        scopeId: 'c1',
+        userId: 'u1',
+        text: '',
+        messageId: 'home-card-1',
+      } as any,
+      { name: 'home-refresh', args: [] },
+    );
+
+    expect(handled).toBe(true);
+    expect(adapter.format).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'home',
+      chatId: 'c1',
+    }));
+    expect(adapter.editMessage).toHaveBeenCalledWith(
+      'c1',
+      'home-card-1',
+      expect.objectContaining({
+        type: 'home',
+        chatId: 'c1',
+      }),
+    );
+    expect(adapter.send).not.toHaveBeenCalled();
+  });
+
+  it('switches a workbench card to a secondary panel view in place', async () => {
+    const handled = await router.handleAction(
+      adapter,
+      {
+        channelType: 'feishu',
+        chatId: 'c1',
+        scopeId: 'c1',
+        userId: 'u1',
+        text: '',
+        messageId: 'home-card-1',
+      } as any,
+      { name: 'home-view', args: ['nodes'] },
+    );
+
+    expect(handled).toBe(true);
+    expect(adapter.editMessage).toHaveBeenCalledWith(
+      'c1',
+      'home-card-1',
+      expect.objectContaining({
+        type: 'home',
+        data: expect.objectContaining({ view: 'nodes' }),
+      }),
+    );
+    expect(adapter.send).not.toHaveBeenCalled();
+  });
+
+  it('falls back to sending a workbench card when refresh has no message id', async () => {
+    const handled = await router.handleAction(
+      adapter,
+      {
+        channelType: 'feishu',
+        chatId: 'c1',
+        scopeId: 'c1',
+        userId: 'u1',
+        text: '',
+      } as any,
+      { name: 'home-refresh', args: [] },
+    );
+
+    expect(handled).toBe(true);
+    expect(adapter.editMessage).not.toHaveBeenCalled();
     expect(adapter.send).toHaveBeenCalledWith(expect.objectContaining({
       type: 'home',
       chatId: 'c1',

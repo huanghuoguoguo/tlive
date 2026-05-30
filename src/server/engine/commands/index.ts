@@ -1,7 +1,14 @@
 import { commandRegistry } from './registry.js';
 import { StatusCommand } from './status.js';
 import { NewCommand } from './new.js';
-import { HomeCommand, HomeHistoryCommand, HomeTopicsCommand, TliveCommand } from './home.js';
+import {
+  HomeCommand,
+  HomeHistoryCommand,
+  HomeRefreshCommand,
+  HomeTopicsCommand,
+  HomeViewCommand,
+  TliveCommand,
+} from './home.js';
 import { PermCommand } from './perm.js';
 import { StopCommand } from './stop.js';
 import { ContinueSessionCommand } from './continue.js';
@@ -21,6 +28,8 @@ export function registerAllCommands(): void {
   commandRegistry.register(new NewCommand());
   commandRegistry.register(new TliveCommand());
   commandRegistry.register(new HomeCommand());
+  commandRegistry.register(new HomeViewCommand());
+  commandRegistry.register(new HomeRefreshCommand());
   commandRegistry.register(new HomeTopicsCommand());
   commandRegistry.register(new HomeHistoryCommand());
   commandRegistry.register(new PermCommand());

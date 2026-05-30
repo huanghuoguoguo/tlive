@@ -19,6 +19,8 @@ describe('conversation surface policy', () => {
 
   it('keeps workbench-only commands out of topic surfaces', () => {
     expect(isCommandAllowedOnSurface('/home', 'topic')).toBe(false);
+    expect(isCommandAllowedOnSurface('/home-view nodes', 'topic')).toBe(false);
+    expect(isCommandAllowedOnSurface('/home-refresh nodes', 'topic')).toBe(false);
     expect(isCommandAllowedOnSurface('/continue sdk-1', 'topic')).toBe(false);
     expect(isCommandAllowedOnSurface('/help', 'topic')).toBe(true);
     expect(isCommandAllowedOnSurface('/home', 'workbench')).toBe(true);
@@ -48,6 +50,9 @@ describe('conversation surface policy', () => {
 
   it('uses explicit rejection messages for blocked topic commands', () => {
     expect(commandRejectionForSurface('/home', 'topic')).toContain('/home 是工作台命令');
+    expect(commandRejectionForSurface('/home-view nodes', 'topic')).toContain(
+      '/home 是工作台命令',
+    );
     expect(commandRejectionForSurface('/continue sdk-1', 'topic')).toContain('不支持切换');
     expect(commandRejectionForSurface('/help', 'topic')).toBeUndefined();
   });

@@ -121,26 +121,76 @@ describe('command presenter', () => {
       expect(rendered).not.toContain('状态:');
       expect(rendered).not.toContain('空闲');
       expect(rendered).toContain('当前目录: `/home/user/project`');
+      expect(rendered).toContain('刷新');
+      expect(rendered).toContain('action:home-refresh:main');
       expect(rendered).toContain('local');
-      expect(rendered).toContain('备注: 开发机 · 本地 worker');
-      expect(rendered).toContain('默认目录: `/home/user/project`');
+      expect(rendered).not.toContain('备注: 开发机 · 本地 worker');
+      expect(rendered).not.toContain('默认目录: `/home/user/project`');
       expect(rendered).not.toContain('快捷目录:');
       expect(rendered).not.toContain('版本:');
       expect(rendered).not.toContain('位置:');
       expect(rendered).not.toContain('203.0.113.8');
       expect(rendered).toContain('新建 Claude');
-      expect(rendered).toContain('查看节点历史');
-      expect(rendered).toContain('节点: `local`');
-      expect(rendered).toContain('💬 最近会话');
+      expect(rendered).toContain('action:new:claude:local');
+      expect(rendered).toContain('节点');
+      expect(rendered).toContain('action:home-view:nodes');
+      expect(rendered).toContain('最近会话');
+      expect(rendered).toContain('action:home-view:recent');
       expect(rendered).not.toContain('最近会话话题');
-      expect(rendered).not.toContain('🧭 最近会话');
       expect(rendered).not.toContain('查看最近会话');
-      expect(rendered).toContain('更多');
       expect(rendered).not.toContain('Recent task');
-      expect(rendered).toContain('回到话题');
-      expect(rendered).toContain('❔ 帮助');
-      expect(rendered).toContain('使用帮助');
+      expect(rendered).not.toContain('回到话题');
+      expect(rendered).toContain('帮助');
+      expect(rendered).toContain('action:home-view:help');
+      expect(rendered).toContain('诊断');
+      expect(rendered).toContain('action:home-view:diagnostics');
       expect(rendered).not.toContain('设为默认');
+    });
+
+    it('renders node details as an in-place panel view', () => {
+      const msg = presentHome('chat-1', {
+        view: 'nodes',
+        workspace: { cwd: '/home/user/project' },
+        task: { active: false },
+        permission: { mode: 'off' },
+        bridge: { healthy: true },
+        session: {},
+        clients: {
+          defaultClientId: 'local',
+          entries: [
+            {
+              clientId: 'local',
+              name: 'local',
+              note: '开发机 · 本地 worker',
+              online: true,
+              isDefault: true,
+              isLocal: true,
+              activeTurns: 0,
+              version: '0.14.1',
+              workspaces: [
+                { path: '/home/user/project', isDefault: true },
+                { path: '/home/user/other-project' },
+              ],
+              providers: [
+                { kind: 'claude', displayName: 'Claude', available: true, isDefault: true },
+              ],
+            },
+          ],
+        },
+      });
+
+      const formatted = feishuFormatter.format(msg);
+      const rendered = JSON.stringify(formatted.feishuElements);
+      expect(rendered).toContain('执行节点');
+      expect(rendered).toContain('返回');
+      expect(rendered).toContain('action:home-view:main');
+      expect(rendered).toContain('action:home-refresh:nodes');
+      expect(rendered).toContain('备注: 开发机 · 本地 worker');
+      expect(rendered).toContain('默认目录: `/home/user/project`');
+      expect(rendered).toContain('节点历史');
+      expect(rendered).toContain('action:home-history:local');
+      expect(rendered).not.toContain('快捷目录:');
+      expect(rendered).not.toContain('版本:');
     });
 
     it('keeps Feishu home card under the platform element limit', () => {

@@ -1,14 +1,43 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentHome } from '../../presentation/command-presenter.js';
-import type { FormattableMessage } from '../../../shared/formatting/message-types.js';
+import type { FormattableMessage, HomeView } from '../../../shared/formatting/message-types.js';
 import { t } from '../../../shared/i18n/index.js';
 
-async function buildHomeMessage(ctx: CommandContext): Promise<FormattableMessage> {
-  return presentHome(
-    ctx.msg.chatId,
-    await ctx.helpers.buildHomePayload(ctx.msg.channelType, ctx.scopeId, ctx.locale),
-  );
+const HOME_VIEWS = new Set<HomeView>(['main', 'nodes', 'recent', 'help', 'diagnostics']);
+
+function homeViewFromArg(raw?: string): HomeView {
+  return HOME_VIEWS.has(raw as HomeView) ? raw as HomeView : 'main';
+}
+
+async function buildHomeMessage(
+  ctx: CommandContext,
+  view: HomeView = 'main',
+): Promise<FormattableMessage> {
+  const data = await ctx.helpers.buildHomePayload(ctx.msg.channelType, ctx.scopeId, ctx.locale);
+  return presentHome(ctx.msg.chatId, { ...data, view });
+}
+
+async function editHomeInPlaceOrSend(
+  ctx: CommandContext,
+  view: HomeView,
+  send: (msg: FormattableMessage) => Promise<void>,
+): Promise<void> {
+  const homeMessage = await buildHomeMessage(ctx, view);
+  if (!ctx.msg.messageId) {
+    await send(homeMessage);
+    return;
+  }
+
+  try {
+    await ctx.adapter.editMessage(
+      ctx.msg.chatId,
+      ctx.msg.messageId,
+      ctx.adapter.format(homeMessage),
+    );
+  } catch {
+    await send(homeMessage);
+  }
 }
 
 export class HomeCommand extends BaseCommand {
@@ -21,7 +50,7 @@ export class HomeCommand extends BaseCommand {
   readonly helpExample = '/home';
 
   async execute(ctx: CommandContext): Promise<boolean> {
-    await this.send(ctx, await buildHomeMessage(ctx));
+    await this.send(ctx, await buildHomeMessage(ctx, 'main'));
     return true;
   }
 }
@@ -36,7 +65,31 @@ export class TliveCommand extends BaseCommand {
   readonly helpExample = '/tlive';
 
   async execute(ctx: CommandContext): Promise<boolean> {
-    await this.send(ctx, await buildHomeMessage(ctx));
+    await this.send(ctx, await buildHomeMessage(ctx, 'main'));
+    return true;
+  }
+}
+
+export class HomeViewCommand extends BaseCommand {
+  readonly name = '/home-view';
+  readonly quick = true;
+  readonly helpCategory = 'status' as const;
+  readonly description = undefined;
+
+  async execute(ctx: CommandContext): Promise<boolean> {
+    await editHomeInPlaceOrSend(ctx, homeViewFromArg(ctx.parts[1]), (msg) => this.send(ctx, msg));
+    return true;
+  }
+}
+
+export class HomeRefreshCommand extends BaseCommand {
+  readonly name = '/home-refresh';
+  readonly quick = true;
+  readonly helpCategory = 'status' as const;
+  readonly description = undefined;
+
+  async execute(ctx: CommandContext): Promise<boolean> {
+    await editHomeInPlaceOrSend(ctx, homeViewFromArg(ctx.parts[1]), (msg) => this.send(ctx, msg));
     return true;
   }
 }
