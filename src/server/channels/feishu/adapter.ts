@@ -38,6 +38,8 @@ export interface FeishuConfig {
 export interface FeishuAdapterOptions {
   doneButtons?: readonly QuickButtonName[];
   autoPinTopics?: boolean;
+  botOpenId?: string;
+  botName?: string;
 }
 
 export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
@@ -48,11 +50,17 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
   private config: FeishuConfig;
   private messageQueue: InboundMessage[] = [];
   private autoPinTopics: boolean;
+  private botOpenId?: string;
+  private botName?: string;
+  private configuredBotOpenId?: string;
+  private configuredBotName?: string;
 
   constructor(config: FeishuConfig, options: FeishuAdapterOptions = {}) {
     super();
     this.config = config;
     this.autoPinTopics = options.autoPinTopics ?? false;
+    this.configuredBotOpenId = options.botOpenId;
+    this.configuredBotName = options.botName;
     // Set platform-specific formatter and policy (Chinese locale for Feishu)
     this.formatter = new FeishuFormatter('zh', { doneButtons: options.doneButtons });
   }
@@ -62,6 +70,7 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
       appId: this.config.appId,
       appSecret: this.config.appSecret,
     });
+    await this.resolveBotIdentity();
 
     const eventDispatcher = new EventDispatcher({
       verificationToken: this.config.verificationToken,
@@ -71,7 +80,10 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
     eventDispatcher.register({
       'im.message.receive_v1': async (event: FeishuMessageReceiveEvent) => {
         if (!this.client) return;
-        const inbound = await feishuMessageEventToInbound(event, this.client);
+        const inbound = await feishuMessageEventToInbound(event, this.client, {
+          botOpenId: this.botOpenId,
+          botName: this.botName,
+        });
         if (inbound) this.messageQueue.push(inbound);
       },
     });
@@ -296,7 +308,20 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
 
   /** Get Feishu bot info for display */
   getBotInfo(): { appId?: string; name?: string } {
-    return { appId: this.config.appId };
+    return { appId: this.config.appId, name: this.botName };
+  }
+
+  private async resolveBotIdentity(): Promise<void> {
+    this.botOpenId = this.configuredBotOpenId;
+    this.botName = this.configuredBotName;
+    if (this.botOpenId && this.botName) return;
+
+    const info = await fetchFeishuBotInfo(this.config.appId, this.config.appSecret).catch((err) => {
+      console.warn(`[feishu] failed to resolve bot info: ${String(err)}`);
+      return null;
+    });
+    this.botOpenId ??= info?.openId;
+    this.botName ??= info?.name;
   }
 }
 
@@ -305,4 +330,30 @@ function readRetryAfterMs(err: Record<string, any>): number {
   const retryAfter = headers['retry-after'] ?? headers['Retry-After'];
   const seconds = Number(retryAfter);
   return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 2000;
+}
+
+async function fetchFeishuBotInfo(
+  appId: string,
+  appSecret: string,
+): Promise<{ openId?: string; name?: string }> {
+  const tokenResult = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+  }).then((res) => res.json() as Promise<Record<string, any>>);
+  if (tokenResult.code !== 0 || !tokenResult.tenant_access_token) {
+    throw new Error(tokenResult.msg || `tenant token error ${tokenResult.code}`);
+  }
+
+  const infoResult = await fetch('https://open.feishu.cn/open-apis/bot/v3/info', {
+    headers: { authorization: `Bearer ${tokenResult.tenant_access_token}` },
+  }).then((res) => res.json() as Promise<Record<string, any>>);
+  if (infoResult.code !== 0) {
+    throw new Error(infoResult.msg || `bot info error ${infoResult.code}`);
+  }
+
+  return {
+    openId: typeof infoResult.bot?.open_id === 'string' ? infoResult.bot.open_id : undefined,
+    name: typeof infoResult.bot?.app_name === 'string' ? infoResult.bot.app_name : undefined,
+  };
 }

@@ -37,15 +37,28 @@ export interface FeishuInboundEventMessage {
   message_type?: string;
   content: string;
   chat_id: string;
+  chat_type?: string;
   message_id: string;
   parent_id?: string;
   root_id?: string;
   thread_id?: string;
+  mentions?: FeishuMention[];
 }
 
 export interface FeishuMessageReceiveEvent {
   sender?: { sender_id?: { user_id?: string; open_id?: string; union_id?: string } };
   message?: FeishuInboundEventMessage;
+}
+
+export interface FeishuInboundOptions {
+  botOpenId?: string;
+  botName?: string;
+}
+
+interface FeishuMention {
+  key?: string;
+  id?: { union_id?: string; user_id?: string; open_id?: string };
+  name?: string;
 }
 
 type FeishuInboundClient = {
@@ -71,9 +84,11 @@ interface RichMessageContent {
 export async function feishuMessageEventToInbound(
   event: FeishuMessageReceiveEvent,
   client: FeishuInboundClient,
+  options: FeishuInboundOptions = {},
 ): Promise<InboundMessage | undefined> {
   const msg = event?.message;
   if (!msg) return undefined;
+  if (shouldIgnoreGroupMessage(msg, options)) return undefined;
 
   const senderId = event?.sender?.sender_id;
   const userId = senderId?.user_id || senderId?.open_id || '';
@@ -168,6 +183,33 @@ function parseJsonRecord(rawContent: string): Record<string, unknown> | undefine
   } catch {
     return undefined;
   }
+}
+
+function shouldIgnoreGroupMessage(
+  msg: FeishuInboundEventMessage,
+  options: FeishuInboundOptions,
+): boolean {
+  if (!isGroupChatType(msg.chat_type)) return false;
+  if (msg.thread_id) return false;
+
+  const mentions = msg.mentions ?? [];
+  if (mentions.length === 0) return true;
+
+  const botOpenId = options.botOpenId?.trim();
+  if (botOpenId && mentions.some((mention) => mention.id?.open_id === botOpenId)) {
+    return false;
+  }
+
+  const botName = options.botName?.trim();
+  if (botName && mentions.some((mention) => mention.name === botName)) {
+    return false;
+  }
+
+  return true;
+}
+
+function isGroupChatType(chatType?: string): boolean {
+  return chatType === 'group' || chatType === 'group_chat';
 }
 
 async function downloadImageAttachment(

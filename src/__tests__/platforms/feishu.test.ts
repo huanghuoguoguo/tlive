@@ -88,6 +88,9 @@ describe('FeishuAdapter', () => {
       verificationToken: 'verify_token',
       encryptKey: '',
       allowedUsers: ['user1', 'user2'],
+    }, {
+      botOpenId: 'ou_bot',
+      botName: 'openclaw',
     });
   });
 
@@ -474,6 +477,100 @@ describe('FeishuAdapter', () => {
       expect(msg!.text).toBe('Hello');
       expect(msg!.chatId).toBe('chat_1');
       expect(msg!.userId).toBe('user_1');
+
+      await adapter.stop();
+    });
+
+    it('ignores group messages that do not mention the current bot', async () => {
+      await adapter.start();
+
+      await mockEventHandler({
+        message: {
+          message_id: 'msg_group_1',
+          chat_id: 'chat_1',
+          chat_type: 'group',
+          message_type: 'text',
+          content: JSON.stringify({ text: 'done' }),
+        },
+        sender: { sender_id: { user_id: 'user_1', open_id: 'ou_123' } },
+      });
+
+      await mockEventHandler({
+        message: {
+          message_id: 'msg_group_2',
+          chat_id: 'chat_1',
+          chat_type: 'group',
+          message_type: 'text',
+          content: JSON.stringify({ text: '@_user_1 done' }),
+          mentions: [
+            {
+              key: '@_user_1',
+              id: { open_id: 'ou_someone_else' },
+              name: 'someone else',
+            },
+          ],
+        },
+        sender: { sender_id: { user_id: 'user_1', open_id: 'ou_123' } },
+      });
+
+      expect(await adapter.consumeOne()).toBeNull();
+
+      await adapter.stop();
+    });
+
+    it('accepts group messages that mention the current bot', async () => {
+      await adapter.start();
+
+      await mockEventHandler({
+        message: {
+          message_id: 'msg_group_bot',
+          chat_id: 'chat_1',
+          chat_type: 'group',
+          message_type: 'text',
+          content: JSON.stringify({ text: '@_user_1 /home' }),
+          mentions: [
+            {
+              key: '@_user_1',
+              id: { open_id: 'ou_bot' },
+              name: 'openclaw',
+            },
+          ],
+        },
+        sender: { sender_id: { user_id: 'user_1', open_id: 'ou_123' } },
+      });
+
+      const msg = await adapter.consumeOne();
+      expect(msg).not.toBeNull();
+      expect(msg!.text).toBe('/home');
+      expect(msg!.chatId).toBe('chat_1');
+
+      await adapter.stop();
+    });
+
+    it('accepts group topic replies without requiring a bot mention', async () => {
+      await adapter.start();
+
+      await mockEventHandler({
+        message: {
+          message_id: 'msg_group_topic',
+          chat_id: 'chat_1',
+          chat_type: 'group',
+          thread_id: 'thread_1',
+          message_type: 'text',
+          content: JSON.stringify({ text: 'continue this topic' }),
+          root_id: 'msg_root',
+        },
+        sender: { sender_id: { user_id: 'user_1', open_id: 'ou_123' } },
+      });
+
+      const msg = await adapter.consumeOne();
+      expect(msg).toMatchObject({
+        text: 'continue this topic',
+        chatId: 'chat_1',
+        scopeId: 'chat_1#thread:thread_1',
+        threadId: 'thread_1',
+        replyInThread: true,
+      });
 
       await adapter.stop();
     });
