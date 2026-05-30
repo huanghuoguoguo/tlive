@@ -10,7 +10,12 @@ import type { ChannelRouter } from '../channel-router.js';
 import type { SDKEngine, SessionCleanupReason } from '../sdk/engine.js';
 import type { PermissionCoordinator } from '../coordinators/permission.js';
 import type { AgentSettingSource, ProjectsValidationResult } from '../../../shared/config.js';
-import type { HelpCommandEntry, HomeClientEntry, HomeData } from '../../../shared/formatting/message-types.js';
+import type {
+  HelpCommandEntry,
+  HomeClientEntry,
+  HomeData,
+  HomeView,
+} from '../../../shared/formatting/message-types.js';
 import type { Locale } from '../../../shared/i18n/index.js';
 import type { HelpCategoryId } from './help-categories.js';
 import type { TopicSessionManager } from '../state/topic-sessions.js';
@@ -32,7 +37,12 @@ export interface RouterHelpers {
     },
   ): Promise<{ hadActiveSession: boolean; binding: ChannelBinding | null }>;
   /** Build home screen payload */
-  buildHomePayload(channelType: string, chatId: string, locale?: Locale): Promise<HomeData>;
+  buildHomePayload(
+    channelType: string,
+    chatId: string,
+    locale?: Locale,
+    view?: HomeView,
+  ): Promise<HomeData>;
   /** Update workspace binding from path (find git root) */
   updateWorkspaceBindingFromPath(channelType: string, chatId: string, cwd: string): void;
   /** Get settings preset name from sources */

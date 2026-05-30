@@ -18,6 +18,7 @@ const WORKBENCH_ONLY_COMMANDS = new Set([
   'home',
   'home-refresh',
   'home-view',
+  'home-dir',
   'continue',
 ]);
 
@@ -41,7 +42,7 @@ export function commandRejectionForSurface(
   if (surface !== 'topic') return undefined;
   const cmd = normalizeCommandName(command);
   if (cmd === 'tlive') return t('surface.tliveRejection');
-  if (cmd === 'home' || cmd === 'home-refresh' || cmd === 'home-view') {
+  if (cmd === 'home' || cmd === 'home-refresh' || cmd === 'home-view' || cmd === 'home-dir') {
     return t('surface.homeRejection');
   }
   if (cmd === 'continue') return t('surface.continueRejection');

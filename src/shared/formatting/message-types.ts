@@ -158,7 +158,24 @@ export interface AgentSessionDescriptor {
   preview: string;
 }
 
-export type HomeView = 'main' | 'nodes' | 'recent' | 'help' | 'diagnostics';
+export interface HomeDirectoryEntry {
+  name: string;
+  path: string;
+  kind: 'directory' | 'file' | 'other';
+}
+
+export interface HomeDirectoryData {
+  path: string;
+  displayPath: string;
+  clientId?: string;
+  source: 'client' | 'server';
+  parent?: string;
+  entries: HomeDirectoryEntry[];
+  hasMore?: boolean;
+  error?: string;
+}
+
+export type HomeView = 'main' | 'nodes' | 'recent' | 'files' | 'help' | 'diagnostics';
 
 /** Home screen for /home command */
 export interface HomeData {
@@ -174,10 +191,12 @@ export interface HomeData {
   };
   workspace: {
     cwd: string;
+    fullCwd?: string;
     /** Workspace binding (long-term repo attribution) */
     binding?: string;
     /** Current project name (if multi-project mode) */
     project?: string;
+    directory?: HomeDirectoryData;
   };
   task: {
     active: boolean;

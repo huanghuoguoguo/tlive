@@ -110,10 +110,7 @@ export class RemoteClientRegistry {
       });
     });
 
-    this.heartbeatTimer = setInterval(
-      () => this.sendHeartbeat(),
-      this.options.heartbeatIntervalMs,
-    );
+    this.heartbeatTimer = setInterval(() => this.sendHeartbeat(), this.options.heartbeatIntervalMs);
     console.log(
       `[remote-server] Listening on ws://0.0.0.0:${this.options.port}${this.options.path}`,
     );
@@ -223,19 +220,31 @@ export class RemoteClientRegistry {
     return this.sendClientCommand(clientId, { action: 'path.stat', path }, timeoutMs);
   }
 
+  async listDirectory(
+    clientId: string,
+    path: string,
+    timeoutMs = 10_000,
+  ): Promise<ClientCommandResultMessage> {
+    return this.sendClientCommand(clientId, { action: 'path.list', path }, timeoutMs);
+  }
+
   async execShell(
     clientId: string,
     command: string,
     cwd: string,
     options: { timeoutMs?: number; maxBufferBytes?: number } = {},
   ): Promise<ClientCommandResultMessage> {
-    return this.sendClientCommand(clientId, {
-      action: 'shell.exec',
-      command,
-      cwd,
-      timeoutMs: options.timeoutMs,
-      maxBufferBytes: options.maxBufferBytes,
-    }, options.timeoutMs ? options.timeoutMs + 1_000 : 31_000);
+    return this.sendClientCommand(
+      clientId,
+      {
+        action: 'shell.exec',
+        command,
+        cwd,
+        timeoutMs: options.timeoutMs,
+        maxBufferBytes: options.maxBufferBytes,
+      },
+      options.timeoutMs ? options.timeoutMs + 1_000 : 31_000,
+    );
   }
 
   private async sendClientCommand(
@@ -267,7 +276,8 @@ export class RemoteClientRegistry {
     const bearer = authorization?.startsWith('Bearer ') ? authorization.slice(7) : undefined;
     let queryToken: string | undefined;
     try {
-      queryToken = new URL(requestUrl || '/', 'ws://localhost').searchParams.get('token') ?? undefined;
+      queryToken =
+        new URL(requestUrl || '/', 'ws://localhost').searchParams.get('token') ?? undefined;
     } catch {
       queryToken = undefined;
     }

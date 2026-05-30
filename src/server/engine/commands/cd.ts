@@ -1,5 +1,6 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
+import type { ChannelBinding } from '../../store/interface.js';
 import {
   presentDirectory,
   presentDirectoryHistory,
@@ -12,6 +13,16 @@ import { join } from 'node:path';
 import { isSameRepoRoot } from '../../../shared/utils/repo.js';
 import { t } from '../../../shared/i18n/index.js';
 import { resolveCommandClientTarget } from './execution-client.js';
+
+export interface DirectorySwitchResult {
+  ok: boolean;
+  requestedPath: string;
+  resolvedPath?: string;
+  error?: string;
+  hadActiveSession?: boolean;
+  switchedRepo?: boolean;
+  feedbackText?: string;
+}
 
 export class CdCommand extends BaseCommand {
   readonly name = '/cd';
@@ -87,70 +98,100 @@ export class CdCommand extends BaseCommand {
 
     const binding = await ctx.services.store.getBinding(ctx.msg.channelType, scopeId);
     const baseCwd = binding?.cwd || ctx.services.defaultWorkdir;
-    const target = resolveCommandClientTarget(ctx, binding);
-    if (target.error) {
-      await this.send(ctx, { chatId: ctx.msg.chatId, text: target.error });
+    const result = await switchCommandDirectory(ctx, path, { binding, baseCwd });
+    if (!result.ok) {
+      await this.send(
+        ctx,
+        result.error
+          ? { chatId: ctx.msg.chatId, text: result.error }
+          : presentDirectoryNotFound(ctx.msg.chatId, shortPath(result.requestedPath)),
+      );
       return true;
     }
 
-    const requestedPath = resolveRequestedPath(path, baseCwd, Boolean(target.clientId));
-    const resolvedPath = await this.resolveDirectory(ctx, target.clientId, requestedPath);
-
-    if (!resolvedPath) {
-      await this.send(ctx, presentDirectoryNotFound(ctx.msg.chatId, shortPath(requestedPath)));
-      return true;
-    }
-
-    ctx.services.workspace.pushHistory(ctx.msg.channelType, scopeId, baseCwd);
-
-    const switchedRepo = !isSameRepoRoot(baseCwd, resolvedPath);
-
-    const { hadActiveSession } = switchedRepo
-      ? await ctx.helpers.resetSessionContext(ctx.msg.channelType, scopeId, 'cd', {
-          previousCwd: baseCwd,
-          clearProject: true,
-          binding,
-        })
-      : { hadActiveSession: false };
-
-    if (binding) {
-      binding.cwd = resolvedPath;
-      binding.clientId = binding.clientId ?? target.clientId;
-      await ctx.services.store.saveBinding(binding);
-    } else {
-      await ctx.services.router.rebind(ctx.msg.channelType, scopeId, generateSessionId(), {
-        provider: ctx.services.providers.defaultProviderKind,
-        clientId: target.clientId,
-        cwd: resolvedPath,
-      });
-    }
-    ctx.services.workspace.pushHistory(ctx.msg.channelType, scopeId, resolvedPath);
-    ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, scopeId, resolvedPath);
-
-    const feedbackText =
-      hadActiveSession && switchedRepo ? t('cmd.cd.switchedRepo') : undefined;
     await this.send(
       ctx,
-      presentDirectory(ctx.msg.chatId, shortPath(resolvedPath), true, feedbackText),
+      presentDirectory(ctx.msg.chatId, shortPath(result.resolvedPath!), true, result.feedbackText),
     );
     return true;
   }
+}
 
-  private async resolveDirectory(
-    ctx: CommandContext,
-    clientId: string | undefined,
-    requestedPath: string,
-  ): Promise<string | null> {
-    if (clientId && ctx.services.remoteClientRegistry) {
-      const result = await ctx.services.remoteClientRegistry.statPath(clientId, requestedPath);
-      return result.ok && result.exists && result.isDirectory ? result.path ?? requestedPath : null;
-    }
+export async function switchCommandDirectory(
+  ctx: CommandContext,
+  path: string,
+  opts: { binding?: ChannelBinding | null; baseCwd?: string } = {},
+): Promise<DirectorySwitchResult> {
+  const scopeId = ctx.scopeId;
+  const binding =
+    opts.binding === undefined
+      ? await ctx.services.store.getBinding(ctx.msg.channelType, scopeId)
+      : opts.binding;
+  const baseCwd = opts.baseCwd ?? binding?.cwd ?? ctx.services.defaultWorkdir;
+  const target = resolveCommandClientTarget(ctx, binding);
+  if (target.error) {
+    return {
+      ok: false,
+      requestedPath: path,
+      error: target.error,
+    };
+  }
 
-    try {
-      return statSync(requestedPath).isDirectory() ? requestedPath : null;
-    } catch {
-      return null;
-    }
+  const requestedPath = resolveRequestedPath(path, baseCwd, Boolean(target.clientId));
+  const resolvedPath = await resolveDirectory(ctx, target.clientId, requestedPath);
+  if (!resolvedPath) {
+    return { ok: false, requestedPath };
+  }
+
+  ctx.services.workspace.pushHistory(ctx.msg.channelType, scopeId, baseCwd);
+
+  const switchedRepo = !isSameRepoRoot(baseCwd, resolvedPath);
+  const { hadActiveSession } = switchedRepo
+    ? await ctx.helpers.resetSessionContext(ctx.msg.channelType, scopeId, 'cd', {
+        previousCwd: baseCwd,
+        clearProject: true,
+        binding,
+      })
+    : { hadActiveSession: false };
+
+  if (binding) {
+    binding.cwd = resolvedPath;
+    binding.clientId = binding.clientId ?? target.clientId;
+    await ctx.services.store.saveBinding(binding);
+  } else {
+    await ctx.services.router.rebind(ctx.msg.channelType, scopeId, generateSessionId(), {
+      provider: ctx.services.providers.defaultProviderKind,
+      clientId: target.clientId,
+      cwd: resolvedPath,
+    });
+  }
+  ctx.services.workspace.pushHistory(ctx.msg.channelType, scopeId, resolvedPath);
+  ctx.helpers.updateWorkspaceBindingFromPath(ctx.msg.channelType, scopeId, resolvedPath);
+
+  return {
+    ok: true,
+    requestedPath,
+    resolvedPath,
+    hadActiveSession,
+    switchedRepo,
+    feedbackText: hadActiveSession && switchedRepo ? t('cmd.cd.switchedRepo') : undefined,
+  };
+}
+
+async function resolveDirectory(
+  ctx: CommandContext,
+  clientId: string | undefined,
+  requestedPath: string,
+): Promise<string | null> {
+  if (clientId && ctx.services.remoteClientRegistry) {
+    const result = await ctx.services.remoteClientRegistry.statPath(clientId, requestedPath);
+    return result.ok && result.exists && result.isDirectory ? (result.path ?? requestedPath) : null;
+  }
+
+  try {
+    return statSync(requestedPath).isDirectory() ? requestedPath : null;
+  } catch {
+    return null;
   }
 }
 

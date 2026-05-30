@@ -298,6 +298,55 @@ describe('CommandRouter /settings', () => {
     expect(adapter.send).not.toHaveBeenCalled();
   });
 
+  it('changes the current directory from the workbench directory panel in place', async () => {
+    const root = join(tmpDir, 'project');
+    const child = join(root, 'src');
+    mkdirSync(child, { recursive: true });
+    writeFileSync(join(child, 'index.ts'), 'export {};\n');
+    await store.saveBinding({
+      channelType: 'feishu',
+      chatId: 'c1',
+      sessionId: 'binding-1',
+      cwd: root,
+      createdAt: '',
+    });
+
+    const handled = await router.handleAction(
+      adapter,
+      {
+        channelType: 'feishu',
+        chatId: 'c1',
+        scopeId: 'c1',
+        userId: 'u1',
+        text: '',
+        messageId: 'home-card-1',
+      } as any,
+      { name: 'home-dir', args: [child] },
+    );
+
+    expect(handled).toBe(true);
+    expect((await store.getBinding('feishu', 'c1'))?.cwd).toBe(child);
+    expect(adapter.editMessage).toHaveBeenCalledWith(
+      'c1',
+      'home-card-1',
+      expect.objectContaining({
+        type: 'home',
+        data: expect.objectContaining({
+          view: 'files',
+          workspace: expect.objectContaining({
+            directory: expect.objectContaining({
+              path: child,
+              entries: expect.arrayContaining([
+                expect.objectContaining({ name: 'index.ts', kind: 'file' }),
+              ]),
+            }),
+          }),
+        }),
+      }),
+    );
+    expect(adapter.send).not.toHaveBeenCalled();
+  });
+
   it('falls back to sending a workbench card when refresh has no message id', async () => {
     const handled = await router.handleAction(
       adapter,

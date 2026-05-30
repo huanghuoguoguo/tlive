@@ -17,12 +17,11 @@ import type { Button } from '../../../shared/ui/types.js';
 import type { NewSessionButtonProvider } from '../../../shared/ui/buttons.js';
 import { truncate } from '../../../shared/core/string.js';
 import { actionCallback } from '../../../shared/core/callbacks.js';
-import {
-  buttonElements,
-  markdownElement,
-} from './card-elements.js';
+import { buttonElements, markdownElement } from './card-elements.js';
 
 const MAX_RECENT_VIEW_ITEMS = 8;
+const MAX_DIRECTORY_BUTTONS = 12;
+const MAX_DIRECTORY_FILES = 12;
 
 /** Unified session status label for consistent display across /status and /home */
 export function sessionStatusLabel(
@@ -46,6 +45,7 @@ export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[]
   const view = data.view ?? 'main';
   if (view === 'nodes') return buildNodesView(data);
   if (view === 'recent') return buildRecentView(data);
+  if (view === 'files') return buildFilesView(data);
   if (view === 'help') return buildHelpView(data);
   if (view === 'diagnostics') return buildDiagnosticsView(data);
   return buildMainView(data);
@@ -64,11 +64,71 @@ function buildMainView(data: HomeData): FeishuCardElement[] {
     ...newSessionButtonsForDefaultClient(data, 0),
     { label: '节点', callbackData: actionCallback('home-view', 'nodes'), row: 1 },
     { label: '最近会话', callbackData: actionCallback('home-view', 'recent'), row: 1 },
+    { label: '目录', callbackData: actionCallback('home-view', 'files'), row: 1 },
     { label: '帮助', callbackData: actionCallback('home-view', 'help'), row: 2 },
     { label: '诊断', callbackData: actionCallback('home-view', 'diagnostics'), row: 2 },
     { label: '刷新', callbackData: actionCallback('home-refresh', 'main'), row: 2 },
   ];
   elements.push(...buttonElements(buttons));
+  return elements;
+}
+
+function buildFilesView(data: HomeData): FeishuCardElement[] {
+  const elements: FeishuCardElement[] = [
+    homeHeaderElement('目录', data),
+    ...panelNavButtons('files'),
+  ];
+  const directory = data.workspace.directory;
+  if (!directory) {
+    elements.push(markdownElement('暂时无法读取当前目录。'));
+    return elements;
+  }
+
+  const source = directory.clientId ? `节点: \`${directory.clientId}\`` : '来源: server';
+  elements.push(markdownElement(`当前目录: \`${directory.displayPath}\`\n${source}`));
+
+  if (directory.error) {
+    elements.push(markdownElement(`⚠️ ${directory.error}`));
+    return elements;
+  }
+
+  const directories = directory.entries.filter((entry) => entry.kind === 'directory');
+  const files = directory.entries.filter((entry) => entry.kind !== 'directory');
+  const buttons: Button[] = [];
+  if (directory.parent) {
+    buttons.push({
+      label: '上级目录',
+      callbackData: actionCallback('home-dir', directory.parent),
+      style: 'primary',
+      row: 0,
+    });
+  }
+  directories.slice(0, MAX_DIRECTORY_BUTTONS).forEach((entry, index) => {
+    buttons.push({
+      label: directoryButtonLabel(entry.name),
+      callbackData: actionCallback('home-dir', entry.path),
+      row: Math.floor(index / 2) + 1,
+    });
+  });
+
+  if (buttons.length) {
+    elements.push(...buttonElements(buttons));
+  } else {
+    elements.push(markdownElement('没有子目录。'));
+  }
+
+  if (files.length) {
+    elements.push(
+      markdownElement(`**文件**\n${files.slice(0, MAX_DIRECTORY_FILES).map(fileLine).join('\n')}`),
+    );
+  }
+  if (
+    directory.hasMore ||
+    directories.length > MAX_DIRECTORY_BUTTONS ||
+    files.length > MAX_DIRECTORY_FILES
+  ) {
+    elements.push(markdownElement('仅显示前几项。'));
+  }
   return elements;
 }
 
@@ -131,9 +191,9 @@ function buildRecentView(data: HomeData): FeishuCardElement[] {
   const hasMore =
     (data.session.topics?.length ?? 0) + (data.session.recent?.length ?? 0) > MAX_RECENT_VIEW_ITEMS;
   if (hasMore) {
-    elements.push(...buttonElements([
-      { label: '更多', callbackData: actionCallback('home-history'), row: 0 },
-    ]));
+    elements.push(
+      ...buttonElements([{ label: '更多', callbackData: actionCallback('home-history'), row: 0 }]),
+    );
   }
   return elements;
 }
@@ -142,7 +202,9 @@ function buildHelpView(data: HomeData): FeishuCardElement[] {
   const elements: FeishuCardElement[] = [
     homeHeaderElement('帮助', data),
     ...panelNavButtons('help'),
-    markdownElement('工作台用于选择节点、新建话题和恢复最近会话；执行、权限确认和停止操作放在具体话题内。'),
+    markdownElement(
+      '工作台用于选择节点、新建话题和恢复最近会话；执行、权限确认和停止操作放在具体话题内。',
+    ),
   ];
   const helpEntries = (data.help?.entries ?? [])
     .slice(0, 8)
@@ -150,11 +212,13 @@ function buildHelpView(data: HomeData): FeishuCardElement[] {
   if (helpEntries.length) {
     elements.push(markdownElement(`**常用命令**\n${helpEntries.join('\n')}`));
   }
-  elements.push(...buttonElements([
-    { label: '完整帮助', callbackData: actionCallback('help'), row: 0 },
-    { label: 'Bridge 状态', callbackData: actionCallback('status'), row: 0 },
-    { label: '内部诊断', callbackData: actionCallback('diagnose'), row: 1 },
-  ]));
+  elements.push(
+    ...buttonElements([
+      { label: '完整帮助', callbackData: actionCallback('help'), row: 0 },
+      { label: 'Bridge 状态', callbackData: actionCallback('status'), row: 0 },
+      { label: '内部诊断', callbackData: actionCallback('diagnose'), row: 1 },
+    ]),
+  );
   return elements;
 }
 
@@ -204,34 +268,45 @@ function newSessionButtonsForDefaultClient(data: HomeData, row: number): Button[
   return providers.map((provider) => ({
     label: `新建 ${provider.displayName}`,
     callbackData: actionCallback('new', provider.kind, defaultClient?.clientId),
-    style: provider.isDefault ? 'primary' as const : 'default' as const,
+    style: provider.isDefault ? ('primary' as const) : ('default' as const),
     row,
   }));
 }
 
 function clientDetailMarkdown(client: HomeClientEntry): string {
   const title = `${client.online ? '🟢' : '🔴'} ${client.name || client.clientId}${client.isDefault ? ' ◀' : ''}`;
-  const workspace = defaultWorkspacePath(client);
   const providers = providerNames(client.providers);
   return [
     `**${title}**`,
     `ID: \`${client.clientId}\`${client.isLocal ? ' · local' : ''}`,
     client.note ? `备注: ${client.note}` : undefined,
     `Provider: ${providers}`,
-    `默认目录: \`${workspace}\``,
     client.activeTurns > 0 ? `运行中: ${client.activeTurns} 个任务` : undefined,
-  ].filter((line): line is string => Boolean(line)).join('\n');
-}
-
-function defaultWorkspacePath(client: HomeClientEntry): string {
-  return client.workspaces.find((entry) => entry.isDefault)?.path ?? client.workspaces[0]?.path ?? '-';
+  ]
+    .filter((line): line is string => Boolean(line))
+    .join('\n');
 }
 
 function providerNames(providers: HomeProviderEntry[]): string {
-  return providers
-    .filter((provider) => provider.available)
-    .map((provider) => provider.displayName)
-    .join(' / ') || 'none';
+  return (
+    providers
+      .filter((provider) => provider.available)
+      .map((provider) => provider.displayName)
+      .join(' / ') || 'none'
+  );
+}
+
+function directoryButtonLabel(name: string): string {
+  return `📁 ${truncate(name, 18)}`;
+}
+
+function fileLine(entry: { name: string; kind: string }): string {
+  const prefix = entry.kind === 'file' ? '文件' : '其他';
+  return `- ${prefix} \`${safeInlineCode(truncate(entry.name, 40))}\``;
+}
+
+function safeInlineCode(value: string): string {
+  return value.replace(/`/g, "'");
 }
 
 function buildRecentSessionElements(data: HomeData, limit: number): FeishuCardElement[] {

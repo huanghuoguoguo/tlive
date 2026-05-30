@@ -136,6 +136,8 @@ describe('command presenter', () => {
       expect(rendered).toContain('action:home-view:nodes');
       expect(rendered).toContain('最近会话');
       expect(rendered).toContain('action:home-view:recent');
+      expect(rendered).toContain('目录');
+      expect(rendered).toContain('action:home-view:files');
       expect(rendered).not.toContain('最近会话话题');
       expect(rendered).not.toContain('查看最近会话');
       expect(rendered).not.toContain('Recent task');
@@ -186,11 +188,47 @@ describe('command presenter', () => {
       expect(rendered).toContain('action:home-view:main');
       expect(rendered).toContain('action:home-refresh:nodes');
       expect(rendered).toContain('备注: 开发机 · 本地 worker');
-      expect(rendered).toContain('默认目录: `/home/user/project`');
+      expect(rendered).not.toContain('默认目录: `/home/user/project`');
       expect(rendered).toContain('节点历史');
       expect(rendered).toContain('action:home-history:local');
       expect(rendered).not.toContain('快捷目录:');
       expect(rendered).not.toContain('版本:');
+    });
+
+    it('renders the directory panel with clickable folders', () => {
+      const msg = presentHome('chat-1', {
+        view: 'files',
+        workspace: {
+          cwd: '/home/user/project',
+          directory: {
+            path: '/home/user/project',
+            displayPath: '/home/user/project',
+            source: 'client',
+            clientId: 'local',
+            parent: '/home/user',
+            entries: [
+              { name: 'src', path: '/home/user/project/src', kind: 'directory' },
+              { name: 'README.md', path: '/home/user/project/README.md', kind: 'file' },
+            ],
+          },
+        },
+        task: { active: false },
+        permission: { mode: 'off' },
+        bridge: { healthy: true },
+        session: {},
+        clients: { defaultClientId: 'local', entries: [] },
+      });
+
+      const formatted = feishuFormatter.format(msg);
+      const rendered = JSON.stringify(formatted.feishuElements);
+      expect(rendered).toContain('目录');
+      expect(rendered).toContain('当前目录: `/home/user/project`');
+      expect(rendered).toContain('节点: `local`');
+      expect(rendered).toContain('上级目录');
+      expect(rendered).toContain('action:home-dir:%2Fhome%2Fuser');
+      expect(rendered).toContain('📁 src');
+      expect(rendered).toContain('action:home-dir:%2Fhome%2Fuser%2Fproject%2Fsrc');
+      expect(rendered).toContain('README.md');
     });
 
     it('keeps Feishu home card under the platform element limit', () => {

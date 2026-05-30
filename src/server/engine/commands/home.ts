@@ -1,20 +1,27 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
-import { presentHome } from '../../presentation/command-presenter.js';
+import { presentDirectoryNotFound, presentHome } from '../../presentation/command-presenter.js';
 import type { FormattableMessage, HomeView } from '../../../shared/formatting/message-types.js';
+import { shortPath } from '../../../shared/core/path.js';
 import { t } from '../../../shared/i18n/index.js';
+import { switchCommandDirectory } from './cd.js';
 
-const HOME_VIEWS = new Set<HomeView>(['main', 'nodes', 'recent', 'help', 'diagnostics']);
+const HOME_VIEWS = new Set<HomeView>(['main', 'nodes', 'recent', 'files', 'help', 'diagnostics']);
 
 function homeViewFromArg(raw?: string): HomeView {
-  return HOME_VIEWS.has(raw as HomeView) ? raw as HomeView : 'main';
+  return HOME_VIEWS.has(raw as HomeView) ? (raw as HomeView) : 'main';
 }
 
 async function buildHomeMessage(
   ctx: CommandContext,
   view: HomeView = 'main',
 ): Promise<FormattableMessage> {
-  const data = await ctx.helpers.buildHomePayload(ctx.msg.channelType, ctx.scopeId, ctx.locale);
+  const data = await ctx.helpers.buildHomePayload(
+    ctx.msg.channelType,
+    ctx.scopeId,
+    ctx.locale,
+    view,
+  );
   return presentHome(ctx.msg.chatId, { ...data, view });
 }
 
@@ -94,6 +101,31 @@ export class HomeRefreshCommand extends BaseCommand {
   }
 }
 
+export class HomeDirectoryCommand extends BaseCommand {
+  readonly name = '/home-dir';
+  readonly quick = true;
+  readonly helpCategory = 'status' as const;
+  readonly description = undefined;
+
+  async execute(ctx: CommandContext): Promise<boolean> {
+    const path = ctx.parts.slice(1).join(' ').trim();
+    if (path) {
+      const result = await switchCommandDirectory(ctx, path);
+      if (!result.ok) {
+        await this.send(
+          ctx,
+          result.error
+            ? { chatId: ctx.msg.chatId, text: result.error }
+            : presentDirectoryNotFound(ctx.msg.chatId, shortPath(result.requestedPath)),
+        );
+        return true;
+      }
+    }
+    await editHomeInPlaceOrSend(ctx, 'files', (msg) => this.send(ctx, msg));
+    return true;
+  }
+}
+
 const TOPIC_DETAIL_LIMIT = 8;
 const HISTORY_DETAIL_LIMIT = 10;
 
@@ -145,8 +177,7 @@ export class HomeHistoryCommand extends BaseCommand {
     const requestedClientId = ctx.parts[1];
     const sessions = (home.session.recent ?? []).filter(
       (session) =>
-        session.sdkSessionId &&
-        (!requestedClientId || session.clientId === requestedClientId),
+        session.sdkSessionId && (!requestedClientId || session.clientId === requestedClientId),
     );
     const shown = sessions.slice(0, HISTORY_DETAIL_LIMIT);
     await this.send(ctx, {

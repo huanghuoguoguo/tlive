@@ -3,6 +3,7 @@ import { StatusCommand } from './status.js';
 import { NewCommand } from './new.js';
 import {
   HomeCommand,
+  HomeDirectoryCommand,
   HomeHistoryCommand,
   HomeRefreshCommand,
   HomeTopicsCommand,
@@ -30,6 +31,7 @@ export function registerAllCommands(): void {
   commandRegistry.register(new HomeCommand());
   commandRegistry.register(new HomeViewCommand());
   commandRegistry.register(new HomeRefreshCommand());
+  commandRegistry.register(new HomeDirectoryCommand());
   commandRegistry.register(new HomeTopicsCommand());
   commandRegistry.register(new HomeHistoryCommand());
   commandRegistry.register(new PermCommand());

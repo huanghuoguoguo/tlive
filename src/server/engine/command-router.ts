@@ -12,6 +12,7 @@ import type { BridgeStore, ChannelBinding } from '../store/interface.js';
 import type {
   HomeClientEntry,
   HomeData,
+  HomeView,
   TopicCommandPaletteData,
 } from '../../shared/formatting/message-types.js';
 import type { RouterHelpers, CommandServices } from './commands/types.js';
@@ -89,6 +90,7 @@ export class CommandRouter {
       providers,
       topicSessions,
       getExecutionClients,
+      remoteClientRegistry,
     });
   }
 
@@ -164,8 +166,11 @@ export class CommandRouter {
     channelType: string,
     chatId: string,
     locale: Locale = 'zh',
+    view: HomeView = 'main',
   ): Promise<HomeData> {
-    const data = await this.homePayloadBuilder.build(channelType, chatId, locale);
+    const data = await this.homePayloadBuilder.build(channelType, chatId, locale, {
+      includeDirectory: view === 'files',
+    });
     // Add help entries from registry
     return {
       ...data,

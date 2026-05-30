@@ -62,6 +62,12 @@ export interface RemoteClientHostDescriptor {
   ipAddresses?: string[];
 }
 
+export interface RemoteDirectoryEntry {
+  name: string;
+  path: string;
+  kind: 'directory' | 'file' | 'other';
+}
+
 export interface ClientHelloMessage {
   type: 'client.hello';
   protocolVersion: number;
@@ -129,12 +135,7 @@ export interface TurnErrorMessage {
   message: string;
 }
 
-export type RemoteControlAction =
-  | 'interrupt'
-  | 'stop_task'
-  | 'close'
-  | 'steer'
-  | 'send_priority';
+export type RemoteControlAction = 'interrupt' | 'stop_task' | 'close' | 'steer' | 'send_priority';
 
 export interface ControlMessage {
   type: 'control';
@@ -153,7 +154,7 @@ export interface ControlResultMessage {
   error?: string;
 }
 
-export type ClientCommandAction = 'path.stat' | 'shell.exec';
+export type ClientCommandAction = 'path.stat' | 'path.list' | 'shell.exec';
 
 export interface ClientCommandMessage {
   type: 'client.command';
@@ -173,6 +174,8 @@ export interface ClientCommandResultMessage {
   path?: string;
   exists?: boolean;
   isDirectory?: boolean;
+  entries?: RemoteDirectoryEntry[];
+  hasMore?: boolean;
   stdout?: string;
   stderr?: string;
   exitCode?: number;
@@ -243,20 +246,26 @@ const clientHelloSchema = z.object({
     }),
   ),
   workspaces: z.array(z.object({ path: z.string(), label: z.string().optional() })),
-  sessions: z.array(z.object({
-    provider: providerKindSchema,
-    providerDisplayName: z.string().optional(),
-    sdkSessionId: z.string(),
-    cwd: z.string(),
-    mtime: z.number(),
-    size: z.number().optional(),
-    preview: z.string(),
-  })).optional(),
-  host: z.object({
-    hostname: z.string().optional(),
-    platform: z.string().optional(),
-    ipAddresses: z.array(z.string()).optional(),
-  }).optional(),
+  sessions: z
+    .array(
+      z.object({
+        provider: providerKindSchema,
+        providerDisplayName: z.string().optional(),
+        sdkSessionId: z.string(),
+        cwd: z.string(),
+        mtime: z.number(),
+        size: z.number().optional(),
+        preview: z.string(),
+      }),
+    )
+    .optional(),
+  host: z
+    .object({
+      hostname: z.string().optional(),
+      platform: z.string().optional(),
+      ipAddresses: z.array(z.string()).optional(),
+    })
+    .optional(),
   version: z.string().optional(),
 });
 
@@ -310,7 +319,7 @@ export const remoteProtocolMessageSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('client.command'),
     commandId: z.string(),
-    action: z.enum(['path.stat', 'shell.exec']),
+    action: z.enum(['path.stat', 'path.list', 'shell.exec']),
     path: z.string().optional(),
     cwd: z.string().optional(),
     command: z.string().optional(),
@@ -324,6 +333,16 @@ export const remoteProtocolMessageSchema = z.discriminatedUnion('type', [
     path: z.string().optional(),
     exists: z.boolean().optional(),
     isDirectory: z.boolean().optional(),
+    entries: z
+      .array(
+        z.object({
+          name: z.string(),
+          path: z.string(),
+          kind: z.enum(['directory', 'file', 'other']),
+        }),
+      )
+      .optional(),
+    hasMore: z.boolean().optional(),
     stdout: z.string().optional(),
     stderr: z.string().optional(),
     exitCode: z.number().int().optional(),
@@ -347,15 +366,19 @@ export const remoteProtocolMessageSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('client.status'),
     activeTurns: z.number().int().nonnegative(),
-    sessions: z.array(z.object({
-      provider: providerKindSchema,
-      providerDisplayName: z.string().optional(),
-      sdkSessionId: z.string(),
-      cwd: z.string(),
-      mtime: z.number(),
-      size: z.number().optional(),
-      preview: z.string(),
-    })).optional(),
+    sessions: z
+      .array(
+        z.object({
+          provider: providerKindSchema,
+          providerDisplayName: z.string().optional(),
+          sdkSessionId: z.string(),
+          cwd: z.string(),
+          mtime: z.number(),
+          size: z.number().optional(),
+          preview: z.string(),
+        }),
+      )
+      .optional(),
   }),
 ]);
 

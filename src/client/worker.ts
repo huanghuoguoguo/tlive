@@ -1,7 +1,7 @@
 import { WebSocket, type RawData } from 'ws';
 import { hostname, homedir, networkInterfaces, platform } from 'node:os';
 import { join, resolve } from 'node:path';
-import { stat } from 'node:fs/promises';
+import { readdir, stat } from 'node:fs/promises';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import type {
@@ -19,6 +19,7 @@ import {
   type ControlMessage,
   type ClientCommandMessage,
   type InteractionResponseMessage,
+  type RemoteDirectoryEntry,
   type RemoteClientHostDescriptor,
   type RemoteInteractionKind,
   type RemoteProviderDescriptor,
@@ -29,6 +30,7 @@ import {
 import { invalidateLocalSessionIndex, listLocalSessionDescriptors } from './session-index.js';
 
 const execAsync = promisify(exec);
+const MAX_REMOTE_DIRECTORY_ENTRIES = 200;
 
 export interface RemoteClientWorkerOptions {
   serverUrl: string;
@@ -79,7 +81,9 @@ export class RemoteClientWorker {
         await this.connectOnce();
       } catch (err) {
         if (this.stopped) break;
-        console.warn(`[remote-client] connection ended: ${err instanceof Error ? err.message : err}`);
+        console.warn(
+          `[remote-client] connection ended: ${err instanceof Error ? err.message : err}`,
+        );
       }
       if (!this.stopped) {
         await delay(this.options.reconnectIntervalMs);
@@ -101,9 +105,7 @@ export class RemoteClientWorker {
   private async connectOnce(): Promise<void> {
     const url = this.urlWithToken(this.options.serverUrl);
     const socket = new WebSocket(url, {
-      headers: this.options.token
-        ? { Authorization: `Bearer ${this.options.token}` }
-        : undefined,
+      headers: this.options.token ? { Authorization: `Bearer ${this.options.token}` } : undefined,
     });
     this.socket = socket;
 
@@ -121,7 +123,9 @@ export class RemoteClientWorker {
     });
 
     this.send(this.buildHello());
-    console.log(`[remote-client] connected to ${this.options.serverUrl} as ${this.options.clientId}`);
+    console.log(
+      `[remote-client] connected to ${this.options.serverUrl} as ${this.options.clientId}`,
+    );
 
     await new Promise<void>((resolveClose) => {
       socket.on('message', (data) => this.handleMessage(data));
@@ -187,9 +191,13 @@ export class RemoteClientWorker {
   private handleMessage(data: RawData): void {
     let message: ServerToClientMessage;
     try {
-      message = parseRemoteProtocolMessage(JSON.parse(data.toString('utf-8'))) as ServerToClientMessage;
+      message = parseRemoteProtocolMessage(
+        JSON.parse(data.toString('utf-8')),
+      ) as ServerToClientMessage;
     } catch (err) {
-      console.warn(`[remote-client] invalid server message: ${err instanceof Error ? err.message : err}`);
+      console.warn(
+        `[remote-client] invalid server message: ${err instanceof Error ? err.message : err}`,
+      );
       return;
     }
 
@@ -231,16 +239,23 @@ export class RemoteClientWorker {
             signal,
           ) as Promise<'allow' | 'allow_always' | 'deny'>,
         onAskUserQuestion: (questions, signal) =>
-          this.requestInteraction(message.turnId, 'ask_user_question', { questions }, signal) as Promise<
-            Record<string, string>
-          >,
+          this.requestInteraction(
+            message.turnId,
+            'ask_user_question',
+            { questions },
+            signal,
+          ) as Promise<Record<string, string>>,
         onDeferredTool: (toolName, toolInput, signal) =>
           this.requestInteraction(
             message.turnId,
             'deferred_tool',
             { toolName, toolInput },
             signal,
-          ) as Promise<{ behavior: 'allow' | 'deny'; updatedInput?: Record<string, unknown>; message?: string }>,
+          ) as Promise<{
+            behavior: 'allow' | 'deny';
+            updatedInput?: Record<string, unknown>;
+            message?: string;
+          }>,
       });
       this.activeTurns.set(message.turnId, {
         turnId: message.turnId,
@@ -328,10 +343,13 @@ export class RemoteClientWorker {
   ): Promise<unknown> {
     const interactionId = generateId('interaction', 10);
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pendingInteractions.delete(interactionId);
-        reject(new Error(`Remote interaction timed out: ${kind}`));
-      }, 10 * 60 * 1000);
+      const timer = setTimeout(
+        () => {
+          this.pendingInteractions.delete(interactionId);
+          reject(new Error(`Remote interaction timed out: ${kind}`));
+        },
+        10 * 60 * 1000,
+      );
       const abort = () => {
         clearTimeout(timer);
         this.pendingInteractions.delete(interactionId);
@@ -409,6 +427,37 @@ export class RemoteClientWorker {
         return;
       }
 
+      if (message.action === 'path.list') {
+        if (!message.path) throw new Error('path is required');
+        const path = resolveClientPath(message.path);
+        const st = await stat(path);
+        if (!st.isDirectory()) {
+          this.send({
+            type: 'client.command.result',
+            commandId: message.commandId,
+            ok: true,
+            path,
+            exists: true,
+            isDirectory: false,
+            entries: [],
+            hasMore: false,
+          });
+          return;
+        }
+        const entries = await listDirectoryEntries(path);
+        this.send({
+          type: 'client.command.result',
+          commandId: message.commandId,
+          ok: true,
+          path,
+          exists: true,
+          isDirectory: true,
+          entries: entries.slice(0, MAX_REMOTE_DIRECTORY_ENTRIES),
+          hasMore: entries.length > MAX_REMOTE_DIRECTORY_ENTRIES,
+        });
+        return;
+      }
+
       if (message.action === 'shell.exec') {
         if (!message.command) throw new Error('command is required');
         if (!message.cwd) throw new Error('cwd is required');
@@ -436,7 +485,10 @@ export class RemoteClientWorker {
         code?: number | string;
         signal?: NodeJS.Signals;
       };
-      if (message.action === 'path.stat' && nodeErr.code === 'ENOENT') {
+      if (
+        (message.action === 'path.stat' || message.action === 'path.list') &&
+        nodeErr.code === 'ENOENT'
+      ) {
         this.send({
           type: 'client.command.result',
           commandId: message.commandId,
@@ -444,6 +496,8 @@ export class RemoteClientWorker {
           path: message.path ? resolveClientPath(message.path) : undefined,
           exists: false,
           isDirectory: false,
+          entries: message.action === 'path.list' ? [] : undefined,
+          hasMore: message.action === 'path.list' ? false : undefined,
         });
         return;
       }
@@ -521,6 +575,33 @@ function localIpv4Addresses(): string[] {
     }
   }
   return [...new Set(out)].slice(0, 4);
+}
+
+async function listDirectoryEntries(path: string): Promise<RemoteDirectoryEntry[]> {
+  const dirents = await readdir(path, { withFileTypes: true });
+  return dirents
+    .filter((entry) => entry.name !== '.' && entry.name !== '..')
+    .map((entry) => ({
+      name: entry.name,
+      path: join(path, entry.name),
+      kind: entry.isDirectory()
+        ? ('directory' as const)
+        : entry.isFile()
+          ? ('file' as const)
+          : ('other' as const),
+    }))
+    .sort(compareDirectoryEntries);
+}
+
+function compareDirectoryEntries(a: RemoteDirectoryEntry, b: RemoteDirectoryEntry): number {
+  return directoryEntryRank(a) - directoryEntryRank(b) || a.name.localeCompare(b.name);
+}
+
+function directoryEntryRank(entry: RemoteDirectoryEntry): number {
+  const hiddenOffset = entry.name.startsWith('.') ? 10 : 0;
+  if (entry.kind === 'directory') return hiddenOffset;
+  if (entry.kind === 'file') return hiddenOffset + 1;
+  return hiddenOffset + 2;
 }
 
 function delay(ms: number): Promise<void> {
