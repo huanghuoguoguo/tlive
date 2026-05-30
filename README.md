@@ -3,7 +3,9 @@
 [![CI](https://github.com/huanghuoguoguo/tlive/actions/workflows/ci.yml/badge.svg)](https://github.com/huanghuoguoguo/tlive/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Control Claude Code, Codex, and Pi from Feishu/Lark** — send tasks from your phone, watch progress in real time, and manage local agent sessions remotely.
+**Feishu/Lark-native remote AI development workbench** for Claude Code, Codex, and Pi.
+Control local or remote agent nodes from chat, keep each task in a topic, and share agent
+sessions in groups.
 
 ## Scope
 
@@ -12,18 +14,27 @@ tlive is intentionally focused on one workflow:
 - **IM channel:** Feishu/Lark
 - **Agent runtimes:** Claude Code, Codex, and Pi, driven through their local SDK runtimes
 - **Interaction model:** Feishu cards for the workbench, topic sessions, streaming progress, questions, and approvals
+- **Collaboration model:** the main chat is a workbench; every agent task runs in a
+  Feishu/Lark topic that can be pinned, resumed, or shared in a group
 
 The project no longer carries Telegram, QQ Bot, or generic multi-channel runtime layers.
 
 ## Features
 
 - Feishu/Lark chat to Claude Code, Codex, or Pi sessions
-- Workbench for creating Claude/Codex/Pi topic sessions, switching directories, and resuming history
+- Feishu-native workbench for selecting execution nodes, browsing directories, creating
+  Claude/Codex/Pi topic sessions, and resuming history
+- Topic-backed sessions: each task lives in its own Feishu/Lark topic, so history,
+  permissions, and follow-up messages stay scoped to that task
+- Group chat mode: the group workbench only reacts to `@bot` messages, while TLive topic
+  replies continue without repeated mentions
 - Real-time progress cards with thinking, tool calls, summaries, and final output
 - Claude Code permission approval, including session-level allow rules
 - AskUserQuestion and deferred tool interactions for providers that support them
 - Session scanning and resume from `~/.claude/projects/`, `~/.codex/sessions`, and Pi sessions under `~/.pi/agent/sessions`
 - File and image forwarding to providers that support attachments
+- Server/client execution model for managing local and remote worker nodes, including
+  remote client self-upgrade
 - Release-based self-upgrade with `tlive upgrade`
 
 ## Install
@@ -55,7 +66,8 @@ tlive setup
 tlive start
 ```
 
-Then send `/tlive` in Feishu/Lark to open the workbench.
+Then send `/tlive` in Feishu/Lark to open the workbench. In a group chat, mention the
+bot, for example `@your-bot /tlive`.
 
 `tlive start` starts the server control plane and a local worker client. Use
 `tlive server --standalone` only when this machine should accept remote workers but not run a
@@ -68,10 +80,10 @@ callbacks. The MCP endpoint exposes tools such as `tlive_send_file`, `tlive_send
 ## Architecture
 
 ```text
-┌─────────────┐     ┌──────────────────┐     ┌─────────────┐
-│   Feishu    │────▶│  tlive Bridge    │◀────│ Agent SDKs  │
-│   / Lark    │     │  TypeScript      │     │   sessions  │
-└─────────────┘     └──────────────────┘     └─────────────┘
+┌─────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│ Feishu/Lark │────▶│  tlive server    │◀────│ worker clients   │
+│ chat/topics │     │ control plane    │     │ Claude/Codex/Pi  │
+└─────────────┘     └──────────────────┘     └──────────────────┘
 ```
 
 The server connects to Feishu through the Feishu/Lark SDK long connection. Agent execution runs in
@@ -82,7 +94,12 @@ integrated through `@anthropic-ai/claude-agent-sdk`; Codex is integrated through
 ## IM Commands
 
 The main chat is a command-only workbench. Use `/tlive` or `/home` to open it, then start
-Claude/Codex/Pi sessions from the client blocks. Each new session opens as its own Feishu/Lark topic.
+Claude/Codex/Pi sessions from the client blocks. Each new session opens as its own
+Feishu/Lark topic.
+
+In group chats, the main workbench only handles messages that mention the bot, such as
+`@your-bot /home`. Once a TLive topic has been created, replies in that topic are routed to
+the bound agent session and do not need repeated `@bot` mentions.
 
 Send normal task messages inside an agent topic to start or continue work:
 
@@ -94,22 +111,26 @@ Normal text sent in the main chat will not start an agent session. If more than 
 client is connected, use `/use <client-id>` in the workbench to choose the default client. When
 there is exactly one client, TLive selects it automatically.
 
-Public workbench commands are intentionally small so agent slash commands such as `/model` can pass through to Claude Code, Codex, or Pi inside topics.
+Public TLive commands are intentionally small so agent slash commands such as `/model` can
+pass through to Claude Code, Codex, or Pi inside topics.
 
 | Command | Description |
 |---------|-------------|
 | `/tlive` | Open the TLive workbench |
 | `/home` | Alias for the workbench |
 | `/use <client-id>` | Set the default execution client for the workbench |
-| `/stop` | Interrupt current execution |
+| `/stop` | Interrupt the current execution inside an agent topic |
 
-Other TLive operations are exposed in the workbench as buttons or command input, including new Claude/Codex/Pi sessions, session history, directory changes, permission mode, diagnostics, restart, and upgrade.
+Other TLive operations are exposed in the workbench as buttons or command input, including
+new Claude/Codex/Pi sessions, session history, directory browsing, permission mode,
+diagnostics, restart, and upgrade.
 
 ## Settings
 
 Choose the default provider:
 
 ```env
+# ~/.tlive/client.env
 TL_PROVIDER=claude
 # or
 TL_PROVIDER=codex
@@ -121,6 +142,12 @@ TL_PROVIDER=pi
 The workbench shows new-session buttons for providers reported by worker clients. Claude and Codex
 still depend on their local CLIs; Pi is provided by the bundled Pi SDK and uses Pi's own auth/model
 configuration.
+
+Role-specific config files are used by default:
+
+- `~/.tlive/server.env`: Feishu/Lark bridge and control-plane values
+- `~/.tlive/client.env`: execution client values such as provider, default directory, and node note
+- `~/.tlive/config.env`: legacy file, migrated into role files when needed
 
 ### Remote Workers
 
@@ -145,6 +172,10 @@ Worker machine:
 ```bash
 tlive client --server ws://your-server:8787/tlive --token change-this-token --workspace /path/to/project
 ```
+
+For worker clients, `TL_DEFAULT_WORKDIR` is the default directory for new sessions.
+`TL_REMOTE_WORKSPACES` is only a list of quick directories shown in the workbench; it does
+not restrict `/cd`.
 
 See [Server / Client Architecture](docs/architecture.md) for the control-plane and execution-plane
 state ownership model.
@@ -196,6 +227,9 @@ Upgrade to the latest stable release:
 tlive upgrade
 ```
 
+Remote clients that advertise upgrade support can also be upgraded from the workbench when
+their version is behind the server.
+
 Upgrade to a specific release, including beta/prerelease versions when available:
 
 ```bash
@@ -208,6 +242,7 @@ tlive upgrade 0.14.0-beta.1
 - [Getting Started](docs/getting-started.md)
 - [Feishu Setup](docs/setup-feishu.md)
 - [Configuration](docs/configuration.md)
+- [Server / Client Architecture](docs/architecture.md)
 - [Troubleshooting](docs/troubleshooting.md)
 
 ## License
