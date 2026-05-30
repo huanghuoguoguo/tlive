@@ -4,7 +4,7 @@
 
 ## 前置条件
 
-- Node.js 20+ 和 npm
+- Node.js 22.19+ 和 npm
 - 一个可创建自建应用的飞书或 Lark 工作区
 - 已安装并登录 Claude Code
 

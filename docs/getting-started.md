@@ -4,7 +4,7 @@ This guide takes you from zero to a working Feishu/Lark bridge for Claude Code.
 
 ## Prerequisites
 
-- Node.js 20+ and npm
+- Node.js 22.19+ and npm
 - A Feishu or Lark workspace where you can create a custom app
 - Claude Code installed and authenticated
 

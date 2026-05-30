@@ -18,15 +18,15 @@ info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 
-# Check Node.js >= 20
+# Check Node.js >= 22.19.0
 check_node() {
     if ! command -v node &>/dev/null; then
-        error "Node.js is required but not installed. Install Node.js 20+ first: https://nodejs.org"
+        error "Node.js is required but not installed. Install Node.js 22.19+ first: https://nodejs.org"
     fi
-    local node_major
-    node_major=$(node -p 'process.versions.node.split(".")[0]')
-    if [ "$node_major" -lt 20 ]; then
-        error "Node.js 20+ is required (found v$(node -p process.version))"
+    local node_ok
+    node_ok=$(node -p 'const [major, minor] = process.versions.node.split(".").map(Number); Number(major > 22 || (major === 22 && minor >= 19))')
+    if [ "$node_ok" -ne 1 ]; then
+        error "Node.js 22.19+ is required (found $(node -p process.version))"
     fi
     info "Node.js $(node -p process.version) ✓"
 }

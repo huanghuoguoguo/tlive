@@ -48,13 +48,15 @@ function Normalize-Version([string]$InputVersion) {
 function Check-Node {
   $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
   if (-not $nodeCmd) {
-    Fail 'Node.js 20+ is required but was not found in PATH. Install Node.js first: https://nodejs.org'
+    Fail 'Node.js 22.19+ is required but was not found in PATH. Install Node.js first: https://nodejs.org'
   }
 
   $nodeVersion = (& node -p "process.versions.node").Trim()
-  $major = [int]($nodeVersion.Split('.')[0])
-  if ($major -lt 20) {
-    Fail "Node.js 20+ is required (found v$nodeVersion)"
+  $parts = $nodeVersion.Split('.')
+  $major = [int]$parts[0]
+  $minor = [int]$parts[1]
+  if ($major -lt 22 -or ($major -eq 22 -and $minor -lt 19)) {
+    Fail "Node.js 22.19+ is required (found v$nodeVersion)"
   }
 
   Write-Info "Node.js v$nodeVersion ✓"
