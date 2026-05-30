@@ -353,10 +353,13 @@ export function loadConfigEnvFiles(profile: ConfigProfile): Record<string, strin
 export function createConfigValueReader(profile: ConfigProfile = 'server'): ConfigValueReader {
   const envFile = loadConfigEnvFiles(profile);
 
-  // Inject non-TL_ vars into process.env so providers can access them
-  //    (e.g. ANTHROPIC_API_KEY) — process.env takes precedence
+  // Inject config into process.env for downstream helpers. The client also
+  // exposes TL_* keys because provider SDK child processes read them directly;
+  // the server keeps TL_* isolated to avoid leaking control-plane values into
+  // client config when tests load both profiles in one process. Shell env wins.
   for (const [key, value] of Object.entries(envFile)) {
-    if (!key.startsWith('TL_') && !(key in process.env)) {
+    const expose = profile === 'client' || !key.startsWith('TL_');
+    if (expose && !(key in process.env)) {
       process.env[key] = value;
     }
   }

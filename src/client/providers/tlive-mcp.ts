@@ -1,13 +1,10 @@
 const TLIVE_MCP_SERVER_NAME = 'tlive';
-const TLIVE_MCP_TOOLS = [
-  'tlive_send_file',
-  'tlive_send_image',
-  'tlive_status',
-] as const;
+const TLIVE_MCP_TOOLS = ['tlive_send_file', 'tlive_send_image', 'tlive_status'] as const;
 
 type CodexConfigValue = string | number | boolean | CodexConfigValue[] | CodexConfigObject;
 type CodexConfigObject = { [key: string]: CodexConfigValue };
 type TliveMcpServerConfig = { type: 'http'; url: string; headers?: Record<string, string> };
+type CodexMcpServerConfig = { url: string; bearer_token_env_var?: string };
 
 export function tliveMcpAllowedClaudeTools(): string[] {
   return TLIVE_MCP_TOOLS.map((tool) => `mcp__${TLIVE_MCP_SERVER_NAME}__${tool}`);
@@ -22,12 +19,7 @@ export function tliveMcpServersForClaude(): Record<string, unknown> {
 export function tliveMcpConfigForCodex(): CodexConfigObject {
   return {
     mcp_servers: {
-      [TLIVE_MCP_SERVER_NAME]: {
-        ...tliveMcpServerConfig(),
-        tools: Object.fromEntries(
-          TLIVE_MCP_TOOLS.map((tool) => [tool, { approval_mode: 'approve' }]),
-        ),
-      },
+      [TLIVE_MCP_SERVER_NAME]: tliveMcpServerConfigForCodex(),
     },
   };
 }
@@ -43,6 +35,23 @@ function tliveMcpServerConfig(): TliveMcpServerConfig {
     url,
     ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
   };
+}
+
+function tliveMcpServerConfigForCodex(): CodexMcpServerConfig {
+  const config = tliveMcpServerConfig();
+  return {
+    url: config.url,
+    ...optionalBearerTokenEnvVar(),
+  };
+}
+
+function optionalBearerTokenEnvVar():
+  | Pick<CodexMcpServerConfig, 'bearer_token_env_var'>
+  | Record<string, never> {
+  if (process.env.TL_MCP_TOKEN?.trim()) return { bearer_token_env_var: 'TL_MCP_TOKEN' };
+  if (process.env.TL_REMOTE_TOKEN?.trim()) return { bearer_token_env_var: 'TL_REMOTE_TOKEN' };
+  if (process.env.TL_TOKEN?.trim()) return { bearer_token_env_var: 'TL_TOKEN' };
+  return {};
 }
 
 function defaultHttpMcpUrl(): string {

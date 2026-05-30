@@ -8,6 +8,7 @@ const SERVER_CONFIG_FILE = join(TLIVE_HOME, 'server.env');
 const LIVE_TEST_FILE = join(TLIVE_HOME, 'live-test.env');
 const TOPIC_SESSIONS_FILE = join(TLIVE_HOME, 'runtime', 'topic-sessions.json');
 const FILE_UPLOAD_URL = 'https://open.feishu.cn/open-apis/im/v1/files';
+const TENANT_TOKEN_URL = 'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal';
 
 function loadEnvFile(path) {
   const env = {};
@@ -119,17 +120,30 @@ async function uploadFile(token, filePath) {
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok || body.code !== 0) {
-    if (body.code === 99991679) {
-      fail(
-        'upload requires user scope im:resource:upload or im:resource; add the scope, publish the app, then re-run live:feishu:auth',
-      );
-    }
     fail(`upload failed code=${body.code ?? response.status} msg=${body.msg ?? response.statusText}`);
   }
 
   const fileKey = body.data?.file_key;
   if (!fileKey) fail('upload returned no file_key');
   return fileKey;
+}
+
+async function getTenantAccessToken() {
+  const appId = envValue('TL_FS_APP_ID');
+  const appSecret = envValue('TL_FS_APP_SECRET');
+  if (!appId || !appSecret) fail(`TL_FS_APP_ID/TL_FS_APP_SECRET are missing. Add them to ${SERVER_CONFIG_FILE}`);
+
+  const response = await fetch(TENANT_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.code !== 0) {
+    fail(`tenant token failed code=${body.code ?? response.status} msg=${body.msg ?? response.statusText}`);
+  }
+  if (!body.tenant_access_token) fail('tenant token response returned no tenant_access_token');
+  return body.tenant_access_token;
 }
 
 async function replyWithFile(token, rootMessageId, fileKey) {
@@ -156,10 +170,10 @@ async function replyWithFile(token, rootMessageId, fileKey) {
 
 const configEnv = loadEnvFile(SERVER_CONFIG_FILE);
 const liveEnv = loadEnvFile(LIVE_TEST_FILE);
-const token = envValue('FEISHU_TEST_USER_ACCESS_TOKEN');
+const userToken = envValue('FEISHU_TEST_USER_ACCESS_TOKEN');
 const { rootMessageId, filePath } = parseArgs(process.argv.slice(2));
 
-if (!token) fail('FEISHU_TEST_USER_ACCESS_TOKEN is missing. Run npm run live:feishu:auth first.');
+if (!userToken) fail('FEISHU_TEST_USER_ACCESS_TOKEN is missing. Run npm run live:feishu:auth first.');
 if (!rootMessageId) {
   usage();
   fail('rootMessageId is required.');
@@ -169,8 +183,9 @@ if (!filePath || !existsSync(filePath)) {
   fail('filePath is required and must exist.');
 }
 
-const fileKey = await uploadFile(token, filePath);
-const messageId = await replyWithFile(token, rootMessageId, fileKey);
+const tenantToken = await getTenantAccessToken();
+const fileKey = await uploadFile(tenantToken, filePath);
+const messageId = await replyWithFile(userToken, rootMessageId, fileKey);
 console.log(
   `[live-feishu-upload-file] uploaded ${JSON.stringify(filePath)} to root:${rootMessageId}; message_id=${messageId}`,
 );

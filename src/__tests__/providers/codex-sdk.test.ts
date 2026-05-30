@@ -33,9 +33,15 @@ import { CodexSDKProvider, toCodexReasoningEffort } from '../../client/providers
 
 describe('CodexSDKProvider', () => {
   const originalCodexHome = process.env.CODEX_HOME;
+  const originalTliveMcpToken = process.env.TL_MCP_TOKEN;
+  const originalTliveRemoteToken = process.env.TL_REMOTE_TOKEN;
+  const originalTliveToken = process.env.TL_TOKEN;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.TL_MCP_TOKEN;
+    delete process.env.TL_REMOTE_TOKEN;
+    delete process.env.TL_TOKEN;
     const thread = {
       id: 'thread-1',
       runStreamed: codexSdkMocks.runStreamed,
@@ -46,6 +52,9 @@ describe('CodexSDKProvider', () => {
 
   afterEach(() => {
     process.env.CODEX_HOME = originalCodexHome;
+    restoreEnv('TL_MCP_TOKEN', originalTliveMcpToken);
+    restoreEnv('TL_REMOTE_TOKEN', originalTliveRemoteToken);
+    restoreEnv('TL_TOKEN', originalTliveToken);
   });
 
   it('maps canonical max effort to Codex xhigh', () => {
@@ -138,13 +147,24 @@ describe('CodexSDKProvider', () => {
       config: {
         mcp_servers: {
           tlive: expect.objectContaining({
-            type: 'http',
             url: 'http://127.0.0.1:8081/mcp',
-            tools: {
-              tlive_send_file: { approval_mode: 'approve' },
-              tlive_send_image: { approval_mode: 'approve' },
-              tlive_status: { approval_mode: 'approve' },
-            },
+          }),
+        },
+      },
+    });
+  });
+
+  it('passes the TLive MCP bearer token through the Codex-supported env-var config', () => {
+    process.env.TL_REMOTE_TOKEN = 'remote-token';
+
+    new CodexLiveSession({ workingDirectory: '/repo' });
+
+    expect(codexSdkMocks.codexConstructor).toHaveBeenCalledWith({
+      config: {
+        mcp_servers: {
+          tlive: expect.objectContaining({
+            url: 'http://127.0.0.1:8081/mcp',
+            bearer_token_env_var: 'TL_REMOTE_TOKEN',
           }),
         },
       },
@@ -211,4 +231,9 @@ function deferred<T>(): {
     reject = promiseReject;
   });
   return { promise, resolve, reject };
+}
+
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
 }

@@ -85,11 +85,13 @@
 | `im:message.group_at_msg:readonly` | 读取群聊 @机器人 消息 | 推荐 |
 | `cardkit:card:read` | 读取卡片信息 | 推荐 |
 | `cardkit:card:write` | CardKit 流式卡片 | 推荐 |
-| `im:resource` | 上传图片和文件 | 可选 |
+| `im:resource` | 获取与上传图片、文件资源 | 图片/文件收发必需 |
 
 3. 确认权限都出现在权限列表中
 
 > **提示：** 使用批量导入方式可一次性开通所有权限，无需逐个搜索。
+
+> **图片/文件说明：** 如果只测试纯文本消息，`im:resource` 暂时用不到；但只要需要接收图片/文件附件，或让 tlive/Codex/Claude 通过飞书发回图片、文件，就必须开通 `im:resource`，并在新增权限后重新创建版本、发布审批。
 
 ## 第四步：配置事件订阅
 

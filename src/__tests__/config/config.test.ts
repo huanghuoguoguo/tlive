@@ -10,9 +10,12 @@ const ENV_KEYS = [
   'TL_FS_APP_ID',
   'TL_FS_APP_SECRET',
   'TL_DEFAULT_WORKDIR',
+  'TL_MCP_URL',
+  'TL_REMOTE_TOKEN',
   'TL_REMOTE_CLIENT_ID',
   'TL_REMOTE_CLIENT_NAME',
   'TL_REMOTE_CLIENT_NOTE',
+  'TL_REMOTE_SERVER_URL',
   'TL_REMOTE_WORKSPACES',
 ];
 
@@ -125,5 +128,23 @@ describe('role-specific config loading', () => {
     process.env.TL_REMOTE_CLIENT_ID = 'env-client';
 
     expect(loadConfig({ validateBridge: false }).remote.client.clientId).toBe('env-client');
+  });
+
+  it('exports role-specific TL env values for provider child processes', () => {
+    writeFileSync(
+      join(root, 'client.env'),
+      [
+        'TL_MCP_URL=http://server.example/mcp',
+        'TL_REMOTE_TOKEN=remote-token',
+        'TL_REMOTE_SERVER_URL=ws://server.example/tlive',
+      ].join('\n'),
+    );
+
+    const client = loadConfig({ validateBridge: false });
+
+    expect(client.remote.client.token).toBe('remote-token');
+    expect(process.env.TL_MCP_URL).toBe('http://server.example/mcp');
+    expect(process.env.TL_REMOTE_TOKEN).toBe('remote-token');
+    expect(process.env.TL_REMOTE_SERVER_URL).toBe('ws://server.example/tlive');
   });
 });
