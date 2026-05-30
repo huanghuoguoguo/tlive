@@ -134,18 +134,37 @@ describe('FeishuFormatter.formatQuestion', () => {
 describe('FeishuFormatter.formatVersionUpdate', () => {
   const formatter = new FeishuFormatter('zh');
 
-  it('includes release notes in the update card', () => {
+  it('uses clear version labels and a dedicated upgrade action', () => {
     const msg = formatter.formatVersionUpdate('chat1', {
       current: '0.14.0',
       latest: '0.14.1',
       publishedAt: '2026-05-24T00:00:00Z',
-      releaseNotes: '- 修复 Feishu live QA 路径\n- 新增真实测试工具',
+      releaseNotes:
+        "## What's Changed\n" +
+        '- 修复 Feishu live QA 路径 by @huanghuoguoguo in https://github.com/huanghuoguoguo/tlive/pull/122\n' +
+        'Full Changelog: https://github.com/huanghuoguoguo/tlive/compare/v0.14.0...v0.14.1',
     });
 
     const elements = getElements(msg as any);
+    const markdownText = findByTag(elements, 'markdown').map(e => e.content).join('\n');
+    const buttons = findButtons(elements);
 
-    expect(JSON.stringify(elements)).toContain('更新内容');
-    expect(JSON.stringify(elements)).toContain('修复 Feishu live QA 路径');
+    expect(markdownText).toContain('当前版本');
+    expect(markdownText).toContain('`v0.14.0`');
+    expect(markdownText).toContain('最新版本');
+    expect(markdownText).toContain('`v0.14.1`');
+    expect(markdownText).toContain('发布时间');
+    expect(markdownText.match(/发布时间/g)).toHaveLength(1);
+    expect(markdownText).toContain('更新内容');
+    expect(markdownText).toContain('修复 Feishu live QA 路径');
+    expect(markdownText).toContain('#122');
+    expect(markdownText).not.toContain('Full Changelog');
+    expect(markdownText).not.toContain('https://github.com/huanghuoguoguo/tlive');
+    expect(buttons).toContainEqual(
+      expect.objectContaining({
+        text: { tag: 'plain_text', content: '⬆️ 升级' },
+      }),
+    );
   });
 });
 

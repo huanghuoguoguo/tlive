@@ -138,8 +138,11 @@ export interface Translations {
 
   // --- versionUpdate ---
   'version.title': string;
+  'version.current': string;
+  'version.latest': string;
   'version.released': string;
   'version.notes': string;
+  'version.upgradeAction': string;
 
   // --- multiSelectToggle ---
   'multiSelect.hint': string;
@@ -348,6 +351,7 @@ export interface Translations {
   'cmd.upgrade.notesHint': string;
   'cmd.upgrade.checkFailed': string;
   'cmd.upgrade.alreadyLatest': string;
+  'cmd.upgrade.alreadyRunning': string;
   'cmd.upgrade.gitCheckout': string;
   'cmd.upgrade.starting': string;
   'cmd.upgrade.failed': string;

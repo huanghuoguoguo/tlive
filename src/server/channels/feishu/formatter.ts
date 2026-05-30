@@ -69,6 +69,25 @@ import { buildDiagnoseElements } from './format-diagnostics.js';
 import { buildSessionListElements } from './format-session-list.js';
 import { buttonElements, collapsiblePanel, markdownElement } from './card-elements.js';
 
+function compactReleaseNotes(notes?: string): string {
+  if (!notes?.trim()) return '';
+  return notes
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => !/^Full Changelog:/i.test(line.trim()))
+    .map((line) =>
+      line
+        .replace(/\s+in\s+https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/(\d+)/g, ' (#$1)')
+        .replace(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/(\d+)/g, '#$1')
+        .replace(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/compare\/\S+/g, '')
+        .replace(/[ \t]{2,}/g, ' ')
+        .trimEnd(),
+    )
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+}
+
 export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> {
   constructor(
     private readonly locale: Locale = 'zh',
@@ -437,24 +456,23 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
           day: 'numeric',
         })
       : '';
-    const releaseNotes = data.releaseNotes?.trim();
-    const elements: FeishuCardElement[] = [
-      this.md(
-        `**${t('version.title').replace('🔄 **', '').replace('**', '')}**\nv${data.current}`,
-      ),
-      this.md(`**${t('version.released')}**\nv${data.latest}`),
-    ];
-    if (dateStr) {
-      elements.push(this.md(`**${t('version.released')}**\n${dateStr}`));
-    }
+    const releaseNotes = compactReleaseNotes(data.releaseNotes);
+    const summary = [
+      `**${t('version.current')}** \`v${data.current}\``,
+      `**${t('version.latest')}** \`v${data.latest}\``,
+      dateStr ? `**${t('version.released')}** ${dateStr}` : undefined,
+    ]
+      .filter(Boolean)
+      .join('\n');
+    const elements: FeishuCardElement[] = [this.md(summary)];
     if (releaseNotes) {
       elements.push(
-        this.md(`**${t('version.notes')}**\n${truncate(releaseNotes, 420)}`),
+        this.md(`**${t('version.notes')}**\n${truncate(releaseNotes, 360)}`),
       );
     }
     const buttons: Button[] = [
       {
-        label: `⬆️ ${t('home.labelSwitch')}`,
+        label: `⬆️ ${t('version.upgradeAction')}`,
         callbackData: actionCallback('upgrade', `confirm:${data.latest}`),
         style: 'primary',
       },

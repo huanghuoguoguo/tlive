@@ -136,8 +136,11 @@ export const en: Translations = {
 
   // --- versionUpdate ---
   'version.title': '🔄 **Update Available**',
+  'version.current': 'Current version',
+  'version.latest': 'Latest version',
   'version.released': 'Released',
   'version.notes': 'What changed',
+  'version.upgradeAction': 'Upgrade',
 
   // --- multiSelectToggle ---
   'multiSelect.hint': '💬 Tap options to toggle, then Submit',
@@ -353,6 +356,8 @@ export const en: Translations = {
   'cmd.upgrade.notesHint': '📋 View changelog:\nhttps://github.com/huanghuoguoguo/tlive/releases',
   'cmd.upgrade.checkFailed': '⚠️ Cannot check for updates, please try again later',
   'cmd.upgrade.alreadyLatest': '✅ Already at latest version v{version}',
+  'cmd.upgrade.alreadyRunning':
+    '🔄 Upgrade is already in progress{version}. Please do not click repeatedly.',
   'cmd.upgrade.gitCheckout':
     '⚠️ Running from git checkout, please update manually with git or use release version.',
   'cmd.upgrade.starting': '🔄 Starting upgrade: v{current} → v{latest}\nService will restart...',

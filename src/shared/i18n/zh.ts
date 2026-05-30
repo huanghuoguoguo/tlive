@@ -136,8 +136,11 @@ export const zh: Translations = {
 
   // --- versionUpdate ---
   'version.title': '🔄 **发现新版本**',
+  'version.current': '当前版本',
+  'version.latest': '最新版本',
   'version.released': '发布时间',
   'version.notes': '更新内容',
+  'version.upgradeAction': '升级',
 
   // --- multiSelectToggle ---
   'multiSelect.hint': '💬 点击选项切换，然后按 Submit 确认',
@@ -345,6 +348,7 @@ export const zh: Translations = {
   'cmd.upgrade.notesHint': '📋 查看更新内容：\nhttps://github.com/huanghuoguoguo/tlive/releases',
   'cmd.upgrade.checkFailed': '⚠️ 无法检查更新，请稍后重试',
   'cmd.upgrade.alreadyLatest': '✅ 已是最新版本 v{version}',
+  'cmd.upgrade.alreadyRunning': '🔄 升级已在进行中{version}，请不要重复点击。',
   'cmd.upgrade.gitCheckout':
     '⚠️ 当前运行自 git checkout，请手动用 git 更新，或改用 release 安装版。',
   'cmd.upgrade.starting': '🔄 开始升级：v{current} → v{latest}\n服务将自动重启...',

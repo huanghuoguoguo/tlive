@@ -71,6 +71,7 @@ export class RemoteClientWorker {
   private readonly sessions = new Map<string, LocalSessionEntry>();
   private readonly activeTurns = new Map<string, ActiveTurn>();
   private readonly pendingInteractions = new Map<string, PendingInteraction>();
+  private upgradingToVersion: string | undefined;
 
   constructor(
     private readonly providers: AgentProviderRegistry,
@@ -482,10 +483,25 @@ export class RemoteClientWorker {
 
       if (message.action === 'client.upgrade') {
         if (!message.version) throw new Error('version is required');
+        if (this.upgradingToVersion) {
+          this.send({
+            type: 'client.command.result',
+            commandId: message.commandId,
+            ok: true,
+            stdout: `client upgrade already in progress: ${this.upgradingToVersion}`,
+          });
+          return;
+        }
         if (this.activeTurns.size > 0) {
           throw new Error('client has active turns; retry after current tasks finish');
         }
-        this.startSelfUpgrade(message.version);
+        this.upgradingToVersion = message.version;
+        try {
+          this.startSelfUpgrade(message.version);
+        } catch (err) {
+          this.upgradingToVersion = undefined;
+          throw err;
+        }
         this.send({
           type: 'client.command.result',
           commandId: message.commandId,

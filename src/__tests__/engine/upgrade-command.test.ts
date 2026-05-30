@@ -126,6 +126,31 @@ describe('UpgradeCommand', () => {
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 
+  it('deduplicates repeated upgrade requests while an upgrade is in flight', async () => {
+    checkForUpdatesMock.mockResolvedValue({ hasUpdate: true, current: '0.13.3', latest: '0.13.4' });
+    checkForUpdatesMock.mockClear();
+
+    const { UpgradeCommand } = await import('../../server/engine/commands/upgrade.js');
+    const send = vi.fn().mockResolvedValue(undefined);
+    const command = new UpgradeCommand();
+
+    const ctx = {
+      adapter: { send },
+      msg: { chatId: 'chat-1' },
+      parts: ['/upgrade'],
+      locale: 'zh',
+    } as any;
+
+    await command.execute(ctx);
+    await command.execute(ctx);
+
+    expect(checkForUpdatesMock).toHaveBeenCalledTimes(1);
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('升级已在进行中') }),
+    );
+  });
+
   it('refuses upgrade when running from git checkout', async () => {
     checkForUpdatesMock.mockResolvedValue({ hasUpdate: true, current: '0.13.3', latest: '0.13.4' });
 

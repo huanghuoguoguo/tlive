@@ -6,6 +6,42 @@ import { dirname, join } from 'node:path';
 import { getTliveHome } from '../../../shared/core/path.js';
 import { t } from '../../../shared/i18n/index.js';
 
+const UPGRADE_IN_FLIGHT_TTL_MS = 10 * 60 * 1000;
+
+interface UpgradeInFlight {
+  startedAt: number;
+  current?: string;
+  latest?: string;
+}
+
+let upgradeInFlight: UpgradeInFlight | null = null;
+
+function activeUpgradeInFlight(now = Date.now()): UpgradeInFlight | null {
+  if (!upgradeInFlight) return null;
+  if (now - upgradeInFlight.startedAt <= UPGRADE_IN_FLIGHT_TTL_MS) return upgradeInFlight;
+  upgradeInFlight = null;
+  return null;
+}
+
+function beginUpgradeInFlight(): UpgradeInFlight | null {
+  if (activeUpgradeInFlight()) return null;
+  upgradeInFlight = { startedAt: Date.now() };
+  return upgradeInFlight;
+}
+
+function clearUpgradeInFlight(lock: UpgradeInFlight): void {
+  if (upgradeInFlight === lock) {
+    upgradeInFlight = null;
+  }
+}
+
+function upgradeAlreadyRunningText(lock: UpgradeInFlight): string {
+  const version = lock.latest
+    ? `：v${lock.current || '?'} → v${lock.latest}`
+    : '，正在检查版本';
+  return t('cmd.upgrade.alreadyRunning').replace('{version}', version);
+}
+
 function resolvePackageRoot(
   entryPath = process.argv[1],
   override = process.env.TLIVE_PACKAGE_ROOT,
@@ -47,10 +83,29 @@ export class UpgradeCommand extends BaseCommand {
       return true;
     }
 
+    const active = activeUpgradeInFlight();
+    if (active) {
+      await this.send(ctx, {
+        chatId: ctx.msg.chatId,
+        text: upgradeAlreadyRunningText(active),
+      });
+      return true;
+    }
+
+    const lock = beginUpgradeInFlight();
+    if (!lock) {
+      await this.send(ctx, {
+        chatId: ctx.msg.chatId,
+        text: upgradeAlreadyRunningText(activeUpgradeInFlight() ?? { startedAt: Date.now() }),
+      });
+      return true;
+    }
+
     // Check for updates first
-    const info = await checkForUpdates();
+    const info = await checkForUpdates().catch(() => null);
 
     if (!info) {
+      clearUpgradeInFlight(lock);
       await this.send(ctx, {
         chatId: ctx.msg.chatId,
         text: t('cmd.upgrade.checkFailed'),
@@ -59,6 +114,7 @@ export class UpgradeCommand extends BaseCommand {
     }
 
     if (!info.hasUpdate) {
+      clearUpgradeInFlight(lock);
       await this.send(ctx, {
         chatId: ctx.msg.chatId,
         text: t('cmd.upgrade.alreadyLatest').replace('{version}', info.current),
@@ -66,12 +122,16 @@ export class UpgradeCommand extends BaseCommand {
       return true;
     }
 
-    // Execute upgrade directly
-    const { spawn } = await import('node:child_process');
-    const packageRoot = resolvePackageRoot();
+    lock.current = info.current;
+    lock.latest = info.latest;
 
     try {
+      // Execute upgrade directly
+      const { spawn } = await import('node:child_process');
+      const packageRoot = resolvePackageRoot();
+
       if (existsSync(join(packageRoot, '.git'))) {
+        clearUpgradeInFlight(lock);
         await this.send(ctx, {
           chatId: ctx.msg.chatId,
           text: t('cmd.upgrade.gitCheckout'),
@@ -106,6 +166,7 @@ export class UpgradeCommand extends BaseCommand {
 
       setTimeout(() => process.exit(0), 250);
     } catch (err: any) {
+      clearUpgradeInFlight(lock);
       await this.send(ctx, {
         chatId: ctx.msg.chatId,
         text: t('cmd.upgrade.failed').replace(
