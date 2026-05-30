@@ -472,6 +472,7 @@ export async function main() {
       lastSeenAt: new Date(client.lastSeenAt).toISOString(),
       host: client.host,
       remoteAddress: client.remoteAddress,
+      upgrade: client.upgrade,
       version: client.version,
     }));
   };

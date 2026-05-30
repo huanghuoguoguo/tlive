@@ -1,8 +1,10 @@
 import { WebSocket, type RawData } from 'ws';
+import { existsSync } from 'node:fs';
 import { hostname, homedir, networkInterfaces, platform } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { readdir, stat } from 'node:fs/promises';
-import { exec } from 'node:child_process';
+import { exec, spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type {
   AgentProviderRegistry,
@@ -154,6 +156,7 @@ export class RemoteClientWorker {
       workspaces: this.options.workspaces.map((path) => ({ path: resolve(path) })),
       sessions: this.scanSessions(),
       host: buildClientHostDescriptor(),
+      upgrade: buildClientUpgradeDescriptor(),
       version: this.options.version,
     };
   }
@@ -477,6 +480,25 @@ export class RemoteClientWorker {
         return;
       }
 
+      if (message.action === 'client.upgrade') {
+        if (!message.version) throw new Error('version is required');
+        if (this.activeTurns.size > 0) {
+          throw new Error('client has active turns; retry after current tasks finish');
+        }
+        this.startSelfUpgrade(message.version);
+        this.send({
+          type: 'client.command.result',
+          commandId: message.commandId,
+          ok: true,
+          stdout: `client upgrade started: ${message.version}`,
+        });
+        setTimeout(() => {
+          this.stop();
+          process.exit(0);
+        }, 250).unref();
+        return;
+      }
+
       throw new Error(`Unsupported client command: ${message.action}`);
     } catch (err) {
       const nodeErr = err as NodeJS.ErrnoException & {
@@ -552,6 +574,24 @@ export class RemoteClientWorker {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
     this.socket.send(encodeRemoteProtocolMessage(message));
   }
+
+  private startSelfUpgrade(version: string): void {
+    const packageRoot = resolvePackageRoot();
+    const cliPath = join(packageRoot, 'scripts', 'cli.js');
+    if (!existsSync(cliPath)) {
+      throw new Error(`tlive CLI not found: ${cliPath}`);
+    }
+    const child = spawn(process.execPath, [cliPath, 'upgrade', '--client', version], {
+      detached: true,
+      stdio: 'ignore',
+      env: {
+        ...process.env,
+        TLIVE_UPGRADE_PARENT_PID: String(process.pid),
+        TLIVE_UPGRADE_FROM_VERSION: this.options.version ?? '',
+      },
+    });
+    child.unref();
+  }
 }
 
 export function defaultRemoteClientName(): string {
@@ -564,6 +604,23 @@ function buildClientHostDescriptor(): RemoteClientHostDescriptor {
     platform: platform(),
     ipAddresses: localIpv4Addresses(),
   };
+}
+
+function buildClientUpgradeDescriptor(): ClientHelloMessage['upgrade'] {
+  const installRoot = resolvePackageRoot();
+  return {
+    supported: !existsSync(join(installRoot, '.git')),
+    installRoot,
+  };
+}
+
+function resolvePackageRoot(): string {
+  const moduleDir = dirname(fileURLToPath(import.meta.url));
+  if (basename(moduleDir) === 'dist') return dirname(moduleDir);
+  if (basename(moduleDir) === 'client' && basename(dirname(moduleDir)) === 'src') {
+    return dirname(dirname(moduleDir));
+  }
+  return dirname(moduleDir);
 }
 
 function localIpv4Addresses(): string[] {

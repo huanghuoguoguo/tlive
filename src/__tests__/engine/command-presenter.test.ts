@@ -195,6 +195,41 @@ describe('command presenter', () => {
       expect(rendered).not.toContain('版本:');
     });
 
+    it('shows an upgrade action for outdated upgrade-capable clients', () => {
+      const msg = presentHome('chat-1', {
+        view: 'nodes',
+        workspace: { cwd: '/home/user/project' },
+        task: { active: false },
+        permission: { mode: 'off' },
+        bridge: { healthy: true, version: '0.14.4' },
+        session: {},
+        clients: {
+          defaultClientId: 'worker-1',
+          entries: [
+            {
+              clientId: 'worker-1',
+              name: 'worker-1',
+              online: true,
+              isDefault: true,
+              activeTurns: 0,
+              version: '0.14.3',
+              upgrade: { supported: true, installRoot: '/opt/tlive' },
+              workspaces: [{ path: '/home/user/project', isDefault: true }],
+              providers: [
+                { kind: 'codex', displayName: 'Codex', available: true, isDefault: true },
+              ],
+            },
+          ],
+        },
+      });
+
+      const formatted = feishuFormatter.format(msg);
+      const rendered = JSON.stringify(formatted.feishuElements);
+      expect(rendered).toContain('版本: `0.14.3` → `0.14.4`');
+      expect(rendered).toContain('升级节点');
+      expect(rendered).toContain('action:client-upgrade:worker-1:0.14.4');
+    });
+
     it('renders the directory panel with clickable folders', () => {
       const msg = presentHome('chat-1', {
         view: 'files',

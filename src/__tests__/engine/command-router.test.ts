@@ -134,6 +134,7 @@ describe('CommandRouter /settings', () => {
     providers?: AgentProviderRegistry;
     topicSessions?: TopicSessionManager;
     getExecutionClients?: () => HomeClientEntry[];
+    remoteClientRegistry?: any;
   } = {}) {
     const state = options.state ?? new SessionStateManager();
     const topicSessions = options.topicSessions ?? new TopicSessionManager();
@@ -157,6 +158,7 @@ describe('CommandRouter /settings', () => {
         undefined,
         topicSessions,
         options.getExecutionClients,
+        options.remoteClientRegistry,
       ),
     };
   }
@@ -296,6 +298,51 @@ describe('CommandRouter /settings', () => {
       }),
     );
     expect(adapter.send).not.toHaveBeenCalled();
+  });
+
+  it('sends a remote client upgrade request from a workbench action', async () => {
+    const upgradeClient = vi.fn().mockResolvedValue({
+      type: 'client.command.result',
+      commandId: 'cmd-upgrade',
+      ok: true,
+    });
+    const { router: upgradeRouter } = createTopicRouter({
+      getExecutionClients: () => [
+        {
+          clientId: 'worker-1',
+          name: 'worker-1',
+          online: true,
+          isDefault: true,
+          activeTurns: 0,
+          version: '0.14.3',
+          upgrade: { supported: true, installRoot: '/opt/tlive' },
+          workspaces: [{ path: '/tmp/project', isDefault: true }],
+          providers: [
+            { kind: 'codex', displayName: 'Codex', available: true, isDefault: true },
+          ],
+        },
+      ],
+      remoteClientRegistry: { upgradeClient },
+    });
+
+    const handled = await upgradeRouter.handleAction(
+      adapter,
+      {
+        channelType: 'feishu',
+        chatId: 'c1',
+        scopeId: 'c1',
+        userId: 'u1',
+        text: '',
+        messageId: 'home-card-1',
+      } as any,
+      { name: 'client-upgrade', args: ['worker-1', '0.14.4'] },
+    );
+
+    expect(handled).toBe(true);
+    expect(upgradeClient).toHaveBeenCalledWith('worker-1', '0.14.4');
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('已向节点 worker-1 发送升级请求') }),
+    );
   });
 
   it('changes the current directory from the workbench directory panel in place', async () => {

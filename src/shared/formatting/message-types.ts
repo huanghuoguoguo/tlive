@@ -145,6 +145,10 @@ export interface HomeClientEntry {
     ipAddresses?: string[];
   };
   remoteAddress?: string;
+  upgrade?: {
+    supported: boolean;
+    installRoot?: string;
+  };
   version?: string;
 }
 
@@ -231,6 +235,8 @@ export interface HomeData {
     channelInfo?: ChannelInfo[];
     /** Queue info for active session */
     queueInfo?: { depth: number; max: number };
+    /** Server/bridge version */
+    version?: string;
   };
   help?: {
     /** Help entries from command registry */

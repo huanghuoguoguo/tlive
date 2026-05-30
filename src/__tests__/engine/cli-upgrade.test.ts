@@ -236,6 +236,69 @@ describe('CLI upgrade flow', () => {
     processesToKill.push(Number(readFileSync(join(runtimeDir, 'client.pid'), 'utf-8')));
   });
 
+  it('upgrades and restarts only the remote client daemon', async () => {
+    const tliveHome = join(tmpRoot, 'home');
+    const runtimeDir = join(tliveHome, 'runtime');
+    const appDir = join(tmpRoot, 'app');
+    const releaseDir = join(tmpRoot, 'release-app');
+    const tarball = join(tmpRoot, 'tlive-v0.13.10.tar.gz');
+    mkdirSync(runtimeDir, { recursive: true });
+    mkdirSync(appDir, { recursive: true });
+    mkdirSync(releaseDir, { recursive: true });
+
+    writePackage(appDir, '0.13.9');
+    copyCli(appDir);
+    writeBridgeEntry(appDir, '0.13.9');
+    writeClientEntry(appDir);
+
+    writePackage(releaseDir, '0.13.10');
+    copyCli(releaseDir);
+    writeBridgeEntry(releaseDir, '0.13.10');
+    writeClientEntry(releaseDir);
+    execFileSync('tar', ['czf', tarball, '-C', releaseDir, '.']);
+
+    const baseEnv = {
+      ...process.env,
+      TLIVE_HOME: tliveHome,
+      TLIVE_RELEASE_TARBALL_PATH: tarball,
+    };
+    const startResult = spawnSync(
+      process.execPath,
+      [join(appDir, 'scripts', 'cli.js'), 'client', '--daemon'],
+      {
+        encoding: 'utf-8',
+        timeout: 10000,
+        env: baseEnv,
+      },
+    );
+    expect(startResult.status, `${startResult.stdout}\n${startResult.stderr}`).toBe(0);
+    const oldClientPid = Number(readFileSync(join(runtimeDir, 'client.pid'), 'utf-8'));
+    processesToKill.push(oldClientPid);
+    expect(existsSync(join(runtimeDir, 'bridge.pid'))).toBe(false);
+
+    const result = spawnSync(
+      process.execPath,
+      [join(appDir, 'scripts', 'cli.js'), 'upgrade', '--client', '0.13.10'],
+      {
+        encoding: 'utf-8',
+        timeout: 90000,
+        env: baseEnv,
+      },
+    );
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(JSON.parse(readFileSync(join(appDir, 'package.json'), 'utf-8')).version).toBe(
+      '0.13.10',
+    );
+    expect(isRunning(oldClientPid)).toBe(false);
+    expect(existsSync(join(runtimeDir, 'bridge.pid'))).toBe(false);
+
+    const newClientPid = Number(readFileSync(join(runtimeDir, 'client.pid'), 'utf-8'));
+    expect(newClientPid).not.toBe(oldClientPid);
+    expect(isRunning(newClientPid)).toBe(true);
+    processesToKill.push(newClientPid);
+  });
+
   it('keeps upgrade restart standalone when requested', async () => {
     const tliveHome = join(tmpRoot, 'home');
     const runtimeDir = join(tliveHome, 'runtime');

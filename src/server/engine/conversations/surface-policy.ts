@@ -19,6 +19,7 @@ const WORKBENCH_ONLY_COMMANDS = new Set([
   'home-refresh',
   'home-view',
   'home-dir',
+  'client-upgrade',
   'continue',
 ]);
 
@@ -42,7 +43,13 @@ export function commandRejectionForSurface(
   if (surface !== 'topic') return undefined;
   const cmd = normalizeCommandName(command);
   if (cmd === 'tlive') return t('surface.tliveRejection');
-  if (cmd === 'home' || cmd === 'home-refresh' || cmd === 'home-view' || cmd === 'home-dir') {
+  if (
+    cmd === 'home' ||
+    cmd === 'home-refresh' ||
+    cmd === 'home-view' ||
+    cmd === 'home-dir' ||
+    cmd === 'client-upgrade'
+  ) {
     return t('surface.homeRejection');
   }
   if (cmd === 'continue') return t('surface.continueRejection');

@@ -561,12 +561,12 @@ function localRemoteServerUrl(config) {
   return `ws://127.0.0.1:${port}${path}`;
 }
 
-function startLocalClient(clientConfig = loadConfigEnv('client'), serverConfig = loadConfigEnv('server')) {
+function spawnClientDaemon(args = [], envOverrides = {}, label = 'Client', clientConfig = loadConfigEnv('client')) {
   ensureDirs();
 
   const existing = getLocalClientPid();
   if (existing) {
-    console.log(`Local client is already running (PID ${existing})`);
+    console.log(`${label} is already running (PID ${existing})`);
     return existing;
   }
 
@@ -577,15 +577,10 @@ function startLocalClient(clientConfig = loadConfigEnv('client'), serverConfig =
   const env = applyDefaultWorkdir({
     ...clientConfig,
     ...process.env,
-    TL_REMOTE_TOKEN:
-      process.env.TL_REMOTE_TOKEN ||
-      clientConfig.TL_REMOTE_TOKEN ||
-      serverConfig.TL_REMOTE_TOKEN ||
-      serverConfig.TL_TOKEN,
-    TL_REMOTE_SERVER_URL: localRemoteServerUrl(serverConfig),
+    ...envOverrides,
   });
 
-  const child = spawn(process.execPath, [CLIENT_ENTRY, '--name', 'local'], {
+  const child = spawn(process.execPath, [CLIENT_ENTRY, ...args], {
     detached: true,
     windowsHide: true,
     stdio: 'ignore',
@@ -595,8 +590,28 @@ function startLocalClient(clientConfig = loadConfigEnv('client'), serverConfig =
   writeFileSync(CLIENT_PID, String(child.pid));
   child.unref();
 
-  console.log(`Local client started (PID ${child.pid})`);
+  console.log(`${label} started (PID ${child.pid})`);
   return child.pid;
+}
+
+function startConfiguredClient(clientConfig = loadConfigEnv('client')) {
+  return spawnClientDaemon([], {}, 'Client', clientConfig);
+}
+
+function startLocalClient(clientConfig = loadConfigEnv('client'), serverConfig = loadConfigEnv('server')) {
+  return spawnClientDaemon(
+    ['--name', 'local'],
+    {
+      TL_REMOTE_TOKEN:
+        process.env.TL_REMOTE_TOKEN ||
+        clientConfig.TL_REMOTE_TOKEN ||
+        serverConfig.TL_REMOTE_TOKEN ||
+        serverConfig.TL_TOKEN,
+      TL_REMOTE_SERVER_URL: localRemoteServerUrl(serverConfig),
+    },
+    'Local client',
+    clientConfig,
+  );
 }
 
 function daemonStart(options = {}) {
@@ -814,6 +829,9 @@ Service Management:
   tlive server               Start server and local worker client
   tlive server --standalone  Start only the server control plane
   tlive client [options]     Run a remote worker client in the foreground
+  tlive client --daemon      Run a remote worker client in the background
+  tlive client restart       Restart the background remote worker client
+  tlive upgrade --client     Upgrade only the remote worker client install
   tlive stop                 Stop IM Bridge daemon
   tlive restart              Restart IM Bridge daemon
   tlive status               Show Bridge status
@@ -889,6 +907,45 @@ switch (command) {
   }
 
   case 'client': {
+    const subcommand = args[0];
+    if (subcommand === '--daemon' || subcommand === 'start') {
+      try {
+        startConfiguredClient();
+      } catch (err) {
+        console.error(`Failed to start client: ${err.message || err}`);
+        process.exit(1);
+      }
+      break;
+    }
+    if (subcommand === 'restart') {
+      try {
+        const stopped = await stopLocalClientIfRunning();
+        if (stopped) console.log('Client stopped.');
+        startConfiguredClient();
+      } catch (err) {
+        console.error(`Failed to restart client: ${err.message || err}`);
+        process.exit(1);
+      }
+      break;
+    }
+    if (subcommand === 'stop') {
+      const stopped = await stopLocalClientIfRunning();
+      console.log(stopped ? 'Client stopped.' : 'Client is not running.');
+      break;
+    }
+    if (subcommand === 'status') {
+      const pid = getLocalClientPid();
+      console.log(pid ? `Client: running (PID ${pid})` : 'Client: not running');
+      break;
+    }
+    if (subcommand === 'upgrade') {
+      const r = spawnSync(process.execPath, [join(PACKAGE_ROOT, 'scripts', 'cli.js'), 'upgrade', '--client', ...args.slice(1)], {
+        stdio: 'inherit',
+        env: process.env,
+      });
+      if (r.status) process.exit(r.status);
+      break;
+    }
     if (!existsSync(CLIENT_ENTRY)) {
       console.error(`Client worker not built: ${CLIENT_ENTRY}`);
       process.exit(1);
@@ -949,8 +1006,12 @@ switch (command) {
     const current = getVersion();
     const fromVersion = process.env.TLIVE_UPGRADE_FROM_VERSION || current;
     const upgradeStandalone = args.includes('--standalone');
+    const upgradeClientOnly = args.includes('--client');
     const requestedVersion = normalizeRequestedVersion(args.find((arg) => !arg.startsWith('--')));
-    const bridgeWasRunning = Boolean(getBridgePid()) || Boolean(process.env.TLIVE_UPGRADE_PARENT_PID);
+    const parentPid = Number.parseInt(process.env.TLIVE_UPGRADE_PARENT_PID || '', 10);
+    const bridgeWasRunning = !upgradeClientOnly && (Boolean(getBridgePid()) || Boolean(parentPid));
+    const clientWasRunning =
+      upgradeClientOnly && (Boolean(getLocalClientPid()) || Boolean(parentPid));
     const shouldNotifyUpgrade = bridgeWasRunning || Boolean(process.env.TLIVE_UPGRADE_CHAT_ID);
     console.log(`Current version: ${current}`);
 
@@ -995,8 +1056,32 @@ switch (command) {
           writeUpgradeResult({ success: false, version: current, previousVersion: fromVersion, error: errorMsg });
         }
         process.exit(1);
+      } else if (upgradeClientOnly) {
+        if (Number.isFinite(parentPid) && parentPid > 0) {
+          console.log(`Waiting for running client (PID ${parentPid}) to exit...`);
+          try {
+            await waitForProcessExit(parentPid, 60000);
+          } catch {
+            await terminateProcess(parentPid, 'parent client', 10000);
+          }
+        } else if (getLocalClientPid()) {
+          await stopLocalClientIfRunning(30000);
+        }
+
+        console.log('Upgrading client from GitHub Release package...');
+        const backupDir = await upgradeFromRelease(latest);
+        console.log(`\nNew version installed at: ${PACKAGE_ROOT}`);
+        console.log(`Previous version backed up at: ${backupDir}`);
+
+        if (clientWasRunning) {
+          try {
+            startConfiguredClient();
+          } catch (startErr) {
+            restoreBackup(backupDir);
+            throw new Error(`Client upgrade rolled back because the new client failed to start: ${startErr.message || startErr}`);
+          }
+        }
       } else {
-        const parentPid = Number.parseInt(process.env.TLIVE_UPGRADE_PARENT_PID || '', 10);
         if (Number.isFinite(parentPid) && parentPid > 0) {
           console.log(`Waiting for running bridge (PID ${parentPid}) to exit...`);
           try {

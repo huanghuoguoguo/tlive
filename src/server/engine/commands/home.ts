@@ -126,6 +126,65 @@ export class HomeDirectoryCommand extends BaseCommand {
   }
 }
 
+export class ClientUpgradeCommand extends BaseCommand {
+  readonly name = '/client-upgrade';
+  readonly quick = true;
+  readonly helpCategory = 'status' as const;
+  readonly description = undefined;
+
+  async execute(ctx: CommandContext): Promise<boolean> {
+    const clientId = ctx.parts[1]?.trim();
+    if (!clientId) {
+      await this.send(ctx, { chatId: ctx.msg.chatId, text: '⚠️ 缺少执行节点 ID。' });
+      return true;
+    }
+    const home = await ctx.helpers.buildHomePayload(ctx.msg.channelType, ctx.scopeId, ctx.locale);
+    const client = home.clients?.entries.find((entry) => entry.clientId === clientId);
+    if (!client) {
+      await this.send(ctx, { chatId: ctx.msg.chatId, text: `⚠️ 执行节点不在线: ${clientId}` });
+      return true;
+    }
+    if (!client.upgrade?.supported) {
+      await this.send(ctx, {
+        chatId: ctx.msg.chatId,
+        text: `⚠️ 节点 ${clientId} 不支持远程自升级，请先在节点机器上手动升级一次。`,
+      });
+      return true;
+    }
+    if (client.activeTurns > 0) {
+      await this.send(ctx, {
+        chatId: ctx.msg.chatId,
+        text: `⚠️ 节点 ${clientId} 正在执行任务，任务结束后再升级。`,
+      });
+      return true;
+    }
+    const version = ctx.parts[2]?.trim() || home.bridge.version;
+    if (!version) {
+      await this.send(ctx, { chatId: ctx.msg.chatId, text: '⚠️ 无法确定目标版本。' });
+      return true;
+    }
+    if (!ctx.services.remoteClientRegistry) {
+      await this.send(ctx, { chatId: ctx.msg.chatId, text: '⚠️ remote client registry 未启用。' });
+      return true;
+    }
+
+    const result = await ctx.services.remoteClientRegistry.upgradeClient(clientId, version);
+    if (!result.ok) {
+      await this.send(ctx, {
+        chatId: ctx.msg.chatId,
+        text: `⚠️ 节点升级请求失败: ${result.error || result.stderr || 'unknown error'}`,
+      });
+      return true;
+    }
+
+    await this.send(ctx, {
+      chatId: ctx.msg.chatId,
+      text: `✅ 已向节点 ${clientId} 发送升级请求：${client.version || 'unknown'} → ${version}。节点会短暂断开并自动重连。`,
+    });
+    return true;
+  }
+}
+
 const TOPIC_DETAIL_LIMIT = 8;
 const HISTORY_DETAIL_LIMIT = 10;
 

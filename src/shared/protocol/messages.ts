@@ -62,6 +62,11 @@ export interface RemoteClientHostDescriptor {
   ipAddresses?: string[];
 }
 
+export interface RemoteClientUpgradeDescriptor {
+  supported: boolean;
+  installRoot?: string;
+}
+
 export interface RemoteDirectoryEntry {
   name: string;
   path: string;
@@ -78,6 +83,7 @@ export interface ClientHelloMessage {
   workspaces: RemoteWorkspaceDescriptor[];
   sessions?: RemoteSessionDescriptor[];
   host?: RemoteClientHostDescriptor;
+  upgrade?: RemoteClientUpgradeDescriptor;
   version?: string;
 }
 
@@ -154,7 +160,7 @@ export interface ControlResultMessage {
   error?: string;
 }
 
-export type ClientCommandAction = 'path.stat' | 'path.list' | 'shell.exec';
+export type ClientCommandAction = 'path.stat' | 'path.list' | 'shell.exec' | 'client.upgrade';
 
 export interface ClientCommandMessage {
   type: 'client.command';
@@ -163,6 +169,7 @@ export interface ClientCommandMessage {
   path?: string;
   cwd?: string;
   command?: string;
+  version?: string;
   timeoutMs?: number;
   maxBufferBytes?: number;
 }
@@ -266,6 +273,12 @@ const clientHelloSchema = z.object({
       ipAddresses: z.array(z.string()).optional(),
     })
     .optional(),
+  upgrade: z
+    .object({
+      supported: z.boolean(),
+      installRoot: z.string().optional(),
+    })
+    .optional(),
   version: z.string().optional(),
 });
 
@@ -319,10 +332,11 @@ export const remoteProtocolMessageSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('client.command'),
     commandId: z.string(),
-    action: z.enum(['path.stat', 'path.list', 'shell.exec']),
+    action: z.enum(['path.stat', 'path.list', 'shell.exec', 'client.upgrade']),
     path: z.string().optional(),
     cwd: z.string().optional(),
     command: z.string().optional(),
+    version: z.string().optional(),
     timeoutMs: z.number().int().positive().optional(),
     maxBufferBytes: z.number().int().positive().optional(),
   }),

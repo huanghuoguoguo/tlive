@@ -20,6 +20,7 @@ import type { TopicSessionManager, TopicSessionRecord } from '../engine/state/to
 import type { BaseChannelAdapter } from '../channels/base.js';
 import { shortPath } from '../../shared/core/path.js';
 import { formatRelativeTime } from '../../shared/formatting/session-format.js';
+import { getCurrentVersion } from '../../shared/utils/version-checker.js';
 import { readdir, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
@@ -262,6 +263,7 @@ export class HomePayloadBuilder {
         channels: activeChannels,
         channelInfo,
         queueInfo,
+        version: getCurrentVersion(),
       },
       help: {
         entries: [], // Will be populated by CommandRouter if needed

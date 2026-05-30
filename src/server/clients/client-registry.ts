@@ -16,6 +16,7 @@ import {
   type InteractionRequestMessage,
   type RemoteClientHostDescriptor,
   type RemoteProviderDescriptor,
+  type RemoteClientUpgradeDescriptor,
   type RemoteSessionDescriptor,
   type RemoteWorkspaceDescriptor,
   type ServerPingMessage,
@@ -46,6 +47,7 @@ export interface RemoteClientSnapshot {
   lastSeenAt: number;
   host?: RemoteClientHostDescriptor;
   remoteAddress?: string;
+  upgrade?: RemoteClientUpgradeDescriptor;
   version?: string;
 }
 
@@ -247,6 +249,14 @@ export class RemoteClientRegistry {
     );
   }
 
+  async upgradeClient(
+    clientId: string,
+    version: string,
+    timeoutMs = 30_000,
+  ): Promise<ClientCommandResultMessage> {
+    return this.sendClientCommand(clientId, { action: 'client.upgrade', version }, timeoutMs);
+  }
+
   private async sendClientCommand(
     clientId: string,
     message: Omit<ClientCommandMessage, 'type' | 'commandId'>,
@@ -362,6 +372,7 @@ export class RemoteClientRegistry {
       lastSeenAt: Date.now(),
       host: message.host,
       remoteAddress: this.socketRemoteAddresses.get(socket),
+      upgrade: message.upgrade,
       version: message.version,
       socket,
     };

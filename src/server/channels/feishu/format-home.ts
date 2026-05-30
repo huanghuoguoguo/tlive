@@ -17,6 +17,7 @@ import type { Button } from '../../../shared/ui/types.js';
 import type { NewSessionButtonProvider } from '../../../shared/ui/buttons.js';
 import { truncate } from '../../../shared/core/string.js';
 import { actionCallback } from '../../../shared/core/callbacks.js';
+import { compareVersions } from '../../../shared/utils/version-checker.js';
 import { buttonElements, markdownElement } from './card-elements.js';
 
 const MAX_RECENT_VIEW_ITEMS = 8;
@@ -144,7 +145,8 @@ function buildNodesView(data: HomeData): FeishuCardElement[] {
   }
 
   for (const client of clients) {
-    elements.push(markdownElement(clientDetailMarkdown(client)));
+    elements.push(markdownElement(clientDetailMarkdown(client, data.bridge.version)));
+    const upgrade = clientUpgradeState(client, data.bridge.version);
     const leadingButtons: Button[] = [];
     if (!client.isDefault) {
       leadingButtons.push({
@@ -159,6 +161,14 @@ function buildNodesView(data: HomeData): FeishuCardElement[] {
       callbackData: actionCallback('home-history', client.clientId),
       row: 0,
     });
+    if (upgrade.outdated && upgrade.supported && !upgrade.busy && data.bridge.version) {
+      leadingButtons.push({
+        label: '升级节点',
+        callbackData: actionCallback('client-upgrade', client.clientId, data.bridge.version),
+        style: 'primary',
+        row: 0,
+      });
+    }
     const newSessionRowOffset = leadingButtons.length ? 1 : 0;
     const buttons: Button[] = [
       ...leadingButtons,
@@ -273,18 +283,43 @@ function newSessionButtonsForDefaultClient(data: HomeData, row: number): Button[
   }));
 }
 
-function clientDetailMarkdown(client: HomeClientEntry): string {
+function clientDetailMarkdown(client: HomeClientEntry, serverVersion?: string): string {
   const title = `${client.online ? '🟢' : '🔴'} ${client.name || client.clientId}${client.isDefault ? ' ◀' : ''}`;
   const providers = providerNames(client.providers);
+  const upgrade = clientUpgradeState(client, serverVersion);
   return [
     `**${title}**`,
     `ID: \`${client.clientId}\`${client.isLocal ? ' · local' : ''}`,
     client.note ? `备注: ${client.note}` : undefined,
     `Provider: ${providers}`,
+    upgrade.outdated ? clientVersionLine(client, serverVersion, upgrade) : undefined,
     client.activeTurns > 0 ? `运行中: ${client.activeTurns} 个任务` : undefined,
   ]
     .filter((line): line is string => Boolean(line))
     .join('\n');
+}
+
+function clientUpgradeState(
+  client: HomeClientEntry,
+  serverVersion?: string,
+): { outdated: boolean; supported: boolean; busy: boolean } {
+  const outdated = Boolean(
+    client.version && serverVersion && compareVersions(client.version, serverVersion) < 0,
+  );
+  return {
+    outdated,
+    supported: client.upgrade?.supported === true,
+    busy: client.activeTurns > 0,
+  };
+}
+
+function clientVersionLine(
+  client: HomeClientEntry,
+  serverVersion: string | undefined,
+  upgrade: { supported: boolean; busy: boolean },
+): string {
+  const suffix = !upgrade.supported ? '（需手动升级）' : upgrade.busy ? '（任务结束后可升级）' : '';
+  return `版本: \`${client.version ?? 'unknown'}\` → \`${serverVersion ?? 'unknown'}\`${suffix}`;
 }
 
 function providerNames(providers: HomeProviderEntry[]): string {
