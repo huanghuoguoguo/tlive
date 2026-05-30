@@ -1,4 +1,4 @@
-export type AgentProviderKind = 'claude' | 'codex';
+export type AgentProviderKind = 'claude' | 'codex' | 'pi';
 
 export const DEFAULT_AGENT_PROVIDER_KIND: AgentProviderKind = 'claude';
 

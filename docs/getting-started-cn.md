@@ -1,12 +1,12 @@
 # tlive 入门指南
 
-本指南带你从零配置一个飞书 / Lark 到 Claude Code 的桥接服务。
+本指南带你从零配置一个飞书 / Lark 到本地 Agent SDK 的桥接服务。
 
 ## 前置条件
 
 - Node.js 22.19+ 和 npm
 - 一个可创建自建应用的飞书或 Lark 工作区
-- 已安装并登录 Claude Code
+- 至少配置一个本地 agent provider：Claude Code、Codex 或 Pi
 
 ## 安装
 
@@ -51,7 +51,7 @@ chmod 600 ~/.tlive/server.env
 
 ## MCP 集成
 
-TLive SDK 会话会自动加载内置 HTTP MCP server。由 TLive 启动的 agent 可以回调
+支持 MCP 注入的 provider 会自动加载内置 HTTP MCP server。这些 agent 可以回调
 TLive 发送文件/图片，同时飞书话题路由和权限仍由 server 统一管理。
 
 ## 启动
@@ -68,10 +68,10 @@ tlive start
 Fix the login bug in auth.ts
 ```
 
-Claude Code 会在本地执行，并把进度、工具调用、权限审批和最终结果实时回传到飞书。
+选中的 agent provider 会在本地执行，并把进度、工具调用、provider 支持的交互和最终结果实时回传到飞书。
 
 `tlive start` 会同时启动 server 和一个本地执行 client。只有这台机器不应该执行本地
-Claude/Codex turn 时，才使用 `tlive server --standalone`。
+本地 agent turn 时，才使用 `tlive server --standalone`。
 
 ## 常用命令
 

@@ -122,7 +122,7 @@ function parseTliveTopicMetadata(value: unknown): TliveTopicMetadata | undefined
 }
 
 function readProvider(value: unknown): AgentProviderKind | undefined {
-  return value === 'claude' || value === 'codex' ? value : undefined;
+  return value === 'claude' || value === 'codex' || value === 'pi' ? value : undefined;
 }
 
 function readString(value: unknown): string | undefined {

@@ -8,7 +8,7 @@ import type { FileAttachment } from '../media/attachments.js';
 
 export const REMOTE_PROTOCOL_VERSION = 1;
 
-const providerKindSchema = z.enum(['claude', 'codex']);
+const providerKindSchema = z.enum(['claude', 'codex', 'pi']);
 const settingSourceSchema = z.enum(['user', 'project', 'local']);
 
 const providerCapabilitiesSchema = z.object({

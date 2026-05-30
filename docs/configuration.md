@@ -42,6 +42,9 @@ See [Feishu Setup Guide](setup-feishu.md).
 
 ```env
 # ~/.tlive/client.env
+TL_PROVIDER=claude
+# or: codex, pi
+
 # Settings sources loaded by default for new chats
 # user    = ~/.claude/settings.json
 # project = .claude/settings.json + CLAUDE.md + project MCP config
@@ -54,6 +57,19 @@ Use `/settings user|full|isolated` to override Claude settings for the current c
 - `user`: auth/model config only
 - `full`: user + project + local settings
 - `isolated`: ignore external settings for this chat
+
+Pi provider options:
+
+```env
+# ~/.tlive/client.env
+TL_PI_AGENT_DIR=
+TL_PI_SESSION_DIR=
+TL_PI_PROVIDER=
+TL_PI_MODEL=
+TL_PI_THINKING=
+TL_PI_NO_SESSION=false
+TL_PI_OFFLINE=false
+```
 
 ## MCP
 

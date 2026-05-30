@@ -175,9 +175,9 @@ export class RemoteClientWorker {
       kind: descriptor.kind,
       displayName: provider?.displayName ?? descriptor.displayName,
       capabilities: provider?.capabilities ?? {
-        runtimeMode: descriptor.kind === 'claude' ? 'interactive' : 'turn-based',
-        nativeSteer: descriptor.kind === 'claude',
-        nativeQueue: descriptor.kind === 'claude',
+        runtimeMode: descriptor.kind === 'codex' ? 'turn-based' : 'interactive',
+        nativeSteer: descriptor.kind !== 'codex',
+        nativeQueue: descriptor.kind !== 'codex',
         interactivePermissions: descriptor.kind === 'claude',
         askUserQuestion: descriptor.kind === 'claude',
         deferredTools: descriptor.kind === 'claude',

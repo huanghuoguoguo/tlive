@@ -7,7 +7,9 @@ import {
 } from '../../shared/providers/registry.js';
 import { ClaudeSDKProvider } from './claude-sdk.js';
 import { CodexSDKProvider } from './codex-sdk.js';
+import { PiSDKProvider, PI_VERSION } from './pi-sdk.js';
 import { loadCodexProviderConfig } from './codex-config.js';
+import { loadPiProviderConfig } from './pi-config.js';
 import { detectClaudeCli, detectCodexCli } from './cli-detection.js';
 
 export function createLocalAgentProviderRegistry(config: Config): AgentProviderRegistry {
@@ -17,6 +19,10 @@ export function createLocalAgentProviderRegistry(config: Config): AgentProviderR
     get: createConfigValueReader('client'),
   });
   const codex = detectCodexCli(codexConfig.codexPath);
+  const piConfig = loadPiProviderConfig({
+    defaultModel: config.defaultModel,
+    get: createConfigValueReader('client'),
+  });
 
   const descriptors = new Map<AgentProviderKind, AgentProviderDescriptor>([
     [
@@ -43,6 +49,16 @@ export function createLocalAgentProviderRegistry(config: Config): AgentProviderR
         reason: codex.reason,
       },
     ],
+    [
+      'pi',
+      {
+        kind: 'pi',
+        displayName: 'Pi',
+        available: true,
+        isDefault: config.provider === 'pi',
+        version: PI_VERSION,
+      },
+    ],
   ]);
 
   const providers = new Map<AgentProviderKind, AgentProvider>();
@@ -60,6 +76,7 @@ export function createLocalAgentProviderRegistry(config: Config): AgentProviderR
       }),
     );
   }
+  providers.set('pi', new PiSDKProvider(piConfig));
 
   const effectiveDefaultKind =
     (providers.has(config.provider) ? config.provider : providers.keys().next().value) ??

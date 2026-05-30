@@ -231,7 +231,7 @@ function normalizeLocale(value: string | undefined): Locale {
 }
 
 function normalizeProvider(value: string | undefined): ProviderKind {
-  return value === 'codex' ? 'codex' : DEFAULT_AGENT_PROVIDER_KIND;
+  return value === 'codex' || value === 'pi' ? value : DEFAULT_AGENT_PROVIDER_KIND;
 }
 
 function loadEnvFile(path: string): Record<string, string> {
@@ -296,6 +296,7 @@ function isClientConfigKey(key: string): boolean {
     key === 'TL_DEBUG_EVENTS' ||
     key.startsWith('TL_REMOTE_CLIENT_') ||
     key.startsWith('TL_CODEX_') ||
+    key.startsWith('TL_PI_') ||
     key.startsWith('CTI_') ||
     key === 'HTTP_PROXY' ||
     key === 'HTTPS_PROXY' ||

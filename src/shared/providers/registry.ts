@@ -58,7 +58,7 @@ export class AgentProviderRegistry {
   }
 
   isKnown(kind: string | undefined): kind is AgentProviderKind {
-    return kind === 'claude' || kind === 'codex';
+    return kind === 'claude' || kind === 'codex' || kind === 'pi';
   }
 
   isAvailable(kind: AgentProviderKind): boolean {

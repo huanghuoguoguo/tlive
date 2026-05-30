@@ -35,8 +35,10 @@ type SessionCandidate = {
 // Cache for session scans (5 second TTL)
 let cachedClaudeSessions: ScannedSession[] | null = null;
 let cachedCodexSessions: ScannedSession[] | null = null;
+let cachedPiSessions: ScannedSession[] | null = null;
 let claudeCacheTime = 0;
 let codexCacheTime = 0;
+let piCacheTime = 0;
 const CACHE_TTL = 5000;
 const CODEX_META_READ_SIZE = 64 * 1024;
 const CODEX_PREVIEW_HEAD_READ_SIZE = 256 * 1024;
@@ -49,8 +51,10 @@ const CLAUDE_PREVIEW_READ_SIZE = 32 * 1024;
 export function invalidateSessionCache(): void {
   cachedClaudeSessions = null;
   cachedCodexSessions = null;
+  cachedPiSessions = null;
   claudeCacheTime = 0;
   codexCacheTime = 0;
+  piCacheTime = 0;
 }
 
 /**
@@ -59,11 +63,13 @@ export function invalidateSessionCache(): void {
 export function scanAgentSessions(
   limit = 10,
   filterByCwd?: string,
-  providers: AgentProviderKind[] = ['claude', 'codex'],
+  providers: AgentProviderKind[] = ['claude', 'codex', 'pi'],
 ): ScannedSession[] {
-  const sessions = providers.flatMap((provider) =>
-    provider === 'codex' ? getCodexSessions() : getClaudeSessions(),
-  );
+  const sessions = providers.flatMap((provider) => {
+    if (provider === 'codex') return getCodexSessions();
+    if (provider === 'pi') return getPiSessions();
+    return getClaudeSessions();
+  });
   sessions.sort((a, b) => b.mtime - a.mtime);
   return filterAndLimit(sessions, limit, filterByCwd);
 }
@@ -84,6 +90,13 @@ export function scanClaudeSessions(limit = 10, filterByCwd?: string): ScannedSes
  */
 export function scanCodexSessions(limit = 10, filterByCwd?: string): ScannedSession[] {
   return filterAndLimit(getCodexSessions(), limit, filterByCwd);
+}
+
+/**
+ * Scan Pi session history from ~/.pi/agent/sessions.
+ */
+export function scanPiSessions(limit = 10, filterByCwd?: string): ScannedSession[] {
+  return filterAndLimit(getPiSessions(), limit, filterByCwd);
 }
 
 function getClaudeSessions(): ScannedSession[] {
@@ -110,6 +123,18 @@ function getCodexSessions(): ScannedSession[] {
   cachedCodexSessions = doScanCodex();
   codexCacheTime = now;
   return cachedCodexSessions;
+}
+
+function getPiSessions(): ScannedSession[] {
+  const now = Date.now();
+
+  if (cachedPiSessions && now - piCacheTime < CACHE_TTL) {
+    return cachedPiSessions;
+  }
+
+  cachedPiSessions = doScanPi();
+  piCacheTime = now;
+  return cachedPiSessions;
 }
 
 function filterAndLimit(
@@ -182,7 +207,7 @@ function doScanClaude(): ScannedSession[] {
 function doScanCodex(): ScannedSession[] {
   const sessionsDir = join(homedir(), '.codex', 'sessions');
   const candidates: SessionCandidate[] = [];
-  collectCodexCandidates(sessionsDir, sessionsDir, candidates);
+  collectJsonlCandidates(sessionsDir, sessionsDir, candidates);
   candidates.sort((a, b) => b.mtime - a.mtime);
 
   const sessions: ScannedSession[] = [];
@@ -199,7 +224,28 @@ function doScanCodex(): ScannedSession[] {
   return sessions;
 }
 
-function collectCodexCandidates(
+function doScanPi(): ScannedSession[] {
+  const sessionsDir =
+    process.env.PI_CODING_AGENT_SESSION_DIR?.trim() || join(homedir(), '.pi', 'agent', 'sessions');
+  const candidates: SessionCandidate[] = [];
+  collectJsonlCandidates(sessionsDir, sessionsDir, candidates);
+  candidates.sort((a, b) => b.mtime - a.mtime);
+
+  const sessions: ScannedSession[] = [];
+  for (const candidate of candidates) {
+    const parsed = parsePiSession(
+      candidate.filePath,
+      candidate.projectDir,
+      candidate.sessionId,
+      candidate.mtime,
+      candidate.size,
+    );
+    if (parsed) sessions.push(parsed);
+  }
+  return sessions;
+}
+
+function collectJsonlCandidates(
   dirPath: string,
   rootPath: string,
   candidates: SessionCandidate[],
@@ -214,7 +260,7 @@ function collectCodexCandidates(
   for (const entry of entries) {
     const entryPath = join(dirPath, entry.name);
     if (entry.isDirectory()) {
-      collectCodexCandidates(entryPath, rootPath, candidates);
+      collectJsonlCandidates(entryPath, rootPath, candidates);
       continue;
     }
     if (!entry.name.endsWith('.jsonl')) continue;
@@ -223,7 +269,7 @@ function collectCodexCandidates(
       candidates.push({
         filePath: entryPath,
         projectDir: relative(rootPath, dirname(entryPath)) || '.',
-        sessionId: codexSessionIdFromFilename(entry.name),
+        sessionId: sessionIdFromFilename(entry.name),
         mtime: st.mtimeMs,
         size: st.size,
       });
@@ -361,13 +407,63 @@ function parseCodexSession(
   };
 }
 
+function parsePiSession(
+  filePath: string,
+  projectDir: string,
+  fallbackSessionId: string,
+  mtime: number,
+  size: number,
+): ScannedSession | null {
+  let sessionId = fallbackSessionId;
+  let cwd = homedir();
+  let preview = '(empty)';
+
+  try {
+    const head = readWindow(filePath, size, CODEX_META_READ_SIZE, 'head');
+    for (const rawLine of head.split('\n')) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      try {
+        const obj = JSON.parse(line);
+        if (obj?.type !== 'session') continue;
+        if (typeof obj.id === 'string' && obj.id) sessionId = obj.id;
+        if (typeof obj.cwd === 'string' && obj.cwd) cwd = obj.cwd;
+        break;
+      } catch {
+        // Ignore malformed/incomplete head line.
+      }
+    }
+
+    const tail = readWindow(filePath, size, SESSION_TAIL_READ_SIZE, 'tail');
+    preview = extractPiUserPreview(tail, 'last') ?? preview;
+    if (preview === '(empty)') {
+      const previewHead = readWindow(filePath, size, CODEX_PREVIEW_HEAD_READ_SIZE, 'head');
+      preview = extractPiUserPreview(previewHead, 'first') ?? preview;
+    }
+  } catch {
+    return null;
+  }
+
+  return {
+    provider: 'pi',
+    providerDisplayName: 'Pi',
+    sdkSessionId: filePath,
+    projectDir,
+    filePath,
+    cwd,
+    mtime,
+    size,
+    preview: preview === '(empty)' ? fallbackSessionPreview('Pi', sessionId) : preview,
+  };
+}
+
 export function readSessionTranscriptPreview(
   session: ScannedSession,
   maxMessages = 4,
 ): SessionTranscriptMessage[] {
-  return session.provider === 'codex'
-    ? readCodexSessionTranscriptPreview(session, maxMessages)
-    : readClaudeSessionTranscriptPreview(session, maxMessages);
+  if (session.provider === 'codex') return readCodexSessionTranscriptPreview(session, maxMessages);
+  if (session.provider === 'pi') return readPiSessionTranscriptPreview(session, maxMessages);
+  return readClaudeSessionTranscriptPreview(session, maxMessages);
 }
 
 function readClaudeSessionTranscriptPreview(
@@ -390,6 +486,18 @@ function readCodexSessionTranscriptPreview(
   try {
     const tail = readWindow(session.filePath, session.size, SESSION_TAIL_READ_SIZE, 'tail');
     return readTranscriptMessages(tail, maxMessages, extractCodexTranscriptMessage, true);
+  } catch {
+    return [];
+  }
+}
+
+function readPiSessionTranscriptPreview(
+  session: ScannedSession,
+  maxMessages: number,
+): SessionTranscriptMessage[] {
+  try {
+    const tail = readWindow(session.filePath, session.size, SESSION_TAIL_READ_SIZE, 'tail');
+    return readTranscriptMessages(tail, maxMessages, extractPiTranscriptMessage);
   } catch {
     return [];
   }
@@ -441,6 +549,23 @@ function extractCodexUserPreview(text: string, direction: 'first' | 'last'): str
   return null;
 }
 
+function extractPiUserPreview(text: string, direction: 'first' | 'last'): string | null {
+  const lines = direction === 'last' ? text.split('\n').reverse() : text.split('\n');
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    try {
+      const obj = JSON.parse(line);
+      const message = extractPiTranscriptMessage(obj);
+      if (message?.role !== 'user' || !message.text) continue;
+      return truncate(message.text.trim().replace(/\s+/g, ' '), 40);
+    } catch {
+      // Ignore malformed/incomplete window lines.
+    }
+  }
+  return null;
+}
+
 function extractClaudeTranscriptMessage(obj: any): SessionTranscriptMessage | null {
   if (obj?.type === 'user') {
     const text = normalizeClaudeUserContent(obj?.message?.content, 160);
@@ -480,6 +605,18 @@ function extractCodexTranscriptMessage(obj: any): SessionTranscriptMessage | nul
   }
 
   return null;
+}
+
+function extractPiTranscriptMessage(obj: any): SessionTranscriptMessage | null {
+  if (obj?.type !== 'message') return null;
+  const message = obj.message;
+  if (message?.role !== 'user' && message?.role !== 'assistant') return null;
+  const text =
+    message.role === 'user'
+      ? normalizePiUserContent(message.content, 160)
+      : normalizePiAssistantContent(message.content);
+  if (!text) return null;
+  return { role: message.role, text, timestamp: obj.timestamp };
 }
 
 function normalizeClaudeUserContent(content: unknown, limit: number): string {
@@ -552,6 +689,40 @@ function normalizeCodexContent(content: unknown, role: 'user' | 'assistant'): st
   return truncate(textBlocks.join('\n'), role === 'user' ? 160 : 180);
 }
 
+function normalizePiUserContent(content: unknown, limit: number): string {
+  if (typeof content === 'string') return normalizePlainText(content, limit);
+  if (!Array.isArray(content)) return '';
+  const textBlocks = content
+    .map((block) => {
+      if (typeof block === 'string') return block;
+      if (!block || typeof block !== 'object' || !('type' in block)) return '';
+      const typed = block as { type?: unknown; text?: unknown };
+      if (typed.type === 'text' && typeof typed.text === 'string') return typed.text;
+      if (typed.type === 'image') return '[image]';
+      return '';
+    })
+    .map((text) => text.trim().replace(/\s+/g, ' '))
+    .filter(Boolean);
+  if (!textBlocks.length) return '';
+  return truncate(textBlocks.join('\n'), limit);
+}
+
+function normalizePiAssistantContent(content: unknown): string {
+  if (!Array.isArray(content)) return '';
+  const textBlocks = content
+    .map((block) => {
+      if (!block || typeof block !== 'object' || !('type' in block)) return '';
+      const typed = block as { type?: unknown; text?: unknown; thinking?: unknown; name?: unknown };
+      if (typed.type === 'text' && typeof typed.text === 'string') return typed.text;
+      if (typed.type === 'thinking' && typeof typed.thinking === 'string') return typed.thinking;
+      return '';
+    })
+    .map((text) => text.trim().replace(/\s+/g, ' '))
+    .filter(Boolean);
+  if (!textBlocks.length) return '';
+  return truncate(textBlocks.join('\n'), 180);
+}
+
 function normalizePlainText(text: string, limit: number): string {
   return truncate(text.trim().replace(/\s+/g, ' '), limit);
 }
@@ -578,7 +749,7 @@ function readWindow(
   }
 }
 
-function codexSessionIdFromFilename(filename: string): string {
+function sessionIdFromFilename(filename: string): string {
   const match = filename.match(
     /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i,
   );

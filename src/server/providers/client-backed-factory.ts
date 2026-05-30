@@ -26,6 +26,13 @@ export function createClientBackedAgentProviderRegistry(
         remoteClientRegistry,
       }),
     ],
+    [
+      'pi',
+      new ClientBackedAgentProvider({
+        kind: 'pi',
+        remoteClientRegistry,
+      }),
+    ],
   ]);
 
   const effectiveDefaultKind = providers.has(config.provider) ? config.provider : 'claude';
@@ -47,6 +54,16 @@ export function createClientBackedAgentProviderRegistry(
         displayName: 'Remote Codex',
         available: true,
         isDefault: effectiveDefaultKind === 'codex',
+        reason: 'execution client provider',
+      },
+    ],
+    [
+      'pi',
+      {
+        kind: 'pi',
+        displayName: 'Remote Pi',
+        available: true,
+        isDefault: effectiveDefaultKind === 'pi',
         reason: 'execution client provider',
       },
     ],

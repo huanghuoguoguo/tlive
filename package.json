@@ -1,7 +1,7 @@
 {
   "name": "tlive",
   "version": "0.14.4",
-  "description": "Feishu bridge for Claude Code and Codex",
+  "description": "Feishu bridge for Claude Code, Codex, and Pi",
   "type": "module",
   "main": "dist/main.mjs",
   "bin": {
@@ -47,6 +47,7 @@
     "terminal",
     "monitoring",
     "claude-code",
+    "pi-coding-agent",
     "feishu",
     "ai-coding",
     "remote-terminal"
@@ -58,6 +59,7 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.104",
+    "@earendil-works/pi-coding-agent": "^0.78.0",
     "@larksuiteoapi/node-sdk": "^1.59.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@openai/codex-sdk": "^0.132.0",

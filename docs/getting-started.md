@@ -1,12 +1,12 @@
 # Getting Started with tlive
 
-This guide takes you from zero to a working Feishu/Lark bridge for Claude Code.
+This guide takes you from zero to a working Feishu/Lark bridge for local agent SDKs.
 
 ## Prerequisites
 
 - Node.js 22.19+ and npm
 - A Feishu or Lark workspace where you can create a custom app
-- Claude Code installed and authenticated
+- At least one local agent provider configured: Claude Code, Codex, or Pi
 
 ## Install
 
@@ -51,9 +51,9 @@ chmod 600 ~/.tlive/server.env
 
 ## MCP Integration
 
-TLive SDK sessions automatically load the bundled HTTP MCP server. Agents launched by TLive can
-call back into TLive for file/image delivery while TLive keeps Feishu topic routing and permissions
-on the server side.
+Providers that support MCP injection automatically load the bundled HTTP MCP server. Those agents
+can call back into TLive for file/image delivery while TLive keeps Feishu topic routing and
+permissions on the server side.
 
 ## Start
 
@@ -69,10 +69,10 @@ Then open Feishu/Lark and send the bot a task:
 Fix the login bug in auth.ts
 ```
 
-Claude Code will execute locally and stream progress, tool usage, permission prompts, and the final answer back to Feishu.
+The selected agent provider will execute locally and stream progress, tool usage, provider-supported interactions, and the final answer back to Feishu.
 
 `tlive start` starts both the server and a local execution client. Use
-`tlive server --standalone` only when this machine should not run local Claude/Codex turns.
+`tlive server --standalone` only when this machine should not run local agent turns.
 
 ## Useful Commands
 

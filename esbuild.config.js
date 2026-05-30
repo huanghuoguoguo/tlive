@@ -12,7 +12,16 @@ const common = {
   platform: 'node',
   target: 'node22',
   format: 'esm',
-  external: ['@anthropic-ai/*', '@larksuiteoapi/*', 'undici', 'ws', 'better-sqlite3'],
+  external: [
+    '@anthropic-ai/*',
+    '@earendil-works/*',
+    '@larksuiteoapi/*',
+    '@mariozechner/*',
+    '@silvia-odwyer/*',
+    'undici',
+    'ws',
+    'better-sqlite3',
+  ],
   sourcemap: true,
   define: {
     'process.env.npm_package_version': JSON.stringify(packageJson.version),

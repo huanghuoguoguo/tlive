@@ -42,6 +42,9 @@ TL_FS_ALLOWED_USERS=ou_xxx,xxx
 
 ```env
 # ~/.tlive/client.env
+TL_PROVIDER=claude
+# 或：codex, pi
+
 # 新 chat 默认加载的 Agent 设置来源
 # user    = ~/.claude/settings.json
 # project = .claude/settings.json + CLAUDE.md + project MCP config
@@ -54,6 +57,19 @@ TL_AGENT_SETTINGS=user,project,local
 - `user`：只加载全局认证和模型配置
 - `full`：加载 user + project + local
 - `isolated`：当前 chat 不加载外部 settings
+
+Pi provider 选项：
+
+```env
+# ~/.tlive/client.env
+TL_PI_AGENT_DIR=
+TL_PI_SESSION_DIR=
+TL_PI_PROVIDER=
+TL_PI_MODEL=
+TL_PI_THINKING=
+TL_PI_NO_SESSION=false
+TL_PI_OFFLINE=false
+```
 
 ## MCP
 

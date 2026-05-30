@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   scanClaudeSessions,
   scanCodexSessions,
+  scanPiSessions,
   invalidateSessionCache,
   readSessionTranscriptPreview,
   type ScannedSession,
@@ -489,6 +490,82 @@ describe('session-scanner', () => {
         cwd: '/repo/codex',
         preview: 'Codex session 019e4b16',
       });
+    });
+  });
+
+  describe('scanPiSessions', () => {
+    it('scans Pi sessions and uses the session file path as the resumable id', () => {
+      const file = '2026-05-30T12-00-00_019e7912-004d-77cd-b0dd-ec43ca82522e.jsonl';
+      const filePath = `/home/testuser/.pi/agent/sessions/-repo-pi/${file}`;
+      const content = [
+        JSON.stringify({
+          type: 'session',
+          id: '019e7912-004d-77cd-b0dd-ec43ca82522e',
+          cwd: '/repo/pi',
+        }),
+        JSON.stringify({
+          type: 'message',
+          timestamp: '2026-05-30T12:00:00.000Z',
+          message: {
+            role: 'user',
+            content: [{ type: 'text', text: 'pi prompt text' }],
+          },
+        }),
+        JSON.stringify({
+          type: 'message',
+          timestamp: '2026-05-30T12:00:01.000Z',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'pi response' }],
+          },
+        }),
+      ].join('\n');
+      const openPaths = new Map<number, string>();
+      let nextFd = 10;
+
+      mockReaddir.mockImplementation(((path: fs.PathLike) => {
+        const pathStr = String(path);
+        if (pathStr.endsWith('/.pi/agent/sessions')) {
+          return [{ name: '-repo-pi', isDirectory: () => true } as fs.Dirent];
+        }
+        if (pathStr.endsWith('/.pi/agent/sessions/-repo-pi')) {
+          return [{ name: file, isDirectory: () => false } as fs.Dirent];
+        }
+        throw new Error('ENOENT');
+      }) as unknown as typeof fs.readdirSync);
+
+      mockStat.mockReturnValue({ mtimeMs: 1000, size: Buffer.byteLength(content) } as fs.Stats);
+      vi.mocked(fs.openSync).mockImplementation(((path: fs.PathLike) => {
+        const fd = nextFd++;
+        openPaths.set(fd, String(path));
+        return fd;
+      }) as unknown as typeof fs.openSync);
+      mockRead.mockImplementation(
+        ((fd: number, buffer: ArrayBufferView, offset: number, length: number, position: number) => {
+          const chunk = Buffer.from(openPaths.get(fd) === filePath ? content : '').subarray(
+            position,
+            position + length,
+          );
+          const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer as Uint8Array);
+          chunk.copy(buf, offset);
+          return chunk.length;
+        }) as unknown as typeof fs.readSync,
+      );
+
+      const sessions = scanPiSessions();
+
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]).toMatchObject({
+        provider: 'pi',
+        providerDisplayName: 'Pi',
+        sdkSessionId: filePath,
+        cwd: '/repo/pi',
+        preview: 'pi prompt text',
+      });
+      expect(readSessionTranscriptPreview(sessions[0], 2)).toEqual([
+        { role: 'user', text: 'pi prompt text', timestamp: '2026-05-30T12:00:00.000Z' },
+        { role: 'assistant', text: 'pi response', timestamp: '2026-05-30T12:00:01.000Z' },
+      ]);
     });
   });
 
