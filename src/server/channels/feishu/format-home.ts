@@ -16,7 +16,7 @@ import type {
 import type { Button } from '../../../shared/ui/types.js';
 import type { NewSessionButtonProvider } from '../../../shared/ui/buttons.js';
 import { truncate } from '../../../shared/core/string.js';
-import { actionCallback } from '../../../shared/core/callbacks.js';
+import { actionCallback, homeInstanceActionArg } from '../../../shared/core/callbacks.js';
 import { compareVersions } from '../../../shared/utils/version-checker.js';
 import { buttonElements, markdownElement } from './card-elements.js';
 
@@ -43,6 +43,7 @@ export interface FormatHomeParams {
 
 export function buildHomeElements(params: FormatHomeParams): FeishuCardElement[] {
   const { data } = params;
+  if (data.home?.stale) return buildStaleView();
   const view = data.view ?? 'main';
   if (view === 'nodes') return buildNodesView(data);
   if (view === 'recent') return buildRecentView(data);
@@ -63,12 +64,12 @@ function buildMainView(data: HomeData): FeishuCardElement[] {
   const elements: FeishuCardElement[] = [homeHeaderElement('工作台', data)];
   const buttons: Button[] = [
     ...newSessionButtonsForDefaultClient(data, 0),
-    { label: '节点', callbackData: actionCallback('home-view', 'nodes'), row: 1 },
-    { label: '最近会话', callbackData: actionCallback('home-view', 'recent'), row: 1 },
-    { label: '目录', callbackData: actionCallback('home-view', 'files'), row: 1 },
-    { label: '帮助', callbackData: actionCallback('home-view', 'help'), row: 2 },
-    { label: '诊断', callbackData: actionCallback('home-view', 'diagnostics'), row: 2 },
-    { label: '刷新', callbackData: actionCallback('home-refresh', 'main'), row: 2 },
+    { label: '节点', callbackData: homeAction(data, 'home-view', 'nodes'), row: 1 },
+    { label: '最近会话', callbackData: homeAction(data, 'home-view', 'recent'), row: 1 },
+    { label: '目录', callbackData: homeAction(data, 'home-view', 'files'), row: 1 },
+    { label: '帮助', callbackData: homeAction(data, 'home-view', 'help'), row: 2 },
+    { label: '诊断', callbackData: homeAction(data, 'home-view', 'diagnostics'), row: 2 },
+    { label: '刷新', callbackData: homeAction(data, 'home-refresh', 'main'), row: 2 },
   ];
   elements.push(...buttonElements(buttons));
   return elements;
@@ -77,7 +78,7 @@ function buildMainView(data: HomeData): FeishuCardElement[] {
 function buildFilesView(data: HomeData): FeishuCardElement[] {
   const elements: FeishuCardElement[] = [
     homeHeaderElement('目录', data),
-    ...panelNavButtons('files'),
+    ...panelNavButtons('files', data),
   ];
   const directory = data.workspace.directory;
   if (!directory) {
@@ -99,7 +100,7 @@ function buildFilesView(data: HomeData): FeishuCardElement[] {
   if (directory.parent) {
     buttons.push({
       label: '上级目录',
-      callbackData: actionCallback('home-dir', directory.parent),
+      callbackData: homeAction(data, 'home-dir', directory.parent),
       style: 'primary',
       row: 0,
     });
@@ -107,7 +108,7 @@ function buildFilesView(data: HomeData): FeishuCardElement[] {
   directories.slice(0, MAX_DIRECTORY_BUTTONS).forEach((entry, index) => {
     buttons.push({
       label: directoryButtonLabel(entry.name),
-      callbackData: actionCallback('home-dir', entry.path),
+      callbackData: homeAction(data, 'home-dir', entry.path),
       row: Math.floor(index / 2) + 1,
     });
   });
@@ -136,7 +137,7 @@ function buildFilesView(data: HomeData): FeishuCardElement[] {
 function buildNodesView(data: HomeData): FeishuCardElement[] {
   const elements: FeishuCardElement[] = [
     homeHeaderElement('执行节点', data),
-    ...panelNavButtons('nodes'),
+    ...panelNavButtons('nodes', data),
   ];
   const clients = data.clients?.entries ?? [];
   if (!clients.length) {
@@ -151,20 +152,20 @@ function buildNodesView(data: HomeData): FeishuCardElement[] {
     if (!client.isDefault) {
       leadingButtons.push({
         label: '设为默认',
-        callbackData: actionCallback('use', client.clientId),
+        callbackData: homeAction(data, 'use', client.clientId),
         style: 'primary',
         row: 0,
       });
     }
     leadingButtons.push({
       label: '节点历史',
-      callbackData: actionCallback('home-history', client.clientId),
+      callbackData: homeAction(data, 'home-history', client.clientId),
       row: 0,
     });
     if (upgrade.outdated && upgrade.supported && !upgrade.busy && data.bridge.version) {
       leadingButtons.push({
         label: '升级节点',
-        callbackData: actionCallback('client-upgrade', client.clientId, data.bridge.version),
+        callbackData: homeAction(data, 'client-upgrade', client.clientId, data.bridge.version),
         style: 'primary',
         row: 0,
       });
@@ -176,7 +177,7 @@ function buildNodesView(data: HomeData): FeishuCardElement[] {
         .filter((provider) => provider.available)
         .map((provider, index) => ({
           label: `新建 ${provider.displayName}`,
-          callbackData: actionCallback('new', provider.kind, client.clientId),
+          callbackData: homeAction(data, 'new', provider.kind, client.clientId),
           style: 'default' as const,
           row: Math.floor(index / 2) + newSessionRowOffset,
         })),
@@ -190,7 +191,7 @@ function buildNodesView(data: HomeData): FeishuCardElement[] {
 function buildRecentView(data: HomeData): FeishuCardElement[] {
   const elements: FeishuCardElement[] = [
     homeHeaderElement('最近会话', data),
-    ...panelNavButtons('recent'),
+    ...panelNavButtons('recent', data),
   ];
   const sessionElements = buildRecentSessionElements(data, MAX_RECENT_VIEW_ITEMS);
   if (!sessionElements.length) {
@@ -202,7 +203,7 @@ function buildRecentView(data: HomeData): FeishuCardElement[] {
     (data.session.topics?.length ?? 0) + (data.session.recent?.length ?? 0) > MAX_RECENT_VIEW_ITEMS;
   if (hasMore) {
     elements.push(
-      ...buttonElements([{ label: '更多', callbackData: actionCallback('home-history'), row: 0 }]),
+      ...buttonElements([{ label: '更多', callbackData: homeAction(data, 'home-history'), row: 0 }]),
     );
   }
   return elements;
@@ -211,7 +212,7 @@ function buildRecentView(data: HomeData): FeishuCardElement[] {
 function buildHelpView(data: HomeData): FeishuCardElement[] {
   const elements: FeishuCardElement[] = [
     homeHeaderElement('帮助', data),
-    ...panelNavButtons('help'),
+    ...panelNavButtons('help', data),
     markdownElement(
       '工作台用于选择节点、新建话题和恢复最近会话；执行、权限确认和停止操作放在具体话题内。',
     ),
@@ -224,9 +225,9 @@ function buildHelpView(data: HomeData): FeishuCardElement[] {
   }
   elements.push(
     ...buttonElements([
-      { label: '完整帮助', callbackData: actionCallback('help'), row: 0 },
-      { label: 'Bridge 状态', callbackData: actionCallback('status'), row: 0 },
-      { label: '内部诊断', callbackData: actionCallback('diagnose'), row: 1 },
+      { label: '完整帮助', callbackData: homeAction(data, 'help'), row: 0 },
+      { label: 'Bridge 状态', callbackData: homeAction(data, 'status'), row: 0 },
+      { label: '内部诊断', callbackData: homeAction(data, 'diagnose'), row: 1 },
     ]),
   );
   return elements;
@@ -244,12 +245,20 @@ function buildDiagnosticsView(data: HomeData): FeishuCardElement[] {
   ];
   return [
     homeHeaderElement('诊断', data),
-    ...panelNavButtons('diagnostics'),
+    ...panelNavButtons('diagnostics', data),
     markdownElement(lines.join('\n')),
     ...buttonElements([
-      { label: 'Bridge 状态', callbackData: actionCallback('status'), row: 0 },
-      { label: '内部诊断', callbackData: actionCallback('diagnose'), row: 0 },
+      { label: 'Bridge 状态', callbackData: homeAction(data, 'status'), row: 0 },
+      { label: '内部诊断', callbackData: homeAction(data, 'diagnose'), row: 0 },
     ]),
+  ];
+}
+
+function buildStaleView(): FeishuCardElement[] {
+  return [
+    markdownElement(
+      '**工作台已过期**\n这个工作台不是当前最新版本。请使用聊天底部的最新工作台，或重新发送 `/home` 打开新的工作台。',
+    ),
   ];
 }
 
@@ -259,10 +268,18 @@ function homeHeaderElement(title: string, data: HomeData): FeishuCardElement {
   );
 }
 
-function panelNavButtons(view: HomeView): FeishuCardElement[] {
+function homeAction(
+  data: Pick<HomeData, 'home'> | undefined,
+  name: string,
+  ...args: Array<string | undefined>
+): string {
+  return actionCallback(name, ...args, homeInstanceActionArg(data?.home?.instanceId));
+}
+
+function panelNavButtons(view: HomeView, data: Pick<HomeData, 'home'>): FeishuCardElement[] {
   return buttonElements([
-    { label: '返回', callbackData: actionCallback('home-view', 'main'), row: 0 },
-    { label: '刷新', callbackData: actionCallback('home-refresh', view), row: 0 },
+    { label: '返回', callbackData: homeAction(data, 'home-view', 'main'), row: 0 },
+    { label: '刷新', callbackData: homeAction(data, 'home-refresh', view), row: 0 },
   ]);
 }
 
@@ -277,7 +294,7 @@ function newSessionButtonsForDefaultClient(data: HomeData, row: number): Button[
     [];
   return providers.map((provider) => ({
     label: `新建 ${provider.displayName}`,
-    callbackData: actionCallback('new', provider.kind, defaultClient?.clientId),
+    callbackData: homeAction(data, 'new', provider.kind, defaultClient?.clientId),
     style: provider.isDefault ? ('primary' as const) : ('default' as const),
     row,
   }));
@@ -356,7 +373,7 @@ function buildRecentSessionElements(data: HomeData, limit: number): FeishuCardEl
 
   for (const topic of (data.session.topics ?? []).slice(0, limit)) {
     if (itemCount >= limit) return elements;
-    elements.push(...topicSessionElements(topic, index++));
+    elements.push(...topicSessionElements(data, topic, index++));
     itemCount += 1;
   }
 
@@ -365,14 +382,18 @@ function buildRecentSessionElements(data: HomeData, limit: number): FeishuCardEl
     .slice(0, Math.max(0, limit - itemCount));
   for (const session of recoverableSessions) {
     if (itemCount >= limit) return elements;
-    elements.push(...historySessionElements(session, index++));
+    elements.push(...historySessionElements(data, session, index++));
     itemCount += 1;
   }
 
   return elements;
 }
 
-function topicSessionElements(topic: HomeTopicEntry, index: number): FeishuCardElement[] {
+function topicSessionElements(
+  data: Pick<HomeData, 'home'>,
+  topic: HomeTopicEntry,
+  index: number,
+): FeishuCardElement[] {
   const status = topic.isActive ? '⏳ 执行中' : '✅ 可继续';
   const currentMark = topic.isCurrent ? ' ◀' : '';
   const sdkShort = topic.sdkSessionId ? topic.sdkSessionId.slice(0, 8) : '-';
@@ -389,7 +410,8 @@ function topicSessionElements(topic: HomeTopicEntry, index: number): FeishuCardE
     ...buttonElements([
       {
         label: '回到话题',
-        callbackData: actionCallback(
+        callbackData: homeAction(
+          data,
           'continue',
           `${topic.provider ? `${topic.provider}:` : ''}${topic.sdkSessionId}`,
         ),
@@ -400,7 +422,11 @@ function topicSessionElements(topic: HomeTopicEntry, index: number): FeishuCardE
   ];
 }
 
-function historySessionElements(session: HomeSessionEntry, index: number): FeishuCardElement[] {
+function historySessionElements(
+  data: Pick<HomeData, 'home'>,
+  session: HomeSessionEntry,
+  index: number,
+): FeishuCardElement[] {
   const providerLabel = session.providerDisplayName ?? 'Agent';
   const sdkShort = session.sdkSessionId ? session.sdkSessionId.slice(0, 8) : '-';
   const elements = [
@@ -414,7 +440,8 @@ function historySessionElements(session: HomeSessionEntry, index: number): Feish
     ...buttonElements([
       {
         label: session.topic ? '回到话题' : '恢复到话题',
-        callbackData: actionCallback(
+        callbackData: homeAction(
+          data,
           'continue',
           `${session.provider ? `${session.provider}:` : ''}${session.sdkSessionId}`,
         ),

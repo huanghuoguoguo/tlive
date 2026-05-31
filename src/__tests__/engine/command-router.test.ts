@@ -15,6 +15,7 @@ import { loadProjectsConfig, type AgentSettingSource } from '../../shared/config
 import type { SDKEngine } from '../../server/engine/sdk/engine.js';
 import type { PermissionCoordinator } from '../../server/engine/coordinators/permission.js';
 import { chatScopeId } from '../../shared/core/key.js';
+import { homeInstanceActionArg } from '../../shared/core/callbacks.js';
 import type { HomeClientEntry } from '../../shared/formatting/message-types.js';
 import { extractTliveTopicMetadata } from '../../shared/topic-metadata.js';
 
@@ -271,6 +272,65 @@ describe('CommandRouter /settings', () => {
         chatId: 'c1',
       }),
     );
+    expect(adapter.send).not.toHaveBeenCalled();
+  });
+
+  it('allows actions from the latest workbench card and strips the instance token', async () => {
+    const { router: scopedRouter, state } = createTopicRouter();
+    state.setActiveHomeInstance('feishu', 'c1', 'home-current');
+
+    const handled = await scopedRouter.handleAction(
+      adapter,
+      {
+        channelType: 'feishu',
+        chatId: 'c1',
+        scopeId: 'c1',
+        userId: 'u1',
+        text: '',
+        messageId: 'home-card-current',
+      } as any,
+      { name: 'home-view', args: ['nodes', homeInstanceActionArg('home-current')!] },
+    );
+
+    expect(handled).toBe(true);
+    expect(adapter.editMessage).toHaveBeenCalledWith(
+      'c1',
+      'home-card-current',
+      expect.objectContaining({
+        type: 'home',
+        data: expect.objectContaining({ view: 'nodes' }),
+      }),
+    );
+    expect(adapter.send).not.toHaveBeenCalled();
+  });
+
+  it('marks stale workbench cards expired instead of executing their actions', async () => {
+    const { router: scopedRouter, state } = createTopicRouter();
+    state.setActiveHomeInstance('feishu', 'c1', 'home-current');
+
+    const handled = await scopedRouter.handleAction(
+      adapter,
+      {
+        channelType: 'feishu',
+        chatId: 'c1',
+        scopeId: 'c1',
+        userId: 'u1',
+        text: '',
+        messageId: 'home-card-old',
+      } as any,
+      { name: 'home-dir', args: ['/tmp/should-not-run', homeInstanceActionArg('home-old')!] },
+    );
+
+    expect(handled).toBe(true);
+    expect(adapter.editMessage).toHaveBeenCalledWith(
+      'c1',
+      'home-card-old',
+      expect.objectContaining({
+        type: 'home',
+        data: expect.objectContaining({ home: { stale: true } }),
+      }),
+    );
+    expect(await store.getBinding('feishu', 'c1')).toBeNull();
     expect(adapter.send).not.toHaveBeenCalled();
   });
 

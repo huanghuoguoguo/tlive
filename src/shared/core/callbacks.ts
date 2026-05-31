@@ -30,6 +30,27 @@ export interface ActionCallbackRoute {
 }
 
 const ACTION_ROUTE_ARG_PREFIX = '$route=';
+const ACTION_HOME_ARG_PREFIX = '$home=';
+
+export function homeInstanceActionArg(instanceId?: string): string | undefined {
+  return instanceId?.trim() ? `${ACTION_HOME_ARG_PREFIX}${instanceId.trim()}` : undefined;
+}
+
+export function splitHomeInstanceActionArgs(args: readonly string[]): {
+  args: string[];
+  homeInstanceId?: string;
+} {
+  const out: string[] = [];
+  let homeInstanceId: string | undefined;
+  for (const arg of args) {
+    if (arg.startsWith(ACTION_HOME_ARG_PREFIX)) {
+      homeInstanceId = arg.slice(ACTION_HOME_ARG_PREFIX.length).trim() || undefined;
+      continue;
+    }
+    out.push(arg);
+  }
+  return { args: out, homeInstanceId };
+}
 
 export function actionCallback(name: string, ...args: Array<string | undefined>): string {
   const encodedArgs = args

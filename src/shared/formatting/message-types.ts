@@ -184,6 +184,12 @@ export type HomeView = 'main' | 'nodes' | 'recent' | 'files' | 'help' | 'diagnos
 /** Home screen for /home command */
 export interface HomeData {
   view?: HomeView;
+  home?: {
+    /** Opaque token for the latest interactive workbench card in this chat scope. */
+    instanceId?: string;
+    /** Render a stale/disabled workbench card. */
+    stale?: boolean;
+  };
   providers?: {
     defaultKind: AgentProviderKind;
     available: HomeProviderEntry[];

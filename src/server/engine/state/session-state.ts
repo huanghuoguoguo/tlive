@@ -22,6 +22,7 @@ export class SessionStateManager {
   private modes = new Map<string, SessionMode>();
   private processingChats = new Map<string, number>();
   private lastActive = new Map<string, number>();
+  private activeHomeInstances = new Map<string, string>();
   /** User's last active chat: userId -> { channelType, chatId, timestamp } */
   private userLastChats = new Map<
     string,
@@ -128,6 +129,18 @@ export class SessionStateManager {
 
   clearLastActive(channelType: string, chatId: string): void {
     this.lastActive.delete(this.stateKey(channelType, chatId));
+  }
+
+  setActiveHomeInstance(channelType: string, chatId: string, instanceId: string): void {
+    this.activeHomeInstances.set(this.stateKey(channelType, chatId), instanceId);
+  }
+
+  getActiveHomeInstance(channelType: string, chatId: string): string | undefined {
+    return this.activeHomeInstances.get(this.stateKey(channelType, chatId));
+  }
+
+  isActiveHomeInstance(channelType: string, chatId: string, instanceId: string): boolean {
+    return this.getActiveHomeInstance(channelType, chatId) === instanceId;
   }
 
   // --- User Last Active Chat (for menu fallback) ---

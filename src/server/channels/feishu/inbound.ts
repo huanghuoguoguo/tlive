@@ -190,7 +190,6 @@ function shouldIgnoreGroupMessage(
   options: FeishuInboundOptions,
 ): boolean {
   if (!isGroupChatType(msg.chat_type)) return false;
-  if (msg.thread_id) return false;
 
   const mentions = msg.mentions ?? [];
   if (mentions.length === 0) return true;

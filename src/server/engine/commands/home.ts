@@ -5,6 +5,7 @@ import type { FormattableMessage, HomeView } from '../../../shared/formatting/me
 import { shortPath } from '../../../shared/core/path.js';
 import { t } from '../../../shared/i18n/index.js';
 import { switchCommandDirectory } from './cd.js';
+import { generateId } from '../../../shared/core/id.js';
 
 const HOME_VIEWS = new Set<HomeView>(['main', 'nodes', 'recent', 'files', 'help', 'diagnostics']);
 
@@ -22,7 +23,20 @@ async function buildHomeMessage(
     ctx.locale,
     view,
   );
-  return presentHome(ctx.msg.chatId, { ...data, view });
+  const instanceId = ctx.services.state.getActiveHomeInstance(ctx.msg.channelType, ctx.scopeId);
+  return presentHome(ctx.msg.chatId, {
+    ...data,
+    view,
+    home: instanceId ? { ...data.home, instanceId } : data.home,
+  });
+}
+
+function activateNewHomeInstance(ctx: CommandContext): void {
+  ctx.services.state.setActiveHomeInstance(
+    ctx.msg.channelType,
+    ctx.scopeId,
+    generateId('home', 8),
+  );
 }
 
 async function editHomeInPlaceOrSend(
@@ -57,6 +71,7 @@ export class HomeCommand extends BaseCommand {
   readonly helpExample = '/home';
 
   async execute(ctx: CommandContext): Promise<boolean> {
+    activateNewHomeInstance(ctx);
     await this.send(ctx, await buildHomeMessage(ctx, 'main'));
     return true;
   }
@@ -72,6 +87,7 @@ export class TliveCommand extends BaseCommand {
   readonly helpExample = '/tlive';
 
   async execute(ctx: CommandContext): Promise<boolean> {
+    activateNewHomeInstance(ctx);
     await this.send(ctx, await buildHomeMessage(ctx, 'main'));
     return true;
   }

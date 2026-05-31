@@ -22,7 +22,10 @@ import type { TopicSessionManager } from './state/topic-sessions.js';
 import type { RemoteClientRegistry } from '../clients/client-registry.js';
 import { commandRegistry, registerAllCommands } from './commands/index.js';
 import { isPublicTextCommand } from './commands/slash-policy.js';
-import type { ActionCallback } from '../../shared/core/callbacks.js';
+import {
+  splitHomeInstanceActionArgs,
+  type ActionCallback,
+} from '../../shared/core/callbacks.js';
 import { DEFAULT_AGENT_SETTING_SOURCES } from '../../shared/config.js';
 import { findGitRoot } from '../../shared/utils/repo.js';
 import { generateSessionId } from '../../shared/core/id.js';
@@ -171,9 +174,11 @@ export class CommandRouter {
     const data = await this.homePayloadBuilder.build(channelType, chatId, locale, {
       includeDirectory: view === 'files',
     });
+    const instanceId = this.state.getActiveHomeInstance(channelType, chatId);
     // Add help entries from registry
     return {
       ...data,
+      home: instanceId ? { ...data.home, instanceId } : data.home,
       help: {
         entries: commandRegistry.getHelpEntries(),
         recentSummary: data.help?.recentSummary,
@@ -260,9 +265,52 @@ export class CommandRouter {
     msg: InboundMessage,
     action: ActionCallback,
   ): Promise<boolean> {
-    return this.executeCommand(adapter, msg, [`/${action.name}`, ...action.args], {
+    const scopedAction = await this.validateHomeAction(adapter, msg, action);
+    if (!scopedAction) return true;
+    return this.executeCommand(adapter, msg, [`/${scopedAction.name}`, ...scopedAction.args], {
       requirePublicTextCommand: false,
     });
+  }
+
+  private async validateHomeAction(
+    adapter: BaseChannelAdapter,
+    msg: InboundMessage,
+    action: ActionCallback,
+  ): Promise<ActionCallback | undefined> {
+    const split = splitHomeInstanceActionArgs(action.args);
+    if (!split.homeInstanceId) return action;
+
+    const scopeId = conversationScopeId(msg);
+    if (this.state.isActiveHomeInstance(msg.channelType, scopeId, split.homeInstanceId)) {
+      return { ...action, args: split.args };
+    }
+
+    await this.renderStaleHome(adapter, msg);
+    return undefined;
+  }
+
+  private async renderStaleHome(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<void> {
+    const rendered = adapter.format({
+      type: 'home',
+      chatId: msg.chatId,
+      data: {
+        home: { stale: true },
+        workspace: { cwd: '' },
+        task: { active: false },
+        session: {},
+        permission: { mode: 'on' },
+        bridge: {},
+      },
+    });
+
+    if (msg.messageId) {
+      await adapter.editMessage(msg.chatId, msg.messageId, rendered).catch(async () => {
+        await adapter.send(withInboundReplyContext(rendered, msg));
+      });
+      return;
+    }
+
+    await adapter.send(withInboundReplyContext(rendered, msg));
   }
 
   private async sendTopicCommandPalette(
