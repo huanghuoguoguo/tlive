@@ -3,6 +3,7 @@ import type { InboundMessage, RenderedMessage } from '../channels/types.js';
 import type { TaskSummaryData } from '../../shared/formatting/message-types.js';
 import { chunkByParagraph } from '../../shared/formatting/text-chunk.js';
 import type { MessageRendererState } from '../engine/messages/renderer.js';
+import type { TimelineEntry } from '../engine/messages/renderer-types.js';
 import { truncate } from '../../shared/core/string.js';
 import { buildProgressData } from '../engine/messages/progress-builder.js';
 import type { Button } from '../../shared/ui/types.js';
@@ -87,7 +88,7 @@ export class QueryExecutionPresenter {
         });
         const traceOutMsg = withInboundReplyContext(traceMsg, this.inbound);
         if (isEdit) {
-          await this.adapter.editMessage(this.inbound.chatId, this.getMessageId()!, traceOutMsg);
+          await this.editExistingOrSend(traceOutMsg);
         } else {
           const traceResult = await this.adapter.send(traceOutMsg);
           this.clearTyping();
@@ -122,14 +123,11 @@ export class QueryExecutionPresenter {
 
     if (content.length > this.platformLimit) {
       const chunks = chunkByParagraph(content, this.platformLimit);
-      await this.adapter.editMessage(
-        this.inbound.chatId,
-        this.getMessageId()!,
-        withInboundReplyContext(
-          this.adapter.formatContent(this.inbound.chatId, chunks[0]),
-          this.inbound,
-        ),
+      const firstMessage = withInboundReplyContext(
+        this.adapter.formatContent(this.inbound.chatId, chunks[0]),
+        this.inbound,
       );
+      const fallbackMessageId = await this.editExistingOrSend(firstMessage);
       for (let i = 1; i < chunks.length; i++) {
         await this.adapter.send(
           withInboundReplyContext(
@@ -138,10 +136,10 @@ export class QueryExecutionPresenter {
           ),
         );
       }
-      return;
+      return fallbackMessageId;
     }
 
-    await this.adapter.editMessage(this.inbound.chatId, this.getMessageId()!, outMsg);
+    return this.editExistingOrSend(outMsg);
   }
 
   async dispose(): Promise<void> {}
@@ -159,13 +157,15 @@ export class QueryExecutionPresenter {
     responseText: string;
     renderedText: string;
     toolLogs: Array<{ name: string; input: string }>;
+    timeline?: TimelineEntry[];
+    toolUseSummaryText?: string;
     permissionRequests: number;
     errorMessage?: string;
     footerLine?: string;
   }): TaskSummaryData {
     // Allow full summary for task completion (up to 5000 chars)
     const locale = this.adapter.getLocale();
-    const summarySource = (state.responseText || '').trim();
+    const summarySource = this.finalSummarySource(state);
     const summary = truncate(summarySource || t('format.taskCompleted'), 5000);
     const changedFileKeys = new Set(
       state.toolLogs
@@ -182,6 +182,47 @@ export class QueryExecutionPresenter {
       footerLine: state.footerLine,
       actionButtons: taskSummaryButtonsForSurface(this.surface, locale),
     };
+  }
+
+  private async editExistingOrSend(message: RenderedMessage): Promise<string | undefined> {
+    try {
+      await this.adapter.editMessage(this.inbound.chatId, this.getMessageId()!, message);
+      return;
+    } catch (err: any) {
+      if (err?.retryable) throw err;
+      const result = await this.adapter.send(message);
+      this.clearTyping();
+      if (result.messageId) this.onMessageId?.(result.messageId);
+      return result.messageId;
+    }
+  }
+
+  private finalSummarySource(state: {
+    responseText: string;
+    timeline?: TimelineEntry[];
+    toolUseSummaryText?: string;
+  }): string {
+    const timeline = state.timeline ?? [];
+    const hasProcessEntries = timeline.some((entry) => entry.kind !== 'text');
+    if (!hasProcessEntries) return (state.responseText || '').trim();
+    if (!timeline.some((entry) => entry.kind === 'text' && entry.text?.trim())) {
+      return (state.responseText || '').trim();
+    }
+
+    const trailingText: string[] = [];
+    for (let i = timeline.length - 1; i >= 0; i--) {
+      const entry = timeline[i];
+      if (entry.kind === 'text') {
+        const text = (entry.text || '').trim();
+        if (text) trailingText.unshift(text);
+        continue;
+      }
+      if (trailingText.length > 0) break;
+    }
+
+    const finalText = trailingText.join('\n\n').trim();
+    if (finalText) return finalText;
+    return (state.toolUseSummaryText || '').trim();
   }
 
   private shouldSplitCompletedTrace(state: {

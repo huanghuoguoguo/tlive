@@ -98,10 +98,14 @@ function createTliveMcpServer(options: TliveHttpMcpOptions): McpServer {
     {
       title: 'Send File to TLive Chat',
       description:
-        'Send a file back to the current TLive IM chat/topic. Prefer the file object input with base64 content; url is supported for already-hosted files.',
+        'Send a file back to the current TLive IM chat/topic. Prefer the file object input with base64 content. The url input is fetched by the TLive MCP server process, so localhost/private URLs must be reachable from the server, not just from the execution client.',
       inputSchema: {
         file: fileDataSchema.optional(),
-        url: z.string().url().optional().describe('HTTP(S) URL to fetch and send as a file.'),
+        url: z
+          .string()
+          .url()
+          .optional()
+          .describe('HTTP(S) URL fetched by the TLive MCP server process, not the client.'),
         fileName: z.string().optional().describe('Filename override for URL input.'),
         mimeType: z.string().optional().describe('MIME type override for URL input.'),
         caption: z.string().optional().describe('Optional text shown with the file.'),
@@ -154,10 +158,14 @@ function createTliveMcpServer(options: TliveHttpMcpOptions): McpServer {
     {
       title: 'Send Image to TLive Chat',
       description:
-        'Send an image back to the current TLive IM chat/topic. Prefer the file object input with base64 image content.',
+        'Send an image back to the current TLive IM chat/topic. Prefer the file object input with base64 image content. The url input is fetched by the TLive MCP server process, so localhost/private URLs must be reachable from the server, not just from the execution client.',
       inputSchema: {
         file: fileDataSchema.optional(),
-        url: z.string().url().optional().describe('HTTP(S) URL to fetch and send as an image.'),
+        url: z
+          .string()
+          .url()
+          .optional()
+          .describe('HTTP(S) URL fetched by the TLive MCP server process, not the client.'),
         fileName: z.string().optional().describe('Filename override for URL input.'),
         mimeType: z.string().optional().describe('MIME type override for URL input.'),
         caption: z.string().optional().describe('Optional text shown with the image.'),

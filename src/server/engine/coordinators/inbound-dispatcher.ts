@@ -22,6 +22,17 @@ export interface InboundDispatcherOptions {
   query: QueryOrchestrator;
 }
 
+const TOPIC_TLIVE_COMMANDS = new Set([
+  '/stop',
+  '/tlive',
+  '/home',
+  '/home-refresh',
+  '/home-view',
+  '/home-dir',
+  '/client-upgrade',
+  '/continue',
+]);
+
 /**
  * Routes one normalized inbound message into text, callback, command, or query handling.
  *
@@ -78,8 +89,9 @@ export class InboundDispatcher {
       return true;
     }
 
+    const surface = conversationSurface({ threadId: msg.threadId, scopeId: msg.scopeId });
     const publicCommand = msg.callbackData ? null : publicTextCommandName(msg.text);
-    if (publicCommand) {
+    if (publicCommand && shouldHandlePublicCommandBeforeAgent(publicCommand, surface)) {
       const handled = await commands.handle(adapter, msg);
       if (handled) {
         console.log(`[bridge] ${ctx.requestId} CMD ${publicCommand}`);
@@ -110,7 +122,7 @@ export class InboundDispatcher {
       }
     }
 
-    if (conversationSurface({ threadId: msg.threadId, scopeId: msg.scopeId }) === 'workbench') {
+    if (surface === 'workbench') {
       await adapter
         .send(
           {
@@ -124,4 +136,12 @@ export class InboundDispatcher {
 
     return query.run(adapter, msg, ctx.requestId);
   }
+}
+
+function shouldHandlePublicCommandBeforeAgent(
+  command: string,
+  surface: ReturnType<typeof conversationSurface>,
+): boolean {
+  if (surface !== 'topic') return true;
+  return TOPIC_TLIVE_COMMANDS.has(command);
 }

@@ -523,7 +523,7 @@ export class MessageRenderer {
           this.onFlushError?.(err, { phase, contentPreview });
         }
       }
-      if (!isEdit && typeof result === 'string') this._messageId = result;
+      if (typeof result === 'string') this._messageId = result;
 
       if (this.splitPending && (this.completed || this.errorMessage)) {
         this.splitPending = false;
@@ -571,17 +571,17 @@ export class MessageRenderer {
   }
 
   private shouldSplitBubble(): boolean {
+    const defaultSplit =
+      this.bubbleToolCount >= SPLIT_TOOL_THRESHOLD ||
+      this.bubbleTimelineCount >= SPLIT_TIMELINE_THRESHOLD;
     if (this.shouldSplitState) {
       const state = this.contentBuilder.getStateSnapshot(
         this.getRenderInput(),
         this.contentBuilder.render(this.getRenderInput()),
       );
-      return this.shouldSplitState(state);
+      return defaultSplit || this.shouldSplitState(state);
     }
-    return (
-      this.bubbleToolCount >= SPLIT_TOOL_THRESHOLD ||
-      this.bubbleTimelineCount >= SPLIT_TIMELINE_THRESHOLD
-    );
+    return defaultSplit;
   }
 }
 

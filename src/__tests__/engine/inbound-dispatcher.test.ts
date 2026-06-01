@@ -168,4 +168,36 @@ describe('InboundDispatcher', () => {
     expect(commands.handle).toHaveBeenCalledWith(adapter, msg);
     expect(query.run).toHaveBeenCalledWith(adapter, msg, 'req-settings');
   });
+
+  it('passes agent slash commands through inside a topic even when names overlap TLive commands', async () => {
+    const harness = createTextHarness('none');
+    const { dispatcher, commands, query } = createDispatcher(harness);
+    const adapter = createAdapter();
+    const msg = createMessage('/status', {
+      threadId: 'thread-1',
+      scopeId: 'chat-1#thread:thread-1',
+    });
+
+    const handled = await dispatcher.handle(adapter, msg, 'req-status');
+
+    expect(handled).toBe(true);
+    expect(commands.handle).not.toHaveBeenCalled();
+    expect(query.run).toHaveBeenCalledWith(adapter, msg, 'req-status');
+  });
+
+  it('still handles TLive topic controls before the agent', async () => {
+    const harness = createTextHarness('none');
+    const { dispatcher, commands, query } = createDispatcher(harness, true);
+    const adapter = createAdapter();
+    const msg = createMessage('/stop', {
+      threadId: 'thread-1',
+      scopeId: 'chat-1#thread:thread-1',
+    });
+
+    const handled = await dispatcher.handle(adapter, msg, 'req-stop');
+
+    expect(handled).toBe(true);
+    expect(commands.handle).toHaveBeenCalledWith(adapter, msg);
+    expect(query.run).not.toHaveBeenCalled();
+  });
 });

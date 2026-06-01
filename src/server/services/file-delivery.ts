@@ -154,9 +154,28 @@ export class FileDeliveryService {
       return { success: false, error: 'Only http and https URLs are supported' };
     }
 
-    const response = await fetch(parsed);
+    const serverSideHint = serverSideUrlHint(parsed);
+    let response: Response;
+    try {
+      response = await fetch(parsed);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      return {
+        success: false,
+        error: [
+          `Failed to fetch URL from the TLive MCP server: ${detail}`,
+          serverSideHint,
+        ].filter(Boolean).join(' '),
+      };
+    }
     if (!response.ok) {
-      return { success: false, error: `Failed to fetch URL: HTTP ${response.status}` };
+      return {
+        success: false,
+        error: [
+          `Failed to fetch URL from the TLive MCP server: HTTP ${response.status}`,
+          serverSideHint,
+        ].filter(Boolean).join(' '),
+      };
     }
 
     const contentLength = Number(response.headers.get('content-length') ?? '0');
@@ -258,6 +277,32 @@ export class FileDeliveryService {
 
 export function guessMimeType(fileName: string): string {
   return MIME_MAP[extname(fileName).toLowerCase()] || 'application/octet-stream';
+}
+
+function serverSideUrlHint(url: URL): string | undefined {
+  const host = url.hostname.toLowerCase();
+  if (!isLocalOrPrivateHost(host)) return undefined;
+  return [
+    'URL fetch happens in the TLive MCP server process.',
+    'localhost, 127.0.0.1, and private IPs refer to the server network, not the execution client.',
+    'For files generated on the client machine, use the file/base64 input or a URL reachable by the server.',
+  ].join(' ');
+}
+
+function isLocalOrPrivateHost(host: string): boolean {
+  if (host === 'localhost' || host === '::1' || host === '[::1]') return true;
+  const parts = host.split('.').map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return false;
+  }
+  const [a, b] = parts;
+  return (
+    a === 10 ||
+    a === 127 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254)
+  );
 }
 
 function isImage(fileName: string, mimeType: string): boolean {

@@ -1,5 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { FileDeliveryService } from '../../server/services/file-delivery.js';
 import { chunkByParagraph } from '../../shared/formatting/text-chunk.js';
+
+const originalFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  vi.restoreAllMocks();
+});
 
 describe('paragraph-aware chunking', () => {
   it('keeps paragraphs together when possible', () => {
@@ -42,5 +50,28 @@ describe('fence-aware chunking', () => {
     const chunks = chunkByParagraph('A'.repeat(300), 100);
     expect(chunks.every(chunk => chunk.length <= 100)).toBe(true);
     expect(chunks.join('')).toBe(text);
+  });
+});
+
+describe('FileDeliveryService URL diagnostics', () => {
+  it('explains that localhost URLs are fetched by the MCP server side', async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('fetch failed')) as any;
+    const service = new FileDeliveryService({
+      bridge: {
+        getAdapter: vi.fn(),
+        getBinding: vi.fn(),
+      } as any,
+      defaultWorkdir: '/tmp',
+    });
+
+    const result = await service.sendUrl({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      url: 'http://127.0.0.1:8765/image.png',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('TLive MCP server');
+    expect(result.error).toContain('not the execution client');
   });
 });

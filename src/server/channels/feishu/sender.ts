@@ -82,6 +82,7 @@ export async function editFeishuMessage(
       throw classifyError(err);
     }
     console.warn(`[feishu] editMessage failed: ${err?.message ?? err}`);
+    throw classifyError ? classifyError(err) : err;
   }
 }
 

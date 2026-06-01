@@ -7,7 +7,7 @@ import type {
   ThreadStartResult,
 } from '../types.js';
 import type { BridgeError } from '../errors.js';
-import { RateLimitError, AuthError } from '../errors.js';
+import { RateLimitError, AuthError, PlatformError } from '../errors.js';
 import { FeishuStreamingSession } from './streaming.js';
 import { FeishuFormatter } from './formatter.js';
 import { FEISHU_POLICY } from './policy.js';
@@ -297,11 +297,17 @@ export class FeishuAdapter extends BaseChannelAdapter<FeishuRenderedMessage> {
 
     // Feishu uses numeric error codes
     const code = e?.code;
-    const statusCode = e?.statusCode ?? e?.status ?? e?.response?.statusCode ?? e?.response?.status;
+    const statusCode =
+      e?.statusCode ??
+      e?.status ??
+      e?.response?.statusCode ??
+      e?.response?.status ??
+      statusCodeFromMessage(message);
     if (code === 230020 || code === 99991400 || statusCode === 429) {
       return new RateLimitError(message, readRetryAfterMs(e));
     }
     if (code === 99991401 || code === 99991403) return new AuthError(message);
+    if (statusCode) return new PlatformError(message, statusCode);
 
     return super.classifyError(err);
   }
@@ -330,6 +336,13 @@ function readRetryAfterMs(err: Record<string, any>): number {
   const retryAfter = headers['retry-after'] ?? headers['Retry-After'];
   const seconds = Number(retryAfter);
   return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 2000;
+}
+
+function statusCodeFromMessage(message: string): number | undefined {
+  const match = message.match(/status code\s+(\d{3})/i);
+  if (!match) return undefined;
+  const statusCode = Number(match[1]);
+  return Number.isFinite(statusCode) ? statusCode : undefined;
 }
 
 async function fetchFeishuBotInfo(

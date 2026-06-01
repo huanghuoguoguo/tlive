@@ -9,7 +9,8 @@ import { RemoteAgentProvider } from '../../server/providers/remote-agent-provide
 import { RemoteClientRegistry } from '../../server/clients/client-registry.js';
 import { singleProviderRegistry } from '../../shared/providers/registry.js';
 import { FakeClaudeProvider, waitFor } from '../e2e/harness.js';
-import type { AgentProvider } from '../../shared/providers/base.js';
+import type { AgentProvider, LiveSession, StreamChatResult } from '../../shared/providers/base.js';
+import type { FileAttachment } from '../../shared/media/attachments.js';
 
 async function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -152,4 +153,120 @@ describe('remote client/server bridge', () => {
 
     expect(events).toContainEqual({ kind: 'text_delta', text: 'allow' });
   });
+
+  it('transfers image attachments to the remote execution client', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tlive-remote-'));
+    cleanup.push(() => rmSync(root, { recursive: true, force: true }));
+    const port = await freePort();
+    const registry = new RemoteClientRegistry({
+      port,
+      path: '/tlive',
+      token: 'test-token',
+      heartbeatIntervalMs: 10_000,
+      clientTimeoutMs: 30_000,
+    });
+    registry.start();
+    cleanup.push(() => registry.stop());
+
+    const receivedAttachments: FileAttachment[][] = [];
+    const fake = createAttachmentCapturingProvider(receivedAttachments);
+    const worker = new RemoteClientWorker(singleProviderRegistry(fake), {
+      serverUrl: `ws://127.0.0.1:${port}/tlive`,
+      token: 'test-token',
+      clientId: 'worker-1',
+      name: 'worker-1',
+      workspaces: [root],
+      reconnectIntervalMs: 100,
+    });
+    const workerRun = worker.start();
+    cleanup.push(async () => {
+      worker.stop();
+      await Promise.race([workerRun, new Promise((resolve) => setTimeout(resolve, 200))]);
+    });
+
+    await waitFor(() => registry.listClients().find((client) => client.clientId === 'worker-1'));
+
+    const image: FileAttachment = {
+      type: 'image',
+      name: 'diagram.png',
+      mimeType: 'image/png',
+      base64Data: Buffer.from('png-bytes').toString('base64'),
+    };
+    const provider = new RemoteAgentProvider('claude', registry);
+    const session = provider.createSession({ workingDirectory: root });
+    const result = session.startTurn('inspect remote image', { attachments: [image] });
+    const events = await collect(result.stream);
+
+    expect(receivedAttachments).toEqual([[image]]);
+    expect(events).toContainEqual({
+      kind: 'query_result',
+      sessionId: 'remote-image-session',
+      isError: false,
+      usage: { inputTokens: 1, outputTokens: 1, costUsd: 0 },
+    });
+  });
 });
+
+function createAttachmentCapturingProvider(received: FileAttachment[][]): AgentProvider {
+  return {
+    kind: 'claude',
+    displayName: 'Claude',
+    capabilities: {
+      runtimeMode: 'interactive',
+      nativeSteer: true,
+      nativeQueue: true,
+      interactivePermissions: true,
+      askUserQuestion: true,
+      deferredTools: true,
+      settingSources: true,
+      sessionResume: true,
+      imageInputs: true,
+    },
+    createSession: () => createAttachmentCapturingSession(received),
+    streamChat: (): StreamChatResult => {
+      throw new Error('streamChat should not be called by the remote worker');
+    },
+  };
+}
+
+function createAttachmentCapturingSession(received: FileAttachment[][]): LiveSession {
+  let alive = true;
+  let turnActive = false;
+  return {
+    capabilities: { nativeSteer: true, nativeQueue: true },
+    runtimeInfo: { provider: 'claude', displayName: 'Claude' },
+    get isAlive() {
+      return alive;
+    },
+    get isTurnActive() {
+      return turnActive;
+    },
+    startTurn: (_prompt, params): StreamChatResult => {
+      turnActive = true;
+      received.push(params?.attachments ?? []);
+      const stream = new ReadableStream<CanonicalEvent>({
+        start(controller) {
+          controller.enqueue({
+            kind: 'query_result',
+            sessionId: 'remote-image-session',
+            isError: false,
+            usage: { inputTokens: 1, outputTokens: 1, costUsd: 0 },
+          });
+          controller.close();
+          turnActive = false;
+        },
+      });
+      return { stream };
+    },
+    steerTurn: () => {},
+    sendWithPriority: async () => {},
+    interruptTurn: async () => {
+      turnActive = false;
+    },
+    close: () => {
+      alive = false;
+      turnActive = false;
+    },
+    setLifecycleCallbacks: () => {},
+  };
+}

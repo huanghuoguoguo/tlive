@@ -43,7 +43,7 @@ describe('QueryExecutionPresenter', () => {
     adapter?: Record<string, unknown>;
     inbound?: Record<string, unknown>;
     getMessageId?: () => string | undefined;
-  } = {}): { presenter: QueryExecutionPresenter; sent: any[] } {
+  } = {}): { presenter: QueryExecutionPresenter; sent: any[]; adapter: any } {
     const formatter = new FeishuFormatter('zh');
     const sent: any[] = [];
     const adapter = {
@@ -72,6 +72,7 @@ describe('QueryExecutionPresenter', () => {
     };
 
     return {
+      adapter,
       sent,
       presenter: new QueryExecutionPresenter({
         adapter: adapter as any,
@@ -119,5 +120,49 @@ describe('QueryExecutionPresenter', () => {
     const panel = (summaryCard.feishuElements ?? [])
       .find((element: any) => element.tag === 'collapsible_panel');
     expect(panel?.header?.title?.content).toBe('运行信息');
+  });
+
+  it('uses the final assistant text for split task summaries', async () => {
+    const { presenter, sent } = createPresenter({
+      adapter: { shouldSplitCompletedTrace: () => true },
+    });
+
+    await presenter.flush('final\n───────────────\n~/repo | #abcd', false, undefined, baseState({
+      renderedText: 'final\n───────────────\n~/repo | #abcd',
+      responseText: 'Plan first.\nDoing work.\nFinal result only.',
+      footerLine: '~/repo | #abcd',
+      timeline: [
+        { kind: 'text', text: 'Plan first.' },
+        { kind: 'tool', toolName: 'Bash', toolInput: 'npm test', toolResult: 'ok' },
+        { kind: 'text', text: 'Final result only.' },
+      ],
+      toolLogs: [{ name: 'Bash', input: 'npm test' }],
+    }));
+
+    const summaryCard = sent[1];
+    const bodyText = (summaryCard.feishuElements ?? [])
+      .filter((element: any) => element.tag === 'markdown')
+      .map((element: any) => element.content)
+      .join('\n');
+    expect(bodyText).toContain('Final result only.');
+    expect(bodyText).not.toContain('Plan first.');
+  });
+
+  it('falls back to a new bubble when editing the progress card fails', async () => {
+    const { presenter, sent, adapter } = createPresenter({
+      adapter: {
+        editMessage: vi.fn().mockRejectedValue(new Error('Request failed with status code 400')),
+      },
+      getMessageId: () => 'progress-card',
+    });
+
+    const messageId = await presenter.flush('updated progress', true, undefined, baseState({
+      phase: 'executing',
+      renderedText: 'updated progress',
+    }));
+
+    expect(adapter.editMessage).toHaveBeenCalled();
+    expect(sent).toHaveLength(1);
+    expect(messageId).toBe('out-1');
   });
 });

@@ -429,14 +429,13 @@ describe('FeishuAdapter', () => {
   });
 
   describe('editMessage()', () => {
-    it('silently ignores errors (non-fatal)', async () => {
+    it('propagates edit failures so the renderer can fall back to a new bubble', async () => {
       await adapter.start();
-      mockMessagePatch.mockRejectedValueOnce(new Error('400 not a card'));
-      // Should not throw
-      await adapter.editMessage('oc_chat123', 'msg-feishu-1', {
+      mockMessagePatch.mockRejectedValueOnce(new Error('Request failed with status code 400'));
+      await expect(adapter.editMessage('oc_chat123', 'msg-feishu-1', {
         chatId: 'oc_chat123',
         text: 'Updated content',
-      });
+      })).rejects.toMatchObject({ retryable: false, statusCode: 400 });
       await adapter.stop();
     });
 

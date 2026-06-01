@@ -353,21 +353,36 @@ describe('MessageRenderer', () => {
       (state) => state.thinkingText.length >= largeThought.length * 2,
     );
 
-    r.onToolStart('Bash', { command: 'pwd' });
-    await advance(300);
-
-    for (let i = 0; i < 20; i++) {
-      r.onToolStart('Read', { file_path: `src/file-${i}.ts` });
-      await advance(300);
-    }
-    expect(messageIds).toEqual(['msg-1']);
-
     for (let i = 0; i < 3; i++) {
       r.onThinkingDelta(largeThought);
       await advance(300);
     }
 
     expect(messageIds.length).toBeGreaterThan(1);
+    r.dispose();
+  });
+
+  it('keeps the default tool-count split even with a platform split predicate', async () => {
+    const messageIds: string[] = [];
+    flushCallback.mockImplementation((_content: string, isEdit: boolean) => {
+      if (!isEdit) {
+        const id = `msg-${messageIds.length + 1}`;
+        messageIds.push(id);
+        return Promise.resolve(id);
+      }
+      return Promise.resolve();
+    });
+
+    const r = createRenderer(30_000, 300, undefined, undefined, 1, () => false);
+    r.onToolStart('Bash');
+    await advance(300);
+
+    for (let i = 0; i < 11; i++) {
+      r.onToolStart('Read', { file_path: `src/file-${i}.ts` });
+      await advance(300);
+    }
+
+    expect(messageIds).toEqual(['msg-1', 'msg-2']);
     r.dispose();
   });
 
