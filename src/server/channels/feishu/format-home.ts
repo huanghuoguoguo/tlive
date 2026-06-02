@@ -68,8 +68,13 @@ function buildMainView(data: HomeData): FeishuCardElement[] {
     { label: '最近会话', callbackData: homeAction(data, 'home-view', 'recent'), row: 1 },
     { label: '目录', callbackData: homeAction(data, 'home-view', 'files'), row: 1 },
     { label: '帮助', callbackData: homeAction(data, 'home-view', 'help'), row: 2 },
-    { label: '诊断', callbackData: homeAction(data, 'home-view', 'diagnostics'), row: 2 },
-    { label: '刷新', callbackData: homeAction(data, 'home-refresh', 'main'), row: 2 },
+    {
+      label: '连通检查',
+      callbackData: homeAction(data, 'client-ping', data.clients?.defaultClientId),
+      row: 2,
+    },
+    { label: '诊断', callbackData: homeAction(data, 'home-view', 'diagnostics'), row: 3 },
+    { label: '刷新', callbackData: homeAction(data, 'home-refresh', 'main'), row: 3 },
   ];
   elements.push(...buttonElements(buttons));
   return elements;
@@ -157,6 +162,11 @@ function buildNodesView(data: HomeData): FeishuCardElement[] {
         row: 0,
       });
     }
+    leadingButtons.push({
+      label: '连通检查',
+      callbackData: homeAction(data, 'client-ping', client.clientId),
+      row: 0,
+    });
     leadingButtons.push({
       label: '节点历史',
       callbackData: homeAction(data, 'home-history', client.clientId),

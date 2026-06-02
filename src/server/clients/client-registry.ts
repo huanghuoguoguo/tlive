@@ -257,6 +257,10 @@ export class RemoteClientRegistry {
     return this.sendClientCommand(clientId, { action: 'client.upgrade', version }, timeoutMs);
   }
 
+  async pingClient(clientId: string, timeoutMs = 5_000): Promise<ClientCommandResultMessage> {
+    return this.sendClientCommand(clientId, { action: 'client.ping' }, timeoutMs);
+  }
+
   private async sendClientCommand(
     clientId: string,
     message: Omit<ClientCommandMessage, 'type' | 'commandId'>,

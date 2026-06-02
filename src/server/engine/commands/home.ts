@@ -201,6 +201,64 @@ export class ClientUpgradeCommand extends BaseCommand {
   }
 }
 
+export class ClientPingCommand extends BaseCommand {
+  readonly name = '/client-ping';
+  readonly quick = true;
+  readonly helpCategory = 'status' as const;
+  readonly description = undefined;
+
+  async execute(ctx: CommandContext): Promise<boolean> {
+    const home = await ctx.helpers.buildHomePayload(ctx.msg.channelType, ctx.scopeId, ctx.locale);
+    const clients = home.clients?.entries ?? [];
+    const requested = ctx.parts[1]?.trim();
+    const clientId =
+      requested ||
+      home.clients?.defaultClientId ||
+      (clients.length === 1 ? clients[0].clientId : undefined);
+
+    if (!clientId) {
+      await this.send(ctx, { chatId: ctx.msg.chatId, text: '⚠️ 没有可检查的执行节点。' });
+      return true;
+    }
+
+    const client = clients.find((entry) => entry.clientId === clientId);
+    if (!client) {
+      await this.send(ctx, { chatId: ctx.msg.chatId, text: `⚠️ 执行节点不在线: ${clientId}` });
+      return true;
+    }
+
+    if (!ctx.services.remoteClientRegistry) {
+      await this.send(ctx, { chatId: ctx.msg.chatId, text: '⚠️ remote client registry 未启用。' });
+      return true;
+    }
+
+    const startedAt = Date.now();
+    try {
+      const result = await ctx.services.remoteClientRegistry.pingClient(clientId);
+      const latencyMs = Date.now() - startedAt;
+      if (!result.ok) {
+        await this.send(ctx, {
+          chatId: ctx.msg.chatId,
+          text: `⚠️ 节点 ${clientId} 响应失败: ${result.error || result.stderr || 'unknown error'}`,
+        });
+        return true;
+      }
+
+      const hello = result.stdout?.trim() || 'hello';
+      await this.send(ctx, {
+        chatId: ctx.msg.chatId,
+        text: `✅ 节点 ${clientId} 可达 (${latencyMs}ms)\n${hello}`,
+      });
+    } catch (err) {
+      await this.send(ctx, {
+        chatId: ctx.msg.chatId,
+        text: `⚠️ 节点 ${clientId} 连通检查失败: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+    return true;
+  }
+}
+
 const TOPIC_DETAIL_LIMIT = 8;
 const HISTORY_DETAIL_LIMIT = 10;
 

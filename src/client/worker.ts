@@ -416,6 +416,16 @@ export class RemoteClientWorker {
 
   private async handleClientCommand(message: ClientCommandMessage): Promise<void> {
     try {
+      if (message.action === 'client.ping') {
+        this.send({
+          type: 'client.command.result',
+          commandId: message.commandId,
+          ok: true,
+          stdout: `hello from ${this.options.clientId}`,
+        });
+        return;
+      }
+
       if (message.action === 'path.stat') {
         if (!message.path) throw new Error('path is required');
         const path = resolveClientPath(message.path);

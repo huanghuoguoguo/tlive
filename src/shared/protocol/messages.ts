@@ -160,7 +160,12 @@ export interface ControlResultMessage {
   error?: string;
 }
 
-export type ClientCommandAction = 'path.stat' | 'path.list' | 'shell.exec' | 'client.upgrade';
+export type ClientCommandAction =
+  | 'path.stat'
+  | 'path.list'
+  | 'shell.exec'
+  | 'client.upgrade'
+  | 'client.ping';
 
 export interface ClientCommandMessage {
   type: 'client.command';
@@ -332,7 +337,7 @@ export const remoteProtocolMessageSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('client.command'),
     commandId: z.string(),
-    action: z.enum(['path.stat', 'path.list', 'shell.exec', 'client.upgrade']),
+    action: z.enum(['path.stat', 'path.list', 'shell.exec', 'client.upgrade', 'client.ping']),
     path: z.string().optional(),
     cwd: z.string().optional(),
     command: z.string().optional(),

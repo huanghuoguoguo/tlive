@@ -405,6 +405,57 @@ describe('CommandRouter /settings', () => {
     );
   });
 
+  it('pings a remote client from a workbench action', async () => {
+    const pingClient = vi.fn().mockResolvedValue({
+      type: 'client.command.result',
+      commandId: 'cmd-ping',
+      ok: true,
+      stdout: 'hello from worker-1',
+    });
+    const { router: pingRouter } = createTopicRouter({
+      getExecutionClients: () => [
+        {
+          clientId: 'worker-1',
+          name: 'worker-1',
+          online: true,
+          isDefault: true,
+          activeTurns: 0,
+          workspaces: [{ path: '/tmp/project', isDefault: true }],
+          providers: [
+            { kind: 'codex', displayName: 'Codex', available: true, isDefault: true },
+          ],
+        },
+      ],
+      remoteClientRegistry: { pingClient },
+    });
+
+    const handled = await pingRouter.handleAction(
+      adapter,
+      {
+        channelType: 'feishu',
+        chatId: 'c1',
+        scopeId: 'c1',
+        userId: 'u1',
+        text: '',
+        messageId: 'home-card-1',
+      } as any,
+      { name: 'client-ping', args: ['worker-1'] },
+    );
+
+    expect(handled).toBe(true);
+    expect(pingClient).toHaveBeenCalledWith('worker-1');
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining('节点 worker-1 可达'),
+      }),
+    );
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining('hello from worker-1'),
+      }),
+    );
+  });
+
   it('changes the current directory from the workbench directory panel in place', async () => {
     const root = join(tmpDir, 'project');
     const child = join(root, 'src');

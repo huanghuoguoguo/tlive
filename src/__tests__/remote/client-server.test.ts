@@ -80,6 +80,9 @@ describe('remote client/server bridge', () => {
 
     await waitFor(() => registry.listClients().find((client) => client.clientId === 'worker-1'));
 
+    const pingResult = await registry.pingClient('worker-1');
+    expect(pingResult).toMatchObject({ ok: true, stdout: 'hello from worker-1' });
+
     const statResult = await registry.statPath('worker-1', outsideRoot);
     expect(statResult).toMatchObject({ ok: true, exists: true, isDirectory: true });
 
