@@ -96,7 +96,7 @@ export async function feishuMessageEventToInbound(
 
   if (msg.message_type === 'text') {
     const text = parseTextMessage(msg.content);
-    return text ? { ...baseMessage, text } : undefined;
+    return text === undefined ? undefined : { ...baseMessage, text };
   }
 
   if (msg.message_type === 'image') {

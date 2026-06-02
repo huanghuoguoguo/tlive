@@ -602,7 +602,7 @@ describe('FeishuAdapter', () => {
       await adapter.stop();
     });
 
-    it('ignores group topic replies that only mention the current bot', async () => {
+    it('keeps group topic replies that only mention the current bot for reaction handling', async () => {
       await adapter.start();
 
       await mockEventHandler({
@@ -625,7 +625,13 @@ describe('FeishuAdapter', () => {
         sender: { sender_id: { user_id: 'user_1', open_id: 'ou_123' } },
       });
 
-      expect(await adapter.consumeOne()).toBeNull();
+      expect(await adapter.consumeOne()).toMatchObject({
+        text: '',
+        chatId: 'chat_1',
+        scopeId: 'chat_1#thread:thread_1',
+        threadId: 'thread_1',
+        replyInThread: true,
+      });
 
       await adapter.stop();
     });

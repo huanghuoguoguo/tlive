@@ -12,6 +12,13 @@ function createAdapter(): BaseChannelAdapter {
     send: vi.fn().mockResolvedValue({ messageId: 'sent-1', success: true }),
     addReaction: vi.fn().mockResolvedValue(undefined),
     getLocale: vi.fn().mockReturnValue('zh'),
+    getLifecycleReactions: vi.fn().mockReturnValue({
+      processing: 'Typing',
+      done: 'OK',
+      error: 'FACEPALM',
+      stalled: 'OneSecond',
+      permission: 'Pin',
+    }),
     getPermissionDecisionReaction: vi.fn().mockReturnValue('OK'),
   } as unknown as BaseChannelAdapter;
 }
@@ -201,7 +208,7 @@ describe('InboundDispatcher', () => {
     expect(query.run).not.toHaveBeenCalled();
   });
 
-  it('drops empty topic messages before they reach the agent', async () => {
+  it('reacts to empty topic messages without reaching the agent', async () => {
     const harness = createTextHarness('none');
     const { dispatcher, commands, query } = createDispatcher(harness);
     const adapter = createAdapter();
@@ -213,6 +220,7 @@ describe('InboundDispatcher', () => {
     const handled = await dispatcher.handle(adapter, msg, 'req-empty');
 
     expect(handled).toBe(true);
+    expect(adapter.addReaction).toHaveBeenCalledWith('chat-1', 'msg-1', 'Typing');
     expect(commands.handle).not.toHaveBeenCalled();
     expect(query.run).not.toHaveBeenCalled();
     expect(adapter.send).not.toHaveBeenCalled();
