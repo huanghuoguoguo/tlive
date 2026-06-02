@@ -128,6 +128,7 @@ export interface Translations {
   'progress.labelStepsCompleted': string;
   'progress.titleCompleted': string;
   'progress.titleStopped': string;
+  'progress.titleFailed': string;
   'progress.titleWaitingPerm': string;
   'progress.titleContinue': string;
   'progress.titleStarting': string;

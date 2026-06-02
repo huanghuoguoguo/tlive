@@ -14,6 +14,7 @@ function createAdapter(): BaseChannelAdapter {
     getLocale: vi.fn().mockReturnValue('zh'),
     getLifecycleReactions: vi.fn().mockReturnValue({
       processing: 'Typing',
+      emptyMention: 'FISTBUMP',
       done: 'OK',
       error: 'FACEPALM',
       stalled: 'OneSecond',
@@ -220,7 +221,7 @@ describe('InboundDispatcher', () => {
     const handled = await dispatcher.handle(adapter, msg, 'req-empty');
 
     expect(handled).toBe(true);
-    expect(adapter.addReaction).toHaveBeenCalledWith('chat-1', 'msg-1', 'Typing');
+    expect(adapter.addReaction).toHaveBeenCalledWith('chat-1', 'msg-1', 'FISTBUMP');
     expect(commands.handle).not.toHaveBeenCalled();
     expect(query.run).not.toHaveBeenCalled();
     expect(adapter.send).not.toHaveBeenCalled();

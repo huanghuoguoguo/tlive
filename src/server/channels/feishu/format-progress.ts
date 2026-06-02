@@ -398,7 +398,12 @@ export function progressHeaderConfig(
   return data.phase === 'completed'
     ? { template: 'green' as const, title: t('progress.titleCompleted') }
     : data.phase === 'failed'
-      ? { template: 'red' as const, title: t('progress.titleStopped') }
+      ? {
+          template: 'red' as const,
+          title: data.errorMessage === 'Interrupted'
+            ? t('progress.titleStopped')
+            : t('progress.titleFailed'),
+        }
       : data.phase === 'waiting_permission'
         ? { template: 'orange' as const, title: t('progress.titleWaitingPerm') }
         : data.isContinuation

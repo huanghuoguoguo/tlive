@@ -49,6 +49,7 @@ const FEISHU_PROGRESS: ProgressPolicy = {
 
 const FEISHU_REACTIONS: ReactionPolicy = {
   processing: 'Typing',
+  emptyMention: 'FISTBUMP',
   done: 'OK',
   error: 'FACEPALM',
   stalled: 'OneSecond',

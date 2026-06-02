@@ -215,7 +215,7 @@ export class ProgressContentBuilder {
       if (input.responseText) {
         lines.push(input.responseText);
       }
-      lines.push('⚠️ Stopped');
+      lines.push(formatErrorLine(input.errorMessage));
       lines.push(SEPARATOR);
       if (input.todoItems.length > 0) {
         lines.push(this.renderTodoProgress(input.todoItems));
@@ -280,6 +280,10 @@ export class ProgressContentBuilder {
   }
 }
 
+function formatErrorLine(errorMessage: string): string {
+  return errorMessage === 'Interrupted' ? '⚠️ Stopped' : `❌ ${errorMessage}`;
+}
+
 import type { ProgressData } from '../../../shared/formatting/message-types.js';
 
 /**
@@ -307,6 +311,7 @@ export function buildProgressData(
     thinkingText: state.thinkingText,
     toolLogs: state.toolLogs,
     timeline: state.timeline,
+    errorMessage: state.errorMessage,
     isContinuation: state.isContinuation,
     sessionInfo: state.sessionInfo,
     toolUseSummaryText: state.toolUseSummaryText,

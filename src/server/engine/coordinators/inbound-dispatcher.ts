@@ -91,7 +91,7 @@ export class InboundDispatcher {
 
     if (isEmptyTextMessage(msg)) {
       const reactions = adapter.getLifecycleReactions();
-      adapter.addReaction(msg.chatId, msg.messageId, reactions.processing).catch(() => {});
+      adapter.addReaction(msg.chatId, msg.messageId, reactions.emptyMention).catch(() => {});
       console.log(`[bridge] ${ctx.requestId} EMPTY dropped`);
       return true;
     }

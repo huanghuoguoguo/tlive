@@ -24,6 +24,7 @@ export interface ProgressPolicy {
 
 export interface ReactionPolicy {
   processing: string;
+  emptyMention: string;
   done: string;
   error: string;
   stalled: string;

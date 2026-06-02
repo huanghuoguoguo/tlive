@@ -217,7 +217,7 @@ describe('MessageRenderer', () => {
 
     const content = flushCallback.mock.calls.at(-1)?.[0] as string;
     expect(content).toContain('Partial response...');
-    expect(content).toContain('⚠️ Stopped');
+    expect(content).toContain('❌ stream interrupted');
     expect(content).toContain('───────────────');
     partial.dispose();
   });

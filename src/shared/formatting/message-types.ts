@@ -357,6 +357,8 @@ export interface ProgressData {
   renderedText: string;
   todoItems: Array<{ content: string; status: string }>;
   footerLine?: string;
+  /** Provider/runtime error message for failed tasks. */
+  errorMessage?: string;
   totalTools: number;
   toolSummary?: string;
   /** Accumulated thinking/reasoning text */

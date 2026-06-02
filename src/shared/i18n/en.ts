@@ -126,6 +126,7 @@ export const en: Translations = {
   'progress.labelStepsCompleted': 'steps completed',
   'progress.titleCompleted': '✅ Completed',
   'progress.titleStopped': '⚠️ Stopped',
+  'progress.titleFailed': '❌ Failed',
   'progress.titleWaitingPerm': '🔐 Waiting for permission',
   'progress.titleContinue': '🔄 Continue',
   'progress.titleStarting': '⏳ Starting',

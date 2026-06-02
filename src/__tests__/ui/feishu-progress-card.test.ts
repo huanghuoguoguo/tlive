@@ -203,6 +203,43 @@ describe('FeishuFormatter.formatProgress', () => {
 
   });
 
+  describe('failed phase — exposes provider errors', () => {
+    it('shows failed header and preserves the provider error in the body', () => {
+      const error =
+        'Error running remote compact task: stream disconnected before completion';
+      const msg = formatter.formatProgress('chat1', createProgressData({
+        phase: 'failed',
+        renderedText: `Partial answer\n❌ ${error}\n───────────────\n🖥️ Bash ×1 (1 total)`,
+        errorMessage: error,
+        totalTools: 1,
+        toolSummary: '🖥️ Bash ×1 (1 total)',
+      }));
+
+      expect((msg as any).feishuHeader).toMatchObject({
+        template: 'red',
+        title: '❌ 失败',
+      });
+
+      const allText = findByTag(getElements(msg), 'markdown').map(e => e.content).join('\n');
+      expect(allText).toContain('Partial answer');
+      expect(allText).toContain(error);
+      expect(allText).not.toContain('已停止');
+    });
+
+    it('keeps stopped header for explicit interruptions', () => {
+      const msg = formatter.formatProgress('chat1', createProgressData({
+        phase: 'failed',
+        renderedText: '⚠️ Stopped',
+        errorMessage: 'Interrupted',
+      }));
+
+      expect((msg as any).feishuHeader).toMatchObject({
+        template: 'red',
+        title: '⚠️ 已停止',
+      });
+    });
+  });
+
   describe('executing phase — shows status info', () => {
     it('shows current tool and duration', () => {
       const msg = formatter.formatProgress('chat1', createProgressData({

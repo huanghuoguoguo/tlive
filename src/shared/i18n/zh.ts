@@ -126,6 +126,7 @@ export const zh: Translations = {
   'progress.labelStepsCompleted': '步已完成',
   'progress.titleCompleted': '✅ 已完成',
   'progress.titleStopped': '⚠️ 已停止',
+  'progress.titleFailed': '❌ 失败',
   'progress.titleWaitingPerm': '🔐 等待权限',
   'progress.titleContinue': '🔄 继续执行',
   'progress.titleStarting': '⏳ 准备开始',
@@ -153,7 +154,7 @@ export const zh: Translations = {
   'progress.executing': '⏳ 执行中',
   'progress.waitingPermission': '🔐 等待权限',
   'progress.completed': '✅ 已完成',
-  'progress.failed': '⚠️ 已停止',
+  'progress.failed': '❌ 失败',
   'progress.taskLabel': '任务',
   'progress.timeLabel': '耗时',
 
