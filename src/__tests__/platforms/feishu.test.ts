@@ -602,6 +602,34 @@ describe('FeishuAdapter', () => {
       await adapter.stop();
     });
 
+    it('ignores group topic replies that only mention the current bot', async () => {
+      await adapter.start();
+
+      await mockEventHandler({
+        message: {
+          message_id: 'msg_group_topic_empty_mention',
+          chat_id: 'chat_1',
+          chat_type: 'group',
+          thread_id: 'thread_1',
+          message_type: 'text',
+          content: JSON.stringify({ text: '@_user_1 ' }),
+          root_id: 'msg_root',
+          mentions: [
+            {
+              key: '@_user_1',
+              id: { open_id: 'ou_bot' },
+              name: 'openclaw',
+            },
+          ],
+        },
+        sender: { sender_id: { user_id: 'user_1', open_id: 'ou_123' } },
+      });
+
+      expect(await adapter.consumeOne()).toBeNull();
+
+      await adapter.stop();
+    });
+
     it('uses open_id when user_id is empty', async () => {
       await adapter.start();
 

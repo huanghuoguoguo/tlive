@@ -89,6 +89,11 @@ export class InboundDispatcher {
       return true;
     }
 
+    if (isEmptyTextMessage(msg)) {
+      console.log(`[bridge] ${ctx.requestId} EMPTY dropped`);
+      return true;
+    }
+
     const surface = conversationSurface({ threadId: msg.threadId, scopeId: msg.scopeId });
     const publicCommand = msg.callbackData ? null : publicTextCommandName(msg.text);
     if (publicCommand && shouldHandlePublicCommandBeforeAgent(publicCommand, surface)) {
@@ -144,4 +149,8 @@ function shouldHandlePublicCommandBeforeAgent(
 ): boolean {
   if (surface !== 'topic') return true;
   return TOPIC_TLIVE_COMMANDS.has(command);
+}
+
+function isEmptyTextMessage(msg: InboundMessage): boolean {
+  return !msg.callbackData && !msg.attachments?.length && !msg.text.trim();
 }

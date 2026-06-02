@@ -200,4 +200,21 @@ describe('InboundDispatcher', () => {
     expect(commands.handle).toHaveBeenCalledWith(adapter, msg);
     expect(query.run).not.toHaveBeenCalled();
   });
+
+  it('drops empty topic messages before they reach the agent', async () => {
+    const harness = createTextHarness('none');
+    const { dispatcher, commands, query } = createDispatcher(harness);
+    const adapter = createAdapter();
+    const msg = createMessage('', {
+      threadId: 'thread-1',
+      scopeId: 'chat-1#thread:thread-1',
+    });
+
+    const handled = await dispatcher.handle(adapter, msg, 'req-empty');
+
+    expect(handled).toBe(true);
+    expect(commands.handle).not.toHaveBeenCalled();
+    expect(query.run).not.toHaveBeenCalled();
+    expect(adapter.send).not.toHaveBeenCalled();
+  });
 });
