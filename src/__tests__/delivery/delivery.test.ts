@@ -54,6 +54,59 @@ describe('fence-aware chunking', () => {
 });
 
 describe('FileDeliveryService URL diagnostics', () => {
+  it('sends image content through a route token target', async () => {
+    const adapter = {
+      formatContent: vi.fn().mockImplementation((chatId: string, content: string) => ({
+        chatId,
+        text: content,
+      })),
+      send: vi.fn().mockResolvedValue({ messageId: 'out-1', success: true }),
+    };
+    const bridge = {
+      getAdapter: vi.fn().mockReturnValue(adapter),
+      getBinding: vi.fn(),
+      resolveFileDeliveryToken: vi.fn().mockReturnValue({
+        channelType: 'feishu',
+        chatId: 'chat-1',
+        scopeId: 'chat-1#thread:thread-1',
+        threadId: 'thread-1',
+        replyToMessageId: 'msg-topic-1',
+        replyInThread: true,
+        cwd: '/workdir',
+        sessionKey: 'session-key',
+      }),
+    };
+    const service = new FileDeliveryService({
+      bridge: bridge as any,
+      defaultWorkdir: '/tmp',
+    });
+
+    const result = await service.sendContent({
+      routeToken: 'route-token',
+      fileName: 'image.png',
+      mimeType: 'image/png',
+      base64Data: Buffer.from('png body').toString('base64'),
+      caption: 'done',
+    });
+
+    expect(result).toEqual({ success: true, filename: 'image.png' });
+    expect(bridge.resolveFileDeliveryToken).toHaveBeenCalledWith('route-token');
+    expect(adapter.formatContent).toHaveBeenCalledWith('chat-1', 'done');
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: 'chat-1',
+        threadId: 'thread-1',
+        replyToMessageId: 'msg-topic-1',
+        replyInThread: true,
+        media: expect.objectContaining({
+          type: 'image',
+          filename: 'image.png',
+          mimeType: 'image/png',
+        }),
+      }),
+    );
+  });
+
   it('explains that localhost URLs are fetched by the MCP server side', async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('fetch failed')) as any;
     const service = new FileDeliveryService({

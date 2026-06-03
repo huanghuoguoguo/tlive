@@ -1,6 +1,7 @@
 import type { InboundMessage } from '../../channels/types.js';
 import { withInboundReplyContext } from '../../channels/reply-context.js';
 import { conversationScopeId } from '../../channels/conversation-context.js';
+import { deliveryRouteFromInbound } from '../../channels/delivery-route.js';
 import { truncate } from '../../../shared/core/string.js';
 import type { AgentSettingSource } from '../../../shared/config.js';
 import type { BridgeStore } from '../../store/interface.js';
@@ -57,7 +58,8 @@ export class QueryTurnRunner {
     const chatKey = this.options.state.stateKey(msg.channelType, scopeId);
     const imageAttachments = msg.attachments?.filter((a) => a.type === 'image');
     const provider = this.options.providers.require(binding.provider);
-    const promptText = preparePromptWithFileAttachments(msg.text, msg.attachments);
+    const basePromptText = preparePromptWithFileAttachments(msg.text, msg.attachments);
+    const promptText = this.withFileDeliveryContext(basePromptText, msg, sessionKey, workdir);
 
     let streamResult: StreamChatResult | undefined;
     let terminalEventSeen = false;
@@ -256,4 +258,30 @@ export class QueryTurnRunner {
       )
       .catch(() => {});
   }
+
+  private withFileDeliveryContext(
+    promptText: string,
+    msg: InboundMessage,
+    sessionKey: string,
+    workdir: string,
+  ): string {
+    const routeToken = this.options.sdkEngine.registerFileDeliveryRoute(
+      sessionKey,
+      deliveryRouteFromInbound(msg),
+      workdir,
+    );
+    return [fileDeliveryPrompt(routeToken), promptText].join('\n\n');
+  }
+}
+
+function fileDeliveryPrompt(routeToken: string): string {
+  return [
+    '<tlive_file_delivery>',
+    `Current turn routeToken: ${routeToken}`,
+    'If the user asks you to send, return, upload, or deliver a file/image to this chat, call the TLive MCP tool tlive_send_file or tlive_send_image and include this routeToken.',
+    'This routeToken is only for the current turn and supersedes older routeToken values in the conversation.',
+    'For files generated on this execution client, read the file and send it through the MCP file object: { fileName, mimeType, base64 }. Do not answer only with a local filesystem path.',
+    'Use the MCP url input only for HTTP(S) URLs reachable from the TLive MCP server process.',
+    '</tlive_file_delivery>',
+  ].join('\n');
 }

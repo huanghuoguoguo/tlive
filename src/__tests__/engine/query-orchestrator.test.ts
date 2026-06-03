@@ -322,6 +322,72 @@ describe('QueryOrchestrator', () => {
     });
   });
 
+  it('injects a fresh file delivery route token into each live turn', async () => {
+    const scopeId = 'chat-1#thread:thread-1';
+    const topicBinding = { ...defaultBinding, chatId: scopeId };
+    const router = {
+      resolve: vi.fn().mockResolvedValue(topicBinding),
+      rebind: vi.fn(),
+    };
+    const engine = {
+      processMessage: vi.fn().mockImplementation(async (params) => {
+        await params.onQueryResult?.({
+          sessionId: 'sdk-topic',
+          isError: false,
+          usage: { inputTokens: 1, outputTokens: 1, costUsd: 0 },
+        });
+      }),
+    };
+    const startTurn = vi.fn().mockReturnValue({
+      stream: new ReadableStream({ start: controller => controller.close() }),
+    });
+    const sdkEngine = createSdkEngine({
+      registerFileDeliveryRoute: vi.fn()
+        .mockReturnValueOnce('route-token-1')
+        .mockReturnValueOnce('route-token-2'),
+      getOrCreateSession: vi.fn().mockReturnValue({
+        runtimeInfo: { provider: 'codex', displayName: 'Remote Codex' },
+        startTurn,
+      }),
+    });
+    const { adapter, orchestrator } = createHarness({ engine, router, sdkEngine });
+
+    const topicMessage = inbound({
+      scopeId,
+      threadId: 'thread-1',
+      replyInThread: true,
+      replyTargetMessageId: 'msg-topic-1',
+      text: 'generate an image and send it back',
+    });
+    await orchestrator.run(adapter, topicMessage);
+    await orchestrator.run(adapter, {
+      ...topicMessage,
+      messageId: 'msg-2',
+      text: 'send another file back',
+    });
+
+    expect(sdkEngine.registerFileDeliveryRoute).toHaveBeenCalledWith(
+      expect.any(String),
+      {
+        channelType: 'feishu',
+        chatId: 'chat-1',
+        scopeId,
+        threadId: 'thread-1',
+        replyToMessageId: 'msg-topic-1',
+        replyInThread: true,
+      },
+      '/tmp/project',
+    );
+    expect(startTurn.mock.calls[0][0]).toContain('Current turn routeToken: route-token-1');
+    expect(startTurn.mock.calls[0][0]).toContain('tlive_send_image');
+    expect(startTurn.mock.calls[0][0]).toContain('Do not answer only with a local filesystem path');
+    expect(startTurn.mock.calls[0][0]).toContain('generate an image and send it back');
+    expect(startTurn.mock.calls[1][0]).toContain('Current turn routeToken: route-token-2');
+    expect(engine.processMessage.mock.calls[1][0].text).toContain(
+      'Current turn routeToken: route-token-2',
+    );
+  });
+
   it('auto-starts a Feishu topic for main-chat queries', async () => {
     const scopeId = 'chat-1#thread:thread-auto';
     const topicBinding = { ...defaultBinding, chatId: scopeId };
