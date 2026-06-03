@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/huanghuoguoguo/tlive/actions/workflows/ci.yml/badge.svg)](https://github.com/huanghuoguoguo/tlive/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![LINUX DO](https://img.shields.io/badge/LINUX-DO-FFB003?style=flat-square)](https://linux.do)
 
 **Feishu/Lark-native remote AI development workbench** for Claude Code, Codex, and Pi.
 Control local or remote agent nodes from chat, keep each task in a topic, and share agent
