@@ -97,6 +97,7 @@ export interface HomePayloadBuilderDeps {
 
 export interface HomePayloadBuildOptions {
   includeDirectory?: boolean;
+  directoryPage?: number;
 }
 
 /**
@@ -134,7 +135,7 @@ export class HomePayloadBuilder {
           : undefined;
     const currentCwd = binding?.cwd || defaultWorkdir;
     const directory = options.includeDirectory
-      ? await this.buildDirectoryData(currentCwd, defaultClient, clients)
+      ? await this.buildDirectoryData(currentCwd, defaultClient, clients, options.directoryPage)
       : undefined;
     const chatKey = state.stateKey(channelType, chatId);
     const now = Date.now();
@@ -277,9 +278,10 @@ export class HomePayloadBuilder {
     currentCwd: string,
     defaultClient: string | undefined,
     clients: HomeClientEntry[],
+    directoryPage = 0,
   ): Promise<HomeDirectoryData> {
     if (defaultClient && this.deps.remoteClientRegistry) {
-      return this.buildRemoteDirectoryData(currentCwd, defaultClient);
+      return this.buildRemoteDirectoryData(currentCwd, defaultClient, directoryPage);
     }
 
     if (clients.length > 0 && !defaultClient) {
@@ -292,12 +294,13 @@ export class HomePayloadBuilder {
       };
     }
 
-    return this.buildLocalDirectoryData(currentCwd);
+    return this.buildLocalDirectoryData(currentCwd, directoryPage);
   }
 
   private async buildRemoteDirectoryData(
     currentCwd: string,
     clientId: string,
+    directoryPage: number,
   ): Promise<HomeDirectoryData> {
     try {
       const result = await this.deps.remoteClientRegistry?.listDirectory(clientId, currentCwd);
@@ -318,6 +321,7 @@ export class HomePayloadBuilder {
         clientId,
         parent: parentDirectory(path),
         entries: mapDirectoryEntries(result.entries ?? []),
+        page: normalizeDirectoryPage(directoryPage),
         hasMore: result.hasMore,
       };
     } catch (err) {
@@ -330,7 +334,10 @@ export class HomePayloadBuilder {
     }
   }
 
-  private async buildLocalDirectoryData(currentCwd: string): Promise<HomeDirectoryData> {
+  private async buildLocalDirectoryData(
+    currentCwd: string,
+    directoryPage: number,
+  ): Promise<HomeDirectoryData> {
     try {
       const st = await stat(currentCwd);
       if (!st.isDirectory()) {
@@ -343,6 +350,7 @@ export class HomePayloadBuilder {
         source: 'server',
         parent: parentDirectory(currentCwd),
         entries: allEntries.slice(0, LOCAL_DIRECTORY_DISPLAY_LIMIT),
+        page: normalizeDirectoryPage(directoryPage),
         hasMore: allEntries.length > LOCAL_DIRECTORY_DISPLAY_LIMIT,
       };
     } catch (err) {
@@ -352,6 +360,10 @@ export class HomePayloadBuilder {
 }
 
 const LOCAL_DIRECTORY_DISPLAY_LIMIT = 200;
+
+function normalizeDirectoryPage(page: number | undefined): number {
+  return Number.isFinite(page) ? Math.max(0, Math.floor(page as number)) : 0;
+}
 
 function directoryError(
   path: string,

@@ -272,6 +272,33 @@ describe('CodexAdapter', () => {
       },
     ]);
   });
+
+  it('maps Codex non-fatal error items to warnings and keeps the turn alive', () => {
+    const adapter = new CodexAdapter({ sessionId: 'thread-1' });
+
+    expect(adapter.mapEvent({
+      type: 'item.completed',
+      item: {
+        id: 'warning-1',
+        type: 'error',
+        message: 'Reconnecting to the model service...',
+      },
+    })).toEqual([
+      { kind: 'warning', message: 'Reconnecting to the model service...' },
+    ]);
+
+    expect(adapter.mapEvent({
+      type: 'turn.completed',
+      usage: {
+        input_tokens: 1,
+        cached_input_tokens: 0,
+        output_tokens: 2,
+        reasoning_output_tokens: 0,
+      },
+    })).toEqual([
+      expect.objectContaining({ kind: 'query_result', isError: false }),
+    ]);
+  });
 });
 
 function agentMessage(id: string, text: string): ThreadEvent {
