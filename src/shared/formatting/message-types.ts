@@ -175,6 +175,8 @@ export interface HomeDirectoryData {
   source: 'client' | 'server';
   parent?: string;
   entries: HomeDirectoryEntry[];
+  /** Zero-based page for the directory workbench view. */
+  page?: number;
   hasMore?: boolean;
   error?: string;
 }
