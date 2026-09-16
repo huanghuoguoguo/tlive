@@ -47,6 +47,77 @@ describe('remote client/server bridge', () => {
     cleanup = [];
   });
 
+  it('preserves Codex and Pi steering capabilities across the remote provider boundary', () => {
+    const registry = {} as RemoteClientRegistry;
+    const codex = new RemoteAgentProvider('codex', registry);
+    const pi = new RemoteAgentProvider('pi', registry);
+
+    expect(codex.displayName).toBe('Remote Codex');
+    expect(codex.capabilities).toMatchObject({
+      runtimeMode: 'interactive',
+      nativeSteer: true,
+      nativeQueue: false,
+    });
+    expect(pi.displayName).toBe('Remote Pi');
+    expect(pi.capabilities).toMatchObject({
+      runtimeMode: 'interactive',
+      nativeSteer: true,
+      nativeQueue: true,
+    });
+  });
+
+  it('delivers active-turn steering to a remote Pi session', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tlive-remote-steer-'));
+    cleanup.push(() => rmSync(root, { recursive: true, force: true }));
+    const port = await freePort();
+    const registry = new RemoteClientRegistry({
+      port,
+      path: '/tlive',
+      token: 'test-token',
+      heartbeatIntervalMs: 10_000,
+      clientTimeoutMs: 30_000,
+    });
+    registry.start();
+    cleanup.push(() => registry.stop());
+
+    const steered: Array<{ text: string; priority: string }> = [];
+    let finishTurn!: () => void;
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const fakePi = createSteeringProvider(steered, markStarted, (finish) => {
+      finishTurn = finish;
+    });
+    const worker = new RemoteClientWorker(singleProviderRegistry(fakePi), {
+      serverUrl: `ws://127.0.0.1:${port}/tlive`,
+      token: 'test-token',
+      clientId: 'worker-pi',
+      name: 'worker-pi',
+      workspaces: [root],
+      reconnectIntervalMs: 100,
+    });
+    const workerRun = worker.start();
+    cleanup.push(async () => {
+      worker.stop();
+      await Promise.race([workerRun, new Promise((resolve) => setTimeout(resolve, 200))]);
+    });
+
+    await waitFor(() => registry.listClients().find((client) => client.clientId === 'worker-pi'));
+
+    const provider = new RemoteAgentProvider('pi', registry);
+    const session = provider.createSession({ workingDirectory: root });
+    const result = session.startTurn('start');
+    const eventsPromise = collect(result.stream);
+    await started;
+
+    await session.sendWithPriority('insert this now', 'now');
+    expect(steered).toEqual([{ text: 'insert this now', priority: 'now' }]);
+
+    finishTurn();
+    await eventsPromise;
+  });
+
   it('streams a remote provider turn over WebSocket', async () => {
     const root = mkdtempSync(join(tmpdir(), 'tlive-remote-'));
     const outsideRoot = mkdtempSync(join(tmpdir(), 'tlive-remote-outside-'));
@@ -227,6 +298,67 @@ function createAttachmentCapturingProvider(received: FileAttachment[][]): AgentP
     },
     createSession: () => createAttachmentCapturingSession(received),
     streamChat: (): StreamChatResult => {
+      throw new Error('streamChat should not be called by the remote worker');
+    },
+  };
+}
+
+function createSteeringProvider(
+  steered: Array<{ text: string; priority: string }>,
+  onStarted: () => void,
+  onController: (finish: () => void) => void,
+): AgentProvider {
+  return {
+    kind: 'pi',
+    displayName: 'Pi',
+    capabilities: {
+      runtimeMode: 'interactive',
+      nativeSteer: true,
+      nativeQueue: true,
+      interactivePermissions: false,
+      askUserQuestion: false,
+      deferredTools: false,
+      settingSources: false,
+      sessionResume: true,
+      imageInputs: true,
+    },
+    createSession: () => {
+      let turnActive = false;
+      return {
+        capabilities: { nativeSteer: true, nativeQueue: true },
+        runtimeInfo: { provider: 'pi', displayName: 'Pi' },
+        isAlive: true,
+        get isTurnActive() {
+          return turnActive;
+        },
+        startTurn: () => ({
+          stream: new ReadableStream<CanonicalEvent>({
+            start(controller) {
+              turnActive = true;
+              onController(() => {
+                controller.enqueue({
+                  kind: 'query_result',
+                  sessionId: 'pi-steer-session',
+                  isError: false,
+                  usage: { inputTokens: 1, outputTokens: 1 },
+                });
+                controller.close();
+                turnActive = false;
+              });
+              onStarted();
+            },
+          }),
+        }),
+        steerTurn: () => {},
+        sendWithPriority: async (text, priority) => {
+          steered.push({ text, priority });
+        },
+        interruptTurn: async () => {},
+        close: () => {},
+        setLifecycleCallbacks: () => {},
+      } satisfies LiveSession;
+    },
+    streamChat: () => {
       throw new Error('streamChat should not be called by the remote worker');
     },
   };
