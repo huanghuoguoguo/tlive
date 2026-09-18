@@ -91,6 +91,19 @@ function markdownContents(value: unknown): string[] {
   return [...own, ...elements, ...body];
 }
 
+function elementsByTag(value: unknown, tag: string): Array<Record<string, any>> {
+  if (!value || typeof value !== 'object') return [];
+  const object = value as Record<string, unknown>;
+  const own = object.tag === tag ? [object as Record<string, any>] : [];
+  const elements = Array.isArray(object.elements)
+    ? object.elements.flatMap((element) => elementsByTag(element, tag))
+    : [];
+  const body = object.body && typeof object.body === 'object'
+    ? elementsByTag(object.body, tag)
+    : [];
+  return [...own, ...elements, ...body];
+}
+
 function tableCountInCard(content: string): number {
   const card = JSON.parse(content);
   return markdownContents(card).reduce(
@@ -616,6 +629,61 @@ describe('FeishuAdapter', () => {
   });
 
   describe('editMessage()', () => {
+    it('collapses earlier chunks while keeping the latest long text chunk expanded', async () => {
+      const remoteCards = new Map<string, string>();
+      let nextMessageId = 1;
+      mockMessageCreate.mockImplementation(async (call) => {
+        const messageId = `text-overflow-${nextMessageId++}`;
+        remoteCards.set(messageId, call.data.content);
+        return { data: { message_id: messageId } };
+      });
+      mockMessagePatch.mockImplementation(async (call) => {
+        remoteCards.set(call.path.message_id, call.data.content);
+        return {};
+      });
+      const formatter = new FeishuFormatter('zh');
+      const formatStreamingText = (text: string) => formatter.formatProgress('oc_chat123', {
+        phase: 'executing',
+        taskSummary: 'long text streaming test',
+        elapsedSeconds: 10,
+        renderedText: text,
+        totalTools: 0,
+        todoItems: [],
+        timeline: [{ kind: 'text', text }],
+      });
+      const firstText = `PURE_TEXT_START\n\n${'连续输出的长文本。'.repeat(5000)}\n\nPURE_TEXT_TAIL_1`;
+      await adapter.start();
+
+      await adapter.editMessage(
+        'oc_chat123',
+        'text-root',
+        formatStreamingText(firstText),
+      );
+
+      let cards = [...remoteCards.values()].map((content) => JSON.parse(content));
+      let panels = cards.flatMap((card) => elementsByTag(card, 'collapsible_panel'));
+      expect(panels.length).toBeGreaterThan(1);
+      expect(panels.slice(0, -1).every((panel) => panel.expanded === false)).toBe(true);
+      expect(panels.at(-1)?.expanded).toBe(true);
+      expect(markdownContents(panels.at(-1)).join('\n')).toContain('PURE_TEXT_TAIL_1');
+
+      const secondText = `${firstText}\n\n${'后续流式内容。'.repeat(500)}\n\nPURE_TEXT_TAIL_2`;
+      await adapter.editMessage(
+        'oc_chat123',
+        'text-root',
+        formatStreamingText(secondText),
+      );
+
+      cards = [...remoteCards.values()].map((content) => JSON.parse(content));
+      panels = cards.flatMap((card) => elementsByTag(card, 'collapsible_panel'));
+      expect(panels.slice(0, -1).every((panel) => panel.expanded === false)).toBe(true);
+      expect(panels.at(-1)?.expanded).toBe(true);
+      const delivered = cards.flatMap(markdownContents).join('\n');
+      expect(delivered.match(/PURE_TEXT_START/g)).toHaveLength(1);
+      expect(delivered.match(/PURE_TEXT_TAIL_2/g)).toHaveLength(1);
+      await adapter.stop();
+    });
+
     it('reuses table overflow bubbles while a streamed table set grows and shrinks', async () => {
       const remoteCards = new Map<string, string>();
       mockMessageCreate.mockImplementation(async (call) => {

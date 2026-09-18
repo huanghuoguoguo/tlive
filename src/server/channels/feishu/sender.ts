@@ -474,7 +474,13 @@ function splitElementByTableCount(element: FeishuCardElement): FeishuCardElement
   if (element.elements) {
     const childChunks = splitStructuredCardElements(element.elements);
     if (childChunks.length > 1) {
-      return childChunks.map((elements) => ({ ...element, elements }));
+      return childChunks.map((elements, index) => ({
+        ...element,
+        elements,
+        ...(element.tag === 'collapsible_panel' && element.expanded === true
+          ? { expanded: index === childChunks.length - 1 }
+          : {}),
+      }));
     }
     element = { ...element, elements: childChunks[0] };
   }
@@ -482,9 +488,12 @@ function splitElementByTableCount(element: FeishuCardElement): FeishuCardElement
   if (element.body?.elements) {
     const bodyChunks = splitStructuredCardElements(element.body.elements);
     if (bodyChunks.length > 1) {
-      return bodyChunks.map((elements) => ({
+      return bodyChunks.map((elements, index) => ({
         ...element,
         body: { ...element.body, elements },
+        ...(element.tag === 'collapsible_panel' && element.expanded === true
+          ? { expanded: index === bodyChunks.length - 1 }
+          : {}),
       }));
     }
     element = {
