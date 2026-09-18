@@ -117,6 +117,7 @@ export const zh: Translations = {
   'progress.phaseFailed': '失败时',
   'progress.phaseRunning': '执行中',
   'progress.labelThinkingProcess': '💭 思考过程',
+  'progress.thinkingTrimmed': '… 较早的思考内容已清除，仅显示最近约 {tokens} tokens',
   'progress.labelToolCalls': '🔧 工具调用',
   'progress.labelToolSummary': '📝 工具调用摘要',
   'progress.labelWorkProgress': '工作进度',
