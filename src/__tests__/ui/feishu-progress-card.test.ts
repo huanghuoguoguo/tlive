@@ -301,6 +301,58 @@ describe('FeishuFormatter.formatProgress', () => {
       expect(latestPanel.header.title.content).toContain('步骤三');
       expect(latestPanel.elements[0].content).toContain('src/c.ts');
     });
+
+    it('keeps only the latest approximate 200 tokens of one long thinking step', () => {
+      const msg = formatter.formatProgress('chat1', createProgressData({
+        phase: 'executing',
+        elapsedSeconds: 20,
+        timeline: [
+          {
+            kind: 'thinking',
+            text: `EARLIEST_THOUGHT_${'旧思考'.repeat(700)}LATEST_THOUGHT`,
+          },
+        ],
+      }));
+
+      const panels = findByTag(getElements(msg), 'collapsible_panel');
+      expect(panels).toHaveLength(1);
+      const content = panels[0].elements[0].content;
+      expect(content).toContain('仅显示最近约 200 tokens');
+      expect(content).not.toContain('EARLIEST_THOUGHT');
+      expect(content).toContain('LATEST_THOUGHT');
+      expect(panels[0].header.title.content).toContain('旧思考');
+    });
+
+    it('does not trim a thinking step within the display budget', () => {
+      const thought = '检查当前实现，然后继续验证最新输出。';
+      const msg = formatter.formatProgress('chat1', createProgressData({
+        phase: 'executing',
+        timeline: [{ kind: 'thinking', text: thought }],
+      }));
+
+      const panel = findByTag(getElements(msg), 'collapsible_panel')[0];
+      expect(panel.elements[0].content).toBe(thought);
+      expect(panel.elements[0].content).not.toContain('200 tokens');
+    });
+
+    it('keeps the newest tail of long ASCII thinking after completion', () => {
+      const msg = formatter.formatProgress('chat1', createProgressData({
+        phase: 'completed',
+        renderedText: 'Done',
+        timeline: [
+          {
+            kind: 'thinking',
+            text: `EARLIEST_ASCII_${'a'.repeat(2400)}LATEST_ASCII`,
+          },
+        ],
+      }));
+
+      const panel = findByTag(getElements(msg), 'collapsible_panel')[0];
+      expect(panel.expanded).toBe(false);
+      expect(panel.elements[0].content).toContain('200 tokens');
+      expect(panel.elements[0].content).not.toContain('EARLIEST_ASCII');
+      expect(panel.elements[0].content).toContain('LATEST_ASCII');
+    });
   });
 
   describe('collapsible_panel — correct structure per Feishu Card 2.0 docs', () => {

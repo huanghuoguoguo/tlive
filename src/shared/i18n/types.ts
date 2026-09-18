@@ -119,6 +119,7 @@ export interface Translations {
   'progress.phaseFailed': string;
   'progress.phaseRunning': string;
   'progress.labelThinkingProcess': string;
+  'progress.thinkingTrimmed': string;
   'progress.labelToolCalls': string;
   'progress.labelToolSummary': string;
   'progress.labelWorkProgress': string;

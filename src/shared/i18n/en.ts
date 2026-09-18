@@ -117,6 +117,7 @@ export const en: Translations = {
   'progress.phaseFailed': 'On failure',
   'progress.phaseRunning': 'Running',
   'progress.labelThinkingProcess': '💭 Thinking',
+  'progress.thinkingTrimmed': '… Earlier thinking was cleared; showing the latest ~{tokens} tokens',
   'progress.labelToolCalls': '🔧 Tool calls',
   'progress.labelToolSummary': '📝 Tool summary',
   'progress.labelWorkProgress': 'Work progress',

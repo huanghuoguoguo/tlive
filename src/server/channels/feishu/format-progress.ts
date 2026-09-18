@@ -27,6 +27,49 @@ interface TimelineCollectOptions {
   splitTextAfterTool?: boolean;
 }
 
+const THINKING_DISPLAY_TOKEN_LIMIT = 200;
+const TOKEN_BUDGET_UNITS = 4;
+
+interface RollingThinkingContent {
+  text: string;
+  truncated: boolean;
+}
+
+/**
+ * Keep a provider-neutral approximation of the latest N tokens for card display.
+ * ASCII characters count as 1/4 token and non-ASCII code points as 1 token.
+ * This intentionally affects presentation only; the model/session retains the full trace.
+ */
+function latestThinkingContent(text: string): RollingThinkingContent {
+  const normalized = text.trim();
+  const maxUnits = THINKING_DISPLAY_TOKEN_LIMIT * TOKEN_BUDGET_UNITS;
+  let units = 0;
+  let start = normalized.length;
+
+  while (start > 0) {
+    const lastUnit = normalized.charCodeAt(start - 1);
+    const isLowSurrogate = lastUnit >= 0xdc00 && lastUnit <= 0xdfff;
+    const width = isLowSurrogate && start > 1 ? 2 : 1;
+    const codePoint = normalized.codePointAt(start - width) ?? lastUnit;
+    const nextUnits = codePoint <= 0x7f ? 1 : TOKEN_BUDGET_UNITS;
+    if (units + nextUnits > maxUnits) break;
+    units += nextUnits;
+    start -= width;
+  }
+
+  return { text: normalized.slice(start), truncated: start > 0 };
+}
+
+function formatThinkingContent(text: string, locale: Locale): string {
+  const latest = latestThinkingContent(text);
+  if (!latest.truncated) return latest.text;
+  const notice = t('progress.thinkingTrimmed', locale).replace(
+    '{tokens}',
+    String(THINKING_DISPLAY_TOKEN_LIMIT),
+  );
+  return `${notice}\n\n${latest.text}`;
+}
+
 function summarizeOperationText(text: string): string {
   const cleaned = text
     .replace(/[*_`>#-]/g, ' ')
@@ -130,8 +173,9 @@ function buildOperationHeader(
   operation: TimelineOperationDisplay,
   isExpanded: boolean,
 ): string {
+  const latestThinking = latestThinkingContent(operation.thinkingContent).text;
   const summarySource =
-    operation.thinkingContent.trim() || operation.textEntries.find((text) => text.trim()) || '';
+    latestThinking || operation.textEntries.find((text) => text.trim()) || '';
   const summary = summarizeOperationText(summarySource);
   const toolNames = [...new Set(operation.toolEntries.map((tool) => tool.toolName))];
   const toolSuffix =
@@ -158,11 +202,12 @@ function buildOperationHeader(
 function buildOperationContent(
   operation: TimelineOperationDisplay,
   includeTextEntries: boolean,
+  locale: Locale,
 ): string {
   const sections: string[] = [];
 
   if (operation.thinkingContent.trim()) {
-    sections.push(operation.thinkingContent.trim());
+    sections.push(formatThinkingContent(operation.thinkingContent, locale));
   }
 
   if (includeTextEntries && operation.textEntries.length > 0) {
@@ -254,9 +299,18 @@ export function buildProgressTimelineElements(params: FormatProgressParams): Fei
       if (budget <= 0 && picked.length > 0) break;
       const operation = visibleOperations[i];
       const isLatest = picked.length === 0;
-      const maxPerOperation = isLatest ? (isDone ? 1800 : 2800) : isDone ? 1200 : 1800;
+      const hasThinking = !!operation.thinkingContent.trim();
+      const maxPerOperation = hasThinking
+        ? 2400
+        : isLatest
+          ? isDone
+            ? 1800
+            : 2800
+          : isDone
+            ? 1200
+            : 1800;
       const reservedBudget = isLatest && !isDone ? Math.max(budget, 1800) : budget;
-      const operationContent = downgradeHeadings(buildOperationContent(operation, true));
+      const operationContent = downgradeHeadings(buildOperationContent(operation, true, locale));
       const isStreamingTextOnly =
         !isDone &&
         isLatest &&
@@ -289,7 +343,7 @@ export function buildProgressTimelineElements(params: FormatProgressParams): Fei
     if (data.thinkingText?.trim()) {
       elements.push(
         collapsiblePanel(t('progress.labelThinkingProcess'), [
-          markdownElement(truncate(data.thinkingText.trim(), 1500)),
+          markdownElement(formatThinkingContent(data.thinkingText, locale)),
         ]),
       );
     }
