@@ -12,8 +12,8 @@ export class CodexSDKProvider implements AgentProvider {
   readonly kind = 'codex' as const;
   readonly displayName = 'Codex';
   readonly capabilities = {
-    runtimeMode: 'turn-based',
-    nativeSteer: false,
+    runtimeMode: 'interactive',
+    nativeSteer: true,
     nativeQueue: false,
     interactivePermissions: false,
     askUserQuestion: false,

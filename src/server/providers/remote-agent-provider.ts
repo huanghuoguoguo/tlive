@@ -21,7 +21,9 @@ import type {
 import type { RemoteClientRegistry, RemoteClientSnapshot } from '../clients/client-registry.js';
 
 function remoteDisplayName(provider: AgentProviderKind): string {
-  return provider === 'claude' ? 'Remote Claude Code' : 'Remote Codex';
+  if (provider === 'claude') return 'Remote Claude Code';
+  if (provider === 'pi') return 'Remote Pi';
+  return 'Remote Codex';
 }
 
 function remoteCapabilities(provider: AgentProviderKind): AgentProviderCapabilities {
@@ -38,9 +40,22 @@ function remoteCapabilities(provider: AgentProviderKind): AgentProviderCapabilit
       imageInputs: true,
     };
   }
+  if (provider === 'pi') {
+    return {
+      runtimeMode: 'interactive',
+      nativeSteer: true,
+      nativeQueue: true,
+      interactivePermissions: false,
+      askUserQuestion: false,
+      deferredTools: false,
+      settingSources: false,
+      sessionResume: true,
+      imageInputs: true,
+    };
+  }
   return {
-    runtimeMode: 'turn-based',
-    nativeSteer: false,
+    runtimeMode: 'interactive',
+    nativeSteer: true,
     nativeQueue: false,
     interactivePermissions: false,
     askUserQuestion: false,
