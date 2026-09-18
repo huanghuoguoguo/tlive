@@ -101,6 +101,14 @@ function buildFilesView(data: HomeData): FeishuCardElement[] {
 
   const directories = directory.entries.filter((entry) => entry.kind === 'directory');
   const files = directory.entries.filter((entry) => entry.kind !== 'directory');
+  const pageCount = Math.max(
+    Math.ceil(directories.length / MAX_DIRECTORY_BUTTONS),
+    Math.ceil(files.length / MAX_DIRECTORY_FILES),
+    1,
+  );
+  const page = Math.min(Math.max(directory.page ?? 0, 0), pageCount - 1);
+  const directoryStart = page * MAX_DIRECTORY_BUTTONS;
+  const fileStart = page * MAX_DIRECTORY_FILES;
   const buttons: Button[] = [];
   if (directory.parent) {
     buttons.push({
@@ -110,13 +118,29 @@ function buildFilesView(data: HomeData): FeishuCardElement[] {
       row: 0,
     });
   }
-  directories.slice(0, MAX_DIRECTORY_BUTTONS).forEach((entry, index) => {
+  if (page > 0) {
     buttons.push({
-      label: directoryButtonLabel(entry.name),
-      callbackData: homeAction(data, 'home-dir', entry.path),
-      row: Math.floor(index / 2) + 1,
+      label: '上一页',
+      callbackData: homeAction(data, 'home-dir', directory.path, String(page - 1)),
+      row: 0,
     });
-  });
+  }
+  if (page < pageCount - 1) {
+    buttons.push({
+      label: '下一页',
+      callbackData: homeAction(data, 'home-dir', directory.path, String(page + 1)),
+      row: 0,
+    });
+  }
+  directories
+    .slice(directoryStart, directoryStart + MAX_DIRECTORY_BUTTONS)
+    .forEach((entry, index) => {
+      buttons.push({
+        label: directoryButtonLabel(entry.name),
+        callbackData: homeAction(data, 'home-dir', entry.path),
+        row: Math.floor(index / 2) + 1,
+      });
+    });
 
   if (buttons.length) {
     elements.push(...buttonElements(buttons));
@@ -126,15 +150,25 @@ function buildFilesView(data: HomeData): FeishuCardElement[] {
 
   if (files.length) {
     elements.push(
-      markdownElement(`**文件**\n${files.slice(0, MAX_DIRECTORY_FILES).map(fileLine).join('\n')}`),
+      markdownElement(
+        `**文件**\n${files
+          .slice(fileStart, fileStart + MAX_DIRECTORY_FILES)
+          .map(fileLine)
+          .join('\n')}`,
+      ),
     );
   }
-  if (
-    directory.hasMore ||
-    directories.length > MAX_DIRECTORY_BUTTONS ||
-    files.length > MAX_DIRECTORY_FILES
-  ) {
-    elements.push(markdownElement('仅显示前几项。'));
+  if (pageCount > 1) {
+    elements.push(markdownElement(`第 ${page + 1} / ${pageCount} 页`));
+  }
+  if (directory.hasMore || pageCount > 1) {
+    elements.push(
+      markdownElement(
+        directory.hasMore
+          ? '仅显示前 200 项，更多内容无法从节点一次读取。'
+          : '可使用上一页/下一页浏览全部内容。',
+      ),
+    );
   }
   return elements;
 }
@@ -213,7 +247,9 @@ function buildRecentView(data: HomeData): FeishuCardElement[] {
     (data.session.topics?.length ?? 0) + (data.session.recent?.length ?? 0) > MAX_RECENT_VIEW_ITEMS;
   if (hasMore) {
     elements.push(
-      ...buttonElements([{ label: '更多', callbackData: homeAction(data, 'home-history'), row: 0 }]),
+      ...buttonElements([
+        { label: '更多', callbackData: homeAction(data, 'home-history'), row: 0 },
+      ]),
     );
   }
   return elements;

@@ -110,7 +110,10 @@ export class CodexAdapter {
       return;
     }
     if (item.type === 'error') {
-      events.push({ kind: 'error', message: item.message });
+      // Codex emits ErrorItem for recoverable notices (for example reconnect
+      // attempts and context-compaction warnings). Only the top-level stream
+      // error and turn.failed events are terminal failures.
+      events.push({ kind: 'warning', message: item.message });
       return;
     }
     if (this.isToolItem(item)) {

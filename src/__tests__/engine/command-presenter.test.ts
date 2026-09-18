@@ -266,6 +266,38 @@ describe('command presenter', () => {
       expect(rendered).toContain('README.md');
     });
 
+    it('renders pagination controls for directories with more than one page', () => {
+      const msg = presentHome('chat-1', {
+        view: 'files',
+        workspace: {
+          cwd: '/home/user/project',
+          directory: {
+            path: '/home/user/project',
+            displayPath: '/home/user/project',
+            source: 'client',
+            clientId: 'local',
+            entries: Array.from({ length: 13 }, (_, index) => ({
+              name: `folder-${index}`,
+              path: `/home/user/project/folder-${index}`,
+              kind: 'directory' as const,
+            })),
+            page: 1,
+          },
+        },
+        task: { active: false },
+        permission: { mode: 'off' },
+        bridge: { healthy: true },
+        session: {},
+        clients: { defaultClientId: 'local', entries: [] },
+      });
+
+      const rendered = JSON.stringify(feishuFormatter.format(msg).feishuElements);
+      expect(rendered).toContain('📁 folder-12');
+      expect(rendered).toContain('上一页');
+      expect(rendered).toContain('第 2 / 2 页');
+      expect(rendered).not.toContain('📁 folder-0');
+    });
+
     it('keeps Feishu home card under the platform element limit', () => {
       const msg = presentHome('chat-1', {
         providers: {

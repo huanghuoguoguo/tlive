@@ -160,6 +160,7 @@ interface ProcessMessageParams {
   onSdkSessionId?: (id: string) => void | Promise<void>;
   /** Called on error — returns Promise to allow async flush */
   onError?: (error: string) => void | Promise<void>;
+  onWarning?: (warning: string) => void;
   onAgentStart?: (data: { description: string; taskId?: string }) => void;
   onAgentProgress?: (data: {
     description: string;
@@ -338,6 +339,9 @@ export class ConversationEngine {
             if (params.onError) {
               await params.onError(value.message);
             }
+            break;
+          case 'warning':
+            params.onWarning?.(value.message);
             break;
         }
       }

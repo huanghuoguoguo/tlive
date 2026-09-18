@@ -83,6 +83,11 @@ const errorSchema = z.object({
   message: z.string(),
 });
 
+const warningSchema = z.object({
+  kind: z.literal('warning'),
+  message: z.string(),
+});
+
 const statusSchema = z.object({
   kind: z.literal('status'),
   sessionId: z.string(),
@@ -166,6 +171,7 @@ export const canonicalEventSchema = z.discriminatedUnion('kind', [
   agentCompleteSchema,
   queryResultSchema,
   errorSchema,
+  warningSchema,
   statusSchema,
   sessionInfoSchema,
   toolUseSummarySchema,

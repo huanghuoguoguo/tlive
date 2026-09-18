@@ -22,10 +22,7 @@ import type { TopicSessionManager } from './state/topic-sessions.js';
 import type { RemoteClientRegistry } from '../clients/client-registry.js';
 import { commandRegistry, registerAllCommands } from './commands/index.js';
 import { isPublicTextCommand } from './commands/slash-policy.js';
-import {
-  splitHomeInstanceActionArgs,
-  type ActionCallback,
-} from '../../shared/core/callbacks.js';
+import { splitHomeInstanceActionArgs, type ActionCallback } from '../../shared/core/callbacks.js';
 import { DEFAULT_AGENT_SETTING_SOURCES } from '../../shared/config.js';
 import { findGitRoot } from '../../shared/utils/repo.js';
 import { generateSessionId } from '../../shared/core/id.js';
@@ -170,9 +167,11 @@ export class CommandRouter {
     chatId: string,
     locale: Locale = 'zh',
     view: HomeView = 'main',
+    directoryPage = 0,
   ): Promise<HomeData> {
     const data = await this.homePayloadBuilder.build(channelType, chatId, locale, {
       includeDirectory: view === 'files',
+      directoryPage,
     });
     const instanceId = this.state.getActiveHomeInstance(channelType, chatId);
     // Add help entries from registry

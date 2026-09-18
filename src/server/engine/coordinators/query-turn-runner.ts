@@ -270,6 +270,7 @@ export class QueryTurnRunner {
           }
           await renderer.onError(err);
         },
+        onWarning: (warning) => renderer.onTextDelta(`\n⚠️ ${warning}\n`),
       });
     } finally {
       this.options.sdkEngine.setControlsForChat(chatKey, undefined, sessionKey);
