@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { canonicalEventSchema, type CanonicalEvent } from '../canonical/schema.js';
 import type { AgentProviderCapabilities } from '../providers/base.js';
 import type { AgentProviderKind } from '../providers/kinds.js';
+import type { InjectionErrorCode } from '../providers/errors.js';
 import type { AgentSettingSource } from '../config.js';
 import { canonicalEffortSchema, type EffortLevel } from '../providers/effort.js';
 import type { FileAttachment } from '../media/attachments.js';
@@ -15,6 +16,9 @@ const providerCapabilitiesSchema = z.object({
   runtimeMode: z.enum(['interactive', 'turn-based']),
   nativeSteer: z.boolean(),
   nativeQueue: z.boolean(),
+  // Optional on the wire only: clients built before this flag exist, and the
+  // server's static table supplies the right answer for them.
+  drainsQueueWhenIdle: z.boolean().optional(),
   interactivePermissions: z.boolean(),
   askUserQuestion: z.boolean(),
   deferredTools: z.boolean(),
@@ -158,6 +162,8 @@ export interface ControlResultMessage {
   controlId: string;
   ok: boolean;
   error?: string;
+  /** Why an injection was refused, when the generic error text is not actionable */
+  code?: InjectionErrorCode;
 }
 
 export type ClientCommandAction =
@@ -333,6 +339,7 @@ export const remoteProtocolMessageSchema = z.discriminatedUnion('type', [
     controlId: z.string(),
     ok: z.boolean(),
     error: z.string().optional(),
+    code: z.enum(['no_active_turn', 'command_blocked']).optional(),
   }),
   z.object({
     type: z.literal('client.command'),

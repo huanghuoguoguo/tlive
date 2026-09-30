@@ -2,12 +2,25 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { SDKEngine } from '../../server/engine/sdk/engine.js';
 import type { LiveSession } from '../../shared/providers/base.js';
 import type { ClaudeSDKProvider } from '../../client/providers/claude-sdk.js';
+import {
+  CommandBlockedError,
+  ControlTimeoutError,
+  NoActiveTurnError,
+} from '../../shared/providers/errors.js';
 
-function createMockSession(isAlive = true, isTurnActive = false): LiveSession {
+const PI_CAPABILITIES = { nativeSteer: true, nativeQueue: true, drainsQueueWhenIdle: false };
+const CLAUDE_CAPABILITIES = { nativeSteer: true, nativeQueue: true, drainsQueueWhenIdle: true };
+
+function createMockSession(
+  isAlive = true,
+  isTurnActive = false,
+  capabilities?: LiveSession['capabilities'],
+): LiveSession {
   let callbacks: { onTurnComplete?: () => void } | undefined;
   return {
     isAlive,
     isTurnActive,
+    ...(capabilities ? { capabilities } : {}),
     startTurn: vi.fn().mockReturnValue({ stream: new ReadableStream() }),
     steerTurn: vi.fn(),
     sendWithPriority: vi.fn().mockResolvedValue(undefined),
@@ -97,6 +110,70 @@ describe('SDKEngine', () => {
       expect(result.maxQueueDepth).toBe(3);
       expect(result.sessionKey).toBe(DEFAULT_SESSION_KEY);
       expect(mockSession.sendWithPriority).toHaveBeenCalledWith('queued message', 'later');
+    });
+
+    it('refuses to queue into a provider that strands idle injections', async () => {
+      const mockSession = createMockSession(true, false, PI_CAPABILITIES);
+      const mockProvider = createMockProvider({ '/workdir': mockSession });
+
+      createEngineSession(engine, mockProvider);
+
+      const result = await engine.sendWithContext('feishu', 'chat-1', 'message in the card tail');
+
+      expect(result).toMatchObject({ sent: false, mode: 'none', failureReason: 'no_active_turn' });
+      expect(mockSession.sendWithPriority).not.toHaveBeenCalled();
+      expect(queueDepth(engine, DEFAULT_SESSION_KEY)).toBe(0);
+    });
+
+    it('still queues for a provider that drains its queue while idle', async () => {
+      const mockSession = createMockSession(true, false, CLAUDE_CAPABILITIES);
+      const mockProvider = createMockProvider({ '/workdir': mockSession });
+
+      createEngineSession(engine, mockProvider);
+
+      const result = await engine.sendWithContext('feishu', 'chat-1', 'queued for Claude');
+
+      expect(result).toMatchObject({ sent: true, mode: 'queue', queuePosition: 1 });
+      expect(mockSession.sendWithPriority).toHaveBeenCalledWith('queued for Claude', 'later');
+    });
+
+    it('reports no_active_turn when the turn ends between the check and the steer', async () => {
+      const mockSession = createMockSession(true, true, PI_CAPABILITIES);
+      mockSession.sendWithPriority = vi.fn().mockRejectedValue(new NoActiveTurnError());
+      const mockProvider = createMockProvider({ '/workdir': mockSession });
+
+      createEngineSession(engine, mockProvider);
+
+      const result = await engine.sendWithContext('feishu', 'chat-1', 'racing message');
+
+      expect(result).toMatchObject({ sent: false, mode: 'none', failureReason: 'no_active_turn' });
+    });
+
+    it('reports command_blocked when the running turn cannot take a slash command', async () => {
+      const mockSession = createMockSession(true, true, PI_CAPABILITIES);
+      mockSession.sendWithPriority = vi.fn().mockRejectedValue(new CommandBlockedError('compact'));
+      const mockProvider = createMockProvider({ '/workdir': mockSession });
+
+      createEngineSession(engine, mockProvider);
+
+      const result = await engine.sendWithContext('feishu', 'chat-1', '/compact');
+
+      expect(result).toMatchObject({ sent: false, mode: 'none', failureReason: 'command_blocked' });
+    });
+
+    it('reports control_timeout without counting an unacknowledged injection as queued', async () => {
+      const mockSession = createMockSession(true, false, CLAUDE_CAPABILITIES);
+      mockSession.sendWithPriority = vi
+        .fn()
+        .mockRejectedValue(new ControlTimeoutError('send_priority'));
+      const mockProvider = createMockProvider({ '/workdir': mockSession });
+
+      createEngineSession(engine, mockProvider);
+
+      const result = await engine.sendWithContext('feishu', 'chat-1', 'unacknowledged message');
+
+      expect(result).toMatchObject({ sent: false, mode: 'none', failureReason: 'control_timeout' });
+      expect(queueDepth(engine, DEFAULT_SESSION_KEY)).toBe(0);
     });
 
     it('increments queue position for subsequent queue operations', async () => {

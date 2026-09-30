@@ -277,11 +277,15 @@ export const zh: Translations = {
   'msgLoop.replyTargetMissing': '⚠️ 引用的会话已失效，请直接发送消息或切换会话后重试',
   'msgLoop.sendFailed': '⚠️ 会话注入失败，请稍后重试',
   'msgLoop.busyUnsupported': '⚠️ 当前 provider 不支持执行中插入消息，请等待完成或使用 /stop',
+  'msgLoop.steerCommandBlocked': '⚠️ 斜杠命令不能插入正在执行的任务，请等当前任务结束后再发',
+  'msgLoop.insertTimeout': '⚠️ 插话指令未在 8 秒内确认，可能已进入当前任务，请稍候或先 /stop',
   'msgLoop.noActiveSession': '⚠️ 无活跃会话，请先开始任务',
   'msgLoop.queueFull': '⚠️ 排队已满（{depth}/{maxDepth}），请稍后再发',
   'msgLoop.processFailed': '⚠️ 会话处理失败，请稍后重试',
   'msgLoop.inserted': '💬 已插入当前会话',
   'msgLoop.queued': '📥 已排队（位置 {position}/{maxDepth}），当前任务结束后继续处理',
+  'msgLoop.attachmentsDropped':
+    '⚠️ 附件超出上限（单次最多 5 个 / 10MB），本次丢弃 {dropped} 个，保留 {kept} 个',
 
   // --- presenter ---
   'presenter.currentDir': '📂 当前目录：',
@@ -379,6 +383,7 @@ export const zh: Translations = {
   'cmd.stop.description': '中断执行',
   'cmd.stop.helpDesc': '中断当前正在执行的任务。用于停止长时间运行的命令或 AI 回复生成。',
   'cmd.stop.workbenchHint': '⚠️ /stop 只中断具体话题内的当前任务。请进入正在执行的话题后停止。',
+  'cmd.stop.notAcknowledged': '⏹ 中断指令已发出，暂未收到确认；任务可能仍在收尾，请稍候。',
 
   // --- perm command ---
   'cmd.perm.description': '权限模式',

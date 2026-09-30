@@ -98,6 +98,103 @@ describe('MessageLoopCoordinator', () => {
     );
   });
 
+  it('opens a new turn when the provider has no turn to inject into', async () => {
+    const state = new SessionStateManager();
+    // Feishu is still finishing the card, so the chat looks busy.
+    state.setProcessing(state.stateKey('feishu', 'chat-1'), true);
+
+    const sdkEngine = {
+      sendWithContext: vi
+        .fn()
+        .mockResolvedValue({ sent: false, mode: 'none', failureReason: 'no_active_turn' }),
+      MAX_QUEUE_DEPTH: 3,
+    } as any;
+    const permissions = {
+      parsePermissionText: vi.fn().mockReturnValue(null),
+    } as any;
+
+    const coordinator = createCoordinator(state, sdkEngine, permissions);
+    const adapter = createAdapter();
+    const handleMessage = vi.fn().mockResolvedValue(undefined);
+
+    await coordinator.dispatchSlowMessage({
+      adapter,
+      msg: createMessage('/model deepseek/deepseek-v4-flash'),
+      coalesceMessage: async (_adapter, msg) => msg,
+      handleMessage,
+      onError: vi.fn(),
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    // No "已插入"/"已排队" lie, and no error text either: the message just runs.
+    expect(adapter.send).not.toHaveBeenCalled();
+  });
+
+  it('acknowledges an unconfirmed injection as unconfirmed, without starting a second turn', async () => {
+    const state = new SessionStateManager();
+    state.setProcessing(state.stateKey('feishu', 'chat-1'), true);
+
+    const sdkEngine = {
+      sendWithContext: vi
+        .fn()
+        .mockResolvedValue({ sent: false, mode: 'none', failureReason: 'control_timeout' }),
+      MAX_QUEUE_DEPTH: 3,
+    } as any;
+    const permissions = { parsePermissionText: vi.fn().mockReturnValue(null) } as any;
+
+    const coordinator = createCoordinator(state, sdkEngine, permissions);
+    const adapter = createAdapter();
+    const handleMessage = vi.fn().mockResolvedValue(undefined);
+
+    await coordinator.dispatchSlowMessage({
+      adapter,
+      msg: createMessage('did that land?'),
+      coalesceMessage: async (_adapter, msg) => msg,
+      handleMessage,
+      onError: vi.fn(),
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    // The signal may already be in the provider, so opening a fresh turn would
+    // deliver the message twice. Say so instead.
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('未在 8 秒内确认') }),
+    );
+  });
+
+  it('still queues through the provider when it drains its own queue while idle', async () => {
+    const state = new SessionStateManager();
+    state.setProcessing(state.stateKey('feishu', 'chat-1'), true);
+
+    const sdkEngine = {
+      sendWithContext: vi
+        .fn()
+        .mockResolvedValue({ sent: true, mode: 'queue', sessionKey: 'session-1', queuePosition: 1 }),
+      MAX_QUEUE_DEPTH: 3,
+    } as any;
+    const permissions = { parsePermissionText: vi.fn().mockReturnValue(null) } as any;
+
+    const coordinator = createCoordinator(state, sdkEngine, permissions);
+    const adapter = createAdapter();
+    const handleMessage = vi.fn().mockResolvedValue(undefined);
+
+    await coordinator.dispatchSlowMessage({
+      adapter,
+      msg: createMessage('queued for Claude'),
+      coalesceMessage: async (_adapter, msg) => msg,
+      handleMessage,
+      onError: vi.fn(),
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '📥 已排队（位置 1/3），当前任务结束后继续处理' }),
+    );
+  });
+
   it('routes busy Feishu topic messages to the topic scope', async () => {
     const state = new SessionStateManager();
     const scopeId = 'chat-1#thread:thread-1';

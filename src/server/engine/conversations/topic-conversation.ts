@@ -2,7 +2,7 @@ import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage } from '../../channels/types.js';
 import type { ChannelBinding, BridgeStore } from '../../store/interface.js';
 import type { ChannelRouter } from '../channel-router.js';
-import type { SDKEngine, ResolvedSessionTarget } from '../sdk/engine.js';
+import type { InjectionFailureReason, SDKEngine, ResolvedSessionTarget } from '../sdk/engine.js';
 import type { TopicSessionManager } from '../state/topic-sessions.js';
 import { chatScopeId, sessionKey as buildSessionKey } from '../../../shared/core/key.js';
 import {
@@ -14,12 +14,6 @@ import { generateSessionId } from '../../../shared/core/id.js';
 import { truncate } from '../../../shared/core/string.js';
 import { Logger } from '../../../shared/logger.js';
 import { t } from '../../../shared/i18n/index.js';
-
-type SessionTargetFailureReason =
-  | 'no_session'
-  | 'reply_target_missing'
-  | 'send_failed'
-  | 'busy_unsupported';
 
 export interface TopicConversationServiceOptions {
   store: BridgeStore;
@@ -35,7 +29,7 @@ export interface ResolvedConversation {
   scopeId: string;
   binding: ChannelBinding;
   target?: ResolvedSessionTarget;
-  failureReason?: SessionTargetFailureReason;
+  failureReason?: InjectionFailureReason;
 }
 
 export interface TopicSessionBindingSnapshot {

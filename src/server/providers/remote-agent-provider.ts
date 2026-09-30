@@ -13,6 +13,7 @@ import type {
   TurnParams,
 } from '../../shared/providers/base.js';
 import type { AgentProviderKind } from '../../shared/providers/kinds.js';
+import { CommandBlockedError, NoActiveTurnError } from '../../shared/providers/errors.js';
 import type {
   InteractionRequestMessage,
   RemoteInteractionKind,
@@ -20,16 +21,30 @@ import type {
 } from '../../shared/protocol/messages.js';
 import type { RemoteClientRegistry, RemoteClientSnapshot } from '../clients/client-registry.js';
 
+/**
+ * Controls the inbound message loop waits on. A worker that ignores them used to
+ * hold the whole Feishu loop for the registry's 30s default before failing.
+ */
+const INLINE_CONTROL_TIMEOUT_MS = 8_000;
+
 function remoteDisplayName(provider: AgentProviderKind): string {
-  return provider === 'claude' ? 'Remote Claude Code' : 'Remote Codex';
+  if (provider === 'claude') return 'Remote Claude Code';
+  if (provider === 'pi') return 'Remote Pi';
+  return 'Remote Codex';
 }
 
+/**
+ * Server-side fallback table, used until a client reports its own capabilities
+ * through `client.hello` (see {@link RemoteLiveSession.capabilities}). Codex runs
+ * one turn per process launch, so it is the only genuinely turn-based provider.
+ */
 function remoteCapabilities(provider: AgentProviderKind): AgentProviderCapabilities {
   if (provider === 'claude') {
     return {
       runtimeMode: 'interactive',
       nativeSteer: true,
       nativeQueue: true,
+      drainsQueueWhenIdle: true,
       interactivePermissions: true,
       askUserQuestion: true,
       deferredTools: true,
@@ -38,10 +53,25 @@ function remoteCapabilities(provider: AgentProviderKind): AgentProviderCapabilit
       imageInputs: true,
     };
   }
+  if (provider === 'pi') {
+    return {
+      runtimeMode: 'interactive',
+      nativeSteer: true,
+      nativeQueue: true,
+      drainsQueueWhenIdle: false,
+      interactivePermissions: false,
+      askUserQuestion: false,
+      deferredTools: false,
+      settingSources: false,
+      sessionResume: true,
+      imageInputs: true,
+    };
+  }
   return {
     runtimeMode: 'turn-based',
     nativeSteer: false,
     nativeQueue: false,
+    drainsQueueWhenIdle: false,
     interactivePermissions: false,
     askUserQuestion: false,
     deferredTools: false,
@@ -88,7 +118,6 @@ export class RemoteAgentProvider implements AgentProvider {
 }
 
 class RemoteLiveSession implements LiveSession {
-  readonly capabilities: LiveSession['capabilities'];
   readonly runtimeInfo: AgentRuntimeInfo;
 
   private readonly remoteSessionId = generateId('remote-session', 8);
@@ -105,10 +134,6 @@ class RemoteLiveSession implements LiveSession {
     private readonly clients: RemoteClientRegistry,
     private readonly params: CreateSessionParams,
   ) {
-    this.capabilities = {
-      nativeSteer: remoteCapabilities(provider).nativeSteer,
-      nativeQueue: remoteCapabilities(provider).nativeQueue,
-    };
     this.runtimeInfo = {
       provider,
       displayName: remoteDisplayName(provider),
@@ -119,6 +144,26 @@ class RemoteLiveSession implements LiveSession {
 
   get isAlive(): boolean {
     return this._isAlive;
+  }
+
+  /**
+   * Steering and queueing are really features of the client that runs the agent,
+   * so prefer what that client reported in `client.hello`. The static table only
+   * covers the window before the first turn binds a client.
+   */
+  get capabilities(): Pick<
+    AgentProviderCapabilities,
+    'nativeSteer' | 'nativeQueue' | 'drainsQueueWhenIdle'
+  > {
+    const reported = this.client?.providers.find(
+      (descriptor) => descriptor.kind === this.provider,
+    )?.capabilities;
+    const fallback = remoteCapabilities(this.provider);
+    return {
+      nativeSteer: reported?.nativeSteer ?? fallback.nativeSteer,
+      nativeQueue: reported?.nativeQueue ?? fallback.nativeQueue,
+      drainsQueueWhenIdle: reported?.drainsQueueWhenIdle ?? fallback.drainsQueueWhenIdle,
+    };
   }
 
   get isTurnActive(): boolean {
@@ -271,12 +316,25 @@ class RemoteLiveSession implements LiveSession {
     extra: { taskId?: string; text?: string; priority?: MessagePriority } = {},
   ): Promise<void> {
     if (!this.client) return;
-    const result = await this.clients.sendControl(this.client.clientId, {
-      sessionId: this.remoteSessionId,
-      action,
-      ...extra,
-    });
+    const result = await this.clients.sendControl(
+      this.client.clientId,
+      {
+        sessionId: this.remoteSessionId,
+        action,
+        ...extra,
+      },
+      // Only 'close' has nobody waiting on it; the rest block the inbound loop.
+      action === 'close' ? undefined : INLINE_CONTROL_TIMEOUT_MS,
+    );
     if (!result.ok) {
+      // Restore the refusal the client classified, so the engine can tell "no turn
+      // to inject into" apart from a transport failure.
+      if (result.code === 'no_active_turn') {
+        throw new NoActiveTurnError(result.error ?? 'Remote provider has no active turn');
+      }
+      if (result.code === 'command_blocked') {
+        throw new CommandBlockedError();
+      }
       throw new Error(result.error || `Remote control failed: ${action}`);
     }
   }

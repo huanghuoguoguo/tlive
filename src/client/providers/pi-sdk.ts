@@ -18,6 +18,7 @@ export class PiSDKProvider implements AgentProvider {
     runtimeMode: 'interactive',
     nativeSteer: true,
     nativeQueue: true,
+    drainsQueueWhenIdle: false,
     interactivePermissions: false,
     askUserQuestion: false,
     deferredTools: false,

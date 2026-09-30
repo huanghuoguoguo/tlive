@@ -280,12 +280,18 @@ export const en: Translations = {
   'msgLoop.sendFailed': '⚠️ Session injection failed, please try again later',
   'msgLoop.busyUnsupported':
     '⚠️ Current provider does not support message insertion during execution, please wait or use /stop',
+  'msgLoop.steerCommandBlocked':
+    '⚠️ This command cannot be injected into a running task, please wait for the current turn to finish',
+  'msgLoop.insertTimeout':
+    '⚠️ Injection was not acknowledged within 8s; it may still have reached the current task. Wait a moment or run /stop first',
   'msgLoop.noActiveSession': '⚠️ No active session, please start a task first',
   'msgLoop.queueFull': '⚠️ Queue is full ({depth}/{maxDepth}), please try again later',
   'msgLoop.processFailed': '⚠️ Session processing failed, please try again later',
   'msgLoop.inserted': '💬 Inserted into current session',
   'msgLoop.queued':
     '📥 Queued (position {position}/{maxDepth}), will process after current task completes',
+  'msgLoop.attachmentsDropped':
+    '⚠️ Attachment limit reached (max 5 / 10MB per batch): dropped {dropped}, kept {kept}',
 
   // --- presenter ---
   'presenter.currentDir': '📂 Current directory: ',
@@ -391,6 +397,8 @@ export const en: Translations = {
     'Interrupt current running task. Used to stop long-running commands or AI reply generation.',
   'cmd.stop.workbenchHint':
     '⚠️ /stop only interrupts tasks within specific topics. Please enter the executing topic to stop.',
+  'cmd.stop.notAcknowledged':
+    '⏹ Stop signal sent but not acknowledged yet; the task may still be winding down, please wait.',
 
   // --- perm command ---
   'cmd.perm.description': 'Permission mode',

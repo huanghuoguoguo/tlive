@@ -220,6 +220,7 @@ export class FakeClaudeProvider {
     runtimeMode: 'interactive',
     nativeSteer: true,
     nativeQueue: true,
+    drainsQueueWhenIdle: true,
     interactivePermissions: true,
     askUserQuestion: true,
     deferredTools: true,

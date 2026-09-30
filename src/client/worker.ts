@@ -12,6 +12,7 @@ import type {
 } from '../shared/providers/registry.js';
 import type { LiveSession, QueryControls } from '../shared/providers/base.js';
 import type { AgentProviderKind } from '../shared/providers/kinds.js';
+import { injectionErrorCode } from '../shared/providers/errors.js';
 import { generateId } from '../shared/core/id.js';
 import {
   encodeRemoteProtocolMessage,
@@ -179,6 +180,7 @@ export class RemoteClientWorker {
         runtimeMode: descriptor.kind === 'codex' ? 'turn-based' : 'interactive',
         nativeSteer: descriptor.kind !== 'codex',
         nativeQueue: descriptor.kind !== 'codex',
+        drainsQueueWhenIdle: descriptor.kind === 'claude',
         interactivePermissions: descriptor.kind === 'claude',
         askUserQuestion: descriptor.kind === 'claude',
         deferredTools: descriptor.kind === 'claude',
@@ -398,18 +400,22 @@ export class RemoteClientWorker {
         entry.session.close();
         this.sessions.delete(message.sessionId);
       } else if (message.action === 'steer') {
-        entry.session.steerTurn(message.text || '');
+        // steerTurn() is fire-and-forget and swallows refusals; route through the
+        // same awaited path so the server learns why nothing was inserted.
+        await entry.session.sendWithPriority(message.text || '', 'now');
       } else if (message.action === 'send_priority') {
         await entry.session.sendWithPriority(message.text || '', message.priority || 'later');
       }
 
       this.send({ type: 'control.result', controlId: message.controlId, ok: true });
     } catch (err) {
+      const code = injectionErrorCode(err);
       this.send({
         type: 'control.result',
         controlId: message.controlId,
         ok: false,
         error: err instanceof Error ? err.message : String(err),
+        ...(code ? { code } : {}),
       });
     }
   }

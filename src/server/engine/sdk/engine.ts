@@ -17,6 +17,11 @@ import type {
   MessagePriority,
 } from '../../../shared/providers/base.js';
 import type { AgentProviderKind } from '../../../shared/providers/kinds.js';
+import {
+  ControlTimeoutError,
+  injectionErrorCode,
+  type InjectionErrorCode,
+} from '../../../shared/providers/errors.js';
 import { InteractionState, type SdkQuestionState } from '../state/interaction-state.js';
 import {
   SessionManager,
@@ -37,12 +42,20 @@ export type { SessionCleanupReason } from './session-manager.js';
 export type { QueueStats } from './queue-manager.js';
 
 /** Result of sendWithContext operation */
+export type InjectionFailureReason =
+  | 'no_session'
+  | 'reply_target_missing'
+  | 'send_failed'
+  | 'busy_unsupported'
+  | 'control_timeout'
+  | InjectionErrorCode;
+
 export interface SendWithContextResult {
   sent: boolean;
   mode: 'steer' | 'queue' | 'none';
   sessionKey?: string;
   /** Why sending failed when sent=false */
-  failureReason?: 'no_session' | 'reply_target_missing' | 'send_failed' | 'busy_unsupported';
+  failureReason?: InjectionFailureReason;
   /** Queue position (1-based) when mode is 'queue', undefined otherwise */
   queuePosition?: number;
   /** Whether the queue was full (only set when sent is false and mode is 'queue') */
@@ -352,21 +365,22 @@ export class SDKEngine {
     );
   }
 
-  /** Send message to a specific session with SDK native priority */
+  /** Send message to a specific session with SDK native priority. */
   async sendToSession(
     sessionKey: string,
     text: string,
     priority: MessagePriority,
-  ): Promise<boolean> {
+  ): Promise<InjectionFailureReason | undefined> {
     const managed = this.sessions.getSessionContext(sessionKey);
-    if (!managed?.session?.isAlive) return false;
+    if (!managed?.session?.isAlive) return 'send_failed';
     try {
       await managed.session.sendWithPriority(text, priority);
       managed.lastActiveAt = Date.now();
-      return true;
+      return undefined;
     } catch (err) {
+      if (err instanceof ControlTimeoutError) return 'control_timeout';
       console.error(`[tlive:engine] sendToSession error:`, err);
-      return false;
+      return injectionErrorCode(err) ?? 'send_failed';
     }
   }
 
@@ -411,13 +425,18 @@ export class SDKEngine {
       return { sent: false, mode: 'none', failureReason: failureReason ?? 'no_session' };
     }
 
+    const probe = this.sessions.getSessionContext(sessionKey)?.session;
+    console.log(
+      `[tlive:engine] insert: session=${sessionKey} kind=${probe?.constructor?.name} alive=${probe?.isAlive} turnActive=${probe?.isTurnActive} caps=${JSON.stringify(probe?.capabilities)}`,
+    );
+
     if (this.canSteerSession(sessionKey)) {
-      const sent = await this.sendToSession(sessionKey, text, 'now');
+      const failure = await this.sendToSession(sessionKey, text, 'now');
       return {
-        sent,
-        mode: sent ? 'steer' : 'none',
+        sent: !failure,
+        mode: failure ? 'none' : 'steer',
         sessionKey,
-        failureReason: sent ? undefined : 'send_failed',
+        failureReason: failure,
       };
     }
 
@@ -429,6 +448,15 @@ export class SDKEngine {
         sessionKey,
         failureReason: 'busy_unsupported',
       };
+    }
+
+    // The card tail keeps the chat "busy" after the provider's turn is gone. A
+    // provider that only drains its queue from a running loop (pi) would strand
+    // the message there while reporting success, so hand it back to the caller
+    // to open a real turn.
+    const session = managed?.session;
+    if (session && !session.isTurnActive && session.capabilities?.drainsQueueWhenIdle === false) {
+      return { sent: false, mode: 'none', sessionKey, failureReason: 'no_active_turn' };
     }
 
     if (this.queues.isQueueFull(sessionKey)) {
@@ -443,8 +471,8 @@ export class SDKEngine {
       };
     }
 
-    const sent = await this.sendToSession(sessionKey, text, 'later');
-    if (sent) {
+    const failure = await this.sendToSession(sessionKey, text, 'later');
+    if (!failure) {
       const queuePosition = this.queues.incrementQueueDepth(sessionKey, text);
       return {
         sent: true,
@@ -455,7 +483,7 @@ export class SDKEngine {
         maxQueueDepth: this.queues.getMaxQueueDepth(),
       };
     }
-    return { sent: false, mode: 'none', sessionKey, failureReason: 'send_failed' };
+    return { sent: false, mode: 'none', sessionKey, failureReason: failure };
   }
 
   private supportsNativePriority(session: LiveSession, priority: MessagePriority): boolean {

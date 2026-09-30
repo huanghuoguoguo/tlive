@@ -30,6 +30,12 @@ export interface AgentProviderCapabilities {
   nativeSteer: boolean;
   /** Provider can enqueue follow-up messages inside its own runtime. */
   nativeQueue: boolean;
+  /**
+   * Provider still drains queued/steered messages while it has no active turn.
+   * False means an injection arriving between turns would be stranded by the
+   * provider, so the bridge must start a new turn instead.
+   */
+  drainsQueueWhenIdle: boolean;
   /** Provider exposes per-tool interactive permission callbacks. */
   interactivePermissions: boolean;
   /** Provider exposes AskUserQuestion-style callbacks. */
@@ -110,7 +116,10 @@ export type MessagePriority = 'now' | 'next' | 'later';
  * Long-lived session wrapping a persistent query/thread.
  */
 export interface LiveSession {
-  readonly capabilities?: Pick<AgentProviderCapabilities, 'nativeSteer' | 'nativeQueue'>;
+  readonly capabilities?: Pick<
+    AgentProviderCapabilities,
+    'nativeSteer' | 'nativeQueue' | 'drainsQueueWhenIdle'
+  >;
   readonly runtimeInfo?: AgentRuntimeInfo;
   /** Start a new turn (user message → agent response). Returns per-turn event stream. */
   startTurn(prompt: string, params?: TurnParams): StreamChatResult;

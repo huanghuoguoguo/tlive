@@ -11,6 +11,7 @@ import { singleProviderRegistry } from '../../shared/providers/registry.js';
 import { FakeClaudeProvider, waitFor } from '../e2e/harness.js';
 import type { AgentProvider, LiveSession, StreamChatResult } from '../../shared/providers/base.js';
 import type { FileAttachment } from '../../shared/media/attachments.js';
+import { NoActiveTurnError } from '../../shared/providers/errors.js';
 
 async function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -98,6 +99,50 @@ describe('remote client/server bridge', () => {
     expect(fake.prompts).toContain('hello remote');
     expect(events).toContainEqual({ kind: 'text_delta', text: 'remote ok' });
     expect(events.some((event) => event.kind === 'query_result')).toBe(true);
+  });
+
+  it('carries a provider refusal across the wire as a machine-readable code', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tlive-remote-'));
+    cleanup.push(() => rmSync(root, { recursive: true, force: true }));
+    const port = await freePort();
+    const registry = new RemoteClientRegistry({
+      port,
+      path: '/tlive',
+      token: 'test-token',
+      heartbeatIntervalMs: 10_000,
+      clientTimeoutMs: 30_000,
+    });
+    registry.start();
+    cleanup.push(() => registry.stop());
+
+    const injections: Array<{ text: string; priority: string }> = [];
+    const worker = new RemoteClientWorker(
+      singleProviderRegistry(createRefusingProvider(injections)),
+      {
+        serverUrl: `ws://127.0.0.1:${port}/tlive`,
+        token: 'test-token',
+        clientId: 'worker-refusing',
+        name: 'worker-refusing',
+        workspaces: [root],
+        reconnectIntervalMs: 100,
+      },
+    );
+    const workerRun = worker.start();
+    cleanup.push(async () => {
+      worker.stop();
+      await Promise.race([workerRun, new Promise((resolve) => setTimeout(resolve, 200))]);
+    });
+
+    await waitFor(() => registry.listClients().find((client) => client.clientId === 'worker-refusing'));
+
+    const provider = new RemoteAgentProvider('pi', registry);
+    const session = provider.createSession({ workingDirectory: root });
+    await collect(session.startTurn('busy work').stream);
+
+    await expect(session.sendWithPriority('insert me', 'now')).rejects.toBeInstanceOf(
+      NoActiveTurnError,
+    );
+    expect(injections).toEqual([{ text: 'insert me', priority: 'now' }]);
   });
 
   it('round-trips provider permission requests to the server turn handler', async () => {
@@ -218,6 +263,7 @@ function createAttachmentCapturingProvider(received: FileAttachment[][]): AgentP
       runtimeMode: 'interactive',
       nativeSteer: true,
       nativeQueue: true,
+      drainsQueueWhenIdle: true,
       interactivePermissions: true,
       askUserQuestion: true,
       deferredTools: true,
@@ -232,11 +278,76 @@ function createAttachmentCapturingProvider(received: FileAttachment[][]): AgentP
   };
 }
 
+function createRefusingProvider(injections: Array<{ text: string; priority: string }>): AgentProvider {
+  return {
+    kind: 'pi',
+    displayName: 'Pi',
+    capabilities: {
+      runtimeMode: 'interactive',
+      nativeSteer: true,
+      nativeQueue: true,
+      drainsQueueWhenIdle: false,
+      interactivePermissions: false,
+      askUserQuestion: false,
+      deferredTools: false,
+      settingSources: false,
+      sessionResume: true,
+      imageInputs: true,
+    },
+    createSession: () => {
+      let alive = true;
+      let turnActive = false;
+      return {
+        capabilities: { nativeSteer: true, nativeQueue: true, drainsQueueWhenIdle: false },
+        runtimeInfo: { provider: 'pi', displayName: 'Pi' },
+        get isAlive() {
+          return alive;
+        },
+        get isTurnActive() {
+          return turnActive;
+        },
+        startTurn: (): StreamChatResult => {
+          turnActive = true;
+          return {
+            stream: new ReadableStream<CanonicalEvent>({
+              start(controller) {
+                controller.enqueue({
+                  kind: 'query_result',
+                  sessionId: 'remote-refusing-session',
+                  isError: false,
+                  usage: { inputTokens: 1, outputTokens: 1, costUsd: 0 },
+                });
+                controller.close();
+                turnActive = false;
+              },
+            }),
+          };
+        },
+        steerTurn: () => {},
+        sendWithPriority: async (text: string, priority: string) => {
+          // Nothing is running: pi would enqueue and report success, so refuse.
+          injections.push({ text, priority });
+          throw new NoActiveTurnError('Pi has no running agent turn to inject into');
+        },
+        interruptTurn: async () => {},
+        close: () => {
+          alive = false;
+          turnActive = false;
+        },
+        setLifecycleCallbacks: () => {},
+      } as unknown as LiveSession;
+    },
+    streamChat: (): StreamChatResult => {
+      throw new Error('streamChat should not be called by the remote worker');
+    },
+  } as unknown as AgentProvider;
+}
+
 function createAttachmentCapturingSession(received: FileAttachment[][]): LiveSession {
   let alive = true;
   let turnActive = false;
   return {
-    capabilities: { nativeSteer: true, nativeQueue: true },
+    capabilities: { nativeSteer: true, nativeQueue: true, drainsQueueWhenIdle: true },
     runtimeInfo: { provider: 'claude', displayName: 'Claude' },
     get isAlive() {
       return alive;

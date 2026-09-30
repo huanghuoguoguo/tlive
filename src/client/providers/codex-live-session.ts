@@ -49,7 +49,11 @@ interface CodexTurnContext {
 }
 
 export class CodexLiveSession implements LiveSession {
-  readonly capabilities = { nativeSteer: false, nativeQueue: false };
+  readonly capabilities = {
+    nativeSteer: false,
+    nativeQueue: false,
+    drainsQueueWhenIdle: false,
+  };
   readonly runtimeInfo: AgentRuntimeInfo;
 
   private readonly codex: Codex;

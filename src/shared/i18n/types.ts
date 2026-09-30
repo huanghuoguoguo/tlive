@@ -281,11 +281,14 @@ export interface Translations {
   'msgLoop.replyTargetMissing': string;
   'msgLoop.sendFailed': string;
   'msgLoop.busyUnsupported': string;
+  'msgLoop.steerCommandBlocked': string;
+  'msgLoop.insertTimeout': string;
   'msgLoop.noActiveSession': string;
   'msgLoop.queueFull': string;
   'msgLoop.processFailed': string;
   'msgLoop.inserted': string;
   'msgLoop.queued': string;
+  'msgLoop.attachmentsDropped': string;
 
   // --- presenter ---
   'presenter.currentDir': string;
@@ -380,6 +383,7 @@ export interface Translations {
   'cmd.stop.description': string;
   'cmd.stop.helpDesc': string;
   'cmd.stop.workbenchHint': string;
+  'cmd.stop.notAcknowledged': string;
 
   // --- perm command ---
   'cmd.perm.description': string;

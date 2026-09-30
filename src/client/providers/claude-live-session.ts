@@ -53,7 +53,11 @@ export interface ClaudeLiveSessionOptions {
 }
 
 export class ClaudeLiveSession implements LiveSession {
-  readonly capabilities = { nativeSteer: true, nativeQueue: true };
+  readonly capabilities = {
+    nativeSteer: true,
+    nativeQueue: true,
+    drainsQueueWhenIdle: true,
+  };
   readonly runtimeInfo: AgentRuntimeInfo;
 
   private _query: ReturnType<typeof query> | null = null;

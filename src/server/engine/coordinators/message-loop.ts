@@ -74,8 +74,11 @@ export class MessageLoopCoordinator {
       const processingKey = await this.options.resolveProcessingKey(coalesced);
 
       if (this.options.state.isProcessing(processingKey)) {
-        await this.handleBusyChat(adapter, coalesced);
-        return;
+        const handled = await this.handleBusyChat(adapter, coalesced);
+        if (handled) return;
+        console.info(
+          `[tlive:loop] ${processingKey}: provider has no turn to inject into, starting one`,
+        );
       }
 
       this.options.state.setProcessing(processingKey, true);
@@ -97,8 +100,13 @@ export class MessageLoopCoordinator {
     }
   }
 
-  private async handleBusyChat(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<void> {
-    if (!msg.text) return;
+  /**
+   * Try to inject a message that arrived while the chat looked busy.
+   * Returns false when the provider had no turn to receive it, meaning the
+   * caller should run the message as a fresh turn instead.
+   */
+  private async handleBusyChat(adapter: BaseChannelAdapter, msg: InboundMessage): Promise<boolean> {
+    if (!msg.text) return true;
 
     const result = await this.options.sdkEngine.sendWithContext(
       msg.channelType,
@@ -107,12 +115,15 @@ export class MessageLoopCoordinator {
       msg.replyToMessageId,
     );
 
+    if (!result.sent && result.failureReason === 'no_active_turn') return false;
+
     const feedbackText = this.formatQueueFeedback(result);
     if (feedbackText) {
       await adapter
         .send(withInboundReplyContext({ chatId: msg.chatId, text: feedbackText }, msg))
         .catch(() => {});
     }
+    return true;
   }
 
   /**
@@ -130,6 +141,12 @@ export class MessageLoopCoordinator {
         }
         if (result.failureReason === 'busy_unsupported') {
           return t('msgLoop.busyUnsupported');
+        }
+        if (result.failureReason === 'command_blocked') {
+          return t('msgLoop.steerCommandBlocked');
+        }
+        if (result.failureReason === 'control_timeout') {
+          return t('msgLoop.insertTimeout');
         }
         return t('msgLoop.noActiveSession');
       }

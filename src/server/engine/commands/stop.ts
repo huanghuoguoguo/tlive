@@ -2,6 +2,7 @@ import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentStopResult } from '../../presentation/command-presenter.js';
 import { chatKey } from '../../../shared/core/key.js';
+import { ControlTimeoutError } from '../../../shared/providers/errors.js';
 import { t } from '../../../shared/i18n/index.js';
 
 export class StopCommand extends BaseCommand {
@@ -15,9 +16,9 @@ export class StopCommand extends BaseCommand {
   async execute(ctx: CommandContext): Promise<boolean> {
     const explicitSessionKey = ctx.parts.slice(1).join(' ').trim();
     if (explicitSessionKey && ctx.services.sdkEngine?.interruptSession) {
-      const interrupted = await ctx.services.sdkEngine.interruptSession(explicitSessionKey);
-      await this.send(ctx, presentStopResult(ctx.msg.chatId, interrupted, ctx.locale));
-      return true;
+      return this.reportStop(ctx, () =>
+        ctx.services.sdkEngine!.interruptSession!(explicitSessionKey),
+      );
     }
 
     if (ctx.surface === 'workbench') {
@@ -29,10 +30,24 @@ export class StopCommand extends BaseCommand {
     }
 
     const key = chatKey(ctx.msg.channelType, ctx.scopeId);
-    const interrupted = ctx.services.sdkEngine?.interruptChat
-      ? await ctx.services.sdkEngine.interruptChat(key)
-      : await this.interruptLegacy(ctx, key);
-    await this.send(ctx, presentStopResult(ctx.msg.chatId, interrupted, ctx.locale));
+    return this.reportStop(ctx, () =>
+      ctx.services.sdkEngine?.interruptChat
+        ? ctx.services.sdkEngine.interruptChat(key)
+        : this.interruptLegacy(ctx, key),
+    );
+  }
+
+  /**
+   * A worker that goes silent after the interrupt signal still stops the turn, so
+   * report that rather than failing the loop with an unacknowledged interrupt.
+   */
+  private async reportStop(ctx: CommandContext, stop: () => Promise<boolean>): Promise<boolean> {
+    try {
+      await this.send(ctx, presentStopResult(ctx.msg.chatId, await stop(), ctx.locale));
+    } catch (err) {
+      if (!(err instanceof ControlTimeoutError)) throw err;
+      await this.send(ctx, { chatId: ctx.msg.chatId, text: t('cmd.stop.notAcknowledged') });
+    }
     return true;
   }
 

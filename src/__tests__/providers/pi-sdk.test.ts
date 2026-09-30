@@ -38,9 +38,22 @@ describe('PiSDKProvider', () => {
         provider: 'anthropic',
         model: 'claude-sonnet-4-5',
         thinkingLevel: 'xhigh',
+        compactReservePercent: 20,
         noSession: true,
         offline: true,
       });
+  });
+
+  it('reads and clamps the compaction reserve percentage', () => {
+    const load = (value: string) =>
+      loadPiProviderConfig({ get: (key) => (key === 'TL_PI_COMPACT_RESERVE_PERCENT' ? value : '') })
+        .compactReservePercent;
+
+    expect(load('35')).toBe(35);
+    expect(load('80')).toBe(50);
+    expect(load('0')).toBe(0);
+    expect(load('off')).toBe(0);
+    expect(load('')).toBe(20);
   });
 
   it('normalizes known Pi thinking levels only', () => {

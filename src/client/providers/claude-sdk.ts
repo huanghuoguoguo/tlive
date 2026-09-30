@@ -141,6 +141,7 @@ export class ClaudeSDKProvider implements AgentProvider {
     runtimeMode: 'interactive',
     nativeSteer: true,
     nativeQueue: true,
+    drainsQueueWhenIdle: true,
     interactivePermissions: true,
     askUserQuestion: true,
     deferredTools: true,
@@ -213,7 +214,6 @@ export class ClaudeSDKProvider implements AgentProvider {
           };
 
           let stderrBuf = '';
-          let imagePaths: string[] = [];
           const eventLogger = new ClaudeEventLogger('claude-sdk');
 
           try {
@@ -223,7 +223,6 @@ export class ClaudeSDKProvider implements AgentProvider {
               join(tmpdir(), 'tlive-images'),
             );
             const prompt = prepared.prompt;
-            imagePaths = prepared.imagePaths;
 
             const queryOptions = buildClaudeQueryOptions({
               cwd: params.workingDirectory,
@@ -348,15 +347,8 @@ export class ClaudeSDKProvider implements AgentProvider {
             } as CanonicalEvent);
             controller.close();
           } finally {
-            // Clean up this query's temp image files
-            for (const path of imagePaths) {
-              try {
-                unlinkSync(path);
-              } catch {
-                /* ignore */
-              }
-            }
-            // Periodically clean up old files in tlive-images dir
+            // Staged images deliberately outlive the turn — the agent was handed their paths
+            // and may re-open them later; cleanupImageDir() is what bounds the directory.
             cleanupImageDir();
           }
         })();
