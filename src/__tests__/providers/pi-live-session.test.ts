@@ -39,14 +39,7 @@ describe('PiLiveSession', () => {
       getModel: () => undefined,
     });
     piSdkMocks.applyOverrides.mockReset();
-    piSdkMocks.settingsManagerCreate.mockReturnValue({
-      getCompactionSettings: () => ({
-        enabled: true,
-        reserveTokens: 16384,
-        keepRecentTokens: 12000,
-      }),
-      applyOverrides: piSdkMocks.applyOverrides,
-    });
+    mockCompactionSettings();
     const emptySessionContext = { messages: [], model: undefined };
     piSdkMocks.sessionManagerCreate.mockReturnValue({
       mode: 'create',
@@ -199,8 +192,9 @@ describe('PiLiveSession', () => {
 
     const live = new PiLiveSession({ workingDirectory: '/repo' });
     const reader = live.startTurn('busy work').stream.getReader();
-    // Receiving the status event proves the session exists and the turn is in flight.
+    // Wait for the SDK prompt, not just the status emitted before binding extensions.
     await reader.read();
+    await vi.waitFor(() => expect(harness.session.prompt).toHaveBeenCalledTimes(1));
     harness.state.streaming = true;
 
     await live.sendWithPriority('side note', 'now');
@@ -241,6 +235,7 @@ describe('PiLiveSession', () => {
     const live = new PiLiveSession({ workingDirectory: '/repo' });
     const reader = live.startTurn('busy work').stream.getReader();
     await reader.read();
+    await vi.waitFor(() => expect(harness.session.prompt).toHaveBeenCalledTimes(1));
 
     // The agent run is over but the bridge still holds the session: pi is idle,
     // its steer/followUp queues have nothing left to drain them.
@@ -274,6 +269,7 @@ describe('PiLiveSession', () => {
     const live = new PiLiveSession({ workingDirectory: '/repo' });
     const reader = live.startTurn('busy work').stream.getReader();
     await reader.read();
+    await vi.waitFor(() => expect(harness.session.prompt).toHaveBeenCalledTimes(1));
     harness.state.streaming = true;
 
     // pi's abort() waits for the agent run to unwind, which can lag the signal by
@@ -286,6 +282,33 @@ describe('PiLiveSession', () => {
     await reader.cancel().catch(() => {});
   });
 
+  it('still emits the terminal result when an interrupted owning prompt settles', async () => {
+    const harness = makeSteerableSession();
+    const completion = deferred<void>();
+    const messages: unknown[] = [];
+    const session = {
+      ...harness.session,
+      messages,
+      prompt: vi.fn(async () => {
+        await completion.promise;
+        messages.push({ role: 'assistant', stopReason: 'aborted' });
+      }),
+    };
+    piSdkMocks.createAgentSession.mockResolvedValue({ session });
+    const live = new PiLiveSession({ workingDirectory: '/repo' });
+    const events = collect(live.startTurn('work').stream);
+    await vi.waitFor(() => expect(session.prompt).toHaveBeenCalledTimes(1));
+    await live.interruptTurn();
+    completion.resolve();
+
+    expect((await events).at(-1)).toMatchObject({
+      kind: 'query_result',
+      isError: true,
+      error: 'Interrupted',
+    });
+    expect(live.isTurnActive).toBe(false);
+  });
+
   it('keeps an abort that fails after interrupting out of the caller', async () => {
     const harness = makeSteerableSession();
     piSdkMocks.createAgentSession.mockResolvedValue({ session: harness.session });
@@ -294,6 +317,7 @@ describe('PiLiveSession', () => {
     const live = new PiLiveSession({ workingDirectory: '/repo' });
     const reader = live.startTurn('busy work').stream.getReader();
     await reader.read();
+    await vi.waitFor(() => expect(harness.session.prompt).toHaveBeenCalledTimes(1));
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await live.interruptTurn();
@@ -326,6 +350,7 @@ describe('PiLiveSession', () => {
     const live = new PiLiveSession({ workingDirectory: '/repo' });
     const first = live.startTurn('wedged run').stream.getReader();
     await first.read();
+    await vi.waitFor(() => expect(harness.session.prompt).toHaveBeenCalledTimes(1));
     harness.state.streaming = true;
 
     // The bridge stops holding a turn once its processing flag expires, so a wedged
@@ -343,6 +368,155 @@ describe('PiLiveSession', () => {
     await second.cancel().catch(() => {});
   });
 
+  it('only prompts the owning turn when another turn takes over during SDK creation', async () => {
+    const harness = makeSteerableSession();
+    const initialization = deferred<{ session: typeof harness.session }>();
+    const completion = deferred<void>();
+    piSdkMocks.createAgentSession.mockReturnValue(initialization.promise);
+    let listener: (event: any) => void = () => {};
+    harness.session.subscribe.mockImplementation((callback: (event: any) => void) => {
+      listener = callback;
+      return () => {};
+    });
+    harness.session.prompt.mockImplementation(async (text: string) => {
+      if (harness.state.streaming) throw new Error('Agent already processing');
+      harness.state.streaming = true;
+      listener({
+        type: 'message_update',
+        message: {},
+        assistantMessageEvent: { type: 'text_delta', delta: text },
+      });
+      await completion.promise;
+      harness.state.streaming = false;
+    });
+
+    const live = new PiLiveSession({ workingDirectory: '/repo' });
+    const onTurnComplete = vi.fn();
+    live.setLifecycleCallbacks({ onTurnComplete });
+    const first = live.startTurn('retired prompt');
+    const firstEvents = collect(first.stream);
+    await vi.waitFor(() => expect(piSdkMocks.createAgentSession).toHaveBeenCalledTimes(1));
+    const ask = vi.fn(async () => ({ question: 'answer from owner' }));
+    const secondEvents = collect(live.startTurn('owning prompt', { onAskUserQuestion: ask }).stream);
+    initialization.resolve({ session: harness.session });
+
+    expect(await firstEvents).toEqual([]);
+    await vi.waitFor(() => expect(harness.session.prompt).toHaveBeenCalledTimes(1));
+    expect(harness.session.prompt).toHaveBeenCalledWith('owning prompt', {
+      expandPromptTemplates: true,
+    });
+    expect(piSdkMocks.createAgentSession).toHaveBeenCalledTimes(1);
+    expect(harness.session.bindExtensions).toHaveBeenCalledTimes(1);
+    expect(harness.session.subscribe).toHaveBeenCalledTimes(1);
+    expect(live.isTurnActive).toBe(true);
+    expect(onTurnComplete).not.toHaveBeenCalled();
+    await first.controls!.interrupt();
+    expect(harness.session.abort).not.toHaveBeenCalled();
+    const bindings = harness.session.bindExtensions.mock.calls[0][0];
+    await expect(bindings.uiContext.input('question')).resolves.toBe('answer from owner');
+    expect(ask).toHaveBeenCalledTimes(1);
+
+    completion.resolve();
+    const events = await secondEvents;
+    expect(events).toContainEqual({ kind: 'text_delta', text: 'owning prompt' });
+    expect(events.at(-1)).toMatchObject({ kind: 'query_result', isError: false });
+    expect(live.isTurnActive).toBe(false);
+    expect(onTurnComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['controls', 'session', 'cancel', 'close'] as const)(
+    'does not start a turn %s stopped while SDK creation was pending',
+    async (stop) => {
+      const harness = makeSteerableSession();
+      const initialization = deferred<{ session: typeof harness.session }>();
+      piSdkMocks.createAgentSession.mockReturnValue(initialization.promise);
+      const live = new PiLiveSession({ workingDirectory: '/repo' });
+      const turn = live.startTurn('do not prompt');
+      const reader = turn.stream.getReader();
+      const pendingRead = reader.read();
+      await vi.waitFor(() => expect(piSdkMocks.createAgentSession).toHaveBeenCalledTimes(1));
+
+      if (stop === 'controls') await turn.controls!.interrupt();
+      else if (stop === 'session') await live.interruptTurn();
+      else if (stop === 'cancel') await reader.cancel();
+      else live.close();
+      initialization.resolve({ session: harness.session });
+
+      await expect(pendingRead).resolves.toMatchObject({ done: true });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(harness.session.bindExtensions).not.toHaveBeenCalled();
+      expect(harness.session.subscribe).not.toHaveBeenCalled();
+      expect(harness.session.prompt).not.toHaveBeenCalled();
+      expect(live.isTurnActive).toBe(false);
+    },
+  );
+
+  it('does not prompt a retired turn when its extension binding finishes after takeover', async () => {
+    const harness = makeSteerableSession();
+    const binding = deferred<void>();
+    piSdkMocks.createAgentSession.mockResolvedValue({ session: harness.session });
+    harness.session.bindExtensions.mockImplementationOnce(() => binding.promise);
+    const live = new PiLiveSession({ workingDirectory: '/repo' });
+    const first = collect(live.startTurn('retired prompt').stream);
+    await vi.waitFor(() => expect(harness.session.bindExtensions).toHaveBeenCalledTimes(1));
+
+    const ask = vi.fn(async () => ({ question: 'new handler' }));
+    const second = collect(live.startTurn('owning prompt', { onAskUserQuestion: ask }).stream);
+    await vi.waitFor(() => expect(harness.session.prompt).toHaveBeenCalledTimes(1));
+    binding.resolve();
+    await first;
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(harness.session.prompt).toHaveBeenCalledWith('owning prompt', {
+      expandPromptTemplates: true,
+    });
+    expect(harness.session.prompt).toHaveBeenCalledTimes(1);
+    expect(harness.session.subscribe).toHaveBeenCalledTimes(1);
+    expect(live.isTurnActive).toBe(true);
+    const bindings = harness.session.bindExtensions.mock.calls[1][0];
+    await expect(bindings.uiContext.input('question')).resolves.toBe('new handler');
+    harness.releasePrompt();
+    expect((await second).at(-1)).toMatchObject({ kind: 'query_result', isError: false });
+  });
+
+  it('skips a retired handoff waiter and ignores the old prompt completing after takeover', async () => {
+    const harness = makeSteerableSession();
+    const idle = deferred<void>();
+    const oldCompletion = deferred<void>();
+    const newCompletion = deferred<void>();
+    piSdkMocks.createAgentSession.mockResolvedValue({ session: harness.session });
+    harness.session.abort.mockImplementation(() => idle.promise);
+    harness.session.prompt.mockImplementation((text: string) =>
+      text === 'old run' ? oldCompletion.promise : newCompletion.promise,
+    );
+    const live = new PiLiveSession({ workingDirectory: '/repo' });
+    const onTurnComplete = vi.fn();
+    live.setLifecycleCallbacks({ onTurnComplete });
+    const first = collect(live.startTurn('old run').stream);
+    await vi.waitFor(() => expect(harness.session.prompt).toHaveBeenCalledTimes(1));
+    const second = collect(live.startTurn('retired waiter').stream);
+    await new Promise((resolve) => setImmediate(resolve));
+    const third = collect(live.startTurn('owning prompt').stream);
+    idle.resolve();
+    await vi.waitFor(() => expect(harness.session.prompt).toHaveBeenCalledTimes(2));
+    expect(harness.session.prompt.mock.calls.map(([text]) => text)).toEqual([
+      'old run',
+      'owning prompt',
+    ]);
+    expect(await second).toEqual([]);
+
+    oldCompletion.resolve();
+    await first;
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(harness.session.getContextUsage).not.toHaveBeenCalled();
+    expect(live.isTurnActive).toBe(true);
+    expect(onTurnComplete).not.toHaveBeenCalled();
+    newCompletion.resolve();
+    expect((await third).at(-1)).toMatchObject({ kind: 'query_result', isError: false });
+    expect(harness.session.getContextUsage).toHaveBeenCalledTimes(1);
+    expect(onTurnComplete).toHaveBeenCalledTimes(1);
+  });
+
   it('waits for the abandoned run to go idle before handing Pi the next prompt', async () => {
     const harness = makeSteerableSession();
     piSdkMocks.createAgentSession.mockResolvedValue({ session: harness.session });
@@ -358,6 +532,7 @@ describe('PiLiveSession', () => {
     const live = new PiLiveSession({ workingDirectory: '/repo' });
     const first = live.startTurn('wedged run').stream.getReader();
     await first.read();
+    await vi.waitFor(() => expect(harness.session.prompt).toHaveBeenCalledTimes(1));
     harness.state.streaming = true;
 
     const second = live.startTurn('next message').stream.getReader();
@@ -370,7 +545,7 @@ describe('PiLiveSession', () => {
     settleAbort();
     harness.state.streaming = false;
     await expect(nextStatus).resolves.toMatchObject({ value: { kind: 'status' } });
-    expect(harness.session.prompt).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(harness.session.prompt).toHaveBeenCalledTimes(2));
 
     await second.cancel().catch(() => {});
   });
@@ -386,6 +561,7 @@ describe('PiLiveSession', () => {
       const live = new PiLiveSession({ workingDirectory: '/repo' });
       const first = live.startTurn('wedged run').stream.getReader();
       await first.read();
+      await vi.waitFor(() => expect(harness.session.prompt).toHaveBeenCalledTimes(1));
       harness.state.streaming = true;
 
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -411,6 +587,7 @@ describe('PiLiveSession', () => {
     const live = new PiLiveSession({ workingDirectory: '/repo' });
     const reader = live.startTurn('busy work').stream.getReader();
     await reader.read();
+    await vi.waitFor(() => expect(harness.session.prompt).toHaveBeenCalledTimes(1));
     harness.state.streaming = true;
 
     await reader.cancel();
@@ -612,6 +789,7 @@ describe('PiLiveSession', () => {
     const live = new PiLiveSession({ workingDirectory: '/repo' });
     const reader = live.startTurn('busy work').stream.getReader();
     await reader.read();
+    await vi.waitFor(() => expect(harness.session.prompt).toHaveBeenCalledTimes(1));
     harness.state.streaming = true;
 
     await expect(live.sendWithPriority('/compact', 'now')).rejects.toBeInstanceOf(
@@ -663,14 +841,7 @@ describe('PiLiveSession', () => {
   it('leaves a more conservative settings.json reserve alone', async () => {
     const session = makeCompactSession({ tokensBefore: 1 }, 118888);
     piSdkMocks.createAgentSession.mockResolvedValue({ session });
-    piSdkMocks.settingsManagerCreate.mockReturnValue({
-      getCompactionSettings: () => ({
-        enabled: true,
-        reserveTokens: 40000,
-        keepRecentTokens: 12000,
-      }),
-      applyOverrides: piSdkMocks.applyOverrides,
-    });
+    mockCompactionSettings(40000);
 
     const live = new PiLiveSession({ workingDirectory: '/repo', compactReservePercent: 20 });
     await collect(live.startTurn('/compact').stream);
@@ -687,6 +858,48 @@ describe('PiLiveSession', () => {
 
     expect(piSdkMocks.applyOverrides).not.toHaveBeenCalled();
   });
+
+  it.each([16384, 40000, 250000])(
+    'lowers its own reserve override on smaller models but keeps the %i user floor',
+    async (floor) => {
+      const settings = mockCompactionSettings(floor);
+      const wide = { provider: 'local', id: 'wide', contextWindow: 1000000 };
+      const small = { provider: 'local', id: 'small', contextWindow: 118888 };
+      const tiny = { provider: 'local', id: 'tiny', contextWindow: 32000 };
+      const models = [wide, small, tiny];
+      const session = {
+        ...makeCompactSession(),
+        model: wide,
+        modelRuntime: {
+          getModels: () => models,
+          getAvailableSnapshot: () => models,
+          getModel: (provider: string, id: string) =>
+            models.find((model) => model.provider === provider && model.id === id),
+        },
+        setModel: vi.fn(async (model: typeof wide) => {
+          session.model = model;
+        }),
+      };
+      piSdkMocks.createAgentSession.mockResolvedValue({ session });
+      const live = new PiLiveSession({ workingDirectory: '/repo', compactReservePercent: 20 });
+
+      await collect(live.startTurn('/compact').stream);
+      expect(settings.getCompactionSettings().reserveTokens).toBe(Math.max(floor, 200000));
+      for (const model of [small, tiny, wide]) {
+        const events = await collect(live.startTurn(`/model local/${model.id}`).stream);
+        expect(events.at(-1)).toMatchObject({ kind: 'query_result', isError: false });
+        expect(settings.getCompactionSettings().reserveTokens).toBe(
+          Math.max(floor, Math.floor(model.contextWindow * 0.2)),
+        );
+      }
+      expect(settings.getCompactionSettings()).toMatchObject({
+        enabled: true,
+        keepRecentTokens: 12000,
+      });
+      if (floor === 250000) expect(piSdkMocks.applyOverrides).not.toHaveBeenCalled();
+      else expect(piSdkMocks.applyOverrides).toHaveBeenCalledTimes(floor === 16384 ? 4 : 3);
+    },
+  );
 
   it('re-derives the reserve when /model switches to a wider window', async () => {
     const small = { provider: 'local', id: 'local', contextWindow: 118888 };
@@ -727,6 +940,29 @@ describe('PiLiveSession', () => {
   });
 });
 
+function deferred<T>() {
+  let resolve: (value: T) => void = () => {};
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+function mockCompactionSettings(initialReserveTokens = 16384) {
+  let reserveTokens = initialReserveTokens;
+  piSdkMocks.applyOverrides.mockImplementation(
+    (overrides: { compaction: { reserveTokens: number } }) => {
+      reserveTokens = overrides.compaction.reserveTokens;
+    },
+  );
+  const settings = {
+    getCompactionSettings: () => ({ enabled: true, reserveTokens, keepRecentTokens: 12000 }),
+    applyOverrides: piSdkMocks.applyOverrides,
+  };
+  piSdkMocks.settingsManagerCreate.mockReturnValue(settings);
+  return settings;
+}
+
 /**
  * Pi session mock with a test-controlled run state. `isStreaming` is the only
  * signal PiLiveSession trusts before enqueuing, so a mock that omits it reads as
@@ -741,7 +977,7 @@ function makeSteerableSession() {
     model: { provider: 'local', id: 'local', contextWindow: 118888 },
     thinkingLevel: 'off',
     messages: [],
-    subscribe: vi.fn(() => () => {}),
+    subscribe: vi.fn((_listener: (event: any) => void) => () => {}),
     bindExtensions: vi.fn(),
     prompt: vi.fn(
       (..._args: [text: string, options?: unknown]) =>

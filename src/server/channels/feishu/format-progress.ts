@@ -422,7 +422,7 @@ export function buildProgressContentElements(params: FormatProgressParams): Feis
   if (data.apiRetry) {
     elements.push(
       md(
-        `${t('progress.apiRetry')} (${data.apiRetry.attempt}/${data.apiRetry.maxRetries})${data.apiRetry.error ? ` — ${data.apiRetry.error}` : ''}`,
+        `${t('progress.apiRetry')} (${data.apiRetry.attempt}${data.apiRetry.maxRetries > 0 ? `/${data.apiRetry.maxRetries}` : ''})${data.apiRetry.error ? ` — ${data.apiRetry.error}` : ''}`,
       ),
     );
   }

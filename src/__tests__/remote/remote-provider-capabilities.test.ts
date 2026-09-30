@@ -56,10 +56,11 @@ describe('remote provider capabilities', () => {
     });
   });
 
-  it('keeps Codex turn-based', () => {
+  it('supports Codex active-turn steering without native queueing', () => {
     const provider = new RemoteAgentProvider('codex', registryWithClient('codex', PI_CAPABILITIES));
 
-    expect(provider.capabilities.nativeSteer).toBe(false);
+    expect(provider.capabilities.runtimeMode).toBe('interactive');
+    expect(provider.capabilities.nativeSteer).toBe(true);
     expect(provider.capabilities.nativeQueue).toBe(false);
   });
 

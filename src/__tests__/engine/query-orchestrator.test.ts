@@ -230,6 +230,7 @@ describe('QueryOrchestrator', () => {
       expect.any(String),
       undefined,
       expect.any(String),
+      controls,
     );
   });
 

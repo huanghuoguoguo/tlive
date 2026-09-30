@@ -540,6 +540,7 @@ export class SDKEngine {
     chatKey: string,
     controls: QueryControls | undefined,
     sessionKey?: string,
+    expectedControls?: QueryControls,
   ): void {
     const { channelType, chatId } = splitChatKey(chatKey);
     const targetSessionKey =
@@ -549,7 +550,7 @@ export class SDKEngine {
       chatKey,
       controls,
       targetSessionKey,
-      this.turnControlCleanupOptions(),
+      { ...this.turnControlCleanupOptions(), expectedControls },
     );
   }
 

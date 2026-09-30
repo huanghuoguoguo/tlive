@@ -38,12 +38,15 @@ interface SlowMessageDispatchOptions {
  */
 export class MessageLoopCoordinator {
   private processingAliases = new Map<string, Set<string>>();
+  private processingOwners = new Map<string, symbol>();
 
   constructor(private options: MessageLoopCoordinatorOptions) {}
 
   aliasProcessingKey(primaryKey: string, aliasKey: string): void {
     if (primaryKey === aliasKey || !this.options.state.isProcessing(primaryKey)) return;
     this.options.state.setProcessing(aliasKey, true);
+    const owner = this.processingOwners.get(primaryKey);
+    if (owner) this.processingOwners.set(aliasKey, owner);
     const aliases = this.processingAliases.get(primaryKey) ?? new Set<string>();
     aliases.add(aliasKey);
     this.processingAliases.set(primaryKey, aliases);
@@ -81,21 +84,34 @@ export class MessageLoopCoordinator {
         );
       }
 
+      const previousOwner = this.processingOwners.get(processingKey);
+      const owner = Symbol('message-turn');
+      this.processingOwners.set(processingKey, owner);
+      for (const alias of this.processingAliases.get(processingKey) ?? []) {
+        if (this.processingOwners.get(alias) === previousOwner) {
+          this.processingOwners.set(alias, owner);
+        }
+      }
       this.options.state.setProcessing(processingKey, true);
       handleMessage(adapter, coalesced, requestId)
         .catch((err) => onError(err, requestId, coalesced))
-        .finally(() => this.clearProcessing(processingKey));
+        .finally(() => this.clearProcessing(processingKey, owner));
     } catch (err) {
       onError(err, requestId, coalesced);
     }
   }
 
-  private clearProcessing(processingKey: string): void {
+  private clearProcessing(processingKey: string, owner: symbol): void {
+    // Card/media delivery from an earlier turn may finish after the next turn starts.
+    if (this.processingOwners.get(processingKey) !== owner) return;
+    this.processingOwners.delete(processingKey);
     this.options.state.setProcessing(processingKey, false);
     const aliases = this.processingAliases.get(processingKey);
     if (!aliases) return;
     this.processingAliases.delete(processingKey);
     for (const alias of aliases) {
+      if (this.processingOwners.get(alias) !== owner) continue;
+      this.processingOwners.delete(alias);
       this.options.state.setProcessing(alias, false);
     }
   }

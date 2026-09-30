@@ -1,6 +1,7 @@
 import type { QueryControls } from '../../../shared/providers/base.js';
 
 export interface TurnControlCleanupOptions {
+  expectedControls?: QueryControls;
   resolveFallbackSessionKey?: (chatKey: string) => string | undefined;
 }
 
@@ -60,11 +61,15 @@ export class TurnControlRegistry {
   }
 
   cleanupSessionControls(sessionKey: string, options?: TurnControlCleanupOptions): void {
+    const controls = this.activeControlsBySession.get(sessionKey);
+    if (options?.expectedControls && controls !== options.expectedControls) return;
     this.activeControlsBySession.delete(sessionKey);
     const chatKey = this.controlChatBySession.get(sessionKey);
     if (!chatKey) return;
 
     this.controlChatBySession.delete(sessionKey);
+    // Another session in this chat may already own the chat-level stop control.
+    if (this.activeControlsByChat.get(chatKey) !== controls) return;
     const fallbackSessionKey = options?.resolveFallbackSessionKey?.(chatKey);
     const fallbackControls = fallbackSessionKey
       ? this.activeControlsBySession.get(fallbackSessionKey)

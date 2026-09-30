@@ -117,7 +117,7 @@ export class CodexAdapter {
       if (reconnect) {
         events.push({ kind: 'api_retry', ...reconnect });
       } else {
-        events.push({ kind: 'text_delta', text: `\n⚠️ ${item.message}\n` });
+        events.push({ kind: 'warning', message: item.message });
       }
       return;
     }

@@ -1,6 +1,6 @@
 import type { AgentSettingSource } from '../../../shared/config.js';
 import { truncate } from '../../../shared/core/string.js';
-import type { StreamChatResult } from '../../../shared/providers/base.js';
+import type { QueryControls, StreamChatResult } from '../../../shared/providers/base.js';
 import type { AgentProviderRegistry } from '../../../shared/providers/registry.js';
 import { conversationScopeId } from '../../channels/conversation-context.js';
 import { deliveryRouteFromInbound } from '../../channels/delivery-route.js';
@@ -143,6 +143,7 @@ export class QueryTurnRunner {
       });
     }
 
+    let registeredControls: QueryControls | undefined;
     try {
       await this.options.engine.processMessage({
         provider,
@@ -156,7 +157,10 @@ export class QueryTurnRunner {
         sdkPermissionHandler: streamResult ? undefined : sdkPermissionHandler,
         sdkAskQuestionHandler: streamResult ? undefined : sdkAskQuestionHandler,
         sdkDeferredToolHandler: streamResult ? undefined : sdkDeferredToolHandler,
-        onControls: (ctrl) => this.options.sdkEngine.setControlsForChat(chatKey, ctrl, sessionKey),
+        onControls: (ctrl) => {
+          registeredControls = ctrl;
+          this.options.sdkEngine.setControlsForChat(chatKey, ctrl, sessionKey);
+        },
         onSdkSessionId: async (id) => {
           binding.sdkSessionId = id;
           this.options.sdkEngine.updateSessionSdkSessionId?.(sessionKey, id);
@@ -278,9 +282,12 @@ export class QueryTurnRunner {
           }
           await renderer.onError(err);
         },
+        onWarning: (warning) => renderer.onTextDelta(`\n⚠️ ${warning}\n`),
       });
     } finally {
-      this.options.sdkEngine.setControlsForChat(chatKey, undefined, sessionKey);
+      if (registeredControls) {
+        this.options.sdkEngine.setControlsForChat(chatKey, undefined, sessionKey, registeredControls);
+      }
     }
 
     if (!terminalEventSeen) {

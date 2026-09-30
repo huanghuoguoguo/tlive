@@ -131,6 +131,42 @@ describe('MessageLoopCoordinator', () => {
     expect(adapter.send).not.toHaveBeenCalled();
   });
 
+  it('keeps the next turn busy when the previous card finishes late', async () => {
+    const state = new SessionStateManager();
+    const sdkEngine = {
+      sendWithContext: vi.fn()
+        .mockResolvedValueOnce({ sent: false, mode: 'none', failureReason: 'no_active_turn' })
+        .mockResolvedValue({ sent: true, mode: 'steer', sessionKey: 'session-1' }),
+    };
+    const coordinator = createCoordinator(state, sdkEngine, { parsePermissionText: () => null });
+    const adapter = createAdapter();
+    let finishFirst!: () => void;
+    let finishSecond!: () => void;
+    const first = new Promise<void>((resolve) => { finishFirst = resolve; });
+    const second = new Promise<void>((resolve) => { finishSecond = resolve; });
+    const handleMessage = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const dispatch = (text: string) => coordinator.dispatchSlowMessage({
+      adapter, msg: createMessage(text), coalesceMessage: async (_adapter, msg) => msg,
+      handleMessage, onError: vi.fn(),
+    });
+    const primary = state.stateKey('feishu', 'chat-1');
+    const alias = state.stateKey('feishu', 'chat-1#thread:t1');
+    await dispatch('first');
+    coordinator.aliasProcessingKey(primary, alias);
+    await dispatch('second');
+    finishFirst();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(state.isProcessing(primary)).toBe(true);
+    expect(state.isProcessing(alias)).toBe(true);
+    await dispatch('third');
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+    expect(sdkEngine.sendWithContext).toHaveBeenLastCalledWith('feishu', 'chat-1', 'third', undefined);
+    finishSecond();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(state.isProcessing(primary)).toBe(false);
+    expect(state.isProcessing(alias)).toBe(false);
+  });
+
   it('acknowledges an unconfirmed injection as unconfirmed, without starting a second turn', async () => {
     const state = new SessionStateManager();
     state.setProcessing(state.stateKey('feishu', 'chat-1'), true);

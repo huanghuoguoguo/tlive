@@ -35,8 +35,7 @@ function remoteDisplayName(provider: AgentProviderKind): string {
 
 /**
  * Server-side fallback table, used until a client reports its own capabilities
- * through `client.hello` (see {@link RemoteLiveSession.capabilities}). Codex runs
- * one turn per process launch, so it is the only genuinely turn-based provider.
+ * through `client.hello` (see {@link RemoteLiveSession.capabilities}).
  */
 function remoteCapabilities(provider: AgentProviderKind): AgentProviderCapabilities {
   if (provider === 'claude') {
@@ -68,8 +67,8 @@ function remoteCapabilities(provider: AgentProviderKind): AgentProviderCapabilit
     };
   }
   return {
-    runtimeMode: 'turn-based',
-    nativeSteer: false,
+    runtimeMode: 'interactive',
+    nativeSteer: true,
     nativeQueue: false,
     drainsQueueWhenIdle: false,
     interactivePermissions: false,

@@ -296,34 +296,6 @@ describe('command presenter', () => {
       expect(rendered).toContain('上一页');
       expect(rendered).toContain('第 2 / 2 页');
       expect(rendered).not.toContain('📁 folder-0');
-    });
-
-    it('keeps the directory page on the refresh button', () => {
-      const msg = presentHome('chat-1', {
-        view: 'files',
-        workspace: {
-          cwd: '/home/user/project',
-          directory: {
-            path: '/home/user/project',
-            displayPath: '/home/user/project',
-            source: 'client',
-            clientId: 'local',
-            entries: Array.from({ length: 13 }, (_, index) => ({
-              name: `folder-${index}`,
-              path: `/home/user/project/folder-${index}`,
-              kind: 'directory' as const,
-            })),
-            page: 1,
-          },
-        },
-        task: { active: false },
-        permission: { mode: 'off' },
-        bridge: { healthy: true },
-        session: {},
-        clients: { defaultClientId: 'local', entries: [] },
-      });
-
-      const rendered = JSON.stringify(feishuFormatter.format(msg).feishuElements);
       expect(rendered).toContain('action:home-refresh:files:1');
     });
 

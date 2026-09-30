@@ -23,7 +23,6 @@ import type {
 } from '../../shared/providers/base.js';
 import type { EffortLevel } from '../../shared/providers/effort.js';
 import { CommandBlockedError, NoActiveTurnError } from '../../shared/providers/errors.js';
-import type { AskUserQuestionHandler } from '../../shared/providers/types.js';
 import { PiAdapter } from './pi-adapter.js';
 import { createPiAskBridge } from './pi-ask-bridge.js';
 import type { PiRuntimeOptions, PiThinkingLevel } from './pi-config.js';
@@ -55,6 +54,8 @@ export class PiLiveSession implements LiveSession {
   private initPromise: Promise<AgentSession> | undefined;
   /** Held so `/model` can re-derive the compaction reserve for the new window. */
   private settingsManager: SettingsManager | undefined;
+  /** User reserve before this session applies its own overrides. */
+  private compactionReserveFloor: number | undefined;
   private activeTurn: PiTurnContext | null = null;
   /** Set when a turn was torn down while pi may still be running; the next turn waits on it. */
   private abandonedRun: Promise<unknown> | undefined;
@@ -63,8 +64,6 @@ export class PiLiveSession implements LiveSession {
   private _isTurnActive = false;
   private _runtimeInfo: AgentRuntimeInfo = { provider: 'pi', displayName: 'Pi' };
   private sdkSessionId: string | undefined;
-  /** AskUserQuestion handler from the current turn — used to bridge Pi's `ask` tool to Feishu */
-  private _turnAskQuestionHandler: AskUserQuestionHandler | undefined;
 
   constructor(private readonly options: PiSessionOptions) {
     this.sdkSessionId = options.sessionId;
@@ -96,11 +95,10 @@ export class PiLiveSession implements LiveSession {
     // /stop had nothing left to act on.
     if (this.activeTurn) this.retireTurnContext(this.activeTurn, true);
 
-    this._turnAskQuestionHandler = params?.onAskUserQuestion;
-
     const context = this.createTurnContext();
     const controls: QueryControls = {
       interrupt: async () => {
+        if (!this.isCurrentTurn(context)) return;
         context.abortController.abort();
         await this.session?.abort();
       },
@@ -188,7 +186,9 @@ export class PiLiveSession implements LiveSession {
     let unsubscribe: (() => void) | undefined;
     try {
       const session = await this.getOrCreateSession(params);
+      if (!this.isCurrentTurn(context)) return;
       await this.awaitRunHandoff(session);
+      if (!this.isCurrentTurn(context)) return;
       const initialMessageCount = session.messages.length;
       context.adapter.updateRuntime({
         sessionId: this.sdkSessionId,
@@ -202,8 +202,9 @@ export class PiLiveSession implements LiveSession {
       });
       // Bind the ask bridge UIContext so Pi's `ask` tool routes through Feishu
       await session.bindExtensions({
-        uiContext: createPiAskBridge(this._turnAskQuestionHandler, context.abortController.signal),
+        uiContext: createPiAskBridge(params?.onAskUserQuestion, context.abortController.signal),
       });
+      if (!this.isCurrentTurn(context)) return;
 
       unsubscribe = session.subscribe((event) => {
         for (const mapped of context.adapter.mapEvent(event)) {
@@ -229,6 +230,7 @@ export class PiLiveSession implements LiveSession {
         ...(prepared.images ? { images: prepared.images } : {}),
       });
 
+      if (!this.ownsTurn(context)) return;
       this.rememberSessionId(session);
       context.adapter.updateRuntime({
         sessionId: this.sdkSessionId,
@@ -265,7 +267,6 @@ export class PiLiveSession implements LiveSession {
     } finally {
       unsubscribe?.();
       this.finishTurnContext(context);
-      this._turnAskQuestionHandler = undefined;
     }
   }
 
@@ -294,6 +295,7 @@ export class PiLiveSession implements LiveSession {
     if (!model) throw new Error(`Pi model not found: ${modelPattern}`);
 
     await session.setModel(model);
+    if (!this.ownsTurn(context)) return;
     this.applyCompactionReserve(session);
     this.updateRuntimeInfo(session);
     context.adapter.updateRuntime({
@@ -337,6 +339,7 @@ export class PiLiveSession implements LiveSession {
     context: PiTurnContext,
   ): Promise<void> {
     const result = await session.compact(customInstructions);
+    if (!this.ownsTurn(context)) return;
     this.enqueueTurnEvent(context, {
       kind: 'text_delta',
       text: `📦 已压缩上下文（压缩前 ${result.tokensBefore} tokens）`,
@@ -383,6 +386,8 @@ export class PiLiveSession implements LiveSession {
       this.agentDirPath(),
     );
 
+    this.compactionReserveFloor = settingsManager.getCompactionSettings().reserveTokens;
+
     const createOptions: CreateAgentSessionOptions = {
       cwd: this.options.workingDirectory,
       agentDir: this.options.agentDir,
@@ -418,9 +423,12 @@ export class PiLiveSession implements LiveSession {
     const contextWindow = session.model?.contextWindow;
     if (!this.settingsManager || !percent || !contextWindow || contextWindow <= 0) return;
 
-    const wanted = Math.floor((contextWindow * percent) / 100);
     const current = this.settingsManager.getCompactionSettings();
-    if (wanted <= current.reserveTokens) return;
+    const wanted = Math.max(
+      this.compactionReserveFloor ?? current.reserveTokens,
+      Math.floor((contextWindow * percent) / 100),
+    );
+    if (wanted === current.reserveTokens) return;
 
     this.settingsManager.applyOverrides({ compaction: { reserveTokens: wanted } });
     console.log(
@@ -526,6 +534,14 @@ export class PiLiveSession implements LiveSession {
       ...(session.model ? { model: `${session.model.provider}/${session.model.id}` } : {}),
       ...(session.thinkingLevel ? { reasoningEffort: session.thinkingLevel } : {}),
     };
+  }
+
+  private isCurrentTurn(context: PiTurnContext): boolean {
+    return this.ownsTurn(context) && !context.abortController.signal.aborted;
+  }
+
+  private ownsTurn(context: PiTurnContext): boolean {
+    return this._isAlive && !context.closed && this.activeTurn?.token === context.token;
   }
 
   private enqueueTurnEvent(context: PiTurnContext, event: CanonicalEvent): void {

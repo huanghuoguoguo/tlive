@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import type { Input, RunStreamedResult, ThreadEvent, TurnOptions } from '@openai/codex-sdk';
 import type { CanonicalEvent } from '../../shared/canonical/schema.js';
 
-const codexSdkMocks = vi.hoisted(() => ({
-  codexConstructor: vi.fn(),
-  resumeThread: vi.fn(),
-  runStreamed: vi.fn(),
-  startThread: vi.fn(),
+const appServerMocks = vi.hoisted(() => ({
+  close: vi.fn(),
+  constructor: vi.fn(),
+  onExit: undefined as ((error: Error) => void) | undefined,
+  onNotification: undefined as ((notification: { method: string; params?: Record<string, unknown> }) => void) | undefined,
+  request: vi.fn(),
 }));
 
 const childProcessMocks = vi.hoisted(() => ({
@@ -20,18 +20,23 @@ vi.mock('node:child_process', () => ({
   spawnSync: childProcessMocks.spawnSync,
 }));
 
-vi.mock('@openai/codex-sdk', () => ({
-  Codex: class MockCodex {
-    constructor(options?: unknown) {
-      codexSdkMocks.codexConstructor(options);
+vi.mock('../../client/providers/codex-app-server.js', () => ({
+  CodexAppServerClient: class MockCodexAppServerClient {
+    constructor(options: {
+      onExit: (error: Error) => void;
+      onNotification: (notification: { method: string; params?: Record<string, unknown> }) => void;
+    }) {
+      appServerMocks.constructor(options);
+      appServerMocks.onExit = options.onExit;
+      appServerMocks.onNotification = options.onNotification;
     }
 
-    startThread(options?: unknown): unknown {
-      return codexSdkMocks.startThread(options);
+    request(method: string, params: Record<string, unknown>) {
+      return appServerMocks.request(method, params);
     }
 
-    resumeThread(id: string, options?: unknown): unknown {
-      return codexSdkMocks.resumeThread(id, options);
+    close() {
+      appServerMocks.close();
     }
   },
 }));
@@ -51,16 +56,20 @@ describe('CodexSDKProvider', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    appServerMocks.onExit = undefined;
+    appServerMocks.onNotification = undefined;
+    appServerMocks.request.mockImplementation(async (method: string) => {
+      if (method === 'thread/start' || method === 'thread/resume') {
+        return { thread: { id: 'thread-1' } };
+      }
+      if (method === 'turn/start') return { turn: { id: 'turn-1' } };
+      if (method === 'turn/steer') return { turnId: 'turn-1' };
+      return {};
+    });
     childProcessMocks.spawnSync.mockReturnValue({ status: 0, stderr: '', stdout: '' });
     delete process.env.TL_MCP_TOKEN;
     delete process.env.TL_REMOTE_TOKEN;
     delete process.env.TL_TOKEN;
-    const thread = {
-      id: 'thread-1',
-      runStreamed: codexSdkMocks.runStreamed,
-    };
-    codexSdkMocks.startThread.mockReturnValue(thread);
-    codexSdkMocks.resumeThread.mockReturnValue(thread);
   });
 
   afterEach(() => {
@@ -76,11 +85,11 @@ describe('CodexSDKProvider', () => {
     expect(toCodexReasoningEffort(undefined)).toBeUndefined();
   });
 
-  it('marks Codex as a turn-based runtime', () => {
+  it('marks Codex as an interactive runtime with active-turn steering', () => {
     const provider = new CodexSDKProvider();
 
-    expect(provider.capabilities.runtimeMode).toBe('turn-based');
-    expect(provider.capabilities.nativeSteer).toBe(false);
+    expect(provider.capabilities.runtimeMode).toBe('interactive');
+    expect(provider.capabilities.nativeSteer).toBe(true);
     expect(provider.capabilities.nativeQueue).toBe(false);
   });
 
@@ -178,19 +187,22 @@ describe('CodexSDKProvider', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('falling back to danger-full-access'));
   });
 
-  it('passes the sandbox fallback through to SDK thread creation', () => {
+  it('passes the sandbox fallback through to app-server thread creation', async () => {
     const config = loadCodexProviderConfig({
       get: (_key, fallback = '') => fallback,
       sandboxProbe: () => ({ supported: false }),
       warn: vi.fn(),
     });
 
-    new CodexSDKProvider(config).createSession({ workingDirectory: '/repo' });
+    const session = new CodexSDKProvider(config).createSession({ workingDirectory: '/repo' });
+    session.startTurn('hello');
+    await flushPromises();
 
-    expect(codexSdkMocks.startThread).toHaveBeenCalledWith(
+    expect(appServerMocks.request).toHaveBeenCalledWith(
+      'thread/start',
       expect.objectContaining({
-        workingDirectory: '/repo',
-        sandboxMode: 'danger-full-access',
+        cwd: '/repo',
+        sandbox: 'danger-full-access',
       }),
     );
   });
@@ -292,35 +304,43 @@ describe('CodexSDKProvider', () => {
     expect(childProcessMocks.spawnSync).not.toHaveBeenCalled();
   });
 
-  it('injects TLive MCP only into the SDK-created Codex process', () => {
-    new CodexLiveSession({ workingDirectory: '/repo' });
+  it('injects TLive MCP into the app-server thread config', async () => {
+    const session = new CodexLiveSession({ workingDirectory: '/repo' });
+    session.startTurn('hello');
+    await flushPromises();
 
-    expect(codexSdkMocks.codexConstructor).toHaveBeenCalledWith({
-      config: {
-        mcp_servers: {
-          tlive: expect.objectContaining({
-            url: 'http://127.0.0.1:8081/mcp',
-          }),
+    expect(appServerMocks.request).toHaveBeenCalledWith(
+      'thread/start',
+      expect.objectContaining({
+        config: {
+          mcp_servers: {
+            tlive: expect.objectContaining({ url: 'http://127.0.0.1:8081/mcp' }),
+          },
         },
-      },
-    });
+      }),
+    );
   });
 
-  it('passes the TLive MCP bearer token through the Codex-supported env-var config', () => {
+  it('passes the TLive MCP bearer token through the Codex-supported env-var config', async () => {
     process.env.TL_REMOTE_TOKEN = 'remote-token';
 
-    new CodexLiveSession({ workingDirectory: '/repo' });
+    const session = new CodexLiveSession({ workingDirectory: '/repo' });
+    session.startTurn('hello');
+    await flushPromises();
 
-    expect(codexSdkMocks.codexConstructor).toHaveBeenCalledWith({
-      config: {
-        mcp_servers: {
-          tlive: expect.objectContaining({
-            url: 'http://127.0.0.1:8081/mcp',
-            bearer_token_env_var: 'TL_REMOTE_TOKEN',
-          }),
+    expect(appServerMocks.request).toHaveBeenCalledWith(
+      'thread/start',
+      expect.objectContaining({
+        config: {
+          mcp_servers: {
+            tlive: expect.objectContaining({
+              url: 'http://127.0.0.1:8081/mcp',
+              bearer_token_env_var: 'TL_REMOTE_TOKEN',
+            }),
+          },
         },
-      },
-    });
+      }),
+    );
   });
 
   it('reports current context from the latest rollout call instead of cumulative turn usage', async () => {
@@ -341,11 +361,33 @@ describe('CodexSDKProvider', () => {
       ].join('\n'),
     );
     process.env.CODEX_HOME = codexHome;
-    codexSdkMocks.runStreamed.mockResolvedValue({ events: usageEvents(sessionId) });
+    appServerMocks.request.mockImplementation(async (method: string) => {
+      if (method === 'thread/start') return { thread: { id: sessionId } };
+      if (method === 'turn/start') return { turn: { id: 'turn-usage' } };
+      return {};
+    });
 
     try {
       const session = new CodexLiveSession({ workingDirectory: '/repo' });
-      const events = await collect(session.startTurn('hello').stream);
+      const result = session.startTurn('hello');
+      await flushPromises();
+      emitNotification('thread/tokenUsage/updated', {
+        threadId: sessionId,
+        turnId: 'turn-usage',
+        tokenUsage: {
+          last: {
+            inputTokens: 21346,
+            cachedInputTokens: 11776,
+            outputTokens: 142,
+            reasoningOutputTokens: 12,
+          },
+        },
+      });
+      emitNotification('turn/completed', {
+        threadId: sessionId,
+        turn: { id: 'turn-usage', status: 'completed', error: null },
+      });
+      const events = await collect(result.stream);
 
       expect(events).toEqual([
         { kind: 'status', sessionId },
@@ -373,66 +415,61 @@ describe('CodexSDKProvider', () => {
     }
   });
 
-  it('keeps an aborted turn from closing a newer turn stream', async () => {
-    const firstAbortObserved = deferred<void>();
-    const releaseFirstRun = deferred<void>();
-    const firstRunSettled = deferred<void>();
-    const releaseSecondEvent = deferred<void>();
-
-    codexSdkMocks.runStreamed
-      .mockImplementationOnce(async (_input: Input, options?: TurnOptions) => {
-        options?.signal?.addEventListener('abort', () => firstAbortObserved.resolve(), {
-          once: true,
-        });
-        await releaseFirstRun.promise;
-        firstRunSettled.resolve();
-        throw new Error('first turn aborted late');
-      })
-      .mockImplementationOnce(async (): Promise<RunStreamedResult> => ({
-        events: secondTurnEvents(releaseSecondEvent.promise),
-      }));
+  it('keeps a late first-turn response from closing a newer turn stream', async () => {
+    const firstTurn = deferred<Record<string, unknown>>();
+    let turnStarts = 0;
+    appServerMocks.request.mockImplementation(async (method: string) => {
+      if (method === 'thread/start') return { thread: { id: 'thread-1' } };
+      if (method === 'turn/start') {
+        turnStarts++;
+        return turnStarts === 1 ? firstTurn.promise : { turn: { id: 'turn-2' } };
+      }
+      return {};
+    });
 
     const session = new CodexLiveSession({ workingDirectory: '/repo' });
     session.startTurn('first');
+    await flushPromises();
 
     const secondTurn = session.startTurn('second');
     const secondReader = secondTurn.stream.getReader();
+    await flushPromises();
 
-    await firstAbortObserved.promise;
-    releaseFirstRun.resolve();
-    await firstRunSettled.promise;
-    await Promise.resolve();
+    firstTurn.resolve({ turn: { id: 'turn-1' } });
+    await flushPromises();
 
     expect(session.isTurnActive).toBe(true);
 
-    releaseSecondEvent.resolve();
+    emitNotification('item/agentMessage/delta', {
+      threadId: 'thread-1',
+      turnId: 'turn-2',
+      itemId: 'msg-2',
+      delta: 'second still open',
+    });
+    await expect(secondReader.read()).resolves.toEqual({
+      done: false,
+      value: { kind: 'status', sessionId: 'thread-1' },
+    });
     await expect(secondReader.read()).resolves.toEqual({
       done: false,
       value: { kind: 'text_delta', text: 'second still open' },
     });
   });
+
+  it('steers an active Codex turn through app-server', async () => {
+    const session = new CodexLiveSession({ workingDirectory: '/repo' });
+    session.startTurn('first');
+    await flushPromises();
+
+    await session.sendWithPriority('focus on tests', 'now');
+
+    expect(appServerMocks.request).toHaveBeenCalledWith('turn/steer', {
+      threadId: 'thread-1',
+      expectedTurnId: 'turn-1',
+      input: [{ type: 'text', text: 'focus on tests', text_elements: [] }],
+    });
+  });
 });
-
-async function* secondTurnEvents(ready: Promise<void>): AsyncGenerator<ThreadEvent> {
-  await ready;
-  yield {
-    type: 'item.updated',
-    item: { id: 'msg-2', type: 'agent_message', text: 'second still open' },
-  };
-}
-
-async function* usageEvents(sessionId: string): AsyncGenerator<ThreadEvent> {
-  yield { type: 'thread.started', thread_id: sessionId };
-  yield {
-    type: 'turn.completed',
-    usage: {
-      input_tokens: 21346,
-      cached_input_tokens: 11776,
-      output_tokens: 142,
-      reasoning_output_tokens: 12,
-    },
-  };
-}
 
 function tokenCountLine(
   lastTotalTokens: number,
@@ -460,6 +497,16 @@ function tokenCountLine(
       },
     },
   });
+}
+
+function emitNotification(method: string, params: Record<string, unknown>): void {
+  appServerMocks.onNotification?.({ method, params });
+}
+
+async function flushPromises(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 async function collect(stream: ReadableStream<CanonicalEvent>): Promise<CanonicalEvent[]> {
