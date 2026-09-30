@@ -42,6 +42,7 @@ export interface RouterHelpers {
     chatId: string,
     locale?: Locale,
     view?: HomeView,
+    directoryPage?: number,
   ): Promise<HomeData>;
   /** Update workspace binding from path (find git root) */
   updateWorkspaceBindingFromPath(channelType: string, chatId: string, cwd: string): void;

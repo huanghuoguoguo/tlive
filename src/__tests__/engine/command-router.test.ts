@@ -15,6 +15,7 @@ import { loadProjectsConfig, type AgentSettingSource } from '../../shared/config
 import type { SDKEngine } from '../../server/engine/sdk/engine.js';
 import type { PermissionCoordinator } from '../../server/engine/coordinators/permission.js';
 import { chatScopeId } from '../../shared/core/key.js';
+import { ControlTimeoutError } from '../../shared/providers/errors.js';
 import { homeInstanceActionArg } from '../../shared/core/callbacks.js';
 import type { HomeClientEntry } from '../../shared/formatting/message-types.js';
 import { extractTliveTopicMetadata } from '../../shared/topic-metadata.js';
@@ -38,6 +39,7 @@ function createMockClaudeProvider(): ClaudeSDKProvider {
       runtimeMode: 'interactive',
       nativeSteer: true,
       nativeQueue: true,
+      drainsQueueWhenIdle: true,
       interactivePermissions: true,
       askUserQuestion: true,
       deferredTools: true,
@@ -56,6 +58,7 @@ function createMockCodexProvider() {
       runtimeMode: 'turn-based',
       nativeSteer: false,
       nativeQueue: false,
+      drainsQueueWhenIdle: false,
       interactivePermissions: false,
       askUserQuestion: false,
       deferredTools: false,
@@ -505,6 +508,59 @@ describe('CommandRouter /settings', () => {
     expect(adapter.send).not.toHaveBeenCalled();
   });
 
+  it('serves the requested directory page and keeps it across refresh', async () => {
+    const root = join(tmpDir, 'many-dirs');
+    for (let index = 0; index < 14; index += 1) {
+      mkdirSync(join(root, `d-${String(index).padStart(2, '0')}`), { recursive: true });
+    }
+    await store.saveBinding({
+      channelType: 'feishu',
+      chatId: 'c1',
+      sessionId: 'binding-1',
+      cwd: root,
+      createdAt: '',
+    });
+
+    const editHomeData = () =>
+      (
+        vi.mocked(adapter.editMessage).mock.calls.at(-1)?.[2] as unknown as {
+          data: { workspace: { directory?: { page?: number; entries: { name: string }[] } } };
+        }
+      ).data;
+
+    await router.handleAction(
+      adapter,
+      {
+        channelType: 'feishu',
+        chatId: 'c1',
+        scopeId: 'c1',
+        userId: 'u1',
+        text: '',
+        messageId: 'home-card-1',
+      } as any,
+      { name: 'home-dir', args: [root, '1'] },
+    );
+    const paged = editHomeData();
+    expect(paged.workspace.directory?.page).toBe(1);
+    // Paging is a render-time slice; the payload still carries everything the node returned.
+    expect(paged.workspace.directory?.entries).toHaveLength(14);
+
+    // 刷新 must re-read the same page instead of jumping the user back to the first one.
+    await router.handleAction(
+      adapter,
+      {
+        channelType: 'feishu',
+        chatId: 'c1',
+        scopeId: 'c1',
+        userId: 'u1',
+        text: '',
+        messageId: 'home-card-1',
+      } as any,
+      { name: 'home-refresh', args: ['files', '1'] },
+    );
+    expect(editHomeData().workspace.directory?.page).toBe(1);
+  });
+
   it('falls back to sending a workbench card when refresh has no message id', async () => {
     const handled = await router.handleAction(
       adapter,
@@ -571,6 +627,28 @@ describe('CommandRouter /settings', () => {
       chatId: 'chat-1',
       text: '⏹ 已中断当前执行',
     }));
+  });
+
+  it('acknowledges an interrupt the worker never answers', async () => {
+    sdkEngine.interruptSession = vi.fn().mockRejectedValue(new ControlTimeoutError('interrupt'));
+
+    await router.handle(adapter, {
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      scopeId: 'chat-1',
+      userId: 'u1',
+      text: '/stop feishu:chat-1#thread:thread-1:session-1',
+      messageId: 'm-stop-timeout',
+    } as any);
+
+    // The abort signal is already on its way, so an unanswered interrupt must not
+    // bubble out of the inbound loop as an error card.
+    expect(adapter.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: 'chat-1',
+        text: expect.stringContaining('暂未收到确认'),
+      }),
+    );
   });
 
   it('rejects /stop in the workbench without an explicit session key', async () => {

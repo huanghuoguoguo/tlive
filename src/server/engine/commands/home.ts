@@ -13,15 +13,22 @@ function homeViewFromArg(raw?: string): HomeView {
   return HOME_VIEWS.has(raw as HomeView) ? (raw as HomeView) : 'main';
 }
 
+/** Card actions carry the requested directory page as a trailing numeric arg. */
+function directoryPageArg(raw: string | undefined): number {
+  return raw && /^\d+$/.test(raw) ? Number(raw) : 0;
+}
+
 async function buildHomeMessage(
   ctx: CommandContext,
   view: HomeView = 'main',
+  directoryPage = 0,
 ): Promise<FormattableMessage> {
   const data = await ctx.helpers.buildHomePayload(
     ctx.msg.channelType,
     ctx.scopeId,
     ctx.locale,
     view,
+    directoryPage,
   );
   const instanceId = ctx.services.state.getActiveHomeInstance(ctx.msg.channelType, ctx.scopeId);
   return presentHome(ctx.msg.chatId, {
@@ -32,19 +39,16 @@ async function buildHomeMessage(
 }
 
 function activateNewHomeInstance(ctx: CommandContext): void {
-  ctx.services.state.setActiveHomeInstance(
-    ctx.msg.channelType,
-    ctx.scopeId,
-    generateId('home', 8),
-  );
+  ctx.services.state.setActiveHomeInstance(ctx.msg.channelType, ctx.scopeId, generateId('home', 8));
 }
 
 async function editHomeInPlaceOrSend(
   ctx: CommandContext,
   view: HomeView,
+  directoryPage: number,
   send: (msg: FormattableMessage) => Promise<void>,
 ): Promise<void> {
-  const homeMessage = await buildHomeMessage(ctx, view);
+  const homeMessage = await buildHomeMessage(ctx, view, directoryPage);
   if (!ctx.msg.messageId) {
     await send(homeMessage);
     return;
@@ -100,7 +104,9 @@ export class HomeViewCommand extends BaseCommand {
   readonly description = undefined;
 
   async execute(ctx: CommandContext): Promise<boolean> {
-    await editHomeInPlaceOrSend(ctx, homeViewFromArg(ctx.parts[1]), (msg) => this.send(ctx, msg));
+    await editHomeInPlaceOrSend(ctx, homeViewFromArg(ctx.parts[1]), 0, (msg) =>
+      this.send(ctx, msg),
+    );
     return true;
   }
 }
@@ -112,7 +118,12 @@ export class HomeRefreshCommand extends BaseCommand {
   readonly description = undefined;
 
   async execute(ctx: CommandContext): Promise<boolean> {
-    await editHomeInPlaceOrSend(ctx, homeViewFromArg(ctx.parts[1]), (msg) => this.send(ctx, msg));
+    await editHomeInPlaceOrSend(
+      ctx,
+      homeViewFromArg(ctx.parts[1]),
+      directoryPageArg(ctx.parts[2]),
+      (msg) => this.send(ctx, msg),
+    );
     return true;
   }
 }
@@ -124,7 +135,11 @@ export class HomeDirectoryCommand extends BaseCommand {
   readonly description = undefined;
 
   async execute(ctx: CommandContext): Promise<boolean> {
-    const path = ctx.parts.slice(1).join(' ').trim();
+    const args = ctx.parts.slice(1);
+    const lastArg = args.at(-1);
+    const hasPage = args.length > 1 && lastArg !== undefined && /^\d+$/.test(lastArg);
+    const directoryPage = hasPage ? Number(args.pop()) : 0;
+    const path = args.join(' ').trim();
     if (path) {
       const result = await switchCommandDirectory(ctx, path);
       if (!result.ok) {
@@ -137,7 +152,7 @@ export class HomeDirectoryCommand extends BaseCommand {
         return true;
       }
     }
-    await editHomeInPlaceOrSend(ctx, 'files', (msg) => this.send(ctx, msg));
+    await editHomeInPlaceOrSend(ctx, 'files', directoryPage, (msg) => this.send(ctx, msg));
     return true;
   }
 }
