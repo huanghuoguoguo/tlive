@@ -1,5 +1,7 @@
 import type { BaseChannelAdapter } from '../../channels/base.js';
 import type { InboundMessage } from '../../channels/types.js';
+import { withInboundReplyContext } from '../../channels/reply-context.js';
+import { t } from '../../../shared/i18n/index.js';
 import { generateRequestId, type LogContext } from '../../../shared/logger.js';
 import type { CommandRouter } from '../command-router.js';
 import { publicTextCommandName } from '../commands/slash-policy.js';
@@ -86,6 +88,14 @@ export class InboundDispatcher {
 
     const attachmentResult = ingress.prepareAttachments(msg);
     msg = attachmentResult.message;
+    if (attachmentResult.droppedAttachments > 0) {
+      const notice = t('msgLoop.attachmentsDropped')
+        .replace('{dropped}', String(attachmentResult.droppedAttachments))
+        .replace('{kept}', String(attachmentResult.keptAttachments));
+      adapter
+        .send(withInboundReplyContext({ chatId: msg.chatId, text: notice }, msg))
+        .catch(() => {});
+    }
     if (attachmentResult.handled) {
       return true;
     }
@@ -132,12 +142,10 @@ export class InboundDispatcher {
 
     if (surface === 'workbench') {
       await adapter
-        .send(
-          {
-            chatId: msg.chatId,
-            text: '⚠️ 主窗口只处理 TLive 命令。请用 /home 打开工作台并点击新建会话，或使用 /new claude 创建话题。',
-          },
-        )
+        .send({
+          chatId: msg.chatId,
+          text: '⚠️ 主窗口只处理 TLive 命令。请用 /home 打开工作台并点击新建会话，或使用 /new claude 创建话题。',
+        })
         .catch(() => {});
       return true;
     }

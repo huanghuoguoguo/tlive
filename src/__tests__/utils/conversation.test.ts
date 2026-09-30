@@ -63,14 +63,40 @@ describe('preparePromptWithFileAttachments', () => {
     expect(prompt).toContain('hello notes');
   });
 
-  it('leaves image attachments to the provider-specific image path flow', () => {
+  it('persists images and gives the agent a path it can re-open in a later turn', () => {
+    tliveHome = tempTliveHome();
+    process.env.TLIVE_HOME = tliveHome;
+    const attachment: FileAttachment = {
+      type: 'image',
+      name: 'photo.jpg',
+      mimeType: 'image/jpeg',
+      base64Data: Buffer.from([0xff, 0xd8, 0xff, 0xe0]).toString('base64'),
+    };
+
+    const prompt = preparePromptWithFileAttachments('look', [attachment]);
+    const path = prompt.match(/Path: `([^`]+)`/)?.[1];
+
+    expect(prompt).toContain('[Image: photo.jpg (image/jpeg)');
+    expect(path).toContain(join(tliveHome, 'attachments'));
+    expect(existsSync(path!)).toBe(true);
+    // Written back so the provider leg reuses this copy instead of staging a second one.
+    expect(attachment.localPath).toBe(path);
+  });
+
+  it('keeps an existing localPath instead of writing the image again', () => {
+    tliveHome = tempTliveHome();
+    process.env.TLIVE_HOME = tliveHome;
     const attachment: FileAttachment = {
       type: 'image',
       name: 'photo.png',
       mimeType: 'image/png',
-      base64Data: 'aW1hZ2U=',
+      base64Data: Buffer.from('not an image').toString('base64'),
+      localPath: '/already/persisted.png',
     };
 
-    expect(preparePromptWithFileAttachments('look', [attachment])).toBe('look');
+    const prompt = preparePromptWithFileAttachments('look', [attachment]);
+
+    expect(prompt).toContain('Path: `/already/persisted.png`');
+    expect(attachment.localPath).toBe('/already/persisted.png');
   });
 });

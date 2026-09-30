@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
-import type { TodoStatus } from '../../shared/canonical/schema.js';
+import type { CanonicalEvent, TodoStatus } from '../../shared/canonical/schema.js';
 import type { AgentSettingSource } from '../../shared/config.js';
 import { getTliveHome } from '../../shared/core/path.js';
 import type {
@@ -68,6 +68,7 @@ function safeFileName(name: string): string {
 
 function persistFileAttachment(att: FileAttachment, decodedBuffer: Buffer): string | undefined {
   if (att.localPath) return att.localPath;
+  if (decodedBuffer.length === 0) return undefined;
   try {
     const day = new Date().toISOString().slice(0, 10);
     const dir = join(getTliveHome(), 'attachments', day);
@@ -82,22 +83,56 @@ function persistFileAttachment(att: FileAttachment, decodedBuffer: Buffer): stri
   }
 }
 
+const ATTACHMENT_RETENTION_DAYS = 7;
+const ATTACHMENT_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
+let lastAttachmentSweep = 0;
+
+/**
+ * Agents are handed these paths so they can re-open an image in a later turn, which means
+ * every screenshot now lands on disk. Day-named directories keep the sweep cheap.
+ */
+function sweepOldAttachments(): void {
+  const now = Date.now();
+  if (now - lastAttachmentSweep < ATTACHMENT_SWEEP_INTERVAL_MS) return;
+  lastAttachmentSweep = now;
+  const cutoff = new Date(now - ATTACHMENT_RETENTION_DAYS * 86_400_000).toISOString().slice(0, 10);
+  try {
+    const root = join(getTliveHome(), 'attachments');
+    for (const entry of readdirSync(root)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(entry) || entry >= cutoff) continue;
+      rmSync(join(root, entry), { recursive: true, force: true });
+    }
+  } catch {
+    // Nothing to sweep yet.
+  }
+}
+
 export function preparePromptWithFileAttachments(
   text: string,
   attachments?: FileAttachment[],
 ): string {
   if (!attachments?.length) return text;
 
+  sweepOldAttachments();
+
   const parts: string[] = [];
   if (text) parts.push(text);
 
   for (const att of attachments) {
-    if (att.type !== 'file') continue;
-
     const decodedBuffer = Buffer.from(att.base64Data, 'base64');
     const mimeType = effectiveMimeType(att);
     const localPath = persistFileAttachment(att, decodedBuffer);
+    if (localPath) att.localPath = localPath;
     const pathLine = localPath ? `\nPath: \`${localPath}\`` : '';
+
+    if (att.type === 'image') {
+      parts.push(
+        `\n[Image: ${att.name} (${mimeType})${
+          localPath ? ' — re-open this path to view it again in a later turn' : ''
+        }]${pathLine}`,
+      );
+      continue;
+    }
 
     if (isTextMime(mimeType)) {
       if (decodedBuffer.length > MAX_INLINE_FILE_SIZE) {
@@ -185,7 +220,9 @@ interface ProcessMessageParams {
     retryDelayMs: number;
     error?: string;
   }) => void;
-  onCompactBoundary?: (data: { trigger: 'manual' | 'auto'; preTokens?: number }) => void;
+  onCompactBoundary?: (
+    data: Omit<Extract<CanonicalEvent, { kind: 'compact_boundary' }>, 'kind'>,
+  ) => void;
   onContextUsage?: (data: {
     tokens: number | null;
     contextWindow: number;
@@ -236,9 +273,9 @@ export class ConversationEngine {
     await this.store.acquireLock(lockKey, 600_000);
 
     try {
-      // 2. Build prompt with file content injected
-      const imageAttachments = params.attachments?.filter((a) => a.type === 'image');
+      // 2. Build prompt with file content injected (also stamps `localPath` on each attachment)
       const prompt = preparePromptWithFileAttachments(params.text, params.attachments);
+      const imageAttachments = params.attachments?.filter((a) => a.type === 'image');
 
       // 3. Stream LLM response — use pre-built stream from LiveSession or call streamChat
       const result =

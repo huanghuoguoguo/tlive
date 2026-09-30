@@ -189,6 +189,63 @@ describe('claude-shared utilities', () => {
       expect(gifCall[0]).toContain('.gif');
     });
 
+    it('reuses the copy the bridge already persisted instead of staging a second one', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      const attachments: FileAttachment[] = [
+        {
+          type: 'image',
+          name: 'shot.png',
+          mimeType: 'image/png',
+          base64Data: 'x',
+          localPath: '/bridge/attachments/2026-09-25/abc-shot.png',
+        },
+      ];
+
+      const result = preparePromptWithImages('test', attachments);
+
+      expect(result.imagePaths).toEqual(['/bridge/attachments/2026-09-25/abc-shot.png']);
+      expect(fs.writeFileSync).not.toHaveBeenCalled();
+    });
+
+    it('stages its own copy when the bridge path is not on this machine', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      const attachments: FileAttachment[] = [
+        {
+          type: 'image',
+          name: 'shot.jpg',
+          mimeType: 'image/jpeg',
+          base64Data: 'x',
+          localPath: '/bridge/attachments/2026-09-25/abc-shot.jpg',
+        },
+      ];
+
+      const result = preparePromptWithImages('test', attachments);
+
+      expect(fs.writeFileSync).toHaveBeenCalled();
+      expect(result.imagePaths).toHaveLength(1);
+      expect(result.imagePaths[0]).toContain('img-');
+      expect(result.imagePaths[0]).toContain('.jpg');
+    });
+
+    it('keeps the images that did stage when one of them fails', () => {
+      vi.mocked(fs.writeFileSync).mockImplementation((path) => {
+        if (String(path).includes('.gif')) throw new Error('write failed');
+      });
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const attachments: FileAttachment[] = [
+        { type: 'image', name: 'a.png', mimeType: 'image/png', base64Data: 'a' },
+        { type: 'image', name: 'b.gif', mimeType: 'image/gif', base64Data: 'b' },
+        { type: 'image', name: 'c.png', mimeType: 'image/png', base64Data: 'c' },
+      ];
+
+      const result = preparePromptWithImages('test', attachments);
+
+      expect(result.imagePaths).toHaveLength(2);
+      expect(result.prompt).toContain('User sent 2 image(s)');
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('b.gif'));
+      warn.mockRestore();
+    });
+
     it('continues on file write errors', () => {
       vi.mocked(fs.writeFileSync).mockImplementation(() => {
         throw new Error('write failed');

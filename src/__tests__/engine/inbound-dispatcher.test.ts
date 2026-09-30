@@ -226,4 +226,32 @@ describe('InboundDispatcher', () => {
     expect(query.run).not.toHaveBeenCalled();
     expect(adapter.send).not.toHaveBeenCalled();
   });
+
+  it('tells the user when attachments were trimmed to fit the budget', async () => {
+    const harness = createTextHarness('none');
+    const { dispatcher, ingress, query } = createDispatcher(harness);
+    ingress.prepareAttachments.mockImplementation((msg: InboundMessage) => ({
+      message: msg,
+      handled: false,
+      droppedAttachments: 2,
+      keptAttachments: 5,
+    }));
+    const adapter = createAdapter();
+
+    const handled = await dispatcher.handle(
+      adapter,
+      createMessage('compare these', {
+        threadId: 'thread-1',
+        scopeId: 'chat-1#thread:thread-1',
+      }),
+      'req-trim',
+    );
+
+    expect(handled).toBe(true);
+    expect(query.run).toHaveBeenCalled();
+    expect(adapter.send).toHaveBeenCalledTimes(1);
+    const notice = vi.mocked(adapter.send).mock.calls[0][0] as unknown as { text: string };
+    expect(notice.text).toContain('2');
+    expect(notice.text).toContain('5');
+  });
 });

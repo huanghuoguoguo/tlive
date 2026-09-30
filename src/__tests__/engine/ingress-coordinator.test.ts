@@ -79,6 +79,127 @@ describe('IngressCoordinator', () => {
     ingress.dispose();
   });
 
+  it('accumulates every image of a burst instead of keeping only the last', () => {
+    const ingress = new IngressCoordinator({ chatIdFile: tempChatIdFile() });
+    const image = (name: string) => ({
+      type: 'image' as const,
+      name,
+      mimeType: 'image/png',
+      base64Data: 'aGVsbG8=',
+    });
+
+    for (const [index, name] of ['diagram-1.png', 'diagram-2.png', 'diagram-3.png'].entries()) {
+      const buffered = ingress.prepareAttachments({
+        channelType: 'feishu',
+        chatId: 'chat-1',
+        userId: 'user-1',
+        text: '',
+        messageId: `msg-img-${index}`,
+        attachments: [image(name)],
+      });
+      expect(buffered.handled).toBe(true);
+      expect(buffered.droppedAttachments).toBe(0);
+    }
+
+    const merged = ingress.prepareAttachments({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      text: 'compare these three',
+      messageId: 'msg-text',
+    });
+
+    expect(merged.handled).toBe(false);
+    expect(merged.message.attachments?.map((attachment) => attachment.name)).toEqual([
+      'diagram-1.png',
+      'diagram-2.png',
+      'diagram-3.png',
+    ]);
+
+    ingress.dispose();
+  });
+
+  it('reports attachments over the per-batch budget instead of dropping them silently', () => {
+    const ingress = new IngressCoordinator({ chatIdFile: tempChatIdFile() });
+    const image = (name: string) => ({
+      type: 'image' as const,
+      name,
+      mimeType: 'image/png',
+      base64Data: 'aGVsbG8=',
+    });
+
+    let dropped = 0;
+    for (let index = 0; index < 7; index += 1) {
+      const buffered = ingress.prepareAttachments({
+        channelType: 'feishu',
+        chatId: 'chat-1',
+        userId: 'user-1',
+        text: '',
+        messageId: `msg-img-${index}`,
+        attachments: [image(`shot-${index}.png`)],
+      });
+      dropped += buffered.droppedAttachments;
+    }
+
+    expect(dropped).toBe(2);
+
+    const overflow = ingress.prepareAttachments({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      text: 'and these?',
+      messageId: 'msg-text',
+    });
+    expect(overflow.keptAttachments).toBe(5);
+
+    ingress.dispose();
+  });
+
+  it('keeps a burst alive by refreshing the buffer on each image', () => {
+    vi.useFakeTimers();
+    const ingress = new IngressCoordinator({ chatIdFile: tempChatIdFile(), attachmentTtlMs: 1000 });
+    const image = (name: string) => ({
+      type: 'image' as const,
+      name,
+      mimeType: 'image/png',
+      base64Data: 'aGVsbG8=',
+    });
+
+    ingress.prepareAttachments({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      text: '',
+      messageId: 'msg-1',
+      attachments: [image('first.png')],
+    });
+    vi.advanceTimersByTime(800);
+    ingress.prepareAttachments({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      text: '',
+      messageId: 'msg-2',
+      attachments: [image('second.png')],
+    });
+    vi.advanceTimersByTime(800);
+
+    const merged = ingress.prepareAttachments({
+      channelType: 'feishu',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      text: 'both of them',
+      messageId: 'msg-3',
+    });
+
+    expect(merged.message.attachments?.map((attachment) => attachment.name)).toEqual([
+      'first.png',
+      'second.png',
+    ]);
+
+    ingress.dispose();
+  });
+
   it('records last chat from delivery targets without keeping an implicit file route', () => {
     const ingress = new IngressCoordinator({ chatIdFile: tempChatIdFile() });
 

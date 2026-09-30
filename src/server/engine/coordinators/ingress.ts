@@ -154,51 +154,95 @@ export class IngressCoordinator {
     return { ...first, text: parts.join('\n') };
   }
 
-  prepareAttachments(msg: InboundMessage): { handled: boolean; message: InboundMessage } {
+  /**
+   * Feishu delivers each image of a multi-image post as its own attachment-only message,
+   * so the buffer accumulates across messages until the text that gives them a question
+   * arrives. Replacing it here would silently keep only the last image.
+   */
+  prepareAttachments(msg: InboundMessage): {
+    handled: boolean;
+    message: InboundMessage;
+    droppedAttachments: number;
+    keptAttachments: number;
+  } {
     const key = this.attachmentKey(msg.channelType, conversationScopeId(msg));
 
     if (msg.attachments?.length && !msg.text && !msg.callbackData) {
-      const attachments = this.fitAttachmentBudget(msg.attachments);
-      if (attachments.length > 0) {
+      const pending = this.takePendingAttachments(key);
+      const { kept, dropped } = this.fitAttachmentBudget([...pending, ...msg.attachments]);
+      if (kept.length > 0) {
         this.pendingAttachments.set(key, {
-          attachments,
+          attachments: kept,
+          // Refreshed per message: a burst of images must not expire between sends.
           timestamp: Date.now(),
         });
-        console.log(
-          `[${msg.channelType}] Buffered ${attachments.length} attachment(s), waiting for text`,
-        );
       }
-      return { handled: true, message: msg };
+      console.log(
+        `[${msg.channelType}] Buffered ${kept.length} attachment(s), waiting for text${
+          dropped > 0 ? ` (dropped ${dropped} over budget)` : ''
+        }`,
+      );
+      return {
+        handled: true,
+        message: msg,
+        droppedAttachments: dropped,
+        keptAttachments: kept.length,
+      };
     }
 
     if (msg.text && !msg.callbackData) {
-      const pending = this.pendingAttachments.get(key);
-      if (pending && Date.now() - pending.timestamp < this.attachmentTtlMs) {
+      const pending = this.takePendingAttachments(key);
+      if (pending.length > 0) {
+        const { kept, dropped } = this.fitAttachmentBudget([
+          ...pending,
+          ...(msg.attachments || []),
+        ]);
         console.log(
-          `[${msg.channelType}] Merged ${pending.attachments.length} buffered attachment(s) with text`,
+          `[${msg.channelType}] Merged ${pending.length} buffered attachment(s) with text`,
         );
-        const merged: InboundMessage = {
-          ...msg,
-          attachments: [...(msg.attachments || []), ...pending.attachments],
+        return {
+          handled: false,
+          message: { ...msg, attachments: kept },
+          droppedAttachments: dropped,
+          keptAttachments: kept.length,
         };
-        this.pendingAttachments.delete(key);
-        return { handled: false, message: merged };
       }
-      this.pendingAttachments.delete(key);
     }
 
-    return { handled: false, message: msg };
+    return { handled: false, message: msg, droppedAttachments: 0, keptAttachments: 0 };
   }
 
   private attachmentKey(channelType: string, chatId: string): string {
     return buildChatKey(channelType, chatId);
   }
 
-  private fitAttachmentBudget(attachments: FileAttachment[]): FileAttachment[] {
+  /**
+   * Drains the buffer for a chat. A buffer older than the TTL is discarded rather than
+   * merged into an unrelated later message.
+   */
+  private takePendingAttachments(key: string): FileAttachment[] {
+    const pending = this.pendingAttachments.get(key);
+    if (!pending) return [];
+    this.pendingAttachments.delete(key);
+    if (Date.now() - pending.timestamp >= this.attachmentTtlMs) {
+      console.log(
+        `[ingress] Discarded ${pending.attachments.length} stale attachment(s) older than ${Math.round(
+          this.attachmentTtlMs / 1000,
+        )}s`,
+      );
+      return [];
+    }
+    return pending.attachments;
+  }
+
+  private fitAttachmentBudget(attachments: FileAttachment[]): {
+    kept: FileAttachment[];
+    dropped: number;
+  } {
     let kept = attachments.slice(0, IngressCoordinator.MAX_ATTACHMENTS);
     const totalBytes = kept.reduce((sum, attachment) => sum + attachment.base64Data.length, 0);
     if (totalBytes <= IngressCoordinator.MAX_TOTAL_ATTACHMENT_BYTES) {
-      return kept;
+      return { kept, dropped: attachments.length - kept.length };
     }
 
     let budget = IngressCoordinator.MAX_TOTAL_ATTACHMENT_BYTES;
@@ -209,7 +253,9 @@ export class IngressCoordinator {
       }
       return false;
     });
-    console.warn(`[ingress] Attachment buffer exceeded 10MB limit, kept ${kept.length}`);
-    return kept;
+    console.warn(
+      `[ingress] Attachment buffer exceeded 10MB limit, kept ${kept.length} of ${attachments.length}`,
+    );
+    return { kept, dropped: attachments.length - kept.length };
   }
 }

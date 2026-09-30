@@ -33,6 +33,34 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   '.zip': 'application/zip',
 };
 
+const IMAGE_EXT_BY_MIME: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/bmp': 'bmp',
+};
+
+/**
+ * Feishu hands back image bytes without a content type, and the API accepts JPEG uploads
+ * under a png-shaped key. Declaring the wrong type breaks native base64 delivery, so read
+ * it off the bytes.
+ */
+export function sniffImageMime(buf: Buffer): string | undefined {
+  if (buf.length >= 4 && buf.readUInt32BE(0) === 0x89504e47) return 'image/png';
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf.length >= 4 && buf.toString('ascii', 0, 4) === 'GIF8') return 'image/gif';
+  if (
+    buf.length >= 12 &&
+    buf.toString('ascii', 0, 4) === 'RIFF' &&
+    buf.toString('ascii', 8, 12) === 'WEBP'
+  ) {
+    return 'image/webp';
+  }
+  if (buf.length >= 2 && buf[0] === 0x42 && buf[1] === 0x4d) return 'image/bmp';
+  return undefined;
+}
+
 export interface FeishuInboundEventMessage {
   message_type?: string;
   content: string;
@@ -231,16 +259,20 @@ async function downloadImageAttachment(
           path: { image_key: imageKey },
         }),
       );
-    } catch {
+    } catch (err) {
+      console.warn(
+        `[feishu] image ${imageKey} download failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
       return undefined;
     }
   }
 
-  if (!isUsableAttachmentBuffer(buf)) return undefined;
+  if (!isUsableAttachmentBuffer(buf, 'image')) return undefined;
+  const mimeType = sniffImageMime(buf) || 'image/png';
   return {
     type: 'image',
-    name: 'image.png',
-    mimeType: 'image/png',
+    name: `image.${IMAGE_EXT_BY_MIME[mimeType] || 'png'}`,
+    mimeType,
     base64Data: buf.toString('base64'),
   };
 }
@@ -265,7 +297,7 @@ async function downloadFileAttachment(
     return undefined;
   }
 
-  if (!isUsableAttachmentBuffer(buf)) return undefined;
+  if (!isUsableAttachmentBuffer(buf, fileName)) return undefined;
   return {
     type: 'file',
     name: fileName,
@@ -296,8 +328,15 @@ async function downloadRichAttachments(
   return attachments;
 }
 
-function isUsableAttachmentBuffer(buf: Buffer | null): buf is Buffer {
-  return !!buf && buf.length > 0 && buf.length <= MAX_INBOUND_ATTACHMENT_BYTES;
+function isUsableAttachmentBuffer(buf: Buffer | null, label: string): buf is Buffer {
+  if (!buf || buf.length === 0) return false;
+  if (buf.length > MAX_INBOUND_ATTACHMENT_BYTES) {
+    console.warn(
+      `[feishu] dropped ${label}: ${Math.round(buf.length / (1024 * 1024))}MB exceeds the 10MB inbound limit`,
+    );
+    return false;
+  }
+  return true;
 }
 
 function safeAttachmentName(name: unknown, fallback: string): string {

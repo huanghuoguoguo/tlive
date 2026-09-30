@@ -60,9 +60,11 @@ export class QueryTurnRunner {
     const settingSources = query.getSettingSources(this.options.defaultAgentSettingSources);
     const scopeId = conversationScopeId(msg);
     const chatKey = this.options.state.stateKey(msg.channelType, scopeId);
-    const imageAttachments = msg.attachments?.filter((a) => a.type === 'image');
     const provider = this.options.providers.require(binding.provider);
+    // Persists every attachment and stamps `localPath` onto it, so the provider leg below
+    // hands the agent the same file the prompt refers to instead of a second copy.
     const basePromptText = preparePromptWithFileAttachments(msg.text, msg.attachments);
+    const imageAttachments = msg.attachments?.filter((a) => a.type === 'image');
     // Don't prepend file delivery context for slash commands - let the agent handle them
     const promptText = basePromptText.startsWith('/')
       ? basePromptText
@@ -202,9 +204,15 @@ export class QueryTurnRunner {
         },
         onCompactBoundary: (data) => {
           console.log(
-            `[bridge] compact_boundary: trigger=${data.trigger}${data.preTokens ? ` pre_tokens=${data.preTokens}` : ''}`,
+            `[bridge] compact_boundary: trigger=${data.trigger} phase=${data.phase ?? 'boundary'}${data.preTokens ? ` pre_tokens=${data.preTokens}` : ''}${data.errorMessage ? ` error=${data.errorMessage}` : ''}`,
           );
-          renderer.onCompacting(true);
+          // Pi reports both phases, so the indicator clears when compaction ends.
+          // A bare boundary (Claude) means the summary already exists, so it never
+          // latches the "compacting" flag on.
+          renderer.onCompacting(data.phase === 'start');
+          if (data.errorMessage) {
+            renderer.onTextDelta(`\n⚠️ 上下文压缩失败：${data.errorMessage}\n`);
+          }
         },
         onContextUsage: (data) => {
           console.log(
