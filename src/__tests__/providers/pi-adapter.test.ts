@@ -122,6 +122,44 @@ describe('PiAdapter', () => {
       },
     });
   });
+
+  it('reports both compaction phases so the indicator can clear', () => {
+    const adapter = new PiAdapter({ sessionId: 'pi-session' });
+
+    expect(
+      adapter.mapEvent({ type: 'compaction_start', reason: 'threshold' } as any),
+    ).toEqual([{ kind: 'compact_boundary', trigger: 'auto', phase: 'start' }]);
+
+    expect(
+      adapter.mapEvent({
+        type: 'compaction_end',
+        reason: 'manual',
+        result: { summary: 's', firstKeptEntryId: 'e4', tokensBefore: 99072 },
+        aborted: false,
+        willRetry: false,
+      } as any),
+    ).toEqual([
+      { kind: 'compact_boundary', trigger: 'manual', phase: 'end', preTokens: 99072 },
+    ]);
+
+    expect(
+      adapter.mapEvent({
+        type: 'compaction_end',
+        reason: 'overflow',
+        result: undefined,
+        aborted: false,
+        willRetry: false,
+        errorMessage: 'Context overflow recovery failed',
+      } as any),
+    ).toEqual([
+      {
+        kind: 'compact_boundary',
+        trigger: 'auto',
+        phase: 'end',
+        errorMessage: 'Context overflow recovery failed',
+      },
+    ]);
+  });
 });
 
 function assistantUsage(input: number, output: number, cacheRead: number): unknown {

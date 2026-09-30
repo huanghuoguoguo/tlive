@@ -98,6 +98,16 @@ export class PiAdapter {
         events.push({
           kind: 'compact_boundary',
           trigger: event.reason === 'manual' ? 'manual' : 'auto',
+          phase: 'start',
+        });
+        break;
+      case 'compaction_end':
+        events.push({
+          kind: 'compact_boundary',
+          trigger: event.reason === 'manual' ? 'manual' : 'auto',
+          phase: 'end',
+          ...(event.result ? { preTokens: event.result.tokensBefore } : {}),
+          ...(event.errorMessage ? { errorMessage: event.errorMessage } : {}),
         });
         break;
     }

@@ -121,7 +121,12 @@ const apiRetrySchema = z.object({
 const compactBoundarySchema = z.object({
   kind: z.literal('compact_boundary'),
   trigger: z.enum(['manual', 'auto']),
+  /** 'start' when a compaction run begins, 'end' when it finishes (success, abort or failure). */
+  phase: z.enum(['start', 'end']).optional(),
+  /** Context size before compaction; only known once the summary exists. */
   preTokens: z.number().optional(),
+  /** Set on phase='end' when the compaction run failed. */
+  errorMessage: z.string().optional(),
 });
 
 const promptSuggestionSchema = z.object({

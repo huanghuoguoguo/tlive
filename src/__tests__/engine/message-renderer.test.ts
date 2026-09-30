@@ -453,4 +453,20 @@ describe('MessageRenderer', () => {
     expect(flushCallback.mock.calls.length).toBe(callsAfterComplete);
     complete.dispose();
   });
+
+  it('clears the API retry indicator once the stream resumes', async () => {
+    const renderer = createRenderer();
+
+    renderer.onApiRetry({ attempt: 1, maxRetries: 5, retryDelayMs: 0, error: 'stream closed' });
+    await advance(500);
+    expect(flushCallback.mock.calls.at(-1)?.[3]).toMatchObject({
+      apiRetry: { attempt: 1, maxRetries: 5 },
+    });
+
+    renderer.onTextDelta('the answer continues after the reconnect succeeded.');
+    await advance(500);
+    expect(flushCallback.mock.calls.at(-1)?.[3]?.apiRetry).toBeUndefined();
+
+    renderer.dispose();
+  });
 });

@@ -70,6 +70,11 @@ function formatThinkingContent(text: string, locale: Locale): string {
   return `${notice}\n\n${latest.text}`;
 }
 
+/** Provider advisories are not the answer, so they must not become the collapsed title. */
+function stripAdvisoryLines(text: string): string {
+  return text.replace(/(?:^|\n)[ \t]*⚠️[^\n]*/g, '');
+}
+
 function summarizeOperationText(text: string): string {
   const cleaned = text
     .replace(/[*_`>#-]/g, ' ')
@@ -175,7 +180,9 @@ function buildOperationHeader(
 ): string {
   const latestThinking = latestThinkingContent(operation.thinkingContent).text;
   const summarySource =
-    latestThinking || operation.textEntries.find((text) => text.trim()) || '';
+    latestThinking ||
+    operation.textEntries.map(stripAdvisoryLines).find((text) => text.trim()) ||
+    '';
   const summary = summarizeOperationText(summarySource);
   const toolNames = [...new Set(operation.toolEntries.map((tool) => tool.toolName))];
   const toolSuffix =

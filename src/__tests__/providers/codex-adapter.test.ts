@@ -272,6 +272,60 @@ describe('CodexAdapter', () => {
       },
     ]);
   });
+
+  it('treats a reconnect notice item as a retry, not a terminal error', () => {
+    const adapter = new CodexAdapter({ sessionId: 'thread-1' });
+
+    expect(
+      adapter.mapEvent({
+        type: 'item.completed',
+        item: {
+          id: 'err-1',
+          type: 'error',
+          message:
+            'Reconnecting... 1/5 (stream disconnected before completion: Transport error: network error: error decoding response body)',
+        },
+      }),
+    ).toEqual([
+      {
+        kind: 'api_retry',
+        attempt: 1,
+        maxRetries: 5,
+        retryDelayMs: 0,
+        error:
+          'stream disconnected before completion: Transport error: network error: error decoding response body',
+      },
+    ]);
+  });
+
+  it('surfaces a model-mismatch advisory as warning text', () => {
+    const adapter = new CodexAdapter({ sessionId: 'thread-1' });
+
+    expect(
+      adapter.mapEvent({
+        type: 'item.completed',
+        item: {
+          id: 'err-2',
+          type: 'error',
+          message:
+            'This session was recorded with model `gpt-5.6-sol` but is resuming with `gpt-6-luna`.',
+        },
+      }),
+    ).toEqual([
+      {
+        kind: 'text_delta',
+        text: '\n⚠️ This session was recorded with model `gpt-5.6-sol` but is resuming with `gpt-6-luna`.\n',
+      },
+    ]);
+  });
+
+  it('keeps a top-level stream error terminal', () => {
+    const adapter = new CodexAdapter({ sessionId: 'thread-1' });
+
+    expect(adapter.mapEvent({ type: 'error', message: 'unrecoverable' })).toEqual([
+      { kind: 'error', message: 'unrecoverable' },
+    ]);
+  });
 });
 
 function agentMessage(id: string, text: string): ThreadEvent {

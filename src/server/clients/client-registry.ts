@@ -1,6 +1,7 @@
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { URL } from 'node:url';
 import type { AgentProviderKind } from '../../shared/providers/kinds.js';
+import { ControlTimeoutError } from '../../shared/providers/errors.js';
 import type { CanonicalEvent } from '../../shared/canonical/schema.js';
 import { generateId } from '../../shared/core/id.js';
 import {
@@ -207,7 +208,7 @@ export class RemoteClientRegistry {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingControls.delete(controlId);
-        reject(new Error(`Remote control timed out: ${message.action}`));
+        reject(new ControlTimeoutError(message.action));
       }, timeoutMs);
       this.pendingControls.set(controlId, { resolve, reject, timer });
       this.send(client.socket, outbound);

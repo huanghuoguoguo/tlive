@@ -188,6 +188,7 @@ export class MessageRenderer {
 
   onToolStart(name: string, input?: Record<string, unknown>, toolUseId?: string): void {
     if (HIDDEN_TOOLS.has(name)) return;
+    this.onApiRetryCleared();
     const current = this.toolCounts.get(name) ?? 0;
     this.toolCounts.set(name, current + 1);
     this.totalTools++;
@@ -314,6 +315,8 @@ export class MessageRenderer {
 
   onTextDelta(text: string): void {
     this.responseText += text;
+    // Any streamed content means the retry landed, so drop the indicator.
+    this.onApiRetryCleared();
     this.adaptiveFlush?.recordTextDelta(text.length);
     if (this.lastTimelineIsText) {
       const last = this.timeline[this.timeline.length - 1];

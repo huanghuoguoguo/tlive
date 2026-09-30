@@ -109,8 +109,16 @@ export class CodexAdapter {
     if (this.emitLiveItemUpdate(item, events)) {
       return;
     }
+    // Codex reports advisories (reconnect notices, model-mismatch warnings) as `error`
+    // items while the turn keeps running; only the top-level ThreadErrorEvent is
+    // terminal. Routing items here as errors freezes the card on a false failure.
     if (item.type === 'error') {
-      events.push({ kind: 'error', message: item.message });
+      const reconnect = parseReconnectNotice(item.message);
+      if (reconnect) {
+        events.push({ kind: 'api_retry', ...reconnect });
+      } else {
+        events.push({ kind: 'text_delta', text: `\n⚠️ ${item.message}\n` });
+      }
       return;
     }
     if (this.isToolItem(item)) {
@@ -329,6 +337,20 @@ function stringifyMcpResult(value: unknown): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Codex renders a retry as `Reconnecting... <attempt>/<max> (<cause>)`. */
+function parseReconnectNotice(
+  message: string,
+): { attempt: number; maxRetries: number; retryDelayMs: number; error: string } | undefined {
+  const match = /^Reconnecting\.\.\.\s+(\d+)\/(\d+)\s*\(([\s\S]*)\)$/.exec(message.trim());
+  if (!match) return undefined;
+  return {
+    attempt: Number(match[1]),
+    maxRetries: Number(match[2]),
+    retryDelayMs: 0,
+    error: match[3],
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

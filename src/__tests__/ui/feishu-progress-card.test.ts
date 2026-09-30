@@ -353,6 +353,42 @@ describe('FeishuFormatter.formatProgress', () => {
       expect(panel.elements[0].content).not.toContain('EARLIEST_ASCII');
       expect(panel.elements[0].content).toContain('LATEST_ASCII');
     });
+
+    it('keeps a provider advisory out of the collapsed title', () => {
+      const msg = formatter.formatProgress('chat1', createProgressData({
+        phase: 'executing',
+        totalTools: 1,
+        timeline: [
+          { kind: 'text', text: '\n⚠️ This session was recorded with model `gpt-5.6-sol`.\n' },
+          { kind: 'text', text: '我先查看仓库里 TLIVE 与 Pi 的连接方式。' },
+          { kind: 'tool', toolName: 'Bash', toolInput: 'rg -n pi', toolResult: 'ok' },
+        ],
+      }));
+
+      const title = findByTag(getElements(msg), 'collapsible_panel')[0].header.title.content;
+      expect(title).toContain('我先查看仓库里');
+      expect(title).not.toContain('⚠️');
+    });
+
+    it('shows a reconnect as a retry line while the card stays running', () => {
+      const msg = formatter.formatProgress('chat1', createProgressData({
+        phase: 'executing',
+        totalTools: 1,
+        apiRetry: {
+          attempt: 1,
+          maxRetries: 5,
+          retryDelayMs: 0,
+          error: 'stream disconnected before completion',
+        },
+        timeline: [{ kind: 'tool', toolName: 'Bash', toolInput: 'rg -n pi' }],
+      }));
+
+      expect((msg as any).feishuHeader).toMatchObject({ template: 'blue' });
+      const allText = findByTag(getElements(msg), 'markdown').map((e) => e.content).join('\n');
+      expect(allText).toContain('API 重试中');
+      expect(allText).toContain('1/5');
+      expect(allText).toContain('stream disconnected before completion');
+    });
   });
 
   describe('collapsible_panel — correct structure per Feishu Card 2.0 docs', () => {
