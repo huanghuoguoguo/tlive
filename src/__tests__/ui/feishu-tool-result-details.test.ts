@@ -134,6 +134,34 @@ describe('oversized tool result display policy', () => {
     }
   });
 
+  it.each(['no store', 'byte budget', 'disposed', 'exception'] as const)(
+    'does not re-render an unredacted failed tool result as the child error when detail registration fails (%s)',
+    failure => {
+      const details = store(failure === 'byte budget' ? { maxBytes: 1024 } : {});
+      if (failure === 'disposed') details.dispose();
+      if (failure === 'exception')
+        vi.spyOn(details, 'register').mockImplementation(() => { throw new Error('cache failure'); });
+      const formatter = new FeishuFormatter('zh', {
+        toolDetails: failure === 'no store' ? undefined : details,
+      });
+      const secret = 'sk-proj-' + 'B'.repeat(80);
+      const result = 'x'.repeat(250) + secret + 'x'.repeat(10001) + ' RESULT_END_SENTINEL';
+      const data = progress('search', result, 'failed');
+      data.subagent = { agentName: 'scout', task: 'task', parentToolUseId: 'parent', childId: 'child' };
+
+      const message = formatter.formatProgress('chat', data);
+      const serialized = JSON.stringify(message);
+
+      expect(detailActions(message)).toHaveLength(0);
+      expect(serialized).toContain('sk-proj-[REDACTED]');
+      expect(serialized).not.toContain(secret);
+      // The full inline fallback is visible once; errorMessage must not duplicate it.
+      expect(serialized.match(/RESULT_END_SENTINEL/g)).toHaveLength(1);
+      expect(data.errorMessage).toBe(result);
+      expect(data.timeline![0].toolResult).toBe(result);
+    },
+  );
+
   it('falls back for a second huge result without evicting the first still-reachable snapshot', async () => {
     const details = store({ maxEntries: 1 }); const data = progress();
     const second = 'SECOND_BEGIN' + 'y'.repeat(10001) + 'SECOND_END';
