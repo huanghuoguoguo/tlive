@@ -2,7 +2,7 @@
 import type { Locale } from '../../../shared/i18n/index.js';
 import { t } from '../../../shared/i18n/index.js';
 import type { ProgressData } from '../../../shared/formatting/message-types.js';
-import type { StepUsage } from '../../../shared/canonical/schema.js';
+import { stepUsageSuffix } from './step-usage.js';
 import { truncate } from '../../../shared/core/string.js';
 import { shortPath } from '../../../shared/core/path.js';
 import { TODO_MARKERS } from '../../../shared/canonical/plan-signature.js';
@@ -28,6 +28,7 @@ import {
   createDefaultToolDisplayRegistry,
   flowElementId,
   flowStatusLabel,
+  isOversizedToolResult,
 } from './tool-display.js';
 import {
   LIVE_WRITE_BODY_ELEMENT_ID,
@@ -47,6 +48,10 @@ export interface FormatProgressParams {
   flowOptions?: FlowOptions;
   /** Register the full semantic block before removing history from the serialized card. */
   registerThinkingDetails?: (block: FlowTextBlock) => string | undefined;
+  /** Called after ID-based result updates are merged; receives the complete semantic call. */
+  registerToolDetails?: (block: FlowToolBlock) => string | undefined;
+  /** A child may reuse a failed tool's full result as errorMessage; do not inline it twice. */
+  retainedToolResults?: ReadonlySet<string>;
   subagentChunks?: SubagentCardChunk[];
 }
 
@@ -185,36 +190,6 @@ function textElements(
   }];
 }
 
-/** One group row, one line: 3.2k reads narrower than 3,200 and 64k than 64.0k. */
-function tokenCount(tokens: number): string {
-  if (tokens < 1000) return String(tokens);
-  const thousands = tokens / 1000;
-  return `${Number(thousands.toFixed(thousands < 100 ? 1 : 0))}k`;
-}
-
-/**
- * Cost of the round-trips behind a group. Parallel calls share one round-trip, so each step counts
- * once; context is cumulative rather than additive, so the newest step wins over the sum.
- */
-function stepUsageSuffix(tools: readonly FlowToolBlock[]): string {
-  const steps = new Map<number, StepUsage>();
-  for (const tool of tools) if (tool.usage) steps.set(tool.usage.step, tool.usage);
-  if (!steps.size) return '';
-  let input = 0;
-  let output = 0;
-  let context = 0;
-  let window = 0;
-  for (const usage of steps.values()) {
-    input += usage.inputTokens;
-    output += usage.outputTokens;
-    context = Math.max(context, usage.contextTokens);
-    window = usage.contextWindow ?? window;
-  }
-  // A rounding-to-zero group still used context; 0% would read as "nothing loaded".
-  const percent = window > 0 ? ` ${Math.max(1, Math.round((context / window) * 100))}%` : '';
-  return ` ↓${tokenCount(input)} ↑${tokenCount(output)} ${tokenCount(context)}${percent}`;
-}
-
 export function buildProgressTimelineElements(params: FormatProgressParams): FeishuCardElement[] {
   if (params.flowOptions?.mode === 'legacy') return buildLegacyTimelineElements(params);
   const registry = params.flowOptions?.registry ?? createDefaultToolDisplayRegistry();
@@ -236,9 +211,33 @@ export function buildProgressTimelineElements(params: FormatProgressParams): Fei
     const tools = block.children.filter((child) => child.kind === 'tool');
     for (const child of block.children) {
       if (child.kind === 'tool') {
-        const display = registry.display(child, params.locale);
+        const oversized = isOversizedToolResult(child.toolResult);
+        const needsDetail = oversized || child.category === 'editing';
+        let detailId = oversized ? undefined : child.detailId;
+        if (needsDetail && params.registerToolDetails) {
+          try {
+            detailId = params.registerToolDetails(child);
+          } catch {
+            detailId = undefined;
+          }
+        }
+        const display = registry.display(
+          {
+            ...child,
+            detailId: oversized ? undefined : detailId,
+            // Only a successful registration permits removing the full result from the card.
+            resultDetailId: oversized ? detailId : undefined,
+          },
+          params.locale,
+        );
         children.push(...display.elements);
-        params.subagentChunks?.push({ kind: 'tool', elementIds: display.elements.map(node => node.element_id as string), toolName: child.toolName, status: child.status });
+        params.subagentChunks?.push({
+          kind: 'tool',
+          elementIds: display.elements.map((node) => node.element_id as string),
+          toolName: child.toolName,
+          status: child.status,
+          usage: child.usage,
+        });
         if (display.failureSummary) failures.push({ id: child.id, text: display.failureSummary });
       } else {
         children.push(...textElements(child, params, details, window));
@@ -345,7 +344,11 @@ export function buildProgressContentElements(params: FormatProgressParams): Feis
 
   // With a timeline, renderedText is no longer used as an error carrier. Provider failures
   // must still remain visible, including in a trace-only completion bubble.
-  if (data.phase === 'failed' && data.errorMessage) {
+  if (
+    data.phase === 'failed' &&
+    data.errorMessage &&
+    !params.retainedToolResults?.has(data.errorMessage)
+  ) {
     // Intermediate text may sit inside a folded group, so only top-level text is visible.
     const visibleText = buildFlowBlocks(data, params.flowOptions)
       .filter((block): block is FlowTextBlock => block.kind === 'text')

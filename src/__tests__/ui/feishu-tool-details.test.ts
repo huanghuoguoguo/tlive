@@ -494,4 +494,63 @@ describe('FeishuToolDetails snapshot and scoped SDK integration', () => {
     expect(mock.patch).toHaveBeenCalledTimes(2);
   });
 
+  it.each(['completed', 'failed', 'interrupted'])('retains a complete redacted generic %s input/result and pages in one message', async status => {
+    const details = store({ pageBytes: 3000 }); const mock = sdk();
+    configureFeishuCardBudget(mock.client, { maxBytes: 3000, maxElements: 16 });
+    const secret = 'sk-proj-' + 'A'.repeat(80);
+    const full = 'BEGIN\r\n' + '中文😀 \\ \" <at id="all">x</at>\n'.repeat(400) + secret + '\nEND';
+    const input = { query: 'original', token: secret, nested: { value: 'original-input' } };
+    const data = entry({ toolName: 'search', inputData: input, toolResult: full, status });
+    const id = details.register('chat', data)!;
+    expect(id).toBeTruthy();
+    input.nested.value = 'mutated'; data.toolResult = 'mutated';
+    bind(details, id);
+    for (const mismatch of [{ userId: 'other' }, { chatId: 'other' }, { threadId: 'other' }, { messageId: 'parent-source' }]) {
+      expect(responseType(await open(details, id, mock.client, mismatch))).toBe('error');
+    }
+    const result = await allPages(details, id, mock);
+    expect(result.total).toBeGreaterThan(2);
+    expect(result.text).toContain('状态：' + status);
+    expect(result.text).toContain('original-input');
+    expect(result.text).not.toContain('mutated');
+    expect(result.text).not.toContain(secret);
+    expect(result.text.split('工具结果快照：\n')[1]).toBe(full.replace(secret, 'sk-proj-[REDACTED]'));
+    for (const request of result.requests) {
+      expect(measureFeishuCard(request.data.content).requestBytes).toBeLessThanOrEqual(3000);
+      expect(card(request).body.elements.every(node => node.tag !== 'markdown')).toBe(true);
+    }
+    expect(mock.reply).toHaveBeenCalledTimes(1);
+    expect(mock.create).not.toHaveBeenCalled();
+    expect(card(result.requests[0]).header.template).toBe(status === 'failed' ? 'red' : 'blue');
+    expect(responseType(await action(details, id, 'close', mock.client))).toBe('success');
+    expect(mock.del).toHaveBeenCalledExactlyOnceWith({ path: { message_id: 'detail-1' } });
+  });
+
+  it('accepts plain/absent input and structured results for generic oversized snapshots', async () => {
+    for (const toolInput of ['plain input', undefined]) {
+      const details = store(); const mock = sdk();
+      const result = { output: '中'.repeat(4000) };
+      const id = details.register('chat', entry({ toolName: 'custom', inputData: undefined, toolInput, toolResult: result }))!;
+      expect(id).toBeTruthy(); bind(details, id);
+      const pages = await allPages(details, id, mock);
+      expect(pages.text).toContain(toolInput ?? '(未提供输入)');
+      expect(JSON.parse(pages.text.split('工具结果快照：\n')[1])).toEqual(result);
+    }
+  });
+
+  it('does not evict a hidden full result under entry/cache pressure and prepays binding offsets', async () => {
+    const details = store({ maxEntries: 1, maxBytes: 400_000, pageBytes: 3000 }); const mock = sdk();
+    const id = details.register('chat', entry({ toolName: 'search', toolResult: 'x'.repeat(10001) }))!;
+    expect(id).toBeTruthy();
+    expect(details.register('chat', entry({ toolId: 'next-edit' }))).toBeUndefined();
+    expect(details.register('chat', entry({ toolId: 'next-search', toolResult: 'x'.repeat(10001) }))).toBeUndefined();
+    expect(details.registerThinking('chat', { thinkingId: 'thought', text: 'x' })).toBeUndefined();
+    const before = details.stats.bytes;
+    bind(details, id);
+    configureFeishuCardBudget(mock.client, { maxBytes: 3000, maxElements: 16 });
+    const result = await allPages(details, id, mock);
+    expect(result.text).toContain('x'.repeat(10001));
+    expect(details.stats).toEqual({ entries: 1, bytes: before });
+  });
+
 });

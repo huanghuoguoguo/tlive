@@ -1,3 +1,5 @@
+import type { StepUsage } from '../../../shared/canonical/schema.js';
+import { stepUsageSuffix } from './step-usage.js';
 import {
   type CardObject,
   type FeishuCardBudget,
@@ -12,35 +14,44 @@ export interface SubagentCardChunk {
   elementIds: string[];
   toolName?: string;
   status?: string;
+  usage?: StepUsage;
 }
 
 const CHILD_ARRAYS = ['elements', 'columns', 'actions'] as const;
 const WRAPPERS = new Set(['collapsible_panel', 'column_set', 'column', 'action', 'form']);
 const TRUNCATED = '[较早内容已截断]\n';
 type Failure = 'failed' | 'interrupted';
-interface ToolTally { name: string; count: number; failures: number; interruptions: number; running: number; }
-function tally(name: string, status?: string): ToolTally {
+interface ToolTally { name: string; count: number; failures: number; interruptions: number; running: number; usages: StepUsage[]; }
+function tally(name: string, status?: string, usage?: StepUsage): ToolTally {
   const failure = failureOf(status);
   return { name, count: 1, failures: failure === 'failed' ? 1 : 0,
-    interruptions: failure === 'interrupted' ? 1 : 0, running: status === 'running' ? 1 : 0 };
+    interruptions: failure === 'interrupted' ? 1 : 0, running: status === 'running' ? 1 : 0, usages: usage ? [{ ...usage }] : [] };
 }
 function mergedTallies(values: readonly ToolTally[]): ToolTally[] {
   const result = new Map<string, ToolTally>();
   for (const value of values) {
     const existing = result.get(value.name);
-    if (!existing) result.set(value.name, { ...value });
+    if (!existing) result.set(value.name, { ...value, usages: [...value.usages] });
     else { existing.count += value.count; existing.failures += value.failures;
-      existing.interruptions += value.interruptions; existing.running += value.running; }
+      existing.interruptions += value.interruptions; existing.running += value.running; existing.usages.push(...value.usages); }
   }
   return [...result.values()];
 }
 function tallyText(values: readonly ToolTally[]): string {
   return mergedTallies(values).map(value => [
-    value.name + (value.count > 1 ? `x${value.count}` : ''),
+    value.name + (value.count > 1 ? ` ×${value.count}` : ''),
     value.failures ? `❌失败${value.failures}` : '',
     value.interruptions ? `⏹中断${value.interruptions}` : '',
     value.running ? `⏳执行中${value.running}` : '',
-  ].filter(Boolean).join(' · ')).join('\n');
+  ].filter(Boolean).join(' · ')).join('；');
+}
+
+/** A single compact history row, not a tower of bare tool names. */
+function toolSummary(values: readonly ToolTally[], id?: string): CardObject {
+  const count = values.reduce((total, value) => total + value.count, 0);
+  const usage = stepUsageSuffix(values.flatMap((value) => value.usages.map((usage) => ({ usage }))));
+  return { tag: 'markdown', content: `**历史工具 · ${count} 次**${usage}\n${literal(tallyText(values))}`,
+    ...(id ? { element_id: id } : {}) };
 }
 
 function failureOf(status?: string): Failure | undefined {
@@ -167,7 +178,7 @@ function clean(
       if (previous && reduced.get(previous) === 'tool' && reduced.get(node) === 'tool') {
         const counts = mergedTallies([...(tallies.get(previous) ?? []), ...(tallies.get(node) ?? [])]);
         tallies.set(previous, counts);
-        previous.content = literal(tallyText(counts));
+        previous.content = toolSummary(counts).content;
         if (failed.has(node)) failed.add(previous);
       } else merged.push(node);
     }
@@ -276,17 +287,35 @@ export function compactSubagentCard(
   const tallies = new Map<CardObject, ToolTally[]>();
   const failed = new Set<CardObject>();
 
+  // A tool that cannot fit even by itself must be reduced before we sacrifice unrelated
+  // history. Otherwise a giant last stdout first erases every earlier thought/text/tool.
+  for (const source of sources) {
+    if (source.chunk.kind !== 'tool' || !source.present) continue;
+    const ids = new Set(source.chunk.elementIds);
+    const nodes = selectedNodes(output, ids);
+    const isolated = envelope(card, { tag: 'column', elements: nodes }, false);
+    if (fitsFeishuCard(isolated, budget)) continue;
+    const counts = [tally(source.name, source.chunk.status, source.chunk.usage)];
+    const replacement = toolSummary(counts, nodes[0]?.element_id);
+    reduced.set(replacement, 'tool');
+    tallies.set(replacement, counts);
+    if (source.failure) failed.add(replacement);
+    replaceNodes(output, ids, replacement);
+  }
+  clean(output, reduced, failed, tallies);
+  if (fits()) return output;
+
   // One pass, oldest first. Each committed semantic downgrade checks the exact final JSON.
   for (const source of sources) {
     const { chunk, failure } = source;
     const ids = new Set(chunk.elementIds);
     const nodes = selectedNodes(output, ids);
-    if (!nodes.length) continue;
+    if (!nodes.length || nodes.every((node) => reduced.get(node) === 'tool')) continue;
     const id = nodes[0].element_id;
     let replacement: CardObject | undefined;
     if (chunk.kind === 'tool') {
-      const counts = [tally(source.name, chunk.status)];
-      replacement = textElement(tallyText(counts), id);
+      const counts = [tally(source.name, chunk.status, chunk.usage)];
+      replacement = toolSummary(counts, id);
       tallies.set(replacement, counts);
       reduced.set(replacement, 'tool');
     } else if (chunk.kind === 'text') {
@@ -306,6 +335,10 @@ export function compactSubagentCard(
       replacement.content = literal(`${status}[纯文本预览]\n${source.text}`);
       if (fits()) return output;
       if (fitTail(replacement, source.text, status + TRUNCATED, fits)) return output;
+      // No tail could survive. Do not retain repeated empty truncation blocks between tools;
+      // these are display-only omissions, and the model timeline stays untouched.
+      if (!failure) replaceNodes(output, ids);
+      clean(output, reduced, failed, tallies);
     }
     if (fits()) return output;
   }
@@ -336,7 +369,7 @@ export function compactSubagentCard(
   };
   for (const source of present) {
     if (source.chunk.kind === 'thinking') continue;
-    if (source.chunk.kind === 'tool') pendingTools.push(tally(source.name, source.chunk.status));
+    if (source.chunk.kind === 'tool') pendingTools.push(tally(source.name, source.chunk.status, source.chunk.usage));
     else { flushTools(); previewParts.push(source.text); }
   }
   flushTools();

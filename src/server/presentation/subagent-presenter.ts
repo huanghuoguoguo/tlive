@@ -83,8 +83,9 @@ export class SubagentFlowPresenter {
     this.inbound = structuredClone(options.inbound);
     this.parentTurnId = options.parentTurnId;
     this.onError = options.onError;
-    this.footerLine = [options.model ? `[${options.model}]` : '',
-      options.cwd ? shortPath(options.cwd) : ''].filter(Boolean).join(' │ ') || undefined;
+    // options.model belongs to the parent turn, not the child. Until the snapshot carries
+    // verified child model metadata, omit the label instead of misrepresenting an override.
+    this.footerLine = options.cwd ? shortPath(options.cwd) : undefined;
   }
 
   update(snapshot: SubagentSnapshot): void {

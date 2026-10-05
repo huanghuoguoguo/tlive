@@ -51,6 +51,7 @@ const subagentTimelineEntrySchema = z.object({
   inputData: z.record(z.string(), z.unknown()).optional(),
   toolResult: z.string().optional(),
   status: z.enum(['running', 'completed', 'failed', 'interrupted']).optional(),
+  usage: stepUsageSchema.optional(),
 });
 
 export const subagentSnapshotSchema = z.object({

@@ -74,7 +74,22 @@ export class PiSubagentMapper {
       }
       seen.add(index);
       const flow = normalizeFlow(childResult.flow, child.snapshot.childId);
-      const timeline = flow?.timeline ?? normalizeMessages(childResult.messages, child.snapshot.childId);
+      const messages = normalizeMessages(
+        childResult.messages,
+        child.snapshot.childId,
+        childResult.contextWindow,
+      );
+      // Flow owns live ordering/text. Completed assistant messages own usage; the extension's
+      // flow has no model/usage metadata, so join only exact tool IDs, never positions or names.
+      if (flow && messages) {
+        const usageByTool = new Map(messages.filter((entry) => entry.toolId && entry.usage)
+          .map((entry) => [entry.toolId, entry.usage]));
+        for (const tool of flow.timeline) {
+          const usage = tool.toolId ? usageByTool.get(tool.toolId) : undefined;
+          if (usage) tool.usage = { ...usage };
+        }
+      }
+      const timeline = flow?.timeline ?? messages;
       const status = resultStatus(
         childResult,
         flow?.status,
@@ -251,17 +266,26 @@ function normalizeFlow(
   return { status: flow.status, timeline };
 }
 
-function normalizeMessages(value: unknown, childId: string): TimelineEntry[] | undefined {
+function normalizeMessages(
+  value: unknown,
+  childId: string,
+  contextWindow: unknown,
+): TimelineEntry[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const timeline: TimelineEntry[] = [];
   const tools = new Map<string, TimelineEntry>();
+  let step = 0;
   for (let messageIndex = 0; messageIndex < value.length; messageIndex++) {
     let message = safeRecord(value[messageIndex]);
     if (message?.type === 'message_end' || message?.type === 'tool_result_end') {
       message = safeRecord(message.message);
     }
     if (!message) continue;
+    // Replay the cumulative child history rather than incrementing mapper state on refresh.
+    // Every assistant gets a step (even without tools/usage); parallel calls share that step.
+    if (message.role === 'assistant') step++;
     if (message.role === 'assistant' && Array.isArray(message.content)) {
+      const usage = messageUsage(message.usage, step, contextWindow);
       for (let blockIndex = 0; blockIndex < message.content.length; blockIndex++) {
         const block = safeRecord(message.content[blockIndex]);
         if (!block) continue;
@@ -274,6 +298,7 @@ function normalizeMessages(value: unknown, childId: string): TimelineEntry[] | u
           const sourceId = nonempty(block.id) ? `id:${block.id}` : `anonymous:${position}`;
           const tool = getTool(sourceId, childId, timeline, tools);
           tool.toolName = block.name;
+          if (usage) tool.usage = { ...usage };
           const inputData = safeRecord(block.arguments);
           if (inputData) {
             tool.inputData = inputData;
@@ -295,6 +320,35 @@ function normalizeMessages(value: unknown, childId: string): TimelineEntry[] | u
     }
   }
   return timeline;
+}
+
+/** Pi input excludes cached reads; cache writes are newly processed (uncached) input. */
+function messageUsage(
+  value: unknown,
+  step: number,
+  contextWindow: unknown,
+): TimelineEntry['usage'] {
+  const usage = safeRecord(value);
+  if (!usage || !tokenCount(usage.input) || !tokenCount(usage.output)) return undefined;
+  const cacheRead = usage.cacheRead ?? 0;
+  const cacheWrite = usage.cacheWrite ?? 0;
+  if (!tokenCount(cacheRead) || !tokenCount(cacheWrite)) return undefined;
+  const inputTokens = usage.input + cacheWrite;
+  const contextTokens = inputTokens + usage.output + cacheRead;
+  if (!Number.isFinite(inputTokens) || !Number.isFinite(contextTokens)) return undefined;
+  return {
+    step,
+    inputTokens,
+    outputTokens: usage.output,
+    contextTokens,
+    // Only explicit child-result metadata is eligible. A model string alone cannot establish
+    // its context limit, and the current extension does not publish a contextWindow at all.
+    ...(tokenCount(contextWindow) && contextWindow > 0 ? { contextWindow } : {}),
+  };
+}
+
+function tokenCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
 function getTool(
@@ -380,6 +434,7 @@ function preserveToolStates(timeline: TimelineEntry[], previous: TimelineEntry[]
       tool.status = preserveTerminal(old.status, tool.status) as TimelineEntry['status'];
     }
     if (tool.toolResult === undefined && old.toolResult !== undefined) tool.toolResult = old.toolResult;
+    if (tool.usage === undefined && old.usage !== undefined) tool.usage = { ...old.usage };
   }
 }
 

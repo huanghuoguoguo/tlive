@@ -14,7 +14,7 @@ describe('compact tool-name counters', () => {
     const original = JSON.stringify(card);
     const output = compactSubagentCard(card, chunks, limits);
     expect(fitsFeishuCard(output, limits)).toBe(true);
-    expect(visible(output)).toContain('searchx5 · ❌失败1 · ⏹中断1 · ⏳执行中1');
+    expect(visible(output)).toContain('search ×5 · ❌失败1 · ⏹中断1 · ⏳执行中1');
     expect(visible(output)).toContain('read');
     expect(JSON.stringify(output)).not.toContain('old argument');
     expect(JSON.stringify(card)).toBe(original);
@@ -25,7 +25,7 @@ describe('compact tool-name counters', () => {
     // A retained display separator is not part of the compactable semantic chunks.
     const output = compactSubagentCard(card, chunks, limits);
     expect(visible(output)).toContain('KEEP_GAP');
-    expect(visible(output)).not.toContain('searchx2x2');
+    expect(visible(output)).not.toContain('searchx2 ×2');
     expect(fitsFeishuCard(output, limits)).toBe(true);
   });
   it('does not simplify or count tools when the original card already fits', () => {

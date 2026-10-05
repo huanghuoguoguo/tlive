@@ -4,6 +4,23 @@ import { truncate } from '../../../shared/core/string.js';
 import type { FeishuCardElement } from './card-builder.js';
 import { buttonElements, collapsiblePanel, markdownElement } from './card-elements.js';
 import type { PlanTodo } from '../../../shared/canonical/plan-signature.js';
+import { redactSensitiveContent } from '../../../shared/utils/content-filter.js';
+
+export const TOOL_RESULT_DETAIL_BYTES = 10_000;
+
+/** Measure the original single result, before redaction or any display truncation. */
+export function isOversizedToolResult(result: unknown): boolean {
+  try {
+    const text = typeof result === 'string' ? result : JSON.stringify(result);
+    return text !== undefined && Buffer.byteLength(text, 'utf8') > TOOL_RESULT_DETAIL_BYTES;
+  } catch {
+    return false; // Unserializable results cannot safely become a detail snapshot.
+  }
+}
+
+function validDetailId(id: string | undefined): id is string {
+  return !!id && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id);
+}
 
 export type ToolDisplayCategory = 'exploration' | 'execution' | 'editing' | 'generic';
 export type FlowStatus = 'running' | 'completed' | 'failed' | 'interrupted';
@@ -17,6 +34,8 @@ export interface ToolDisplayCall {
   toolResult?: string;
   status: FlowStatus;
   detailId?: string;
+  /** A retained full input/result snapshot, distinct from the short edit-diff entry point. */
+  resultDetailId?: string;
   /** Set when the input is a task list; the board renders it, the timeline never repeats it. */
   plan?: PlanTodo[];
 }
@@ -78,9 +97,13 @@ export class ToolDisplayRegistry {
 
   display(call: ToolDisplayCall, locale: Locale): ToolDisplayResult {
     const definition = this.resolve(call.toolName);
-    const result = definition.render
-      ? definition.render(call, locale)
-      : displayTool(call, definition, locale);
+    // Apply the size policy outside category/custom renderers: none may leak a huge result,
+    // nor silently omit it when retention fails (including exploration success and plans).
+    const result = isOversizedToolResult(call.toolResult)
+      ? displayOversizedTool(call, definition, locale)
+      : definition.render
+        ? definition.render(call, locale)
+        : displayTool(call, definition, locale);
     identifyElements(result.elements, call.id);
     // Custom renderers cannot accidentally hide the call's failure inside a folded group.
     return { ...result, failureSummary: failureSummary(call, locale) ?? result.failureSummary };
@@ -116,7 +139,11 @@ export function flowStatusLabel(status: FlowStatus, locale: Locale): string {
 
 function failureSummary(call: ToolDisplayCall, locale: Locale): string | undefined {
   if (call.status !== 'failed' && call.status !== 'interrupted') return undefined;
-  const result = call.toolResult ? ` — ${truncate(call.toolResult, 180)}` : '';
+  const result = validDetailId(call.resultDetailId)
+    ? ` — ${locale === 'zh' ? '完整结果见详情' : 'Full result in details'}`
+    : call.toolResult
+      ? ` — ${truncate(redactSensitiveContent(call.toolResult), 180)}`
+      : '';
   return `${flowStatusLabel(call.status, locale)} · ${call.toolName}${result}`;
 }
 
@@ -152,6 +179,38 @@ function filePaths(call: ToolDisplayCall): string[] {
   return [...new Set(paths)];
 }
 
+function displayOversizedTool(
+  call: ToolDisplayCall,
+  definition: ToolDisplayDefinition,
+  locale: Locale,
+): ToolDisplayResult {
+  // Render the ordinary call header/input, but never the result or its preview.
+  const result = displayTool(
+    { ...call, toolResult: undefined, detailId: undefined },
+    definition,
+    locale,
+  );
+  if (validDetailId(call.resultDetailId)) {
+    result.elements.push(
+      ...buttonElements([
+        {
+          label: locale === 'zh' ? '查看详情' : 'View details',
+          callbackData: `flow_detail:open:${call.resultDetailId}`,
+        },
+      ]),
+    );
+  } else {
+    // No store / exhausted cache / invalid or expired registration: the entire redacted
+    // result remains inline. No category may silently discard the only reachable copy.
+    result.elements.push(
+      collapsiblePanel(locale === 'zh' ? '完整结果' : 'Full result', [
+        markdownElement(redactSensitiveContent(call.toolResult!)),
+      ]),
+    );
+  }
+  return result;
+}
+
 function displayTool(
   call: ToolDisplayCall,
   definition: ToolDisplayDefinition,
@@ -171,10 +230,7 @@ function displayTool(
       : [call.toolInput || (locale === 'zh' ? '(无文件条目)' : '(no file entry)')];
     elements.push(markdownElement(`${heading}\n${entries.map((path) => `• ${path}`).join('\n')}`));
     // No snapshot ID means no callback; this renderer never reads files or creates snapshots.
-    if (
-      call.detailId &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(call.detailId)
-    ) {
+    if (validDetailId(call.detailId)) {
       elements.push(
         ...buttonElements([
           {

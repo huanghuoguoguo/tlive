@@ -17,6 +17,7 @@ import {
 } from './card-budget.js';
 import { editFeishuMessage, sendFeishuMessage } from './sender.js';
 import type { FeishuRenderedMessage } from './types.js';
+import { isOversizedToolResult } from './tool-display.js';
 
 /** Structural compatibility with ProgressData.timeline, including legacy result names. */
 export interface FeishuToolDetailEntry {
@@ -41,7 +42,7 @@ export interface FeishuThinkingDetailEntry {
 export interface FeishuToolDetailsOptions {
   ttlMs?: number;
   maxEntries?: number;
-  /** Cumulative retained UTF-8 data/offset/scope accounting, not a JS heap measurement. */
+  /** Retained UTF-8 data/offset/scope accounting plus binding reservations, not JS heap size. */
   maxBytes?: number;
   /** Both serialized card and API-envelope budgets; clamped to 3,000–16,000 bytes. */
   pageBytes?: number;
@@ -67,6 +68,8 @@ interface Snapshot {
   readonly key: string;
   readonly chatId: string;
   readonly kind: 'tool' | 'thinking';
+  /** General full-result snapshots must not be evicted while their source card hides the result. */
+  readonly fullResult?: boolean;
   /** Immutable for tools; only the latest redacted full source for thinking. */
   text: string;
   /** Trusted diff ranges in the redacted source; never inferred from source labels. */
@@ -77,6 +80,8 @@ interface Snapshot {
   readonly expiresAt: number;
   openGeneration: number;
   bytes: number;
+  /** Prepaid upper bound for scope/sources/page offsets of a hidden full result. */
+  bindingCredit?: number;
   scope?: Readonly<Scope>;
   sources: Set<string>;
   /** UTF-16 offsets are always at Unicode code-point boundaries; no copied page bodies. */
@@ -95,7 +100,7 @@ interface Action {
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
 const ACTION = new RegExp(`^flow_detail:(open|page|close):(${UUID})(?::(0|[1-9][0-9]{0,8}))?$`);
-const EXPIRED = '详情快照已过期或服务已重启；内存快照不可恢复，请查看原卡片。';
+const EXPIRED = '详情快照已过期或服务已重启；请刷新原卡片或重新查询获取完整结果。';
 const DENIED = '无权操作此详情，或卡片的聊天、话题、来源消息不匹配。';
 
 function toast(type: 'success' | 'error', content: string): Record<string, unknown> {
@@ -317,11 +322,21 @@ export class FeishuToolDetails {
       return undefined;
     }
     try {
+      const fullResult = isOversizedToolResult(result);
       let input = entry.inputData;
       if (input === undefined) {
         const raw = entry.toolInput ?? entry.input;
-        if (!raw) return undefined;
-        input = JSON.parse(raw);
+        if (!fullResult) {
+          if (!raw) return undefined;
+          input = JSON.parse(raw);
+        } else if (raw !== undefined) {
+          // Generic tools may supply plain input summaries rather than JSON.
+          try {
+            input = JSON.parse(raw);
+          } catch {
+            input = raw;
+          }
+        }
       }
       const serialized = canonicalJson({
         chatId,
@@ -335,15 +350,18 @@ export class FeishuToolDetails {
       if (Buffer.byteLength(serialized, 'utf8') > this.maxBytes) return undefined;
       const key = createHash('sha256').update(serialized).digest('hex');
       const existing = this.keys.get(key);
-      if (existing) return existing; // Rendering repeatedly must not renew TTL or allocate snapshots.
+      if (existing) {
+        // A pending callback can pin an expired entry past prune. Never return a dead button.
+        return this.snapshots.get(existing)!.expiresAt > this.now() ? existing : undefined;
+      } // Rendering repeatedly must not renew TTL or allocate snapshots.
       // Clone via JSON first. Mutating the caller's input/results cannot change these strings.
       const cloned = JSON.parse(serialized) as {
         input: unknown;
         result: unknown;
         toolName: string;
       };
-      const sections = editSections(cloned.input);
-      if (sections.length === 0) return undefined;
+      const sections = fullResult ? [] : editSections(cloned.input);
+      if (!fullResult && sections.length === 0) return undefined;
       const labels: Record<Outcome, string> = {
         success: '工具执行成功 · 本次改动',
         failed: '工具执行失败 · 拟改动内容',
@@ -364,21 +382,52 @@ export class FeishuToolDetails {
           diffRanges[diffRanges.length - 1] = Object.freeze([previous[0], text.length]);
         else diffRanges.push(Object.freeze([start, text.length]));
       };
-      append({ text: `${labels[state]}\n工具：${cloned.toolName}\n\n` });
-      sections.forEach((section, index) => {
-        if (index) append({ text: '\n\n' });
-        section.forEach(append);
-      });
+      if (fullResult) {
+        const states: Record<Outcome, string> = {
+          success: '工具执行成功',
+          failed: '工具执行失败',
+          interrupted: '工具执行中断',
+          returned: '工具结果已返回',
+        };
+        const inputText =
+          cloned.input === undefined
+            ? '(未提供输入)'
+            : typeof cloned.input === 'string'
+              ? cloned.input
+              : JSON.stringify(cloned.input, null, 2);
+        append({
+          text: `${states[state]}\n工具：${cloned.toolName}\n状态：${entry.status ?? state}\n\n工具输入快照：\n${inputText}`,
+        });
+      } else {
+        append({ text: `${labels[state]}\n工具：${cloned.toolName}\n\n` });
+        sections.forEach((section, index) => {
+          if (index) append({ text: '\n\n' });
+          section.forEach(append);
+        });
+      }
       append({ text: `\n\n工具结果快照：\n${resultText}` });
       const id = randomUUID();
+      // Once the result leaves the card, later scope/offset allocation must not fail from
+      // cache pressure. At worst there is one page per UTF-16 unit (+ the empty page),
+      // all sources are 512 bytes and the bounded, JSON-escaped scope fits within 16 KiB.
+      const bindingCredit = fullResult
+        ? (text.length + 1) * 16 + this.maxSources * 512 + 16_384
+        : 0;
       const bytes =
-        Buffer.byteLength(text + id + key + chatId, 'utf8') + 640 + diffRanges.length * 16;
-      if (!this.reserve(bytes, true)) return undefined;
+        Buffer.byteLength(text + id + key + chatId, 'utf8') +
+        640 +
+        diffRanges.length * 16 +
+        bindingCredit;
+      // Admission failure leaves the source renderer with its full result. Do not evict
+      // other still-live snapshots just to publish a new button.
+      if (!this.reserve(bytes, true, undefined, !fullResult)) return undefined;
       const snapshot: Snapshot = {
         id,
         key,
         chatId,
         kind: 'tool',
+        fullResult,
+        bindingCredit,
         text,
         diffRanges: Object.freeze(diffRanges),
         outcome: state,
@@ -454,7 +503,8 @@ export class FeishuToolDetails {
       this.disposed ||
       !validIdentifier(message.flowDetailUserId) ||
       !validIdentifier(message.chatId) ||
-      (message.threadId !== undefined && !validIdentifier(message.threadId))
+      (message.threadId !== undefined && !validIdentifier(message.threadId)) ||
+      (message.receiveIdType !== undefined && !validIdentifier(message.receiveIdType))
     )
       return;
     const sources = [...new Set(messageIds.filter(validIdentifier))].slice(0, this.maxSources);
@@ -487,12 +537,10 @@ export class FeishuToolDetails {
         (snapshot.scope
           ? 0
           : Buffer.byteLength(canonicalJson(scope), 'utf8') + (pages?.length ?? 0) * 16);
-      if (!this.reserve(extra, false, snapshot.id)) continue;
+      if (!this.allocateMetadata(snapshot, extra)) continue;
       snapshot.scope ??= Object.freeze({ ...scope });
       snapshot.pages ??= pages;
       snapshot.sources = nextSources;
-      snapshot.bytes += extra;
-      this.retainedBytes += extra;
     }
   }
 
@@ -620,12 +668,10 @@ export class FeishuToolDetails {
         const pages = this.paginate(snapshot, scope, budget);
         if (!pages) throw new Error('Detail cannot fit the configured card budget');
         const extra = (pages.length - snapshot.pages!.length) * 16;
-        if (extra > 0 && !this.reserve(extra, false, snapshot.id)) {
+        if (!this.allocateMetadata(snapshot, extra)) {
           throw new Error('Detail offset budget exhausted');
         }
         snapshot.pages = pages;
-        snapshot.bytes += extra;
-        this.retainedBytes += extra;
         snapshot.pageBudget = budgetKey;
       }
     }
@@ -720,7 +766,12 @@ export class FeishuToolDetails {
       deliveryId: `${snapshot.id}:open:${snapshot.openGeneration}`,
       feishuHeader: {
         template: snapshot.outcome === 'failed' ? 'red' : 'blue',
-        title: snapshot.kind === 'thinking' ? '思考详情 · 打开时快照' : '工具编辑详情 · 快照',
+        title:
+          snapshot.kind === 'thinking'
+            ? '思考详情 · 打开时快照'
+            : snapshot.fullResult
+              ? '工具详情 · 快照'
+              : '工具编辑详情 · 快照',
       },
       feishuElements:
         snapshot.kind === 'thinking'
@@ -814,6 +865,18 @@ export class FeishuToolDetails {
     return Object.freeze(checked);
   }
 
+  private allocateMetadata(snapshot: Snapshot, extra: number): boolean {
+    const credit = snapshot.bindingCredit ?? 0;
+    // Keep the unused reservation until expiry: later bind calls may authorize more sources,
+    // and the first click can require more offsets under the actual client's smaller budget.
+    const charge = snapshot.fullResult ? Math.max(0, extra - credit) : extra;
+    if (charge > 0 && !this.reserve(charge, false, snapshot.id, !snapshot.fullResult)) return false;
+    if (snapshot.fullResult) snapshot.bindingCredit = Math.max(0, credit - extra);
+    snapshot.bytes += charge;
+    this.retainedBytes += charge;
+    return true;
+  }
+
   private remove(snapshot: Snapshot): void {
     this.snapshots.delete(snapshot.id);
     this.keys.delete(snapshot.key);
@@ -826,7 +889,7 @@ export class FeishuToolDetails {
     }
   }
 
-  private reserve(bytes: number, newEntry: boolean, protectedId?: string): boolean {
+  private reserve(bytes: number, newEntry: boolean, protectedId?: string, evict = true): boolean {
     if (bytes > this.maxBytes) return false;
     for (const snapshot of this.snapshots.values()) {
       if (
@@ -834,7 +897,8 @@ export class FeishuToolDetails {
         (!newEntry || this.snapshots.size < this.maxEntries)
       )
         break;
-      if (snapshot.pending === 0 && snapshot.id !== protectedId) this.remove(snapshot);
+      if (evict && snapshot.pending === 0 && snapshot.id !== protectedId && !snapshot.fullResult)
+        this.remove(snapshot);
     }
     return (
       this.retainedBytes + bytes <= this.maxBytes &&

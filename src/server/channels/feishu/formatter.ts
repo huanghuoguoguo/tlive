@@ -72,7 +72,7 @@ import { buildDiagnoseElements } from './format-diagnostics.js';
 import { buildSessionListElements } from './format-session-list.js';
 import { buttonElements, collapsiblePanel, markdownElement } from './card-elements.js';
 import type { FlowOptions } from './flow-blocks.js';
-import { createDefaultToolDisplayRegistry } from './tool-display.js';
+import { isOversizedToolResult } from './tool-display.js';
 import type { FeishuToolDetails } from './tool-details.js';
 
 export interface FeishuFormatterOptions extends MessageFormatterOptions {
@@ -403,25 +403,11 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
   }
 
   formatProgress(chatId: string, data: ProgressData): FeishuRenderedMessage {
-    if (this.options.toolDetails && this.options.flowOptions?.mode !== 'legacy' && data.timeline) {
-      const registry = this.options.flowOptions?.registry ?? createDefaultToolDisplayRegistry();
-      data = {
-        ...data,
-        timeline: data.timeline.map((entry) => {
-          if (entry.kind !== 'tool' || registry.category(entry.toolName ?? '') !== 'editing')
-            return entry;
-          const detailId = this.options.toolDetails!.register(chatId, {
-            ...entry,
-            toolId: data.turnId && entry.toolId ? `${data.turnId}:${entry.toolId}` : entry.toolId,
-          });
-          return detailId ? { ...entry, detailId } : entry;
-        }),
-      };
-    }
     const headerConfig = progressHeaderConfig(this.locale, data);
     if (data.subagent) headerConfig.title = `${headerConfig.title} · 子代理 ${truncate(data.subagent.agentName, 60)}`;
     const subagentChunks: SubagentCardChunk[] | undefined = data.subagent ? [] : undefined;
     const elements: FeishuCardElement[] = [];
+    const retainedToolResults = new Set<string>();
 
     // Timeline elements
     elements.push(
@@ -432,6 +418,25 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
         locale: this.locale,
         flowOptions: this.options.flowOptions,
         subagentChunks,
+        registerToolDetails: this.options.toolDetails
+          ? (block) => {
+              // Registration runs on the locally merged display copy, never the model timeline.
+              // A synthetic legacy index is only unique within a trusted turn.
+              if (!data.turnId && block.id.startsWith('legacy-call:')) return undefined;
+              const id = this.options.toolDetails!.register(chatId, {
+                ...block,
+                toolId: data.turnId ? `${data.turnId}:${block.id}` : block.id,
+              });
+              if (
+                id &&
+                isOversizedToolResult(block.toolResult) &&
+                (block.status === 'failed' || block.status === 'interrupted')
+              ) {
+                retainedToolResults.add(block.toolResult!);
+              }
+              return id;
+            }
+          : undefined,
         registerThinkingDetails: this.options.toolDetails ? block => {
           // The renderer supplies a fresh, local turn UUID; legacy IDs alone can collide.
           if (!data.turnId || !block.id) return undefined;
@@ -449,6 +454,7 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
       ...buildProgressContentElements({
         chatId,
         data,
+        retainedToolResults,
         md: this.md.bind(this),
         locale: this.locale,
         flowOptions: this.options.flowOptions,

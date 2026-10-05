@@ -180,7 +180,7 @@ describe('single-card subagent display budget', () => {
     expect(output.body.elements).toHaveLength(2);
     const counts = new Map<string, number>();
     for (const entry of tools) counts.set(entry.chunk.toolName!, (counts.get(entry.chunk.toolName!) ?? 0) + 1);
-    expect(output.body.elements[0].content.split('\n')).toEqual([...counts].map(([name, count]) => `${name}x${count}`));
+    expect(output.body.elements[0].content).toBe(`**历史工具 · 240 次**\n${[...counts].map(([name, count]) => `${name} ×${count}`).join('；')}`);
     expect(output.body.elements[1]).toEqual(md('LATEST', 'latest'));
   });
 
@@ -204,6 +204,59 @@ describe('single-card subagent display budget', () => {
     expect(JSON.stringify(output)).not.toContain('ARGS_');
     expect(JSON.stringify(output)).not.toContain('STDOUT_');
     expect(JSON.stringify(output)).not.toContain('Very_Long_Tool_Name_0_');
+  });
+
+  it('reduces a giant last tool before sacrificing unrelated history', () => {
+    const previous = tool('old', 'Read', 1);
+    const giant = tool('giant', 'web_read', 5000);
+    const source = freeze(card([
+      thought('think', 'KEEP_THOUGHT'), ...previous.nodes,
+      md('KEEP_OLD_PROSE', 'prose'), ...giant.nodes, md('LATEST', 'last'),
+    ]));
+    const output = compactSubagentCard(source, [
+      { kind: 'thinking', elementIds: ['think'] }, previous.chunk,
+      { kind: 'text', elementIds: ['prose'] }, giant.chunk,
+      { kind: 'text', elementIds: ['last'] },
+    ], { ...budget, maxBytes: 3500 });
+    verify(output, source, { ...budget, maxBytes: 3500 });
+    expect(visible(output)).toContain('KEEP_THOUGHT');
+    expect(visible(output)).toContain('KEEP_OLD_PROSE');
+    expect(visible(output)).toContain('ARGS_old');
+    expect(visible(output)).not.toContain('STDOUT_giant');
+    expect(visible(output)).toContain('历史工具 · 1 次');
+  });
+
+  it('does not leave repeated empty truncation markers between compact tool history', () => {
+    const elements: CardObject[] = [];
+    const chunks: SubagentCardChunk[] = [];
+    for (let index = 0; index < 12; index++) {
+      const entry = tool(`t${index}`, 'search', 1);
+      elements.push(...entry.nodes, md('OLD_PROSE_'.repeat(2000), `p${index}`));
+      chunks.push(entry.chunk, { kind: 'text', elementIds: [`p${index}`] });
+    }
+    elements.push(md('LATEST_UNCHANGED', 'last'));
+    chunks.push({ kind: 'text', elementIds: ['last'] });
+    const source = freeze(card(elements));
+    const output = compactSubagentCard(source, chunks, budget);
+    verify(output, source);
+    expect(visible(output).match(/较早内容已截断/g)?.length ?? 0).toBeLessThanOrEqual(1);
+    expect(visible(output)).toContain('LATEST_UNCHANGED');
+    expect(visible(output)).toContain('历史工具');
+  });
+
+  it('retains usage in compact history and counts parallel calls once per step', () => {
+    const first = tool('first', 'search');
+    const second = tool('second', 'search');
+    const usage = { step: 1, inputTokens: 3000, outputTokens: 100, contextTokens: 5000, contextWindow: 10000 };
+    first.chunk.usage = usage;
+    second.chunk.usage = { ...usage };
+    const source = freeze(card([...first.nodes, ...second.nodes, md('LATEST', 'last')]));
+    const output = compactSubagentCard(source, [first.chunk, second.chunk, { kind: 'text', elementIds: ['last'] }], budget);
+    verify(output, source);
+    expect(visible(output)).toContain('历史工具 · 2 次');
+    expect(visible(output)).toContain('↓3k ↑100 5k 50%');
+    expect(visible(output)).not.toContain('↓6k');
+    expect(first.chunk.usage).toEqual(usage);
   });
 
   it('keeps the newest giant single block suffix rather than looping or preserving hidden full text', () => {

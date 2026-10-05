@@ -276,6 +276,36 @@ describe('SubagentFlowPresenter', () => {
     expect(f.adapter.send).toHaveBeenCalledOnce();
   });
 
+  it.each(['completed', 'failed'] as const)('routes a huge %s child search result to details, including the derived error alias', async status => {
+    const f = fixture();
+    const full = 'RESULT_BEGIN' + '完整工具结果😀\n'.repeat(1200) + 'RESULT_END';
+    const child = snapshot('search-child', { status, timeline: [{
+      kind: 'tool', blockId: 'search-block', toolId: 'search-call', toolName: 'search',
+      inputData: { query: 'complete query' }, toolInput: 'complete query', toolResult: full, status,
+    }] });
+    const before = structuredClone(child);
+    f.presenter.update(child);
+    await settle(); await f.presenter.finish();
+    const message = f.messages.get('child-card-1')!;
+    expect(JSON.stringify(message)).not.toContain('RESULT_BEGIN');
+    expect(JSON.stringify(message)).not.toContain('RESULT_END');
+    expect(JSON.stringify(message)).toContain('查看详情');
+    expect(f.data[0].timeline?.[0].toolResult).toBe(full);
+    expect(f.data[0].toolLogs?.[0].result).toBe(full);
+    if (status === 'failed') {
+      expect(f.data[0].errorMessage).toBe(full);
+      expect(JSON.stringify(message)).toContain('失败');
+    }
+    expect(child).toEqual(before);
+    const reply = vi.fn(async () => ({ code: 0, data: { message_id: 'search-detail', thread_id: 'topic' } }));
+    const client = { im: { message: { reply, create: vi.fn() } } } as unknown as Client;
+    const callback = { ...f.inbound, text: '', callbackData: detailAction(message), messageId: 'child-card-1' };
+    expect(await f.details.handle({ ...callback, messageId: 'main-message-id' }, client, true))
+      .toMatchObject({ toast: { type: 'error' } });
+    expect(await f.details.handle(callback, client, true)).toMatchObject({ toast: { type: 'success' } });
+    expect(reply).toHaveBeenCalledOnce();
+  });
+
   it('never fabricates answer/timeline text for queued or thinking-only snapshots', async () => {
     const f = fixture();
     f.presenter.update(snapshot('child', { status: 'queued' }));
