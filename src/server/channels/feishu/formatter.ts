@@ -418,25 +418,26 @@ export class FeishuFormatter implements MessageFormatter<FeishuRenderedMessage> 
         locale: this.locale,
         flowOptions: this.options.flowOptions,
         subagentChunks,
-        registerToolDetails: this.options.toolDetails
-          ? (block) => {
-              // Registration runs on the locally merged display copy, never the model timeline.
-              // A synthetic legacy index is only unique within a trusted turn.
-              if (!data.turnId && block.id.startsWith('legacy-call:')) return undefined;
-              const id = this.options.toolDetails!.register(chatId, {
-                ...block,
-                toolId: data.turnId ? `${data.turnId}:${block.id}` : block.id,
-              });
-              if (
-                id &&
-                isOversizedToolResult(block.toolResult) &&
-                (block.status === 'failed' || block.status === 'interrupted')
-              ) {
-                retainedToolResults.add(block.toolResult!);
-              }
-              return id;
-            }
-          : undefined,
+        registerToolDetails: (block) => {
+          // A failed child may reuse its complete tool result as errorMessage. The timeline
+          // always shows that result (redacted inline on cache failure), so suppress the alias
+          // independently of whether a details snapshot can be registered.
+          if (
+            isOversizedToolResult(block.toolResult) &&
+            (block.status === 'failed' || block.status === 'interrupted')
+          ) {
+            retainedToolResults.add(block.toolResult!);
+          }
+          if (!this.options.toolDetails)
+            return isOversizedToolResult(block.toolResult) ? undefined : block.detailId;
+          // Registration runs on the locally merged display copy, never the model timeline.
+          // A synthetic legacy index is only unique within a trusted turn.
+          if (!data.turnId && block.id.startsWith('legacy-call:')) return undefined;
+          return this.options.toolDetails.register(chatId, {
+            ...block,
+            toolId: data.turnId ? `${data.turnId}:${block.id}` : block.id,
+          });
+        },
         registerThinkingDetails: this.options.toolDetails ? block => {
           // The renderer supplies a fresh, local turn UUID; legacy IDs alone can collide.
           if (!data.turnId || !block.id) return undefined;
