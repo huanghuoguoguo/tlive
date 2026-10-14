@@ -24,9 +24,9 @@ import type {
 import type { EffortLevel } from '../../shared/providers/effort.js';
 import { CommandBlockedError, NoActiveTurnError } from '../../shared/providers/errors.js';
 import { PiAdapter } from './pi-adapter.js';
-import { createSubagentResourceLoader } from './pi-subagent-extension.js';
 import { createPiAskBridge } from './pi-ask-bridge.js';
 import type { PiRuntimeOptions, PiThinkingLevel } from './pi-config.js';
+import { createSubagentResourceLoader } from './pi-subagent-extension.js';
 
 export type PiSessionOptions = CreateSessionParams & PiRuntimeOptions;
 
@@ -41,8 +41,31 @@ interface PiTurnContext {
   closed: boolean;
 }
 
+/** Per-turn wiring of one AgentSession into a turn context. */
+interface TurnSessionBinding {
+  session: AgentSession;
+  initialMessageCount: number;
+  unsubscribe: () => void;
+}
+
 /** How long the next turn waits for an aborted pi run to go idle before prompting anyway. */
 const TURN_RETIRE_TIMEOUT_MS = 15_000;
+/** Grace window to let a wedged pi run settle in place before rebuilding over its session file. */
+const STUCK_RUN_GRACE_MS = 20_000;
+const STUCK_RUN_POLL_MS = 500;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** Pi rejects a prompt while the previous run never settled (wedged compaction & co.). */
+function isStuckRunError(err: unknown): boolean {
+  return /Agent is already processing|while compaction is in progress/i.test(errorMessage(err));
+}
 
 export class PiLiveSession implements LiveSession {
   readonly capabilities = {
@@ -184,55 +207,55 @@ export class PiLiveSession implements LiveSession {
     params: TurnParams | undefined,
     context: PiTurnContext,
   ): Promise<void> {
-    let unsubscribe: (() => void) | undefined;
+    let turn: TurnSessionBinding | undefined;
     try {
-      const session = await this.getOrCreateSession(params);
+      const baseSession = await this.getOrCreateSession(params);
       if (!this.isCurrentTurn(context)) return;
-      await this.awaitRunHandoff(session);
+      await this.awaitRunHandoff(baseSession);
       if (!this.isCurrentTurn(context)) return;
-      const initialMessageCount = session.messages.length;
-      context.adapter.updateRuntime({
-        sessionId: this.sdkSessionId,
-        model: this._runtimeInfo.model,
-        reasoningEffort: this._runtimeInfo.reasoningEffort,
-        contextWindow: session.model?.contextWindow,
-      });
-      this.enqueueTurnEvent(context, {
-        kind: 'status',
-        sessionId: this.sdkSessionId ?? '',
-        ...(this._runtimeInfo.model ? { model: this._runtimeInfo.model } : {}),
-      });
-      // Bind the ask bridge UIContext so Pi's `ask` tool routes through Feishu
-      await session.bindExtensions({
-        uiContext: createPiAskBridge(params?.onAskUserQuestion, context.abortController.signal),
-      });
-      if (!this.isCurrentTurn(context)) return;
-
-      unsubscribe = session.subscribe((event) => {
-        for (const mapped of context.adapter.mapEvent(event)) {
-          this.enqueueTurnEvent(context, mapped);
-        }
-      });
+      turn = await this.prepareTurnSession(baseSession, context, params);
+      if (!turn) return;
 
       const modelCommand = parsePiModelCommand(prompt);
       if (modelCommand) {
-        await this.handleModelCommand(session, modelCommand.modelPattern, context);
+        await this.handleModelCommand(turn.session, modelCommand.modelPattern, context);
         return;
       }
 
       const compactCommand = parsePiCompactCommand(prompt);
       if (compactCommand) {
-        await this.handleCompactCommand(session, compactCommand.customInstructions, context);
+        await this.handleCompactCommand(turn.session, compactCommand.customInstructions, context);
         return;
       }
 
       const prepared = this.buildPrompt(prompt, params);
-      await session.prompt(prepared.prompt, {
-        expandPromptTemplates: true,
-        ...(prepared.images ? { images: prepared.images } : {}),
-      });
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await turn.session.prompt(prepared.prompt, {
+            expandPromptTemplates: true,
+            ...(prepared.images ? { images: prepared.images } : {}),
+          });
+          break;
+        } catch (err) {
+          // A previous run that never settled rejects every prompt. Recover the
+          // session once and retry; anything else fails the turn immediately.
+          if (!isStuckRunError(err) || attempt > 0) throw err;
+          const recovered = await this.recoverStuckRun(turn.session, params);
+          if (!recovered) throw err;
+          turn.unsubscribe();
+          const rebound = await this.prepareTurnSession(recovered, context, params);
+          // The bridge may have retired the turn while we were recovering; stop then
+          // (the old binding above is already unsubscribed).
+          if (!rebound) {
+            turn = undefined;
+            return;
+          }
+          turn = rebound;
+        }
+      }
 
       if (!this.ownsTurn(context)) return;
+      const session = turn.session;
       this.rememberSessionId(session);
       context.adapter.updateRuntime({
         sessionId: this.sdkSessionId,
@@ -257,7 +280,7 @@ export class PiLiveSession implements LiveSession {
         );
       }
       for (const mapped of context.adapter.mapComplete(
-        session.messages.slice(initialMessageCount),
+        session.messages.slice(turn.initialMessageCount),
         ctxUsage?.tokens ?? undefined,
       )) {
         this.enqueueTurnEvent(context, mapped);
@@ -267,8 +290,92 @@ export class PiLiveSession implements LiveSession {
         this.enqueueTurnEvent(context, mapped);
       }
     } finally {
-      unsubscribe?.();
+      turn?.unsubscribe();
       this.finishTurnContext(context);
+    }
+  }
+
+  /**
+   * Wire one AgentSession into the turn: runtime info, status event, ask bridge,
+   * and the event subscription. Returns the binding so a recovery rebuild can swap
+   * in a fresh session mid-turn; returns undefined if the turn was retired while the
+   * extension binding was still in flight (a dead turn must not subscribe to events).
+   */
+  private async prepareTurnSession(
+    session: AgentSession,
+    context: PiTurnContext,
+    params?: TurnParams,
+  ): Promise<TurnSessionBinding | undefined> {
+    const initialMessageCount = session.messages.length;
+    this.rememberSessionId(session);
+    context.adapter.updateRuntime({
+      sessionId: this.sdkSessionId,
+      model: this._runtimeInfo.model,
+      reasoningEffort: this._runtimeInfo.reasoningEffort,
+      contextWindow: session.model?.contextWindow,
+    });
+    this.enqueueTurnEvent(context, {
+      kind: 'status',
+      sessionId: this.sdkSessionId ?? '',
+      ...(this._runtimeInfo.model ? { model: this._runtimeInfo.model } : {}),
+    });
+    // Bind the ask bridge UIContext so Pi's `ask` tool routes through Feishu
+    await session.bindExtensions({
+      uiContext: createPiAskBridge(params?.onAskUserQuestion, context.abortController.signal),
+    });
+    if (!this.isCurrentTurn(context)) return undefined;
+    const unsubscribe = session.subscribe((event) => {
+      for (const mapped of context.adapter.mapEvent(event)) {
+        this.enqueueTurnEvent(context, mapped);
+      }
+    });
+    return { session, initialMessageCount, unsubscribe };
+  }
+
+  /**
+   * A previous pi run can wedge without ever settling: auto-compaction in flight when
+   * the bridge retires the turn aborts the run, but a compaction that ignores the signal
+   * leaves the agent's activeRun set forever and every prompt throws "Agent is already
+   * processing". Give one grace window for the run to go idle; if that fails, rebuild an
+   * AgentSession over the same session file — fresh agent state, full transcript from
+   * disk — so the conversation keeps going instead of dying with the wedged process.
+   */
+  private async recoverStuckRun(
+    stuck: AgentSession,
+    params?: TurnParams,
+  ): Promise<AgentSession | undefined> {
+    console.warn('[pi] prompt rejected by a run that never settled; attempting recovery');
+    let waited = 0;
+    while (stuck.isStreaming && waited < STUCK_RUN_GRACE_MS) {
+      // AgentSession.abort() awaits idle itself, so fire it without waiting.
+      void stuck.abort().catch(() => {});
+      await sleep(STUCK_RUN_POLL_MS);
+      waited += STUCK_RUN_POLL_MS;
+    }
+    if (!stuck.isStreaming) {
+      console.warn('[pi] wedged run went idle during the grace window; retrying in place');
+      return stuck;
+    }
+    const sessionFile = stuck.sessionFile;
+    if (!sessionFile) {
+      console.warn('[pi] wedged run has no session file to resume from; cannot recover in place');
+      return undefined;
+    }
+    try {
+      stuck.dispose();
+    } catch (err) {
+      console.warn(`[pi] dispose of the wedged session failed: ${errorMessage(err)}`);
+    }
+    this.session = undefined;
+    this.initPromise = undefined;
+    this.options.sessionId = sessionFile;
+    try {
+      const rebuilt = await this.createPiSession(params);
+      console.warn(`[pi] rebuilt the session over ${sessionFile}; retrying the prompt`);
+      return rebuilt;
+    } catch (err) {
+      console.warn(`[pi] rebuild over ${sessionFile} failed: ${errorMessage(err)}`);
+      return undefined;
     }
   }
 
@@ -399,12 +506,16 @@ export class PiLiveSession implements LiveSession {
       sessionManager,
       ...(model ? { model } : {}),
       ...(thinkingLevel ? { thinkingLevel } : {}),
-      ...(this.options.subagentExtensionFile ? {
-        resourceLoader: await createSubagentResourceLoader({
-          file: this.options.subagentExtensionFile, cwd: this.options.workingDirectory,
-          agentDir: this.agentDirPath(), settingsManager,
-        }),
-      } : {}),
+      ...(this.options.subagentExtensionFile
+        ? {
+            resourceLoader: await createSubagentResourceLoader({
+              file: this.options.subagentExtensionFile,
+              cwd: this.options.workingDirectory,
+              agentDir: this.agentDirPath(),
+              settingsManager,
+            }),
+          }
+        : {}),
     };
 
     const result = await createAgentSession(createOptions);

@@ -1,3 +1,4 @@
+import { unlinkSync, writeFileSync } from 'node:fs';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 const piSdkMocks = vi.hoisted(() => ({
@@ -938,6 +939,156 @@ describe('PiLiveSession', () => {
       compaction: { reserveTokens: 54400 },
     });
   });
+  it('rebuilds over the session file when a wedged run never goes idle', async () => {
+    vi.useFakeTimers();
+    const sessionFile = '/tmp/tlive-pi-recovery-test.jsonl';
+    try {
+      writeFileSync(sessionFile, '');
+
+      const harness = makeSteerableSession();
+      harness.session.sessionFile = sessionFile;
+      // The wedged run never settles: its prompt hangs and abort() (which awaits idle) hangs too.
+      harness.session.prompt.mockImplementation((text: string) => {
+        if (text === 'wedged run') return new Promise<void>(() => {});
+        throw new Error(
+          "Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.",
+        );
+      });
+      harness.session.abort.mockImplementation(() => new Promise<void>(() => {}));
+
+      const fresh = makeSteerableSession();
+      fresh.session.sessionFile = sessionFile;
+      fresh.session.prompt.mockImplementation(async () => {});
+      piSdkMocks.createAgentSession
+        .mockResolvedValueOnce({ session: harness.session })
+        .mockResolvedValue({ session: fresh.session });
+
+      const live = new PiLiveSession({ workingDirectory: '/repo' });
+      const first = live.startTurn('wedged run').stream.getReader();
+      await first.read();
+      harness.state.streaming = true;
+
+      // The bridge gave up on the wedged turn; the next message must not die with it.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const done = collect(live.startTurn('next message').stream);
+      await vi.advanceTimersByTimeAsync(40_000);
+      const events = await done;
+
+      expect(events.at(-1)).toMatchObject({ kind: 'query_result', isError: false });
+      // The wedged session was disposed and a fresh one resumed from the same file.
+      expect(harness.session.dispose).toHaveBeenCalledTimes(1);
+      expect(piSdkMocks.sessionManagerOpen).toHaveBeenCalledWith(
+        sessionFile,
+        undefined,
+        '/repo',
+      );
+      expect(fresh.session.prompt).toHaveBeenCalledWith('next message', {
+        expandPromptTemplates: true,
+      });
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(`rebuilt the session over ${sessionFile}`),
+      );
+      warn.mockRestore();
+
+      await first.cancel().catch(() => {});
+    } finally {
+      vi.useRealTimers();
+      try {
+        unlinkSync(sessionFile);
+      } catch {
+        // best effort
+      }
+    }
+  });
+
+  it('retries on the same session once the wedged run goes idle during the grace window', async () => {
+    vi.useFakeTimers();
+    try {
+      const harness = makeSteerableSession();
+      piSdkMocks.createAgentSession.mockResolvedValue({ session: harness.session });
+      let nextCalls = 0;
+      harness.session.prompt.mockImplementation((text: string) => {
+        if (text === 'wedged run') return new Promise<void>(() => {});
+        nextCalls += 1;
+        // The first attempt is rejected while the wedged run still reports streaming.
+        if (nextCalls === 1) {
+          throw new Error(
+            "Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.",
+          );
+        }
+        return Promise.resolve();
+      });
+      harness.session.abort.mockImplementation(() => new Promise<void>(() => {}));
+
+      const live = new PiLiveSession({ workingDirectory: '/repo' });
+      const first = live.startTurn('wedged run').stream.getReader();
+      await first.read();
+      harness.state.streaming = true;
+
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      // The wedged run releases ~1s into the recovery grace window that starts after the 15s handoff.
+      setTimeout(() => {
+        harness.state.streaming = false;
+      }, 16_000);
+
+      const done = collect(live.startTurn('next message').stream);
+      await vi.advanceTimersByTimeAsync(40_000);
+      const events = await done;
+
+      expect(events.at(-1)).toMatchObject({ kind: 'query_result', isError: false });
+      expect(nextCalls).toBe(2);
+      // No rebuild needed once the run went idle.
+      expect(harness.session.dispose).not.toHaveBeenCalled();
+      expect(piSdkMocks.createAgentSession).toHaveBeenCalledTimes(1);
+      warn.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('fails the turn when a wedged session has no file to rebuild from', async () => {
+    vi.useFakeTimers();
+    try {
+      const harness = makeSteerableSession();
+      delete (harness.session as Record<string, unknown>).sessionFile;
+      piSdkMocks.createAgentSession.mockResolvedValue({ session: harness.session });
+      let nextCalls = 0;
+      harness.session.prompt.mockImplementation((text: string) => {
+        if (text === 'wedged run') return new Promise<void>(() => {});
+        nextCalls += 1;
+        throw new Error(
+          "Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.",
+        );
+      });
+      harness.session.abort.mockImplementation(() => new Promise<void>(() => {}));
+
+      const live = new PiLiveSession({ workingDirectory: '/repo' });
+      const first = live.startTurn('wedged run').stream.getReader();
+      await first.read();
+      harness.state.streaming = true;
+
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const done = collect(live.startTurn('next message').stream);
+      await vi.advanceTimersByTimeAsync(40_000);
+      const events = await done;
+
+      expect(events.at(-1)).toMatchObject({
+        kind: 'query_result',
+        isError: true,
+        error: expect.stringContaining('already processing'),
+      });
+      // No session file, so no retry — the original busy error is surfaced.
+      expect(nextCalls).toBe(1);
+      expect(harness.session.dispose).not.toHaveBeenCalled();
+      expect(piSdkMocks.createAgentSession).toHaveBeenCalledTimes(1);
+      warn.mockRestore();
+
+      await first.cancel().catch(() => {});
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
 });
 
 function deferred<T>() {
