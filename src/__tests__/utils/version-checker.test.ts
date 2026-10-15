@@ -1,5 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { checkForUpdates, compareVersions, selectUpdateRelease } from '../../shared/utils/version-checker.js';
+import {
+  checkForUpdates,
+  compareVersions,
+  getBuildCommit,
+  getBuildFingerprint,
+  getCurrentVersion,
+  getVersionLabel,
+  selectUpdateRelease,
+} from '../../shared/utils/version-checker.js';
+
+function restoreEnv(key: string, value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
+}
 
 function release(tag: string, prerelease = false, body = '') {
   return {
@@ -129,5 +145,70 @@ describe('version-checker', () => {
       latest: '0.13.8-beta.3',
       hasUpdate: false,
     });
+  });
+});
+
+describe('build fingerprint', () => {
+  const originalSha = process.env.TLIVE_BUILD_SHA;
+  const originalBranch = process.env.TLIVE_BUILD_BRANCH;
+  const originalVersion = process.env.npm_package_version;
+
+  beforeEach(() => {
+    delete process.env.TLIVE_BUILD_SHA;
+    delete process.env.TLIVE_BUILD_BRANCH;
+    process.env.npm_package_version = '1.5.4';
+  });
+
+  afterEach(() => {
+    restoreEnv('TLIVE_BUILD_SHA', originalSha);
+    restoreEnv('TLIVE_BUILD_BRANCH', originalBranch);
+    process.env.npm_package_version = originalVersion;
+  });
+
+  // The injector writes these as build-time constants; a bundle built without
+  // them (or on a tarball install) must degrade to a plain version rather than
+  // rendering "undefined".
+  it('returns an empty fingerprint when the build injected nothing', () => {
+    expect(getBuildCommit()).toBe('');
+    expect(getBuildFingerprint()).toBe('');
+    expect(getVersionLabel()).toBe('1.5.4');
+  });
+
+  it('reports the injected commit and branch', () => {
+    process.env.TLIVE_BUILD_SHA = '9d02d37f2';
+    process.env.TLIVE_BUILD_BRANCH = 'feat/local-v154';
+
+    expect(getBuildCommit()).toBe('9d02d37f2');
+    expect(getBuildFingerprint()).toBe('9d02d37f2 @ feat/local-v154');
+  });
+
+  it('omits the branch separator when only a commit is known', () => {
+    process.env.TLIVE_BUILD_SHA = '9d02d37f2';
+
+    expect(getBuildFingerprint()).toBe('9d02d37f2');
+  });
+
+  it('ignores a branch without a commit', () => {
+    process.env.TLIVE_BUILD_BRANCH = 'feat/local-v154';
+
+    expect(getBuildFingerprint()).toBe('');
+  });
+
+  it('appends the fingerprint to the display label', () => {
+    process.env.TLIVE_BUILD_SHA = '9d02d37f2';
+    process.env.TLIVE_BUILD_BRANCH = 'feat/local-v154';
+
+    expect(getVersionLabel()).toBe('1.5.4 (9d02d37f2 @ feat/local-v154)');
+  });
+
+  // getCurrentVersion() feeds compareVersions() for the client upgrade banner,
+  // so it must stay a bare semver. Appending a fingerprint there silently
+  // breaks version comparison.
+  it('keeps getCurrentVersion a bare semver even with a fingerprint present', () => {
+    process.env.TLIVE_BUILD_SHA = '9d02d37f2';
+    process.env.TLIVE_BUILD_BRANCH = 'feat/local-v154';
+
+    expect(getCurrentVersion()).toBe('1.5.4');
+    expect(compareVersions(getCurrentVersion(), '1.5.3')).toBeGreaterThan(0);
   });
 });
