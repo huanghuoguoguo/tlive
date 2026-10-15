@@ -8,8 +8,14 @@ import { join } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { getTliveHome } from '../core/path.js';
 
-// Version is injected at build time via esbuild define
-declare const process: { env: { npm_package_version: string } };
+// Version and build fingerprint are injected at build time via esbuild define
+declare const process: {
+  env: {
+    npm_package_version: string;
+    TLIVE_BUILD_SHA?: string;
+    TLIVE_BUILD_BRANCH?: string;
+  };
+};
 
 const REPO = 'huanghuoguoguo/tlive';
 const GITHUB_LATEST_STABLE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
@@ -40,6 +46,46 @@ interface GitHubRelease {
  */
 export function getCurrentVersion(): string {
   return process.env.npm_package_version;
+}
+
+/**
+ * Get the git commit this bundle was built from (short SHA), injected at build
+ * time. Returns an empty string when the bundle was built outside a git
+ * checkout or by a toolchain that does not inject a fingerprint.
+ */
+export function getBuildCommit(): string {
+  const sha = process.env.TLIVE_BUILD_SHA;
+  return typeof sha === 'string' ? sha : '';
+}
+
+/**
+ * Get the git branch this bundle was built from. Empty string when unknown.
+ */
+export function getBuildBranch(): string {
+  const branch = process.env.TLIVE_BUILD_BRANCH;
+  return typeof branch === 'string' ? branch : '';
+}
+
+/**
+ * Build fingerprint, e.g. "9d02d37f2 @ feat/local-v154". Empty string when the
+ * bundle carries no fingerprint.
+ */
+export function getBuildFingerprint(): string {
+  const sha = getBuildCommit();
+  if (!sha) return '';
+  const branch = getBuildBranch();
+  return branch ? `${sha} @ ${branch}` : sha;
+}
+
+/**
+ * Version label for logs and status output. Appends the build fingerprint when
+ * present, so a running bridge can always be traced to its exact commit:
+ *   "1.5.4 (9d02d37f2 @ feat/local-v154)"   — local build
+ *   "1.5.4"                                 — build without a fingerprint
+ */
+export function getVersionLabel(): string {
+  const fingerprint = getBuildFingerprint();
+  return fingerprint ? `${getCurrentVersion()} (${fingerprint})` : getCurrentVersion();
 }
 
 function normalizeVersion(v: string): string {

@@ -1,7 +1,7 @@
 import { BaseCommand } from './base.js';
 import type { CommandContext } from './types.js';
 import { presentStatus } from '../../presentation/command-presenter.js';
-import { getCurrentVersion } from '../../../shared/utils/version-checker.js';
+import { getVersionLabel } from '../../../shared/utils/version-checker.js';
 import { formatSize } from '../../../shared/formatting/session-format.js';
 
 export class StatusCommand extends BaseCommand {
@@ -35,8 +35,8 @@ export class StatusCommand extends BaseCommand {
     // Uptime
     const uptimeSeconds = Math.floor(process.uptime());
 
-    // Version
-    const version = getCurrentVersion();
+    // Version (with build fingerprint)
+    const version = getVersionLabel();
 
     await this.send(
       ctx,

@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process';
 import {
   checkForUpdates,
   getCurrentVersion,
+  getVersionLabel,
   isVersionNotified,
   markVersionNotified,
 } from '../shared/utils/version-checker.js';
@@ -603,7 +604,7 @@ export async function main() {
   // Check every 6 hours
   const versionCheckInterval = setInterval(() => checkAndNotifyUpdate(), 6 * 60 * 60 * 1000);
 
-  logger.info(`TLive Bridge v${getCurrentVersion()} started`);
+  logger.info(`TLive Bridge v${getVersionLabel()} started`);
 
   // Graceful shutdown
   const shutdown = async (reason = 'signal') => {
