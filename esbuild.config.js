@@ -22,7 +22,14 @@ function gitOutput(args) {
 }
 
 const buildSha = gitOutput(['rev-parse', '--short=9', 'HEAD']);
-const buildBranch = gitOutput(['rev-parse', '--abbrev-ref', 'HEAD']);
+// CI release builds check out the tag, so HEAD is detached and --abbrev-ref
+// reports the literal string "HEAD". Fall back to the tag name there so a
+// released artifact still says where it came from.
+let buildBranch = gitOutput(['rev-parse', '--abbrev-ref', 'HEAD']);
+if (buildBranch === 'HEAD') {
+  buildBranch =
+    gitOutput(['describe', '--tags', '--exact-match', 'HEAD']) || process.env.GITHUB_REF_NAME || '';
+}
 const buildTime = new Date().toISOString();
 
 rmSync('dist', { recursive: true, force: true });
